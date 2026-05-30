@@ -52,9 +52,13 @@ def test_out_of_range_indices_raise_clearly() -> None:
         deck.render({OutputFormat.PNG}, indices={5})
 
 
-def test_compose_page_rejects_nonpositive_dimensions() -> None:
+@pytest.mark.parametrize(
+    ("width_px", "height_px"),
+    [(0, 720), (-1, 720), (1280, 0), (1280, -100), (0, 0)],
+)
+def test_compose_page_rejects_nonpositive_dimensions(width_px: int, height_px: int) -> None:
     with pytest.raises(ValueError, match="positive"):
-        compose_page("<p>x</p>", css=None, theme=Theme(), width_px=0, height_px=720)
+        compose_page("<p>x</p>", css=None, theme=Theme(), width_px=width_px, height_px=height_px)
 
 
 def test_theme_values_cannot_break_the_root_block() -> None:

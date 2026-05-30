@@ -26,7 +26,10 @@ def parse_color(value: str | None) -> Rgba | None:
 
 
 def parse_length_px(value: str | None) -> float:
-    """First ``px`` length in ``value`` as a float (0.0 if none — e.g. ``"0px 4px"`` → 0.0)."""
+    """The first ``px`` length found in ``value`` (via ``_LENGTH_RE``), or 0.0 if there is none.
+
+    Only the first match is returned, e.g. ``"12px 4px 4px 12px"`` → ``12.0``.
+    """
     if not value:
         return 0.0
     match = _LENGTH_RE.search(value)

@@ -27,8 +27,21 @@ def test_parse_length_takes_first_px() -> None:
 
 
 def test_is_bold() -> None:
-    assert is_bold("700") and is_bold("bold") and is_bold("bolder")
-    assert not is_bold("400") and not is_bold("normal") and not is_bold(None)
+    assert is_bold("700")
+    assert is_bold("bold")
+    assert is_bold("bolder")
+    assert not is_bold("400")
+    assert not is_bold("normal")
+    assert not is_bold(None)
+
+
+def test_extract_normalizes_logical_text_align() -> None:
+    node = RenderedNode(
+        tag="p", x=0, y=0, width=10, height=10, text="x", styles={"textAlign": "start"}
+    )
+    ir = extract_slide(RenderedSlide(png=b"x", width=100, height=100, nodes=(node,)))
+    assert ir.shapes[0].text is not None
+    assert ir.shapes[0].text.align == "left"  # 'start' → 'left'
 
 
 def test_extract_maps_box_fill_and_text() -> None:

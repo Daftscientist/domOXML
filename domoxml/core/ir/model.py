@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -39,11 +41,11 @@ class TextRun(BaseModel):
 
     text: str
     font_family: str
-    size_pt: float
+    size_pt: float = Field(gt=0)
     bold: bool = False
     italic: bool = False
     color: Rgba = Rgba(r=0, g=0, b=0)
-    align: str = "left"  # left | center | right | justify
+    align: Literal["left", "center", "right", "justify"] = "left"
 
 
 class ShapeNode(BaseModel):

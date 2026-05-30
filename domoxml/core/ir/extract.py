@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from domoxml.core.ir.model import Box, Rgba, ShapeNode, SlideIR, TextRun
 from domoxml.core.ir.parse import is_bold, parse_color, parse_length_px
 from domoxml.core.render.browser import RenderedNode, RenderedSlide
 from domoxml.core.units import px_to_emu, px_to_pt
 
 _DEFAULT_TEXT_COLOR = Rgba(r=0, g=0, b=0)
+
+# Chromium reports logical alignments (start/end); map them to the IR's physical set.
+_ALIGN: dict[str, Literal["left", "center", "right", "justify"]] = {
+    "left": "left",
+    "center": "center",
+    "right": "right",
+    "justify": "justify",
+    "start": "left",
+    "end": "right",
+}
 
 
 def _text_run(node: RenderedNode) -> TextRun | None:
@@ -21,7 +33,7 @@ def _text_run(node: RenderedNode) -> TextRun | None:
         bold=is_bold(styles.get("fontWeight")),
         italic=styles.get("fontStyle", "normal") == "italic",
         color=parse_color(styles.get("color")) or _DEFAULT_TEXT_COLOR,
-        align=styles.get("textAlign") or "left",
+        align=_ALIGN.get((styles.get("textAlign") or "").strip().lower(), "left"),
     )
 
 

@@ -45,6 +45,11 @@ def test_html_output_not_implemented() -> None:
         deck.render({OutputFormat.HTML})
 
 
+def test_pptx_on_empty_deck_is_none_without_a_browser() -> None:
+    # No slides → nothing to render → no browser launched, pptx is None (graceful).
+    assert Presentation().render({OutputFormat.PPTX}).pptx is None
+
+
 def test_out_of_range_indices_raise_clearly() -> None:
     deck = Presentation()
     deck.add(Slide(html="<p>only one</p>"))

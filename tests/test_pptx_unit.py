@@ -65,3 +65,10 @@ def test_build_pptx_opens_and_keeps_text_editable() -> None:
 def test_build_pptx_requires_a_slide() -> None:
     with pytest.raises(ValueError, match="at least one slide"):
         build_pptx([])
+
+
+def test_build_pptx_rejects_mismatched_slide_sizes() -> None:
+    a = SlideIR(width=12_192_000, height=6_858_000, shapes=())
+    b = SlideIR(width=9_144_000, height=6_858_000, shapes=())  # 4:3 — different width
+    with pytest.raises(ValueError, match="share one size"):
+        build_pptx([a, b])

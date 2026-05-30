@@ -72,7 +72,7 @@ class Presentation:
         pngs = tuple(slide.png for slide in rendered) if OutputFormat.PNG in formats else ()
         pptx = (
             build_pptx([extract_slide(slide) for slide in rendered])
-            if OutputFormat.PPTX in formats
+            if (OutputFormat.PPTX in formats and rendered)
             else None
         )
         return RenderResult(
@@ -101,6 +101,9 @@ class Presentation:
             if invalid:
                 raise IndexError(f"slide indices out of range: {invalid}")
             chosen = [self.slides[i] for i in sorted(indices)]
+
+        if not chosen:  # nothing to render — don't spin up a browser
+            return []
 
         rendered: list[RenderedSlide] = []
         async with BrowserSession() as session:

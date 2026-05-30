@@ -78,8 +78,15 @@ def build_pptx(slides: list[SlideIR]) -> bytes:
     if not slides:
         raise ValueError("cannot build a .pptx with no slides — add at least one slide")
 
-    # All slides share one presentation size; use the first slide's dimensions.
+    # A .pptx has one presentation size for all slides; they must agree, or we'd silently
+    # mis-size every slide but the first.
     width, height = slides[0].width, slides[0].height
+    for index, slide in enumerate(slides):
+        if (slide.width, slide.height) != (width, height):
+            raise ValueError(
+                "all slides must share one size for a single .pptx; "
+                f"slide {index} is {slide.width}x{slide.height}, expected {width}x{height}"
+            )
     n = len(slides)
 
     parts: dict[str, bytes | str] = {

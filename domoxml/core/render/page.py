@@ -5,6 +5,16 @@ from __future__ import annotations
 from domoxml.types import Theme
 
 _RESET = "*{margin:0;padding:0;box-sizing:border-box}"
+_CSS_STRUCTURAL = str.maketrans("", "", ";{}\n\r")
+
+
+def _css_value(value: str, fallback: str) -> str:
+    """Strip CSS-structural characters so a theme token can't break the ``:root`` block.
+
+    Not a security boundary — the raw ``css`` argument is passed through verbatim — just a
+    guard against a stray ``;``/``}``/newline in a token silently corrupting the stylesheet.
+    """
+    return value.translate(_CSS_STRUCTURAL).strip() or fallback
 
 
 def compile_theme(theme: Theme) -> str:
@@ -13,12 +23,12 @@ def compile_theme(theme: Theme) -> str:
     fonts = theme.fonts
     return (
         ":root{"
-        f"--background:{palette.background};"
-        f"--foreground:{palette.foreground};"
-        f"--accent:{palette.accent};"
-        f"--muted:{palette.muted};"
-        f"--font-heading:{fonts.heading};"
-        f"--font-body:{fonts.body};"
+        f"--background:{_css_value(palette.background, '#ffffff')};"
+        f"--foreground:{_css_value(palette.foreground, '#000000')};"
+        f"--accent:{_css_value(palette.accent, '#4f46e5')};"
+        f"--muted:{_css_value(palette.muted, '#6b7280')};"
+        f"--font-heading:{_css_value(fonts.heading, 'sans-serif')};"
+        f"--font-body:{_css_value(fonts.body, 'sans-serif')};"
         "}"
     )
 
@@ -36,6 +46,10 @@ def compose_page(
     The body is locked to exactly ``width_px`` x ``height_px`` with hidden overflow, so a
     full-page screenshot is the slide and nothing else.
     """
+    if width_px <= 0 or height_px <= 0:
+        raise ValueError(
+            f"compose_page: width_px and height_px must be positive, got {width_px}x{height_px}"
+        )
     frame = (
         f"html,body{{width:{width_px}px;height:{height_px}px;overflow:hidden;"
         "background:var(--background);color:var(--foreground);"

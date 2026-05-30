@@ -79,7 +79,13 @@ class BrowserSession:
 
     async def __aenter__(self) -> Self:
         self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(headless=True)
+        try:
+            self._browser = await self._playwright.chromium.launch(headless=True)
+        except BaseException:
+            # __aexit__ won't run if __aenter__ raises — clean up the started Playwright here.
+            await self._playwright.stop()
+            self._playwright = None
+            raise
         return self
 
     async def __aexit__(

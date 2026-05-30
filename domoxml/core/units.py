@@ -25,6 +25,9 @@ def pixels(size: SizeSpec) -> tuple[int, int]:
     return round(width_in * PX_PER_INCH), round(height_in * PX_PER_INCH)
 
 
+_EMU_PER_PX = EMU_PER_INCH / PX_PER_INCH  # 9525.0
+
+
 def px_to_emu(px: float) -> int:
     """Convert CSS pixels to EMUs."""
-    return round(px / PX_PER_INCH * EMU_PER_INCH)
+    return round(px * _EMU_PER_PX)

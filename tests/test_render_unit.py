@@ -50,3 +50,14 @@ def test_out_of_range_indices_raise_clearly() -> None:
     deck.add(Slide(html="<p>only one</p>"))
     with pytest.raises(IndexError):
         deck.render({OutputFormat.PNG}, indices={5})
+
+
+def test_compose_page_rejects_nonpositive_dimensions() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        compose_page("<p>x</p>", css=None, theme=Theme(), width_px=0, height_px=720)
+
+
+def test_theme_values_cannot_break_the_root_block() -> None:
+    hostile = Theme.model_validate({"palette": {"accent": "red; } body { display:none"}})
+    css = compile_theme(hostile)
+    assert css.count("{") == 1 and css.count("}") == 1  # still one clean :root block

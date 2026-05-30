@@ -6,11 +6,14 @@ import asyncio
 from pathlib import Path
 from typing import Self
 
+from domoxml.core.fonts import resolve_faces
 from domoxml.core.ir import extract_slide
 from domoxml.core.render import BrowserSession, RenderedSlide, compose_page
 from domoxml.core.units import pixels
 from domoxml.slides import build_pptx
 from domoxml.types import (
+    ConversionWarning,
+    CoverageItem,
     CoverageReport,
     OutputFormat,
     RenderResult,
@@ -70,13 +73,30 @@ class Presentation:
         rendered = await self._render(indices) if needs_render else []
 
         pngs = tuple(slide.png for slide in rendered) if OutputFormat.PNG in formats else ()
-        pptx = (
-            build_pptx([extract_slide(slide) for slide in rendered])
-            if (OutputFormat.PPTX in formats and rendered)
-            else None
-        )
+
+        pptx: bytes | None = None
+        coverage: list[CoverageItem] = []
+        warnings: list[ConversionWarning] = []
+        if OutputFormat.PPTX in formats and rendered:
+            extracts = [extract_slide(slide) for slide in rendered]
+            for extracted in extracts:
+                coverage.extend(extracted.coverage)
+                warnings.extend(extracted.warnings)
+            slide_irs = [extracted.slide for extracted in extracts]
+
+            captured_fonts: dict[str, bytes] = {}
+            for slide in rendered:
+                captured_fonts.update(slide.resources)
+            faces, font_warnings = resolve_faces(slide_irs, captured_fonts=captured_fonts)
+            warnings.extend(font_warnings)
+            pptx = build_pptx(slide_irs, faces=faces)
+
         return RenderResult(
-            pptx=pptx, pngs=pngs, html=None, coverage=CoverageReport(items=()), warnings=()
+            pptx=pptx,
+            pngs=pngs,
+            html=None,
+            coverage=CoverageReport(items=tuple(coverage)),
+            warnings=tuple(warnings),
         )
 
     def save_pptx(self, path: Path) -> None:

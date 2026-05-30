@@ -55,8 +55,11 @@ def compose_page(
         "background:var(--background);color:var(--foreground);"
         "font-family:var(--font-body),sans-serif}"
     )
-    style = f"{_RESET}{compile_theme(theme)}{frame}{css or ''}"
+    framework = f"{_RESET}{compile_theme(theme)}{frame}"
+    # User CSS goes in its own <style> so a leading `@import` (e.g. a web-font stylesheet) is
+    # valid — `@import` must precede all other rules in *its* stylesheet, not the framework's.
+    user_style = f"<style>{css}</style>" if css else ""
     return (
         '<!doctype html><html><head><meta charset="utf-8">'
-        f"<style>{style}</style></head><body>{slide_html}</body></html>"
+        f"<style>{framework}</style>{user_style}</head><body>{slide_html}</body></html>"
     )

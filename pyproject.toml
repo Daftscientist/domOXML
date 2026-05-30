@@ -57,6 +57,8 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 include = ["domoxml", "tests"]
+venvPath = "."
+venv = ".venv"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

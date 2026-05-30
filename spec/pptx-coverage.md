@@ -26,7 +26,7 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | Fwd | Rev | Notes |
 |---|---|:--:|:--:|---|
-| OPC package (zip, content-types, rels) | OPC | ✅ | ⬜ | `core/opc` |
+| OPC package (zip, content-types, rels) | OPC | ✅ | ⬜ | `domoxml/slides/pptx.py` |
 | Presentation + slide size | `p:presentation`, `p:sldSz` | ✅ | ⬜ | one size per deck |
 | Slide / layout / master | `p:sld`, `p:sldLayout`, `p:sldMaster` | ✅ | ⬜ | minimal blank master/layout emitted |
 | Theme | `a:theme` (clr/font/fmt scheme) | 🟡 | ⬜ | minimal theme; full scheme resolution pending |

@@ -1,0 +1,14 @@
+# CodeRabbit configuration — https://docs.coderabbit.ai/reference/yaml-template
+reviews:
+  profile: chill
+  auto_review:
+    # Also review stacked PRs (whose base is a feature branch, not the default).
+    base_branches:
+      - "main"
+      - "feat/.*"
+      - "fix/.*"
+  pre_merge_checks:
+    docstrings:
+      # Informational only: the coverage % counts test functions (which don't carry
+      # docstrings), so it's noise as a hard merge gate. Source is documented.
+      mode: warning

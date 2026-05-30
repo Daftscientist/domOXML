@@ -35,6 +35,7 @@ dev = [
   "pyright>=1.1.409",
   "pytest>=9.0",
   "pytest-asyncio>=1.4",
+  "python-pptx>=1.0",  # test-only: validate our hand-rolled .pptx opens correctly
 ]
 docs = ["mkdocs-material>=9.7"]
 

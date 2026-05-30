@@ -6,8 +6,10 @@ import asyncio
 from pathlib import Path
 from typing import Self
 
-from domoxml.core.render import BrowserSession, compose_page
+from domoxml.core.ir import extract_slide
+from domoxml.core.render import BrowserSession, RenderedSlide, compose_page
 from domoxml.core.units import pixels
+from domoxml.slides import build_pptx
 from domoxml.types import (
     CoverageReport,
     OutputFormat,
@@ -20,16 +22,15 @@ from domoxml.types import (
 
 
 class Presentation:
-    """A deck of HTML-authored slides that renders to an editable ``.pptx`` (+ PNG, HTML).
+    """A deck of HTML-authored slides that renders to an editable ``.pptx`` (+ PNG).
 
-    Build it up, optionally edit ``slides`` in place, then ``render`` it to an immutable
-    :class:`~domoxml.types.RenderResult`::
+    Build it up, optionally edit ``slides`` in place, then ``render`` it::
 
         deck = Presentation(size=SlideSize.WIDE_16_9)
         deck.add(Slide(html="<h1>Hello</h1>"))
-        result = deck.render({OutputFormat.PNG})
+        result = deck.render({OutputFormat.PPTX, OutputFormat.PNG})
 
-    PNG output is implemented; PPTX and HTML are not yet wired and raise ``NotImplementedError``.
+    ``PPTX`` and ``PNG`` are implemented; ``HTML`` (normalized) is not yet wired.
     """
 
     def __init__(
@@ -62,23 +63,28 @@ class Presentation:
         indices: set[int] | None = None,
     ) -> RenderResult:
         """Async variant of :meth:`render`."""
-        unsupported = formats & {OutputFormat.PPTX, OutputFormat.HTML}
-        if unsupported:
-            names = ", ".join(sorted(fmt.value for fmt in unsupported))
-            raise NotImplementedError(f"output format(s) not implemented yet: {names}")
+        if OutputFormat.HTML in formats:
+            raise NotImplementedError("HTML output is not implemented yet")
 
-        pngs = await self._render_pngs(indices) if OutputFormat.PNG in formats else ()
+        needs_render = bool(formats & {OutputFormat.PNG, OutputFormat.PPTX})
+        rendered = await self._render(indices) if needs_render else []
+
+        pngs = tuple(slide.png for slide in rendered) if OutputFormat.PNG in formats else ()
+        pptx = (
+            build_pptx([extract_slide(slide) for slide in rendered])
+            if OutputFormat.PPTX in formats
+            else None
+        )
         return RenderResult(
-            pptx=None,
-            pngs=pngs,
-            html=None,
-            coverage=CoverageReport(items=()),
-            warnings=(),
+            pptx=pptx, pngs=pngs, html=None, coverage=CoverageReport(items=()), warnings=()
         )
 
     def save_pptx(self, path: Path) -> None:
         """Render and write the editable ``.pptx`` to ``path``."""
-        raise NotImplementedError
+        result = self.render({OutputFormat.PPTX})
+        if result.pptx is None:  # pragma: no cover - render always sets it when requested
+            raise RuntimeError("PPTX render produced no output")
+        path.write_bytes(result.pptx)
 
     def save_png(self, directory: Path) -> None:
         """Render and write one PNG per slide into ``directory`` (``slide-NN.png``)."""
@@ -87,7 +93,7 @@ class Presentation:
         for index, png in enumerate(result.pngs, start=1):
             (directory / f"slide-{index:02d}.png").write_bytes(png)
 
-    async def _render_pngs(self, indices: set[int] | None) -> tuple[bytes, ...]:
+    async def _render(self, indices: set[int] | None) -> list[RenderedSlide]:
         if indices is None:
             chosen = self.slides
         else:
@@ -95,13 +101,13 @@ class Presentation:
             if invalid:
                 raise IndexError(f"slide indices out of range: {invalid}")
             chosen = [self.slides[i] for i in sorted(indices)]
-        rendered: list[bytes] = []
+
+        rendered: list[RenderedSlide] = []
         async with BrowserSession() as session:
             for slide in chosen:
                 width, height = pixels(slide.size or self.size)
                 page = compose_page(
                     slide.html, css=self.css, theme=self.theme, width_px=width, height_px=height
                 )
-                result = await session.render(page, width=width, height=height)
-                rendered.append(result.png)
-        return tuple(rendered)
+                rendered.append(await session.render(page, width=width, height=height))
+        return rendered

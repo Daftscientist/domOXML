@@ -38,11 +38,11 @@ def test_compose_page_is_sized_and_embeds_the_slide() -> None:
     assert "<h1>hi</h1>" in html
 
 
-def test_pptx_output_not_implemented() -> None:
+def test_html_output_not_implemented() -> None:
     deck = Presentation()
     deck.add(Slide(html="<p>x</p>"))
     with pytest.raises(NotImplementedError):
-        deck.render({OutputFormat.PPTX})
+        deck.render({OutputFormat.HTML})
 
 
 def test_out_of_range_indices_raise_clearly() -> None:

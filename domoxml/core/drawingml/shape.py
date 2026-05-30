@@ -32,8 +32,10 @@ def _text_body(run: TextRun | None) -> str:
     if run is None:
         return ""
     align = _ALIGN_TO_OOXML.get(run.align, "l")
+    # anchor="t": match HTML block flow (text at the top of the box). Office centres shape
+    # text vertically by default, which sits lower than the source.
     return (
-        '<p:txBody><a:bodyPr wrap="square"><a:normAutofit/></a:bodyPr><a:lstStyle/>'
+        '<p:txBody><a:bodyPr wrap="square" anchor="t"><a:normAutofit/></a:bodyPr><a:lstStyle/>'
         f'<a:p><a:pPr algn="{align}"/>{_run(run)}</a:p></p:txBody>'
     )
 

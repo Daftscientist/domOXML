@@ -147,11 +147,7 @@ def _resolve_fill(
         return PictureFill(data=data, ext=ext), None
 
     background_image = styles.get("backgroundImage", "none")
-    if "gradient" in background_image:
-        gradient: GradientFill | None = parse_gradient(background_image)
-        if gradient is not None:
-            return gradient, None
-        return None, "gradient has no native mapping (conic or layered)"
+    # Check for url(...) first, before checking for gradient keywords
     if "url(" in background_image:
         match = _URL_RE.search(background_image)
         resolved = _resolve_image_bytes(match.group(1), rendered) if match else None
@@ -159,6 +155,11 @@ def _resolve_fill(
             return None, "background image was not captured"
         data, ext = resolved
         return PictureFill(data=data, ext=ext), None
+    if "gradient" in background_image:
+        gradient: GradientFill | None = parse_gradient(background_image)
+        if gradient is not None:
+            return gradient, None
+        return None, "gradient has no native mapping (conic or layered)"
 
     background = parse_color(styles.get("backgroundColor"))
     if background is not None and background.a > 0:
@@ -262,6 +263,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     ConversionWarning(
                         message=f"dropped — empty raster region ({reason})", element=label
                     )
+                )
+                # Record coverage even when rasterization fails
+                coverage.append(
+                    CoverageItem(element=label, disposition=Disposition.RASTER, reason=reason)
                 )
                 continue
             shapes.append(shape)

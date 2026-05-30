@@ -42,7 +42,7 @@ _GENERIC = {
     "",
 }
 
-type FaceKey = tuple[str, bool, bool]
+FaceKey = tuple[str, bool, bool]
 
 
 class FontFace(BaseModel):
@@ -77,7 +77,14 @@ def _resolve_system_file(family: str, *, bold: bool, italic: bool) -> Path | Non
     except (subprocess.SubprocessError, OSError):
         return None
     matched_family, _, file = out.partition("\t")
-    if family.lower() not in matched_family.lower():
+    # Exact token match: normalize both, split matched into tokens, check for equality
+    family_norm = family.strip().strip('"').strip("'").lower()
+    matched_norm = matched_family.strip().strip('"').strip("'").lower()
+    # Split matched_family into tokens (by comma and whitespace)
+    matched_tokens = [
+        token.strip() for part in matched_norm.split(",") for token in part.split()
+    ]
+    if family_norm not in matched_tokens:
         return None  # fontconfig fell back to a substitute — don't embed the wrong font
     path = Path(file.strip())
     return path if path.is_file() else None

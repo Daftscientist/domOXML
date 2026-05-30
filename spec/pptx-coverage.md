@@ -99,7 +99,7 @@ CSS source = what authoring produces it on the forward path.
 | Image | `a:blipFill` | `<img>` | ✅ | ⬜ | embedded as native picture fill |
 | SVG | `a:blip` + svgBlip | inline `<svg>` | 🖼️ | ⬜ | rasterised (warned); svgBlip later |
 | Video / audio | `a:videoFile`/`audioFile` | `<video>`/`<audio>` | 🖼️ | ⬜ | poster frame rasterised |
-| Decorative raster layer | `a:blipFill` | un-mappable flourish | ✅ | ⬜ | per-element raster; subtree-consuming + warned |
+| Decorative raster layer | `a:blipFill` | un-mappable flourish | 🖼️ | ⬜ | per-element raster; subtree-consuming + warned |
 
 ## Tables, charts, transitions, animation
 

@@ -1,4 +1,4 @@
-"""Font-embedding integration: requires fontconfig + the Inter font installed."""
+"""Font-embedding integration: requires fontconfig + the Poppins font installed."""
 
 from __future__ import annotations
 

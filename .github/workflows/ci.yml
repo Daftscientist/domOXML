@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install (with dev extras)
+        run: uv pip install --system -e ".[dev]"
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format
+        run: ruff format --check .
+      - name: Pyright (strict)
+        run: pyright
+      - name: Pytest (unit)
+        run: pytest -m "not integration"

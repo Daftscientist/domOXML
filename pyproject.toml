@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.29"]
+build-backend = "hatchling.build"
+
+[project]
+name = "domoxml"
+version = "0.1.0a0"
+description = "Transpile HTML/CSS into editable OOXML — PowerPoint first."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Leo Johnston", email = "leo@aftora.io" }]
+keywords = ["html", "css", "ooxml", "pptx", "powerpoint", "transpiler", "drawingml", "office"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Office/Business",
+  "Typing :: Typed",
+]
+dependencies = [
+  "lxml>=6.1",
+  "playwright>=1.60",
+  "pillow>=12.2",
+  "pydantic>=2.13",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.15.15",
+  "pyright>=1.1.409",
+  "pytest>=9.0",
+  "pytest-asyncio>=1.4",
+]
+docs = ["mkdocs-material>=9.7"]
+
+[project.urls]
+Homepage = "https://github.com/Daftscientist/domOXML"
+Repository = "https://github.com/Daftscientist/domOXML"
+Issues = "https://github.com/Daftscientist/domOXML/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["domoxml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+include = ["domoxml", "tests"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "integration: requires Chromium/LibreOffice (slow; excluded by default)",
+]

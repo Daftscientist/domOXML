@@ -1,0 +1,39 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+.python-version
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+coverage.xml
+htmlcov/
+
+# Editors / IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Generated test/render artifacts
+/out/
+*.tmp.png
+
+# Local untracked workspace
+/.local/

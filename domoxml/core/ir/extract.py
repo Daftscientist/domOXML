@@ -15,7 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from domoxml.core.images import crop_png, decode_data_uri, normalise_image
+from domoxml.core.images import ImageExt, crop_png, decode_data_uri, normalise_image
 from domoxml.core.ir.model import (
     Box,
     Fill,
@@ -127,14 +127,12 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     return None
 
 
-def _resolve_image_bytes(url: str, rendered: RenderedSlide) -> tuple[bytes, str] | None:
+def _resolve_image_bytes(url: str, rendered: RenderedSlide) -> tuple[bytes, ImageExt] | None:
     raw = decode_data_uri(url) if url.startswith("data:") else rendered.resources.get(url)
     return normalise_image(raw) if raw is not None else None
 
 
-def _resolve_fill(
-    node: RenderedNode, rendered: RenderedSlide
-) -> tuple[Fill | None, str | None]:
+def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | None, str | None]:
     """Resolve a node's fill. Returns ``(fill, raster_reason)``; a non-``None`` reason means
     the fill can't be expressed natively and the element must rasterise."""
     styles = node.styles

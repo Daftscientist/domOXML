@@ -42,8 +42,7 @@ def _gradient_fill(gradient: GradientFill, *, opacity: float) -> str:
     gs_lst = f"<a:gsLst>{stops}</a:gsLst>"
     if gradient.radial:
         path = (
-            '<a:path path="circle">'
-            '<a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path>'
+            '<a:path path="circle"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path>'
         )
         return f"<a:gradFill>{gs_lst}{path}</a:gradFill>"
     # CSS angle (0 = up, clockwise) → OOXML angle (0 = right, clockwise), in 60000ths.
@@ -73,10 +72,7 @@ def _line_xml(line: Line | None) -> str:
     if line is None:
         return ""
     dash = _DASH_TO_OOXML.get(line.dash, "solid")
-    return (
-        f'<a:ln w="{line.width_emu}">{_solid_fill(line.color)}'
-        f'<a:prstDash val="{dash}"/></a:ln>'
-    )
+    return f'<a:ln w="{line.width_emu}">{_solid_fill(line.color)}<a:prstDash val="{dash}"/></a:ln>'
 
 
 def _effect_xml(shadow: Shadow | None) -> str:

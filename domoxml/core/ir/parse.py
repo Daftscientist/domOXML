@@ -61,6 +61,7 @@ def is_bold(font_weight: str | None) -> bool:
 
 # --------------------------------------------------------------------------- borders
 
+
 def _dash_style(style_token: str) -> Literal["solid", "dash", "dot"]:
     if style_token == "dashed":
         return "dash"

@@ -78,7 +78,7 @@ class PictureFill(BaseModel):
 
     kind: Literal["picture"] = "picture"
     data: bytes
-    ext: str = "png"
+    ext: Literal["png", "jpeg", "gif"] = "png"
 
 
 type Fill = Annotated[SolidFill | GradientFill | PictureFill, Field(discriminator="kind")]

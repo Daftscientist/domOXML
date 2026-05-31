@@ -5,14 +5,17 @@ from __future__ import annotations
 
 import base64
 from io import BytesIO
+from typing import Literal
 
 from PIL import Image
 
+type ImageExt = Literal["png", "jpeg", "gif"]
+
 # Formats PowerPoint embeds without complaint. Anything else is transcoded to PNG.
-_NATIVE_FORMATS = {"PNG": "png", "JPEG": "jpeg", "GIF": "gif"}
+_NATIVE_FORMATS: dict[str, ImageExt] = {"PNG": "png", "JPEG": "jpeg", "GIF": "gif"}
 
 
-def normalise_image(data: bytes) -> tuple[bytes, str] | None:
+def normalise_image(data: bytes) -> tuple[bytes, ImageExt] | None:
     """Return ``(bytes, extension)`` ready to embed, transcoding exotic formats (WebP, BMP,
     TIFF…) to PNG. Returns ``None`` if ``data`` is not a decodable image."""
     try:

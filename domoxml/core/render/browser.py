@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from types import TracebackType
 from typing import Any, Self
 
@@ -141,9 +142,12 @@ class BrowserSession:
             try:
                 response = await route.fetch()
                 resources[route.request.url] = await response.body()
-                await route.fulfill(response=response)
             except Exception:  # capture is best-effort; never block the render
                 await route.continue_()
+                return
+            # already captured; if fulfilling fails, let the request resolve on its own
+            with contextlib.suppress(Exception):
+                await route.fulfill(response=response)
 
         try:
             page = await context.new_page()

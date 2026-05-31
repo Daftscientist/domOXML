@@ -47,10 +47,7 @@ def _content_types(n_slides: int, *, has_fonts: bool, image_exts: set[str]) -> s
     defaults += [
         f'<Default Extension="{ext}" ContentType="{_IMAGE_CT[ext]}"/>' for ext in sorted(image_exts)
     ]
-    return (
-        f'{t.XML_DECL}<Types xmlns="{_CT_NS}">'
-        f"{''.join(defaults)}{''.join(overrides)}</Types>"
-    )
+    return f'{t.XML_DECL}<Types xmlns="{_CT_NS}">{"".join(defaults)}{"".join(overrides)}</Types>'
 
 
 def _font_slot(face: FontFace) -> str:
@@ -200,9 +197,7 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
             image_exts.add(part.rsplit(".", 1)[-1])
 
     parts: dict[str, bytes | str] = {
-        "[Content_Types].xml": _content_types(
-            n, has_fonts=bool(font_rels), image_exts=image_exts
-        ),
+        "[Content_Types].xml": _content_types(n, has_fonts=bool(font_rels), image_exts=image_exts),
         "_rels/.rels": t.ROOT_RELS,
         "ppt/presentation.xml": _presentation(width, height, n, font_rels),
         "ppt/_rels/presentation.xml.rels": _presentation_rels(n, font_rels),

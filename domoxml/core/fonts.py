@@ -81,9 +81,7 @@ def _resolve_system_file(family: str, *, bold: bool, italic: bool) -> Path | Non
     family_norm = family.strip().strip('"').strip("'").lower()
     matched_norm = matched_family.strip().strip('"').strip("'").lower()
     # Split matched_family into tokens (by comma and whitespace)
-    matched_tokens = [
-        token.strip() for part in matched_norm.split(",") for token in part.split()
-    ]
+    matched_tokens = [token.strip() for part in matched_norm.split(",") for token in part.split()]
     if family_norm not in matched_tokens:
         return None  # fontconfig fell back to a substitute — don't embed the wrong font
     path = Path(file.strip())

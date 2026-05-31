@@ -84,9 +84,14 @@ def test_parse_shadow_offsets_and_inset() -> None:
 # --------------------------------------------------------------------------- native-vs-raster
 
 
-def test_solid_gradient_and_image_fills_are_native() -> None:
+def test_gradient_fill_is_native() -> None:
     gradient_node = RenderedNode(
-        tag="div", x=0, y=0, width=10, height=10, index=0,
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
         styles={"backgroundImage": "linear-gradient(90deg, rgb(0,0,0), rgb(255,255,255))"},
     )
     result = extract_slide(_slide(gradient_node))
@@ -96,7 +101,12 @@ def test_solid_gradient_and_image_fills_are_native() -> None:
 
 def test_css_filter_rasterises_and_warns() -> None:
     node = RenderedNode(
-        tag="div", x=0, y=0, width=10, height=10, index=0,
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
         styles={"filter": "blur(4px)", "backgroundColor": "rgb(1,2,3)"},
     )
     result = extract_slide(_slide(node))
@@ -107,11 +117,24 @@ def test_css_filter_rasterises_and_warns() -> None:
 
 def test_rasterised_parent_consumes_its_subtree() -> None:
     parent = RenderedNode(
-        tag="div", x=0, y=0, width=10, height=10, index=0, parent=-1,
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        parent=-1,
         styles={"mixBlendMode": "multiply"},
     )
     child = RenderedNode(
-        tag="span", x=1, y=1, width=4, height=4, index=1, parent=0, text="hi",
+        tag="span",
+        x=1,
+        y=1,
+        width=4,
+        height=4,
+        index=1,
+        parent=0,
+        text="hi",
         styles={"backgroundColor": "rgb(9,9,9)"},
     )
     result = extract_slide(_slide(parent, child))
@@ -122,7 +145,12 @@ def test_rasterised_parent_consumes_its_subtree() -> None:
 
 def test_plain_background_stays_solid() -> None:
     node = RenderedNode(
-        tag="div", x=0, y=0, width=10, height=10, index=0,
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
         styles={"backgroundColor": "rgb(79, 70, 229)"},
     )
     result = extract_slide(_slide(node))

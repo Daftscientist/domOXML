@@ -79,6 +79,8 @@ def to_embeddable_ttf(data: bytes) -> bytes | None:
     try:
         if font.sfntVersion == "OTTO" and "CFF " in font:
             _cff_to_glyf(font)
+        if font.sfntVersion == "OTTO":
+            return None  # CFF2/other OTTO we can't convert → don't emit a font Office refuses
         font.flavor = None  # strip woff/woff2 compression → bare sfnt
         buffer = BytesIO()
         font.save(buffer, reorderTables=False)

@@ -9,9 +9,9 @@ from typing import Any, Self
 from playwright.async_api import Browser, Playwright, Route, async_playwright
 from pydantic import BaseModel, ConfigDict, Field
 
-# Walks the rendered DOM and, per element, captures its box, trimmed direct text, the
-# computed styles the extractor needs, and enough structure (index/parent) to let the
-# extractor rasterise an element together with its subtree. This is the raw material.
+# Walks the rendered DOM and, per element, captures its box, direct text, ordered inline
+# text runs, the computed styles the extractor needs, and enough structure (index/parent)
+# to let the extractor rasterise an element together with its subtree. This is the raw material.
 _SNAPSHOT_JS = """
 () => {
   const pick = (cs) => ({
@@ -31,7 +31,29 @@ _SNAPSHOT_JS = """
     borderBottomColor: cs.borderBottomColor,
     borderLeftWidth: cs.borderLeftWidth, borderLeftStyle: cs.borderLeftStyle,
     borderLeftColor: cs.borderLeftColor,
+    display: cs.display,
   });
+  const inlineRuns = (root) => {
+    const runs = [];
+    const collect = (node, inherited) => {
+      if (node.nodeType === 3) {
+        if (node.textContent) runs.push({ text: node.textContent, styles: pick(inherited) });
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      const el = node;
+      if (el.tagName.toLowerCase() === 'br') {
+        runs.push({ text: '\\n', styles: pick(inherited) });
+        return;
+      }
+      const cs = getComputedStyle(el);
+      if (!cs.display.startsWith('inline')) return;
+      for (const child of el.childNodes) collect(child, cs);
+    };
+    const rootStyle = getComputedStyle(root);
+    for (const child of root.childNodes) collect(child, rootStyle);
+    return runs;
+  };
   const out = [];
   const walk = (el, parent) => {
     const r = el.getBoundingClientRect();
@@ -46,6 +68,7 @@ _SNAPSHOT_JS = """
       text, index, parent,
       src: el.currentSrc || el.getAttribute('src') || '',
       styles: pick(getComputedStyle(el)),
+      textRuns: inlineRuns(el),
     });
     for (const child of el.children) walk(child, index);
   };
@@ -55,6 +78,15 @@ _SNAPSHOT_JS = """
 """
 
 _CAPTURED_RESOURCE_TYPES = frozenset({"image", "font"})
+
+
+class RenderedTextRun(BaseModel):
+    """One ordered inline text fragment with Chromium-resolved typography."""
+
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+
+    text: str
+    styles: dict[str, str] = Field(default_factory=dict)
 
 
 class RenderedNode(BaseModel):
@@ -73,6 +105,7 @@ class RenderedNode(BaseModel):
     parent: int = -1
     src: str = ""
     styles: dict[str, str] = Field(default_factory=dict)
+    text_runs: tuple[RenderedTextRun, ...] = Field(default_factory=tuple, alias="textRuns")
 
 
 class RenderedSlide(BaseModel):

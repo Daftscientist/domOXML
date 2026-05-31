@@ -4,7 +4,7 @@ The capability surface of **OOXML PresentationML + DrawingML** (ECMA-376), and w
 domOXML stands on each feature — in **both** directions:
 
 - **Forward** — HTML/CSS → editable `.pptx`
-- **Reverse** — `.pptx` → typed IR → HTML/CSS (the round-trip / ingest direction)
+- **Reverse** — `.pptx` → typed canvas IR → HTML/CSS (the round-trip / ingest direction)
 
 This is the source of truth for the coverage roadmap and (later) the CI capability
 fixtures. It is *not* a copy of the spec — see ECMA-376 §19 (PresentationML) and §20.1
@@ -116,3 +116,6 @@ CSS source = what authoring produces it on the forward path.
 Reverse coverage is validated the same way as forward — by **measured fidelity**
 (`core/fidelity`): `pptx → HTML → re-render → compare to the original pptx render`. Each
 feature should land with a round-trip fixture so the score is tracked, not eyeballed.
+
+HTML/CSS is the public web format, not a claim that CSS can losslessly encode every PowerPoint
+feature. See [`architecture.md`](architecture.md) for the preservation and fallback rules.

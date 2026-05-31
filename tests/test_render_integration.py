@@ -32,3 +32,21 @@ def test_indices_limits_to_selected_slides() -> None:
     deck.add(Slide(html="<p>a</p>")).add(Slide(html="<p>b</p>")).add(Slide(html="<p>c</p>"))
     result = deck.render({OutputFormat.PNG}, indices={1})
     assert len(result.pngs) == 1
+
+
+def test_render_html_returns_per_slide_browser_fragments() -> None:
+    deck = Presentation(css="h1{letter-spacing:1px}")
+    deck.add(Slide(html="<h1>Coffee that tastes like <em>calm</em>.</h1>"))
+    result = deck.render({OutputFormat.HTML})
+
+    assert result.html is not None
+    assert len(result.html.slides) == 1
+    assert "domoxml-slide" in result.html.slides[0].html
+    assert "Coffee that tastes like " in result.html.slides[0].html
+    assert "calm" in result.html.slides[0].html
+    assert result.coverage.items
+
+    round_trip = Presentation(css=result.html.css)
+    round_trip.add(Slide(html=result.html.slides[0].html))
+    rendered = round_trip.render({OutputFormat.PNG})
+    assert rendered.pngs[0].startswith(b"\x89PNG\r\n\x1a\n")

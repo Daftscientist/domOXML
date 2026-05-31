@@ -9,9 +9,15 @@ it exactly like the LibreOffice backend. They never touch the network.
 
 from __future__ import annotations
 
+import io
+import zipfile
+
 import pytest
 
 from domoxml.core.fidelity import graph
+from domoxml.core.fonts import FontFace
+from domoxml.core.ir.model import Box, ShapeNode, SlideIR
+from domoxml.slides import build_pptx
 
 _GRAPH_ENV = (
     "DOMOXML_GRAPH_CLIENT_ID",
@@ -58,3 +64,25 @@ def test_cache_path_defaults_outside_the_repo(monkeypatch: pytest.MonkeyPatch) -
     assert "domoxml" in path.parts
     assert path.name == "msal_token_cache.json"
     assert path.is_absolute()
+
+
+def test_strip_embedded_fonts_only_changes_temporary_graph_upload() -> None:
+    pptx = build_pptx(
+        [
+            SlideIR(
+                width=12_192_000,
+                height=6_858_000,
+                shapes=(ShapeNode(box=Box(x=0, y=0, width=100, height=100)),),
+            )
+        ],
+        faces=[FontFace(family="Example", bold=False, italic=False, data=b"font")],
+    )
+    stripped = graph._strip_embedded_fonts(pptx)
+
+    with zipfile.ZipFile(io.BytesIO(pptx)) as original:
+        assert "ppt/fonts/font1.fntdata" in original.namelist()
+    with zipfile.ZipFile(io.BytesIO(stripped)) as archive:
+        assert "ppt/fonts/font1.fntdata" not in archive.namelist()
+        assert "ppt/slides/slide1.xml" in archive.namelist()
+        assert b"embeddedFontLst" not in archive.read("ppt/presentation.xml")
+        assert b'relationships/font"' not in archive.read("ppt/_rels/presentation.xml.rels")

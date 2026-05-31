@@ -1,0 +1,15 @@
+id = "text-rich-runs"
+direction = "both"
+html_file = "slide.html"
+
+[expected]
+min_native = 3
+max_raster = 0
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:r"
+min_count = 3
+
+[visual]
+source_to_pptx_min_similarity = 0.90

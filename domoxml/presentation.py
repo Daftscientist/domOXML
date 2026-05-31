@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Self
 
 from domoxml.core.fonts import resolve_faces
+from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import extract_slide
 from domoxml.core.render import BrowserSession, RenderedSlide, compose_page
 from domoxml.core.units import pixels
@@ -33,7 +34,7 @@ class Presentation:
         deck.add(Slide(html="<h1>Hello</h1>"))
         result = deck.render({OutputFormat.PPTX, OutputFormat.PNG})
 
-    ``PPTX`` and ``PNG`` are implemented; ``HTML`` (normalized) is not yet wired.
+    ``PPTX``, ``PNG``, and deterministic per-slide ``HTML`` are supported.
     """
 
     def __init__(
@@ -66,24 +67,28 @@ class Presentation:
         indices: set[int] | None = None,
     ) -> RenderResult:
         """Async variant of :meth:`render`."""
-        if OutputFormat.HTML in formats:
-            raise NotImplementedError("HTML output is not implemented yet")
-
-        needs_render = bool(formats & {OutputFormat.PNG, OutputFormat.PPTX})
+        needs_render = bool(formats & {OutputFormat.PNG, OutputFormat.PPTX, OutputFormat.HTML})
         rendered = await self._render(indices) if needs_render else []
 
         pngs = tuple(slide.png for slide in rendered) if OutputFormat.PNG in formats else ()
 
         pptx: bytes | None = None
+        html = None
+        slide_irs = []
         coverage: list[CoverageItem] = []
         warnings: list[ConversionWarning] = []
-        if OutputFormat.PPTX in formats and rendered:
+        needs_extract = bool(formats & {OutputFormat.PPTX, OutputFormat.HTML})
+        if needs_extract and rendered:
             extracts = [extract_slide(slide) for slide in rendered]
             for extracted in extracts:
                 coverage.extend(extracted.coverage)
                 warnings.extend(extracted.warnings)
             slide_irs = [extracted.slide for extracted in extracts]
 
+            if OutputFormat.HTML in formats:
+                html = serialize_canvas(slide_irs)
+
+        if OutputFormat.PPTX in formats and rendered:
             captured_fonts: dict[str, bytes] = {}
             for slide in rendered:
                 captured_fonts.update(slide.resources)
@@ -94,7 +99,7 @@ class Presentation:
         return RenderResult(
             pptx=pptx,
             pngs=pngs,
-            html=None,
+            html=html,
             coverage=CoverageReport(items=tuple(coverage)),
             warnings=tuple(warnings),
         )

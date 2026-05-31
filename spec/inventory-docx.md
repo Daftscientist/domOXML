@@ -2,7 +2,7 @@
 
 Auto-generated from the ECMA-376 XSD schemas (do not hand-edit). 599 distinct elements, 267 complex types. Forward-covered: **6/599**.
 
-✅ forward-covered · ⬜ not yet. Reverse (pptx→HTML) is ⬜ across the board until ingest lands.
+✅ forward-covered · ⬜ not yet. Reverse (OOXML→HTML/CSS) is ⬜ across the board until ingest lands.
 
 Namespaces: `http://schemas.openxmlformats.org/wordprocessingml/2006/main`
 

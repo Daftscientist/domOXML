@@ -12,7 +12,7 @@ import pytest
 
 from domoxml.core.fontconvert import to_embeddable_ttf
 from domoxml.core.fonts import FontFace, load_faces
-from domoxml.core.ir.model import Box, ShapeNode, SlideIR, TextRun
+from domoxml.core.ir.model import Box, ShapeNode, SlideIR, TextBody, TextParagraph, TextRun
 from domoxml.slides import build_pptx
 from domoxml.slides.pptx import _embedded_font_lst, _font_slot
 
@@ -26,7 +26,13 @@ def _slide_with_font(family: str, *, bold: bool = False) -> SlideIR:
         shapes=(
             ShapeNode(
                 box=Box(x=0, y=0, width=100, height=100),
-                text=TextRun(text="x", font_family=family, size_pt=24.0, bold=bold),
+                text=TextBody(
+                    paragraphs=(
+                        TextParagraph(
+                            runs=(TextRun(text="x", font_family=family, size_pt=24.0, bold=bold),)
+                        ),
+                    )
+                ),
             ),
         ),
     )

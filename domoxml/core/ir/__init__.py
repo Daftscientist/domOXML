@@ -19,6 +19,8 @@ from domoxml.core.ir.model import (
     ShapeNode,
     SlideIR,
     SolidFill,
+    TextBody,
+    TextParagraph,
     TextRun,
 )
 
@@ -35,6 +37,8 @@ __all__ = [
     "ShapeNode",
     "SlideIR",
     "SolidFill",
+    "TextBody",
+    "TextParagraph",
     "TextRun",
     "extract_slide",
 ]

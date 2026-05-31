@@ -12,6 +12,8 @@ from domoxml.core.ir.model import (
     Shadow,
     ShapeNode,
     SolidFill,
+    TextBody,
+    TextParagraph,
     TextRun,
 )
 
@@ -106,15 +108,19 @@ def _run(run: TextRun) -> str:
     return f"<a:r>{rpr}<a:t>{escape(run.text)}</a:t></a:r>"
 
 
-def _text_body(run: TextRun | None) -> str:
-    if run is None:
+def _paragraph(paragraph: TextParagraph) -> str:
+    align = _ALIGN_TO_OOXML.get(paragraph.align, "l")
+    return f'<a:p><a:pPr algn="{align}"/>{"".join(_run(run) for run in paragraph.runs)}</a:p>'
+
+
+def _text_body(body: TextBody | None) -> str:
+    if body is None:
         return ""
-    align = _ALIGN_TO_OOXML.get(run.align, "l")
     # anchor="t": match HTML block flow (text at the top of the box). Office centres shape
     # text vertically by default, which sits lower than the source.
     return (
         '<p:txBody><a:bodyPr wrap="square" anchor="t"><a:normAutofit/></a:bodyPr><a:lstStyle/>'
-        f'<a:p><a:pPr algn="{align}"/>{_run(run)}</a:p></p:txBody>'
+        f"{''.join(_paragraph(paragraph) for paragraph in body.paragraphs)}</p:txBody>"
     )
 
 

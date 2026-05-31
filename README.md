@@ -30,7 +30,7 @@ from domoxml.types import OutputFormat, SlideSize
 deck = Presentation(size=SlideSize.WIDE_16_9)
 deck.add(Slide(html="<h1>Coffee that tastes like <span>calm</span>.</h1>"))
 
-result = deck.render({OutputFormat.PPTX, OutputFormat.PNG})
+result = deck.render({OutputFormat.PPTX, OutputFormat.PNG, OutputFormat.HTML})
 result.save(Path("out/"))
 ```
 

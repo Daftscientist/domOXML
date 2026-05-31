@@ -10,7 +10,7 @@ import pytest
 from pptx import Presentation as PptxRead
 
 from domoxml.core.fonts import load_faces
-from domoxml.core.ir.model import Box, ShapeNode, SlideIR, TextRun
+from domoxml.core.ir.model import Box, ShapeNode, SlideIR, TextBody, TextParagraph, TextRun
 from domoxml.slides import build_pptx
 
 pytestmark = pytest.mark.integration
@@ -26,7 +26,20 @@ def test_used_font_is_embedded_and_pptx_stays_valid() -> None:
         shapes=(
             ShapeNode(
                 box=Box(x=0, y=0, width=4_000_000, height=1_000_000),
-                text=TextRun(text="Driftwood", font_family="Poppins", size_pt=40.0, bold=True),
+                text=TextBody(
+                    paragraphs=(
+                        TextParagraph(
+                            runs=(
+                                TextRun(
+                                    text="Driftwood",
+                                    font_family="Poppins",
+                                    size_pt=40.0,
+                                    bold=True,
+                                ),
+                            ),
+                        ),
+                    )
+                ),
             ),
         ),
     )

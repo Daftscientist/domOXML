@@ -123,7 +123,23 @@ class TextRun(BaseModel):
     bold: bool = False
     italic: bool = False
     color: Rgba = Rgba(r=0, g=0, b=0)
+
+
+class TextParagraph(BaseModel):
+    """One text paragraph with ordered inline runs."""
+
+    model_config = _FROZEN
+
+    runs: tuple[TextRun, ...] = ()
     align: Literal["left", "center", "right", "justify"] = "left"
+
+
+class TextBody(BaseModel):
+    """Editable text content for a shape."""
+
+    model_config = _FROZEN
+
+    paragraphs: tuple[TextParagraph, ...]
 
 
 type Geometry = Literal["rect", "roundRect", "ellipse"]
@@ -141,7 +157,7 @@ class ShapeNode(BaseModel):
     shadow: Shadow | None = None
     corner_radius_emu: int = 0
     opacity: float = Field(default=1.0, ge=0.0, le=1.0)
-    text: TextRun | None = None
+    text: TextBody | None = None
 
 
 class SlideIR(BaseModel):

@@ -125,6 +125,8 @@ def test_css_filter_uses_isolated_raster_region_when_available() -> None:
         index=0,
         styles={"filter": "blur(4px)", "backgroundColor": "rgb(1,2,3)"},
     )
+    # RenderedRaster coords are CSS px; slide scale only affects cropping,
+    # extract._raster_shape converts CSS px via px_to_emu without applying rendered.scale.
     raster = RenderedRaster(png=_png(20, 20), x=1, y=2, width=18, height=18)
     rendered = _slide(node).model_copy(update={"rasters": {0: raster}})
     result = extract_slide(rendered)

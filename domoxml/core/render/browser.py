@@ -83,6 +83,11 @@ _SNAPSHOT_JS = """
 
 _CAPTURED_RESOURCE_TYPES = frozenset({"image", "font"})
 _BLUR_RE = re.compile(r"blur\(\s*([\d.]+)px\s*\)", re.IGNORECASE)
+_MATRIX_RE = re.compile(
+    r"matrix\(\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*"
+    r"([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*\)",
+    re.IGNORECASE,
+)
 _ISOLATE_JS = """
 (index) => {
   const selected = document.querySelector(`[data-domoxml-capture-index="${index}"]`);
@@ -160,6 +165,29 @@ def _raster_padding(node: RenderedNode) -> float:
     return float(match.group(1)) * 3 if match is not None else 0.0
 
 
+def is_complex_transform(value: str | None) -> bool:
+    if not value or value == "none":
+        return False
+    lowered = value.lower()
+    if (
+        lowered.startswith("matrix3d")
+        or "rotate" in lowered
+        or "skew" in lowered
+        or "scale" in lowered
+    ):
+        return True
+    match = _MATRIX_RE.search(lowered)
+    if match is None:
+        return False
+    a, b, c, d = (float(match.group(index)) for index in range(1, 5))
+    return not (
+        abs(a - 1.0) <= 1e-3
+        and abs(b) <= 1e-3
+        and abs(c) <= 1e-3
+        and abs(d - 1.0) <= 1e-3
+    )
+
+
 def _needs_isolated_raster(node: RenderedNode) -> bool:
     styles = node.styles
     return (
@@ -168,7 +196,7 @@ def _needs_isolated_raster(node: RenderedNode) -> bool:
         or styles.get("mixBlendMode", "normal") not in ("normal", "")
         or styles.get("backdropFilter", "none") not in ("none", "")
         or styles.get("filter", "none") not in ("none", "")
-        or styles.get("transform", "none") not in ("none", "")
+        or is_complex_transform(styles.get("transform"))
     )
 
 

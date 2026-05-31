@@ -39,14 +39,18 @@ from domoxml.core.ir.parse import (
     parse_radius_px,
     parse_shadow,
 )
-from domoxml.core.render.browser import RenderedNode, RenderedSlide, RenderedTextRun
+from domoxml.core.render.browser import (
+    RenderedNode,
+    RenderedSlide,
+    RenderedTextRun,
+    is_complex_transform,
+)
 from domoxml.core.units import px_to_emu, px_to_pt
 from domoxml.types import ConversionWarning, CoverageItem, Disposition
 
 _DEFAULT_TEXT_COLOR = Rgba(r=0, g=0, b=0)
 _RASTER_TAGS = {"svg", "canvas", "video", "iframe"}
 _URL_RE = re.compile(r"""url\(\s*['"]?(.*?)['"]?\s*\)""", re.IGNORECASE | re.DOTALL)
-_MATRIX_RE = re.compile(r"matrix\(\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,")
 
 # Chromium reports logical alignments (start/end); map them to the IR's physical set.
 _ALIGN: dict[str, Literal["left", "center", "right", "justify"]] = {
@@ -120,17 +124,8 @@ def _label(node: RenderedNode) -> str:
 
 
 def _has_complex_transform(value: str | None) -> bool:
-    """True for rotation/skew/3-D transforms (a non-axis-aligned box we can't place natively).
-    Pure translation is already baked into the captured bounding box, so it is fine."""
-    if not value or value == "none":
-        return False
-    if value.startswith("matrix3d") or "rotate" in value or "skew" in value:
-        return True
-    match = _MATRIX_RE.search(value)
-    if match is None:
-        return False
-    b, c = float(match.group(2)), float(match.group(3))
-    return abs(b) > 1e-3 or abs(c) > 1e-3
+    """True when transform can't be expressed as pure translation."""
+    return is_complex_transform(value)
 
 
 def _structural_raster_reason(node: RenderedNode) -> str | None:

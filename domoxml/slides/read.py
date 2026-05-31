@@ -278,11 +278,12 @@ def _shape(
         geom = "rect"
     guide = geometry.find("a:avLst/a:gd", _NS) if geometry is not None else None
     formula = guide.get("fmla", "") if guide is not None else ""
-    corner = (
-        round(int(formula.removeprefix("val ")) / 100_000 * min(box.width, box.height))
-        if formula.startswith("val ")
-        else 0
-    )
+    corner = 0
+    if formula.startswith("val "):
+        try:
+            corner = round(int(formula.removeprefix("val ")) / 100_000 * min(box.width, box.height))
+        except (TypeError, ValueError):
+            corner = 0
     return ShapeNode(
         box=box,
         geom=geom,

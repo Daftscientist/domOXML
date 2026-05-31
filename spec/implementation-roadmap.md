@@ -27,21 +27,24 @@ Before broadening conversion coverage:
 
 Each fixture should declare:
 
-```yaml
-id: text-rich-runs
-direction: both
-html: fixtures/text-rich-runs.html
-expected:
-  disposition: native
-  warnings: []
-  ir: fixtures/text-rich-runs.ir.json
-  xml:
-    - xpath: //a:txBody/a:p/a:r
-      count: 3
-  html: fixtures/text-rich-runs.reverse.html
-visual:
-  source_to_pptx_min_similarity: 0.98
-  pptx_to_html_min_similarity: 0.98
+```toml
+id = "text-rich-runs"
+direction = "both"
+html = "fixtures/text-rich-runs.html"
+
+[expected]
+disposition = "native"
+warnings = []
+ir = "fixtures/text-rich-runs.ir.json"
+html = "fixtures/text-rich-runs.reverse.html"
+
+[[expected.xml]]
+xpath = "//a:txBody/a:p/a:r"
+count = 3
+
+[visual]
+source_to_pptx_min_similarity = 0.98
+pptx_to_html_min_similarity = 0.98
 ```
 
 ## Phase 1: Repair The Shared Canvas IR

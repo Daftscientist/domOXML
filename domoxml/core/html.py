@@ -70,7 +70,7 @@ def _shape_style(node: ShapeNode, assets: dict[str, HtmlAsset]) -> str:
         asset = _asset(node.fill)
         assets.setdefault(asset.path, asset)
         styles.extend((f"background-image:url(../{asset.path})", "background-size:100% 100%"))
-    elif node.opacity < 1.0:
+    if (isinstance(node.fill, PictureFill) or node.fill is None) and node.opacity < 1.0:
         styles.append(f"opacity:{_number(node.opacity)}")
     if node.line is not None:
         styles.append(

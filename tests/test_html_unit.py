@@ -27,6 +27,7 @@ def _slide() -> SlideIR:
             ShapeNode(
                 box=Box(x=914_400, y=914_400, width=1_828_800, height=914_400),
                 fill=SolidFill(color=Rgba(r=79, g=70, b=229)),
+                opacity=0.5,
                 text=TextBody(
                     paragraphs=(
                         TextParagraph(
@@ -50,6 +51,7 @@ def _slide() -> SlideIR:
             ShapeNode(
                 box=Box(x=0, y=0, width=100, height=100),
                 fill=PictureFill(data=b"png", ext="png"),
+                opacity=0.5,
             ),
         ),
     )
@@ -61,12 +63,13 @@ def test_serialize_canvas_emits_stable_slide_html_css_and_assets() -> None:
     slide = html.slides[0]
     assert (slide.width_px, slide.height_px) == (1280, 720)
     assert "left:96px" in slide.html
-    assert "background-color:rgba(79,70,229,1)" in slide.html
+    assert "background-color:rgba(79,70,229,0.5)" in slide.html
     assert "Coffee " in slide.html and "calm" in slide.html
     assert "font-style:italic" in slide.html
     assert len(html.assets) == 1
     assert html.assets[0].path.startswith("assets/")
     assert f"url(../{html.assets[0].path})" in slide.html
+    assert slide.html.count("opacity:0.5") == 1
 
 
 def test_render_result_save_writes_every_artifact(tmp_path: Path) -> None:

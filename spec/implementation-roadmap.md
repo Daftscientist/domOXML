@@ -162,10 +162,10 @@ into the MIT library. Do not treat opaque release binaries as implementation sou
 
 ## Immediate Work Queue
 
-1. Add machine-readable capability fixture models and a minimal fixture runner.
-2. Expand text IR to paragraphs and ordered runs; fix nested inline text capture.
-3. Add deterministic `canvas IR -> HtmlPresentation` serialization.
-4. Add shared OPC reading primitives.
-5. Implement `Presentation.from_pptx(...)` for one baseline deck.
-6. Add relationship, theme, shape, picture, and text readers incrementally.
+1. [x] Add machine-readable capability fixture models and a minimal fixture runner.
+2. [x] Expand text IR to paragraphs and ordered runs; fix nested inline text capture.
+3. [x] Add deterministic `canvas IR -> HtmlPresentation` serialization.
+4. [x] Add shared OPC reading primitives.
+5. [x] Implement `Presentation.from_pptx(...)` for one baseline deck.
+6. [ ] Expand relationship, theme, shape, picture, and text readers incrementally.
 7. Run external adapters as comparative benchmarks, not runtime dependencies.

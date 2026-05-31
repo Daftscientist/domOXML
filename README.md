@@ -34,6 +34,15 @@ result = deck.render({OutputFormat.PPTX, OutputFormat.PNG, OutputFormat.HTML})
 result.save(Path("out/"))
 ```
 
+Read an existing deck into deterministic per-slide HTML/CSS:
+
+```python
+from domoxml import pptx_to_html
+
+html = pptx_to_html(Path("deck.pptx"))
+html.save(Path("out/html"))
+```
+
 ## Why
 
 - **Editable, not flat** — text, fills (solid / gradient / image), borders, shadows and

@@ -11,11 +11,12 @@ from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import extract_slide
 from domoxml.core.render import BrowserSession, RenderedSlide, compose_page
 from domoxml.core.units import pixels
-from domoxml.slides import build_pptx
+from domoxml.slides import build_pptx, read_pptx
 from domoxml.types import (
     ConversionWarning,
     CoverageItem,
     CoverageReport,
+    HtmlPresentation,
     OutputFormat,
     RenderResult,
     SizeSpec,
@@ -53,6 +54,11 @@ class Presentation:
         """Append a slide and return ``self`` (chainable)."""
         self.slides.append(slide)
         return self
+
+    @classmethod
+    def from_pptx(cls, source: bytes | Path) -> HtmlPresentation:
+        """Read a ``.pptx`` into deterministic per-slide HTML/CSS."""
+        return pptx_to_html(source)
 
     def render(
         self, formats: set[OutputFormat], *, indices: set[int] | None = None
@@ -139,3 +145,9 @@ class Presentation:
                 )
                 rendered.append(await session.render(page, width=width, height=height))
         return rendered
+
+
+def pptx_to_html(source: bytes | Path) -> HtmlPresentation:
+    """Read PPTX bytes or a path into deterministic per-slide HTML/CSS."""
+    pptx = source.read_bytes() if isinstance(source, Path) else source
+    return serialize_canvas(read_pptx(pptx))

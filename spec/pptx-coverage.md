@@ -26,19 +26,19 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | Fwd | Rev | Notes |
 |---|---|:--:|:--:|---|
-| OPC package (zip, content-types, rels) | OPC | ✅ | ⬜ | `domoxml/slides/pptx.py` |
-| Presentation + slide size | `p:presentation`, `p:sldSz` | ✅ | ⬜ | one size per deck |
-| Slide / layout / master | `p:sld`, `p:sldLayout`, `p:sldMaster` | ✅ | ⬜ | minimal blank master/layout emitted |
-| Theme | `a:theme` (clr/font/fmt scheme) | 🟡 | ⬜ | minimal theme; full scheme resolution pending |
+| OPC package (zip, content-types, rels) | OPC | ✅ | ✅ | shared reader/writer primitives |
+| Presentation + slide size | `p:presentation`, `p:sldSz` | ✅ | ✅ | one size per deck |
+| Slide / layout / master | `p:sld`, `p:sldLayout`, `p:sldMaster` | ✅ | 🟡 | rev reads ordered slides; inheritance pending |
+| Theme | `a:theme` (clr/font/fmt scheme) | 🟡 | 🟡 | basic colour scheme resolution; transforms pending |
 | Placeholder & inheritance | `p:ph`, layout→master→theme | ⬜ | ⬜ | **the hard part of reverse** — effective-style resolution |
 
 ## Geometry (DrawingML §20.1)
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Rectangle | `prstGeom prst="rect"` | box | ✅ | ⬜ | |
-| Rounded rect | `prstGeom prst="roundRect"` | `border-radius` | ✅ | ⬜ | adj from radius |
-| Ellipse / pill | `prstGeom prst="ellipse"` | `border-radius:50%` | ✅ | ⬜ | radius·2 ≥ short side |
+| Rectangle | `prstGeom prst="rect"` | box | ✅ | ✅ | |
+| Rounded rect | `prstGeom prst="roundRect"` | `border-radius` | ✅ | ✅ | adj from radius |
+| Ellipse / pill | `prstGeom prst="ellipse"` | `border-radius:50%` | ✅ | ✅ | radius·2 ≥ short side |
 | Other presets (187 total) | `ST_ShapeType` | `clip-path`/SVG | ⬜ | ⬜ | triangle, diamond, hexagon, star, arrows, callouts… |
 | Custom geometry | `custGeom`/`a:path` | SVG path | ⬜ | ⬜ | |
 | Connectors | `cxnSp` | `<hr>`/lines | ⬜ | ⬜ | straight/elbow/curved |
@@ -47,20 +47,20 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Solid fill (+ alpha) | `a:solidFill`/`a:srgbClr`/`a:alpha` | `background-color`, rgba | ✅ | ⬜ | opacity folded into alpha |
-| No fill | `a:noFill` | transparent bg | ✅ | ⬜ | |
-| Gradient (linear/radial) | `a:gradFill` | `linear/radial-gradient` | ✅ | ⬜ | conic/layered → raster |
-| Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ⬜ | data/web URLs; webp→png |
+| Solid fill (+ alpha) | `a:solidFill`/`a:srgbClr`/`a:alpha` | `background-color`, rgba | ✅ | ✅ | opacity folded into alpha |
+| No fill | `a:noFill` | transparent bg | ✅ | ✅ | |
+| Gradient (linear/radial) | `a:gradFill` | `linear/radial-gradient` | ✅ | ✅ | basic single gradient |
+| Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ✅ | data/web URLs; webp→png |
 | Pattern fill | `a:pattFill` | repeating patterns | ⬜ | ⬜ | |
-| Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | ⬜ | fwd emits srgbClr; rev must resolve scheme |
+| Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | 🟡 | basic clrScheme lookup; clrMap/transforms pending |
 
 ## Line / stroke
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Solid border | `a:ln`/`a:solidFill` | `border` | ✅ | ⬜ | uniform border |
+| Solid border | `a:ln`/`a:solidFill` | `border` | ✅ | ✅ | uniform border |
 | Per-side borders | (4 lines) | `border-top` … | 🟡 | ⬜ | approximated by heaviest side + warn |
-| Dash / cap / join | `a:prstDash`, `cap`, `a:round` | `border-style`, dashes | 🟡 | ⬜ | solid/dash/dot |
+| Dash / cap / join | `a:prstDash`, `cap`, `a:round` | `border-style`, dashes | 🟡 | 🟡 | solid/dash/dot |
 | Arrowheads | `a:headEnd`/`a:tailEnd` | — | ⬜ | ⬜ | |
 | Gradient stroke | `a:gradFill` in `a:ln` | — | ⬜ | ⬜ | |
 
@@ -68,8 +68,8 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Outer shadow | `a:outerShdw` | `box-shadow` | ✅ | ⬜ | native; spread dropped |
-| Inner shadow | `a:innerShdw` | `box-shadow inset` | ✅ | ⬜ | native |
+| Outer shadow | `a:outerShdw` | `box-shadow` | ✅ | 🟡 | native; spread dropped |
+| Inner shadow | `a:innerShdw` | `box-shadow inset` | ✅ | 🟡 | native |
 | Glow | `a:glow` | blurred halo | 🖼️ | ⬜ | |
 | Blur | `a:blur` | `filter: blur()` | 🖼️ | ⬜ | `filter` → raster (warned) |
 | Soft edge | `a:softEdge` | — | 🖼️ | ⬜ | |
@@ -80,10 +80,10 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Run: family/size/bold/italic/colour | `a:rPr`, `a:latin`, `a:solidFill` | font-* / color | ✅ | ⬜ | |
+| Run: family/size/bold/italic/colour | `a:rPr`, `a:latin`, `a:solidFill` | font-* / color | ✅ | ✅ | |
 | Run: underline / strike | `u`, `strike` | `text-decoration` | ⬜ | ⬜ | |
 | Run: caps / letter-spacing | `cap`, `spc` | `text-transform`, `letter-spacing` | ⬜ | ⬜ | |
-| Paragraph align | `a:pPr algn` | `text-align` | ✅ | ⬜ | start/end normalised |
+| Paragraph align | `a:pPr algn` | `text-align` | ✅ | ✅ | start/end normalised |
 | Vertical anchor | `a:bodyPr anchor` | (block flow) | 🟡 | ⬜ | top default; flex/align mapping pending |
 | Line spacing / indent | `a:lnSpc`, `marL` | `line-height`, indent | ⬜ | ⬜ | |
 | Bullets / numbering | `a:buChar`/`a:buAutoNum` | `<ul>`/`<ol>` | ⬜ | ⬜ | |
@@ -96,7 +96,7 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Image | `a:blipFill` | `<img>` | ✅ | ⬜ | embedded as native picture fill |
+| Image | `a:blipFill` | `<img>` | ✅ | ✅ | embedded as native picture fill |
 | SVG | `a:blip` + svgBlip | inline `<svg>` | 🖼️ | ⬜ | rasterised (warned); svgBlip later |
 | Video / audio | `a:videoFile`/`audioFile` | `<video>`/`<audio>` | 🖼️ | ⬜ | poster frame rasterised |
 | Decorative raster layer | `a:blipFill` | un-mappable flourish | 🖼️ | ⬜ | per-element raster; subtree-consuming + warned |

@@ -11,7 +11,7 @@ from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import extract_slide
 from domoxml.core.render import BrowserSession, RenderedSlide, compose_page
 from domoxml.core.units import pixels
-from domoxml.slides import build_pptx, read_pptx
+from domoxml.slides import build_pptx, read_pptx_result
 from domoxml.types import (
     ConversionWarning,
     CoverageItem,
@@ -150,4 +150,7 @@ class Presentation:
 def pptx_to_html(source: bytes | Path) -> HtmlPresentation:
     """Read PPTX bytes or a path into deterministic per-slide HTML/CSS."""
     pptx = source.read_bytes() if isinstance(source, Path) else source
-    return serialize_canvas(read_pptx(pptx))
+    result = read_pptx_result(pptx)
+    return serialize_canvas(
+        list(result.slides), warnings=result.warnings, preserved=result.preserved
+    )

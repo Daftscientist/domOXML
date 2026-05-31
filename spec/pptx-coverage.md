@@ -50,7 +50,7 @@ CSS source = what authoring produces it on the forward path.
 | Solid fill (+ alpha) | `a:solidFill`/`a:srgbClr`/`a:alpha` | `background-color`, rgba | ✅ | ✅ | opacity folded into alpha |
 | No fill | `a:noFill` | transparent bg | ✅ | ✅ | |
 | Gradient (linear/radial) | `a:gradFill` | `linear/radial-gradient` | ✅ | ✅ | basic single gradient |
-| Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ✅ | data/web URLs; webp→png |
+| Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ✅ | shape fill and native `p:pic`; crop pending |
 | Pattern fill | `a:pattFill` | repeating patterns | ⬜ | ⬜ | |
 | Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | 🟡 | basic clrScheme lookup; clrMap/transforms pending |
 

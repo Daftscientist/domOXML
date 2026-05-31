@@ -16,7 +16,7 @@ from domoxml.core.ir.model import (
     TextParagraph,
     TextRun,
 )
-from domoxml.types import CoverageReport, RenderResult
+from domoxml.types import ConversionWarning, CoverageReport, PreservedFragment, RenderResult
 
 
 def _slide() -> SlideIR:
@@ -88,3 +88,15 @@ def test_render_result_save_writes_every_artifact(tmp_path: Path) -> None:
     assert (tmp_path / "html" / "shared.css").read_text()
     assert "Coffee " in (tmp_path / "html" / "slides" / "slide-01.html").read_text()
     assert (tmp_path / "html" / html.assets[0].path).read_bytes() == b"png"
+
+
+def test_html_presentation_save_writes_reverse_metadata(tmp_path: Path) -> None:
+    html = serialize_canvas(
+        [_slide()],
+        warnings=(ConversionWarning(message="preserved unsupported node", element="slide1:pic"),),
+        preserved=(PreservedFragment(part="ppt/slides/slide1.xml", kind="pic", xml="<p:pic/>"),),
+    )
+    html.save(tmp_path)
+    metadata = (tmp_path / "metadata.json").read_text()
+    assert "preserved unsupported node" in metadata
+    assert "<p:pic/>" in metadata

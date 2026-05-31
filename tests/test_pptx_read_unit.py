@@ -4,7 +4,12 @@
 
 from __future__ import annotations
 
+from io import BytesIO
+
 from defusedxml import ElementTree
+from PIL import Image
+from pptx import Presentation as PptxPresentation
+from pptx.util import Inches
 
 from domoxml import Presentation, pptx_to_html
 from domoxml.core.ir.model import (
@@ -22,10 +27,14 @@ from domoxml.core.ir.model import (
     TextParagraph,
     TextRun,
 )
+from domoxml.core.opc import OpcPackage, write_package
 from domoxml.slides import build_pptx, read_pptx
-from domoxml.slides.read import _rgba
+from domoxml.slides.read import _rgba, _slide_colors
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 
 
 def _sample_ir() -> SlideIR:
@@ -124,3 +133,91 @@ def test_resolves_theme_system_and_preset_colors() -> None:
     assert _rgba(scheme, {"accent1": "112233"}) == Rgba(r=17, g=34, b=51, a=0.5)
     assert _rgba(system, {}) == Rgba(r=16, g=32, b=48)
     assert _rgba(preset, {}) == Rgba(r=255, g=0, b=0)
+
+
+def test_resolves_slide_theme_through_layout_master_chain_and_color_maps() -> None:
+    package = OpcPackage.from_bytes(
+        write_package(
+            {
+                "ppt/slides/slide1.xml": (
+                    f'<p:sld xmlns:p="{_P}" xmlns:a="{_A}"><p:clrMapOvr>'
+                    '<a:overrideClrMapping accent1="accent2"/></p:clrMapOvr></p:sld>'
+                ),
+                "ppt/slides/_rels/slide1.xml.rels": (
+                    f'<Relationships xmlns="{_PKG_REL}"><Relationship Id="rId1" '
+                    f'Type="{_R}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>'
+                    "</Relationships>"
+                ),
+                "ppt/slideLayouts/slideLayout1.xml": (
+                    f'<p:sldLayout xmlns:p="{_P}" xmlns:a="{_A}"><p:clrMapOvr>'
+                    '<a:overrideClrMapping tx1="accent1"/></p:clrMapOvr></p:sldLayout>'
+                ),
+                "ppt/slideLayouts/_rels/slideLayout1.xml.rels": (
+                    f'<Relationships xmlns="{_PKG_REL}"><Relationship Id="rId1" '
+                    f'Type="{_R}/slideMaster" Target="../slideMasters/slideMaster1.xml"/>'
+                    "</Relationships>"
+                ),
+                "ppt/slideMasters/slideMaster1.xml": (
+                    f'<p:sldMaster xmlns:p="{_P}"><p:clrMap tx1="dk1" accent1="accent1"/>'
+                    "</p:sldMaster>"
+                ),
+                "ppt/slideMasters/_rels/slideMaster1.xml.rels": (
+                    f'<Relationships xmlns="{_PKG_REL}"><Relationship Id="rId1" '
+                    f'Type="{_R}/theme" Target="../theme/theme1.xml"/></Relationships>'
+                ),
+                "ppt/theme/theme0.xml": (
+                    f'<a:theme xmlns:a="{_A}"><a:themeElements><a:clrScheme name="wrong">'
+                    '<a:accent1><a:srgbClr val="FFFFFF"/></a:accent1>'
+                    "</a:clrScheme></a:themeElements></a:theme>"
+                ),
+                "ppt/theme/theme1.xml": (
+                    f'<a:theme xmlns:a="{_A}"><a:themeElements><a:clrScheme name="right">'
+                    '<a:dk1><a:srgbClr val="000000"/></a:dk1>'
+                    '<a:accent1><a:srgbClr val="112233"/></a:accent1>'
+                    '<a:accent2><a:srgbClr val="445566"/></a:accent2>'
+                    "</a:clrScheme></a:themeElements></a:theme>"
+                ),
+            }
+        )
+    )
+    colors = _slide_colors(package, "ppt/slides/slide1.xml")
+    assert colors["tx1"] == "112233"
+    assert colors["accent1"] == "445566"
+
+
+def test_preserves_unsupported_slide_nodes_with_warning() -> None:
+    package = OpcPackage.from_bytes(build_pptx([_sample_ir()], faces=[]))
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    slide_part = "ppt/slides/slide1.xml"
+    slide_xml = parts[slide_part]
+    assert isinstance(slide_xml, bytes)
+    parts[slide_part] = slide_xml.replace(
+        b"</p:spTree>", b"<p:graphicFrame><p:nvGraphicFramePr/></p:graphicFrame></p:spTree>"
+    )
+
+    html = pptx_to_html(write_package(parts))
+
+    assert len(html.preserved) == 1
+    assert html.preserved[0].part == slide_part
+    assert html.preserved[0].kind == "graphicFrame"
+    assert "graphicFrame" in html.preserved[0].xml
+    assert len(html.warnings) == 1
+    assert "unsupported reverse slide node" in html.warnings[0].message
+
+
+def test_reads_native_powerpoint_picture() -> None:
+    image = BytesIO()
+    Image.new("RGB", (10, 10), "#4472C4").save(image, format="PNG")
+    image.seek(0)
+    deck = PptxPresentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    slide.shapes.add_picture(image, Inches(1), Inches(1), Inches(2), Inches(1))
+    pptx = BytesIO()
+    deck.save(pptx)
+
+    [result] = read_pptx(pptx.getvalue())
+
+    assert len(result.shapes) == 1
+    fill = result.shapes[0].fill
+    assert isinstance(fill, PictureFill)
+    assert fill.ext == "png"

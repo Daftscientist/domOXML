@@ -43,6 +43,9 @@ html = pptx_to_html(Path("deck.pptx"))
 html.save(Path("out/html"))
 ```
 
+Unsupported reverse constructs are retained in `html.preserved`, reported in `html.warnings`,
+and written to `metadata.json` by `save()` until a native HTML/CSS mapping lands.
+
 ## Why
 
 - **Editable, not flat** — text, fills (solid / gradient / image), borders, shadows and

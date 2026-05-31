@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Literal
 from xml.etree.ElementTree import Element
@@ -26,6 +27,7 @@ from domoxml.core.ir.model import (
     TextRun,
 )
 from domoxml.core.opc import OpcPackage
+from domoxml.types import ConversionWarning, PreservedFragment
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -34,6 +36,9 @@ _NS = {"a": _A, "p": _P, "r": _R}
 _RID = f"{{{_R}}}id"
 _EMBED = f"{{{_R}}}embed"
 _OFFICE_DOCUMENT_REL = f"{_R}/officeDocument"
+_SLIDE_LAYOUT_REL = f"{_R}/slideLayout"
+_SLIDE_MASTER_REL = f"{_R}/slideMaster"
+_THEME_REL = f"{_R}/theme"
 _ALIGN_FROM_OOXML: dict[str, Literal["left", "center", "right", "justify"]] = {
     "l": "left",
     "ctr": "center",
@@ -68,9 +73,27 @@ _SYSTEM_FALLBACK = {"window": "FFFFFF", "windowText": "000000"}
 type ThemeColors = dict[str, str]
 
 
+@dataclass(frozen=True)
+class PptxReadResult:
+    """Canvas slides plus reverse-adapter diagnostics and retained OOXML."""
+
+    slides: tuple[SlideIR, ...]
+    warnings: tuple[ConversionWarning, ...] = ()
+    preserved: tuple[PreservedFragment, ...] = ()
+
+
 def _int_attr(element: Element, name: str, default: int = 0) -> int:
     value = element.get(name)
     return int(value) if value is not None else default
+
+
+def _related_part_by_type(
+    package: OpcPackage, source_part: str, relationship_type: str
+) -> str | None:
+    try:
+        return package.related_part_by_type(source_part, relationship_type)
+    except KeyError:
+        return None
 
 
 def _rgb_hex(element: Element, colors: ThemeColors) -> str | None:
@@ -271,24 +294,95 @@ def _shape(
     )
 
 
-def _slide(
-    package: OpcPackage, slide_part: str, colors: ThemeColors, *, width: int, height: int
-) -> SlideIR:
-    root = ElementTree.fromstring(package.read(slide_part))
-    shapes = tuple(
-        shape
-        for element in root.findall("./p:cSld/p:spTree/p:sp", _NS)
-        if (shape := _shape(element, package, slide_part, colors)) is not None
+def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> ShapeNode | None:
+    properties = element.find("p:spPr", _NS)
+    transform = properties.find("a:xfrm", _NS) if properties is not None else None
+    offset = transform.find("a:off", _NS) if transform is not None else None
+    extent = transform.find("a:ext", _NS) if transform is not None else None
+    fill = element.find("p:blipFill", _NS)
+    if properties is None or offset is None or extent is None or fill is None:
+        return None
+    picture = _picture(fill, package, slide_part)
+    if picture is None:
+        return None
+    return ShapeNode(
+        box=Box(
+            x=_int_attr(offset, "x"),
+            y=_int_attr(offset, "y"),
+            width=_int_attr(extent, "cx"),
+            height=_int_attr(extent, "cy"),
+        ),
+        fill=picture,
     )
-    return SlideIR(width=width, height=height, shapes=shapes)
 
 
-def _theme_colors(package: OpcPackage) -> ThemeColors:
+def _local_name(element: Element) -> str:
+    return element.tag.rsplit("}", 1)[-1]
+
+
+def _preserve(
+    slide_part: str, element: Element, reason: str
+) -> tuple[ConversionWarning, PreservedFragment]:
+    kind = _local_name(element)
+    return (
+        ConversionWarning(message=reason, element=f"{slide_part}:{kind}"),
+        PreservedFragment(
+            part=slide_part,
+            kind=kind,
+            xml=ElementTree.tostring(element, encoding="unicode"),
+        ),
+    )
+
+
+def _slide(
+    package: OpcPackage, slide_part: str, *, width: int, height: int
+) -> tuple[SlideIR, tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
+    colors = _slide_colors(package, slide_part)
+    root = ElementTree.fromstring(package.read(slide_part))
+    tree = root.find("./p:cSld/p:spTree", _NS)
+    shapes: list[ShapeNode] = []
+    warnings: list[ConversionWarning] = []
+    preserved: list[PreservedFragment] = []
+    if tree is not None:
+        for element in tree:
+            kind = _local_name(element)
+            if kind in {"nvGrpSpPr", "grpSpPr"}:
+                continue
+            if kind == "sp":
+                shape = _shape(element, package, slide_part, colors)
+                if shape is not None:
+                    shapes.append(shape)
+                    continue
+                reason = "preserved shape that the reverse adapter could not map"
+            elif kind == "pic":
+                shape = _picture_shape(element, package, slide_part)
+                if shape is not None:
+                    shapes.append(shape)
+                    if element.find("p:blipFill/a:srcRect", _NS) is None:
+                        continue
+                    reason = "preserved picture crop metadata; crop mapping pending"
+                else:
+                    reason = "preserved picture that the reverse adapter could not map"
+            else:
+                reason = f"preserved unsupported reverse slide node: {kind}"
+            warning, fragment = _preserve(slide_part, element, reason)
+            warnings.append(warning)
+            preserved.append(fragment)
+    return (
+        SlideIR(width=width, height=height, shapes=tuple(shapes)),
+        tuple(warnings),
+        tuple(preserved),
+    )
+
+
+def _theme_colors(package: OpcPackage, theme_part: str | None) -> ThemeColors:
     colors = dict(_SCHEME_FALLBACK)
-    theme_parts = [part for part in package.parts if part.startswith("ppt/theme/")]
-    if not theme_parts:
+    if theme_part is None:
+        theme_parts = [part for part in package.parts if part.startswith("ppt/theme/")]
+        theme_part = theme_parts[0] if theme_parts else None
+    if theme_part is None:
         return colors
-    root = ElementTree.fromstring(package.read(theme_parts[0]))
+    root = ElementTree.fromstring(package.read(theme_part))
     scheme = root.find("a:themeElements/a:clrScheme", _NS)
     if scheme is None:
         return colors
@@ -299,10 +393,34 @@ def _theme_colors(package: OpcPackage) -> ThemeColors:
     return colors
 
 
-def read_pptx(pptx: bytes) -> list[SlideIR]:
-    """Read a PPTX package into ordered canvas slides."""
+def _color_map(package: OpcPackage, part: str | None, path: str) -> dict[str, str]:
+    if part is None:
+        return {}
+    root = ElementTree.fromstring(package.read(part))
+    element = root.find(path, _NS)
+    return dict(element.attrib) if element is not None else {}
+
+
+def _slide_colors(package: OpcPackage, slide_part: str) -> ThemeColors:
+    layout_part = _related_part_by_type(package, slide_part, _SLIDE_LAYOUT_REL)
+    master_part = (
+        _related_part_by_type(package, layout_part, _SLIDE_MASTER_REL)
+        if layout_part is not None
+        else None
+    )
+    theme_part = (
+        _related_part_by_type(package, master_part, _THEME_REL) if master_part is not None else None
+    )
+    colors = _theme_colors(package, theme_part)
+    mapping = _color_map(package, master_part, "p:clrMap")
+    mapping.update(_color_map(package, layout_part, "p:clrMapOvr/a:overrideClrMapping"))
+    mapping.update(_color_map(package, slide_part, "p:clrMapOvr/a:overrideClrMapping"))
+    return {**colors, **{key: colors.get(value, value) for key, value in mapping.items()}}
+
+
+def read_pptx_result(pptx: bytes) -> PptxReadResult:
+    """Read a PPTX package into ordered canvas slides plus reverse diagnostics."""
     package = OpcPackage.from_bytes(pptx)
-    colors = _theme_colors(package)
     presentation_part = package.related_part_by_type(None, _OFFICE_DOCUMENT_REL)
     root = ElementTree.fromstring(package.read(presentation_part))
     size = root.find("p:sldSz", _NS)
@@ -310,13 +428,22 @@ def read_pptx(pptx: bytes) -> list[SlideIR]:
         raise ValueError("PPTX presentation has no slide size")
     width, height = _int_attr(size, "cx"), _int_attr(size, "cy")
     slide_ids = root.findall("p:sldIdLst/p:sldId", _NS)
-    return [
+    results = [
         _slide(
             package,
             package.related_part(presentation_part, slide_id.attrib[_RID]),
-            colors,
             width=width,
             height=height,
         )
         for slide_id in slide_ids
     ]
+    return PptxReadResult(
+        slides=tuple(result[0] for result in results),
+        warnings=tuple(warning for result in results for warning in result[1]),
+        preserved=tuple(fragment for result in results for fragment in result[2]),
+    )
+
+
+def read_pptx(pptx: bytes) -> list[SlideIR]:
+    """Read a PPTX package into ordered canvas slides."""
+    return list(read_pptx_result(pptx).slides)

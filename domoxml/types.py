@@ -7,6 +7,7 @@ produces (``RenderResult``, ``CoverageReport``, …) are immutable, validated va
 
 from __future__ import annotations
 
+import json
 from enum import StrEnum
 from pathlib import Path
 
@@ -169,6 +170,16 @@ class HtmlSlide(BaseModel):
     height_px: int
 
 
+class PreservedFragment(BaseModel):
+    """Source OOXML retained when the reverse adapter cannot map it yet."""
+
+    model_config = ConfigDict(frozen=True)
+
+    part: str
+    kind: str
+    xml: str
+
+
 class HtmlPresentation(BaseModel):
     """Per-slide HTML/CSS and assets emitted from a presentation canvas IR."""
 
@@ -177,6 +188,8 @@ class HtmlPresentation(BaseModel):
     slides: tuple[HtmlSlide, ...]
     css: str
     assets: tuple[HtmlAsset, ...] = ()
+    warnings: tuple[ConversionWarning, ...] = ()
+    preserved: tuple[PreservedFragment, ...] = ()
 
     def save(self, directory: Path) -> None:
         """Write HTML slides, shared CSS, and assets below ``directory``."""
@@ -189,6 +202,14 @@ class HtmlPresentation(BaseModel):
             path = directory / asset.path
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(asset.data)
+        if self.warnings or self.preserved:
+            metadata = {
+                "warnings": [warning.model_dump() for warning in self.warnings],
+                "preserved": [fragment.model_dump() for fragment in self.preserved],
+            }
+            (directory / "metadata.json").write_text(
+                json.dumps(metadata, indent=2), encoding="utf-8"
+            )
 
 
 class RenderResult(BaseModel):

@@ -17,7 +17,13 @@ from domoxml.core.ir.model import (
     TextRun,
 )
 from domoxml.core.units import emu_to_px
-from domoxml.types import HtmlAsset, HtmlPresentation, HtmlSlide
+from domoxml.types import (
+    ConversionWarning,
+    HtmlAsset,
+    HtmlPresentation,
+    HtmlSlide,
+    PreservedFragment,
+)
 
 _SHARED_CSS = (
     ".domoxml-slide{position:relative;overflow:hidden;box-sizing:border-box}"
@@ -116,7 +122,12 @@ def _text_html(body: TextBody | None) -> str:
     return paragraphs
 
 
-def serialize_canvas(slides: list[SlideIR]) -> HtmlPresentation:
+def serialize_canvas(
+    slides: list[SlideIR],
+    *,
+    warnings: tuple[ConversionWarning, ...] = (),
+    preserved: tuple[PreservedFragment, ...] = (),
+) -> HtmlPresentation:
     """Serialize canvas IR to one stable HTML fragment per slide plus shared assets."""
     assets: dict[str, HtmlAsset] = {}
     html_slides: list[HtmlSlide] = []
@@ -134,5 +145,9 @@ def serialize_canvas(slides: list[SlideIR]) -> HtmlPresentation:
         )
         html_slides.append(HtmlSlide(html=html, width_px=width_px, height_px=height_px))
     return HtmlPresentation(
-        slides=tuple(html_slides), css=_SHARED_CSS, assets=tuple(assets.values())
+        slides=tuple(html_slides),
+        css=_SHARED_CSS,
+        assets=tuple(assets.values()),
+        warnings=warnings,
+        preserved=preserved,
     )

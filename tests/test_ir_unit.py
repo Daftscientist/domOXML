@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from domoxml.core.ir import extract_slide
-from domoxml.core.ir.model import Rgba
+from domoxml.core.ir.model import Rgba, SolidFill
 from domoxml.core.ir.parse import is_bold, parse_color, parse_length_px
 from domoxml.core.render.browser import RenderedNode, RenderedSlide
 
@@ -39,7 +39,7 @@ def test_extract_normalizes_logical_text_align() -> None:
     node = RenderedNode(
         tag="p", x=0, y=0, width=10, height=10, text="x", styles={"textAlign": "start"}
     )
-    ir = extract_slide(RenderedSlide(png=b"x", width=100, height=100, nodes=(node,)))
+    ir = extract_slide(RenderedSlide(png=b"x", width=100, height=100, nodes=(node,))).slide
     assert ir.shapes[0].text is not None
     assert ir.shapes[0].text.align == "left"  # 'start' → 'left'
 
@@ -63,12 +63,12 @@ def test_extract_maps_box_fill_and_text() -> None:
             "opacity": "1",
         },
     )
-    ir = extract_slide(RenderedSlide(png=b"x", width=1280, height=720, nodes=(node,)))
+    ir = extract_slide(RenderedSlide(png=b"x", width=1280, height=720, nodes=(node,))).slide
 
     assert ir.width == 12_192_000  # 1280px -> EMU
     shape = ir.shapes[0]
     assert shape.box.x == 914_400 and shape.box.width == 1_828_800
-    assert shape.fill is not None and shape.fill.hex == "4F46E5"
+    assert isinstance(shape.fill, SolidFill) and shape.fill.color.hex == "4F46E5"
     assert shape.corner_radius_emu == 76_200  # 8px
     assert shape.text is not None
     assert shape.text.text == "Hello"
@@ -82,5 +82,5 @@ def test_transparent_background_is_no_fill() -> None:
     node = RenderedNode(
         tag="span", x=0, y=0, width=10, height=10, styles={"backgroundColor": "rgba(0, 0, 0, 0)"}
     )
-    ir = extract_slide(RenderedSlide(png=b"x", width=100, height=100, nodes=(node,)))
+    ir = extract_slide(RenderedSlide(png=b"x", width=100, height=100, nodes=(node,))).slide
     assert ir.shapes[0].fill is None

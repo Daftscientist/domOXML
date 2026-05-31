@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Pre-push gate: runs the EXACT same checks as .github/workflows/ci.yml so that
+# anything CI would reject is caught here, before it leaves your machine.
+# Enable once per clone with:  git config core.hooksPath .githooks
+#
+# Bypass in an emergency with:  git push --no-verify  (CI will still enforce it)
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Prefer the project venv; fall back to `uv run` (what CI uses) if no venv is present.
+if [ -x .venv/bin/ruff ]; then
+  run() { .venv/bin/"$1" "${@:2}"; }
+else
+  run() { uv run "$@"; }
+fi
+
+echo "pre-push: ruff check"
+run ruff check .
+
+echo "pre-push: ruff format --check"
+run ruff format --check .
+
+echo "pre-push: pyright"
+run pyright
+
+echo "pre-push: pytest (unit)"
+run pytest -m "not integration"
+
+echo "pre-push: CI gates passed ✓"
+
+# Advisory CodeRabbit review of the commits being pushed. Never blocks the push;
+# skips silently if the CLI isn't installed. Bypass everything with --no-verify.
+CR="$HOME/.local/bin/coderabbit"
+[ -x "$CR" ] || CR="$(command -v coderabbit 2>/dev/null || true)"
+if [ -n "${CR:-}" ]; then
+  echo "── CodeRabbit review · committed vs origin/main (advisory) ──" >&2
+  "$CR" review --type committed --base origin/main --plain || echo "[pre-push] review did not complete — continuing." >&2
+else
+  echo "[pre-push] coderabbit CLI not found — skipping advisory review." >&2
+fi

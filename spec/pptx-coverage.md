@@ -37,8 +37,8 @@ CSS source = what authoring produces it on the forward path.
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
 | Rectangle | `prstGeom prst="rect"` | box | ✅ | ⬜ | |
-| Rounded rect | `prstGeom prst="roundRect"` | `border-radius` | ✅ | ⬜ | |
-| Ellipse / pill | `prstGeom prst="ellipse"` | `border-radius:50%` | ⬜ | ⬜ | |
+| Rounded rect | `prstGeom prst="roundRect"` | `border-radius` | ✅ | ⬜ | adj from radius |
+| Ellipse / pill | `prstGeom prst="ellipse"` | `border-radius:50%` | ✅ | ⬜ | radius·2 ≥ short side |
 | Other presets (187 total) | `ST_ShapeType` | `clip-path`/SVG | ⬜ | ⬜ | triangle, diamond, hexagon, star, arrows, callouts… |
 | Custom geometry | `custGeom`/`a:path` | SVG path | ⬜ | ⬜ | |
 | Connectors | `cxnSp` | `<hr>`/lines | ⬜ | ⬜ | straight/elbow/curved |
@@ -47,10 +47,10 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Solid fill (+ alpha) | `a:solidFill`/`a:srgbClr`/`a:alpha` | `background-color`, rgba | ✅ | ⬜ | |
+| Solid fill (+ alpha) | `a:solidFill`/`a:srgbClr`/`a:alpha` | `background-color`, rgba | ✅ | ⬜ | opacity folded into alpha |
 | No fill | `a:noFill` | transparent bg | ✅ | ⬜ | |
-| Gradient (linear/radial/path) | `a:gradFill` | `linear/radial-gradient` | ⬜ | ⬜ | |
-| Picture fill | `a:blipFill` | `background-image:url()` | ⬜ | ⬜ | |
+| Gradient (linear/radial) | `a:gradFill` | `linear/radial-gradient` | ✅ | ⬜ | conic/layered → raster |
+| Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ⬜ | data/web URLs; webp→png |
 | Pattern fill | `a:pattFill` | repeating patterns | ⬜ | ⬜ | |
 | Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | ⬜ | fwd emits srgbClr; rev must resolve scheme |
 
@@ -58,9 +58,9 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Solid border | `a:ln`/`a:solidFill` | `border` | ⬜ | ⬜ | |
-| Per-side borders | (4 lines) | `border-top` … | ⬜ | ⬜ | |
-| Dash / cap / join | `a:prstDash`, `cap`, `a:round` | `border-style`, dashes | ⬜ | ⬜ | |
+| Solid border | `a:ln`/`a:solidFill` | `border` | ✅ | ⬜ | uniform border |
+| Per-side borders | (4 lines) | `border-top` … | 🟡 | ⬜ | approximated by heaviest side + warn |
+| Dash / cap / join | `a:prstDash`, `cap`, `a:round` | `border-style`, dashes | 🟡 | ⬜ | solid/dash/dot |
 | Arrowheads | `a:headEnd`/`a:tailEnd` | — | ⬜ | ⬜ | |
 | Gradient stroke | `a:gradFill` in `a:ln` | — | ⬜ | ⬜ | |
 
@@ -68,10 +68,10 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Outer shadow | `a:outerShdw` | `box-shadow` | 🖼️ | ⬜ | currently rasterised — **P0** |
-| Inner shadow | `a:innerShdw` | `box-shadow inset` | 🖼️ | ⬜ | |
+| Outer shadow | `a:outerShdw` | `box-shadow` | ✅ | ⬜ | native; spread dropped |
+| Inner shadow | `a:innerShdw` | `box-shadow inset` | ✅ | ⬜ | native |
 | Glow | `a:glow` | blurred halo | 🖼️ | ⬜ | |
-| Blur | `a:blur` | `filter: blur()` | 🖼️ | ⬜ | |
+| Blur | `a:blur` | `filter: blur()` | 🖼️ | ⬜ | `filter` → raster (warned) |
 | Soft edge | `a:softEdge` | — | 🖼️ | ⬜ | |
 | Reflection | `a:reflection` | — | 🖼️ | ⬜ | |
 | Preset / fill-overlay | `a:prstShdw`, `a:fillOverlay` | — | 🖼️ | ⬜ | |
@@ -90,16 +90,16 @@ CSS source = what authoring produces it on the forward path.
 | Multi-column | `a:bodyPr numCol` | `column-count` | ⬜ | ⬜ | |
 | Autofit | `a:normAutofit`/`a:spAutoFit` | (overflow) | 🟡 | ⬜ | normAutofit emitted |
 | Text warp (WordArt) | `a:prstTxWarp` | — | ⬜ | ⬜ | |
-| **Font embedding** | `p:embeddedFontLst` | `@font-face`/`<link>` | ⬜ | ⬜ | next forward task — exact fonts travel with deck |
+| **Font embedding** | `p:embeddedFontLst` | `@font-face`/`<link>` | ✅ | ⬜ | web+system; woff2/OTF→TTF; warns if unembeddable. NB: Office-online PDF service (Graph) 406s on any custom embed — desktop/LibreOffice honour it |
 
 ## Pictures & media
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Image | `p:pic` + `a:blip` | `<img>` | ⬜ | ⬜ | embed native picture |
-| SVG | `a:blip` + svgBlip | inline `<svg>` | ⬜ | ⬜ | + PNG fallback |
-| Video / audio | `a:videoFile`/`audioFile` | `<video>`/`<audio>` | ⬜ | ⬜ | |
-| Decorative raster layer | `p:pic` (background) | un-mappable flourish | ⬜ | ⬜ | per-element rasterisation |
+| Image | `a:blipFill` | `<img>` | ✅ | ⬜ | embedded as native picture fill |
+| SVG | `a:blip` + svgBlip | inline `<svg>` | 🖼️ | ⬜ | rasterised (warned); svgBlip later |
+| Video / audio | `a:videoFile`/`audioFile` | `<video>`/`<audio>` | 🖼️ | ⬜ | poster frame rasterised |
+| Decorative raster layer | `a:blipFill` | un-mappable flourish | 🖼️ | ⬜ | per-element raster; subtree-consuming + warned |
 
 ## Tables, charts, transitions, animation
 

@@ -26,7 +26,7 @@ def normalise_image(data: bytes) -> tuple[bytes, ImageExt] | None:
             buffer = BytesIO()
             image.convert("RGBA").save(buffer, "PNG")
             return buffer.getvalue(), "png"
-    except (OSError, ValueError):
+    except (OSError, ValueError, Image.DecompressionBombError):
         return None
 
 

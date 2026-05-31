@@ -8,7 +8,16 @@ import zipfile
 import pytest
 from pptx import Presentation as PptxRead  # test-only validator
 
-from domoxml.core.ir.model import Box, Rgba, ShapeNode, SlideIR, SolidFill, TextRun
+from domoxml.core.ir.model import (
+    Box,
+    Rgba,
+    ShapeNode,
+    SlideIR,
+    SolidFill,
+    TextBody,
+    TextParagraph,
+    TextRun,
+)
 from domoxml.slides import build_pptx
 
 
@@ -21,13 +30,21 @@ def _sample_ir() -> SlideIR:
                 box=Box(x=914_400, y=914_400, width=3_657_600, height=1_828_800),
                 fill=SolidFill(color=Rgba(r=79, g=70, b=229)),
                 corner_radius_emu=76_200,
-                text=TextRun(
-                    text="Driftwood",
-                    font_family="Inter",
-                    size_pt=24.0,
-                    bold=True,
-                    color=Rgba(r=255, g=255, b=255),
-                    align="center",
+                text=TextBody(
+                    paragraphs=(
+                        TextParagraph(
+                            runs=(
+                                TextRun(
+                                    text="Driftwood",
+                                    font_family="Inter",
+                                    size_pt=24.0,
+                                    bold=True,
+                                    color=Rgba(r=255, g=255, b=255),
+                                ),
+                            ),
+                            align="center",
+                        ),
+                    )
                 ),
             ),
             ShapeNode(box=Box(x=0, y=0, width=100, height=100)),  # plain, no fill/text

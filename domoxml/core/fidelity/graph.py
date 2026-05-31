@@ -24,21 +24,28 @@ First-time auth: ``device_login()`` (e.g. via ``scripts/fidelity_check.py``).
 from __future__ import annotations
 
 import contextlib
+import io
 import json
 import os
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import zipfile
 from http.client import HTTPResponse
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 from domoxml.core.fidelity._poppler import pdf_to_pngs
 
 _AUTHORITY_BASE = "https://login.microsoftonline.com"
 _GRAPH = "https://graph.microsoft.com/v1.0"
 _PPTX_CT = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+_PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+_PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_FONT_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/font"
+_FONT_PART_PREFIX = "ppt/fonts/"
 
 
 def _client_id() -> str | None:
@@ -203,6 +210,40 @@ def _graph_pdf_bytes(item_id: str, token: str, *, timeout: float) -> bytes:
     return response.read()
 
 
+def _strip_embedded_fonts(pptx: bytes) -> bytes:
+    """Remove embedded-font parts from the temporary Graph upload.
+
+    Microsoft 365's PDF rendition endpoint rejects decks with embedded fonts with HTTP 406.
+    Desktop PowerPoint and LibreOffice honor them, so generated artifacts retain fonts; only
+    the disposable copy uploaded for Graph validation is sanitized.
+    """
+    source_buffer = io.BytesIO(pptx)
+    output_buffer = io.BytesIO()
+    with (
+        zipfile.ZipFile(source_buffer) as source,
+        zipfile.ZipFile(output_buffer, "w", compression=zipfile.ZIP_DEFLATED) as output,
+    ):
+        for info in source.infolist():
+            if info.filename.startswith(_FONT_PART_PREFIX):
+                continue
+            data = source.read(info.filename)
+            if info.filename == "ppt/presentation.xml":
+                root = ElementTree.fromstring(data)
+                root.attrib.pop("embedTrueTypeFonts", None)
+                embedded = root.find(f"{{{_PML_NS}}}embeddedFontLst")
+                if embedded is not None:
+                    root.remove(embedded)
+                data = ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
+            elif info.filename == "ppt/_rels/presentation.xml.rels":
+                root = ElementTree.fromstring(data)
+                for rel in list(root):
+                    if rel.get("Type") == _FONT_REL_TYPE:
+                        root.remove(rel)
+                data = ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
+            output.writestr(info, data)
+    return output_buffer.getvalue()
+
+
 def render_pptx_to_pdf(pptx: bytes, *, timeout: float = 120.0) -> bytes:
     """Convert ``pptx`` to PDF via Microsoft Graph (true PowerPoint fidelity).
 
@@ -214,7 +255,7 @@ def render_pptx_to_pdf(pptx: bytes, *, timeout: float = 120.0) -> bytes:
         "PUT",
         f"{_GRAPH}/me/drive/root:/{name}:/content",
         token,
-        data=pptx,
+        data=_strip_embedded_fonts(pptx),
         ctype=_PPTX_CT,
         timeout=timeout,
     )

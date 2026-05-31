@@ -2,7 +2,7 @@
 
 Auto-generated from the ECMA-376 XSD schemas (do not hand-edit). 998 distinct elements, 593 complex types. Forward-covered: **63/998**.
 
-✅ forward-covered · ⬜ not yet. Reverse (pptx→HTML) is ⬜ across the board until ingest lands.
+✅ forward-covered · ⬜ not yet. Reverse (OOXML→HTML/CSS) is ⬜ across the board until ingest lands.
 
 Namespaces: `http://schemas.openxmlformats.org/drawingml/2006/chart`, `http://schemas.openxmlformats.org/drawingml/2006/chartDrawing`, `http://schemas.openxmlformats.org/drawingml/2006/compatibility`, `http://schemas.openxmlformats.org/drawingml/2006/diagram`, `http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas`, `http://schemas.openxmlformats.org/drawingml/2006/main`, `http://schemas.openxmlformats.org/drawingml/2006/picture`, `http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing`, `http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing`, `http://schemas.openxmlformats.org/officeDocument/2006/bibliography`, `http://schemas.openxmlformats.org/officeDocument/2006/characteristics`, `http://schemas.openxmlformats.org/officeDocument/2006/custom-properties`, `http://schemas.openxmlformats.org/officeDocument/2006/customXml`, `http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes`, `http://schemas.openxmlformats.org/officeDocument/2006/extended-properties`, `http://schemas.openxmlformats.org/officeDocument/2006/math`, `http://schemas.openxmlformats.org/officeDocument/2006/relationships`, `http://schemas.openxmlformats.org/schemaLibrary/2006/main`, `urn:schemas-microsoft-com:office:excel`, `urn:schemas-microsoft-com:office:office`, `urn:schemas-microsoft-com:office:powerpoint`, `urn:schemas-microsoft-com:office:word`, `urn:schemas-microsoft-com:vml`
 

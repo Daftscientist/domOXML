@@ -7,6 +7,7 @@ produces (``RenderResult``, ``CoverageReport``, …) are immutable, validated va
 
 from __future__ import annotations
 
+import json
 from enum import StrEnum
 from pathlib import Path
 
@@ -59,10 +60,13 @@ class Transition(StrEnum):
 
 
 class Disposition(StrEnum):
-    """Whether an element mapped to a native OOXML object or had to be rasterised."""
+    """How a source feature was represented across a conversion boundary."""
 
     NATIVE = "native"
+    PARTIAL = "partial"
     RASTER = "raster"
+    PRESERVED = "preserved"
+    UNSUPPORTED = "unsupported"
 
 
 # --------------------------------------------------------------------------- input models
@@ -147,6 +151,67 @@ class ConversionWarning(BaseModel):
     element: str = ""
 
 
+class HtmlAsset(BaseModel):
+    """One asset referenced by emitted HTML/CSS."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    data: bytes
+
+
+class HtmlSlide(BaseModel):
+    """One deterministic browser-renderable slide fragment."""
+
+    model_config = ConfigDict(frozen=True)
+
+    html: str
+    width_px: int
+    height_px: int
+
+
+class PreservedFragment(BaseModel):
+    """Source OOXML retained when the reverse adapter cannot map it yet."""
+
+    model_config = ConfigDict(frozen=True)
+
+    part: str
+    kind: str
+    xml: str
+
+
+class HtmlPresentation(BaseModel):
+    """Per-slide HTML/CSS and assets emitted from a presentation canvas IR."""
+
+    model_config = ConfigDict(frozen=True)
+
+    slides: tuple[HtmlSlide, ...]
+    css: str
+    assets: tuple[HtmlAsset, ...] = ()
+    warnings: tuple[ConversionWarning, ...] = ()
+    preserved: tuple[PreservedFragment, ...] = ()
+
+    def save(self, directory: Path) -> None:
+        """Write HTML slides, shared CSS, and assets below ``directory``."""
+        slides_dir = directory / "slides"
+        slides_dir.mkdir(parents=True, exist_ok=True)
+        (directory / "shared.css").write_text(self.css, encoding="utf-8")
+        for index, slide in enumerate(self.slides, start=1):
+            (slides_dir / f"slide-{index:02d}.html").write_text(slide.html, encoding="utf-8")
+        for asset in self.assets:
+            path = directory / asset.path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(asset.data)
+        if self.warnings or self.preserved:
+            metadata = {
+                "warnings": [warning.model_dump() for warning in self.warnings],
+                "preserved": [fragment.model_dump() for fragment in self.preserved],
+            }
+            (directory / "metadata.json").write_text(
+                json.dumps(metadata, indent=2), encoding="utf-8"
+            )
+
+
 class RenderResult(BaseModel):
     """The artifacts of a render. A format's field is ``None`` when it wasn't requested."""
 
@@ -154,10 +219,16 @@ class RenderResult(BaseModel):
 
     pptx: bytes | None
     pngs: tuple[bytes, ...]
-    html: str | None
+    html: HtmlPresentation | None
     coverage: CoverageReport
     warnings: tuple[ConversionWarning, ...]
 
     def save(self, directory: Path) -> None:
         """Write every produced artifact into ``directory``."""
-        raise NotImplementedError
+        directory.mkdir(parents=True, exist_ok=True)
+        if self.pptx is not None:
+            (directory / "deck.pptx").write_bytes(self.pptx)
+        for index, png in enumerate(self.pngs, start=1):
+            (directory / f"slide-{index:02d}.png").write_bytes(png)
+        if self.html is not None:
+            self.html.save(directory / "html")

@@ -30,9 +30,21 @@ from domoxml.types import OutputFormat, SlideSize
 deck = Presentation(size=SlideSize.WIDE_16_9)
 deck.add(Slide(html="<h1>Coffee that tastes like <span>calm</span>.</h1>"))
 
-result = deck.render({OutputFormat.PPTX, OutputFormat.PNG})
+result = deck.render({OutputFormat.PPTX, OutputFormat.PNG, OutputFormat.HTML})
 result.save(Path("out/"))
 ```
+
+Read an existing deck into deterministic per-slide HTML/CSS:
+
+```python
+from domoxml import pptx_to_html
+
+html = pptx_to_html(Path("deck.pptx"))
+html.save(Path("out/html"))
+```
+
+Unsupported reverse constructs are retained in `html.preserved`, reported in `html.warnings`,
+and written to `metadata.json` by `save()` until a native HTML/CSS mapping lands.
 
 ## Why
 

@@ -118,13 +118,16 @@ def _used_faces(slides: list[SlideIR]) -> list[FaceKey]:
     known: set[FaceKey] = set()
     for slide in slides:
         for shape in slide.shapes:
-            run = shape.text
-            if run is None or run.font_family.strip().lower() in _GENERIC:
+            if shape.text is None:
                 continue
-            key = (run.font_family.strip(), run.bold, run.italic)
-            if key not in known:
-                known.add(key)
-                seen.append(key)
+            for paragraph in shape.text.paragraphs:
+                for run in paragraph.runs:
+                    if run.font_family.strip().lower() in _GENERIC:
+                        continue
+                    key = (run.font_family.strip(), run.bold, run.italic)
+                    if key not in known:
+                        known.add(key)
+                        seen.append(key)
     return seen
 
 

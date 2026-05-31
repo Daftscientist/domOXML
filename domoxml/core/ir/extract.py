@@ -26,6 +26,8 @@ from domoxml.core.ir.model import (
     ShapeNode,
     SlideIR,
     SolidFill,
+    TextBody,
+    TextParagraph,
     TextRun,
 )
 from domoxml.core.ir.parse import (
@@ -34,16 +36,21 @@ from domoxml.core.ir.parse import (
     parse_color,
     parse_gradient,
     parse_length_px,
+    parse_radius_px,
     parse_shadow,
 )
-from domoxml.core.render.browser import RenderedNode, RenderedSlide
+from domoxml.core.render.browser import (
+    RenderedNode,
+    RenderedSlide,
+    RenderedTextRun,
+    is_complex_transform,
+)
 from domoxml.core.units import px_to_emu, px_to_pt
 from domoxml.types import ConversionWarning, CoverageItem, Disposition
 
 _DEFAULT_TEXT_COLOR = Rgba(r=0, g=0, b=0)
 _RASTER_TAGS = {"svg", "canvas", "video", "iframe"}
 _URL_RE = re.compile(r"""url\(\s*['"]?(.*?)['"]?\s*\)""", re.IGNORECASE | re.DOTALL)
-_MATRIX_RE = re.compile(r"matrix\(\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,")
 
 # Chromium reports logical alignments (start/end); map them to the IR's physical set.
 _ALIGN: dict[str, Literal["left", "center", "right", "justify"]] = {
@@ -66,18 +73,39 @@ class ExtractResult(BaseModel):
     warnings: tuple[ConversionWarning, ...]
 
 
-def _text_run(node: RenderedNode) -> TextRun | None:
-    if not node.text:
+def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
+    if not text:
         return None
-    styles = node.styles
     return TextRun(
-        text=node.text,
+        text=text,
         font_family=(styles.get("fontFamily") or "sans-serif").split(",")[0].strip().strip("'\""),
         size_pt=px_to_pt(parse_length_px(styles.get("fontSize")) or 16.0),
         bold=is_bold(styles.get("fontWeight")),
         italic=styles.get("fontStyle", "normal") == "italic",
         color=parse_color(styles.get("color")) or _DEFAULT_TEXT_COLOR,
-        align=_ALIGN.get((styles.get("textAlign") or "").strip().lower(), "left"),
+    )
+
+
+def _text_body(node: RenderedNode) -> TextBody | None:
+    source = node.text_runs or (
+        (RenderedTextRun(text=node.text, styles=node.styles),) if node.text else ()
+    )
+    if not source:
+        return None
+    paragraphs: list[list[TextRun]] = [[]]
+    for fragment in source:
+        pieces = fragment.text.split("\n")
+        for index, piece in enumerate(pieces):
+            run = _text_run(piece, fragment.styles)
+            if run is not None:
+                paragraphs[-1].append(run)
+            if index < len(pieces) - 1:
+                paragraphs.append([])
+    if not any(paragraphs):
+        return None
+    align = _ALIGN.get((node.styles.get("textAlign") or "").strip().lower(), "left")
+    return TextBody(
+        paragraphs=tuple(TextParagraph(runs=tuple(runs), align=align) for runs in paragraphs)
     )
 
 
@@ -96,17 +124,8 @@ def _label(node: RenderedNode) -> str:
 
 
 def _has_complex_transform(value: str | None) -> bool:
-    """True for rotation/skew/3-D transforms (a non-axis-aligned box we can't place natively).
-    Pure translation is already baked into the captured bounding box, so it is fine."""
-    if not value or value == "none":
-        return False
-    if value.startswith("matrix3d") or "rotate" in value or "skew" in value:
-        return True
-    match = _MATRIX_RE.search(value)
-    if match is None:
-        return False
-    b, c = float(match.group(2)), float(match.group(3))
-    return abs(b) > 1e-3 or abs(c) > 1e-3
+    """True when transform can't be expressed as pure translation."""
+    return is_complex_transform(value)
 
 
 def _structural_raster_reason(node: RenderedNode) -> str | None:
@@ -199,7 +218,30 @@ def _opacity(styles: dict[str, str]) -> float:
         return 1.0
 
 
+def _is_plain_inline(node: RenderedNode, fill: Fill | None, line: Line | None) -> bool:
+    """Whether a node is represented by its nearest block ancestor's rich text body."""
+    return (
+        node.parent >= 0
+        and node.styles.get("display", "").startswith("inline")
+        and node.tag != "img"
+        and fill is None
+        and line is None
+        and parse_shadow(node.styles.get("boxShadow")) is None
+    )
+
+
 def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
+    isolated = rendered.rasters.get(node.index)
+    if isolated is not None:
+        return ShapeNode(
+            box=Box(
+                x=px_to_emu(isolated.x),
+                y=px_to_emu(isolated.y),
+                width=px_to_emu(isolated.width),
+                height=px_to_emu(isolated.height),
+            ),
+            fill=PictureFill(data=isolated.png, ext="png"),
+        )
     crop = crop_png(
         rendered.png,
         left=node.x * rendered.scale,
@@ -276,7 +318,18 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
 
         box = _box(node)
         line, line_warning = _resolve_line(node.styles)
-        corner = px_to_emu(parse_length_px(node.styles.get("borderRadius")))
+        if _is_plain_inline(node, fill, line):
+            coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
+            continue
+        corner = px_to_emu(
+            parse_radius_px(
+                node.styles.get("borderRadius"), shorter_side_px=min(node.width, node.height)
+            )
+        )
+        text = _text_body(node)
+        if text is not None and fill is None and line is None:
+            padding = px_to_emu(4)
+            box = box.model_copy(update={"x": box.x - padding, "width": box.width + padding * 2})
         shapes.append(
             ShapeNode(
                 box=box,
@@ -286,7 +339,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 shadow=parse_shadow(node.styles.get("boxShadow")),
                 corner_radius_emu=corner,
                 opacity=_opacity(node.styles),
-                text=_text_run(node),
+                text=text,
             )
         )
         coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))

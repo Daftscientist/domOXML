@@ -23,8 +23,11 @@ First-time auth: ``device_login()`` (e.g. via ``scripts/fidelity_check.py``).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from http.client import HTTPResponse
@@ -164,6 +167,33 @@ def _request(
     return urllib.request.urlopen(request, timeout=timeout)  # fixed https Graph host
 
 
+def _graph_pdf_bytes(item_id: str, token: str, *, timeout: float) -> bytes:
+    """Fetch the Graph PDF rendition while ensuring the bearer token is not forwarded to
+    a redirect host."""
+
+    class _NoRedirect(urllib.request.HTTPErrorProcessor):
+        def http_response(self, request: Any, response: HTTPResponse) -> HTTPResponse:
+            return response
+
+        https_response = http_response
+
+    source_url = f"{_GRAPH}/me/drive/items/{item_id}/content?format=pdf"
+    opener = urllib.request.build_opener(_NoRedirect)
+    request = urllib.request.Request(
+        source_url,
+        method="GET",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    response = opener.open(request, timeout=timeout)
+    if response.getcode() in {301, 302, 303, 307, 308}:
+        location = response.headers.get("Location")
+        if not location:
+            raise RuntimeError("Graph PDF redirect missing Location header")
+        redirect_url = urllib.parse.urljoin(source_url, location)
+        return urllib.request.urlopen(redirect_url, timeout=timeout).read()
+    return response.read()
+
+
 def render_pptx_to_pdf(pptx: bytes, *, timeout: float = 120.0) -> bytes:
     """Convert ``pptx`` to PDF via Microsoft Graph (true PowerPoint fidelity).
 
@@ -182,14 +212,10 @@ def render_pptx_to_pdf(pptx: bytes, *, timeout: float = 120.0) -> bytes:
     metadata: dict[str, Any] = json.load(uploaded)
     item_id = str(metadata["id"])
     try:
-        # Graph 302-redirects to a short-lived preauthenticated URL that needs no auth header;
-        # urlopen follows it. (Re-sending the bearer to the redirect host is unnecessary.)
-        response = _request(
-            "GET", f"{_GRAPH}/me/drive/items/{item_id}/content?format=pdf", token, timeout=timeout
-        )
-        return response.read()
+        return _graph_pdf_bytes(item_id, token, timeout=timeout)
     finally:
-        _request("DELETE", f"{_GRAPH}/me/drive/items/{item_id}", token, timeout=timeout)
+        with contextlib.suppress(urllib.error.URLError):
+            _request("DELETE", f"{_GRAPH}/me/drive/items/{item_id}", token, timeout=timeout)
 
 
 def render_pptx_to_pngs_via_graph(

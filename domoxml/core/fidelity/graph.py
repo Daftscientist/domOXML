@@ -74,7 +74,7 @@ def _load_app() -> tuple[Any, Any]:
     try:
         # Optional dep, imported only when Graph is configured. msal ships partial stubs, so
         # it crosses our boundary as ``Any`` (see the helpers below) — ignore the stub warning.
-        import msal  # pyright: ignore[reportMissingTypeStubs]
+        import msal  # pyright: ignore[reportMissingImports, reportMissingTypeStubs]
     except ImportError:
         return None, None
 

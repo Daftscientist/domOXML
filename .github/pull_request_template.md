@@ -19,7 +19,3 @@ If conversion fidelity is not relevant, state why.
 - [ ] `ruff format --check .`
 - [ ] `pyright`
 - [ ] `pytest -m "not integration"`
-
-## Policy
-
-- [ ] No AI/LLM/agent code, prompts, or API keys added.

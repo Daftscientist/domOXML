@@ -6,7 +6,65 @@ on:
   pull_request:
 
 jobs:
+  pr-template:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Detect conversion-path changes
+        id: changed
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            conversion:
+              - 'domoxml/core/ir/**'
+              - 'domoxml/core/drawingml/**'
+              - 'domoxml/slides/**'
+              - 'domoxml/core/render/**'
+              - 'fidelity/corpus/**'
+              - 'scripts/fidelity_check.py'
+      - name: Require Render evidence section
+        if: steps.changed.outputs.conversion == 'true'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import sys
+
+          body = os.environ.get("PR_BODY") or ""
+          pattern = re.compile(
+              r"^##\s+Render evidence\s*\n(.*?)(?=^##\s+|\Z)",
+              re.IGNORECASE | re.MULTILINE | re.DOTALL,
+          )
+          match = pattern.search(body)
+          if not match:
+              sys.exit("Missing `## Render evidence` section in PR body.")
+
+          content = match.group(1)
+          placeholders = {
+              "tbd",
+              "todo",
+              "n/a",
+              "na",
+              "none",
+              "-",
+          }
+          stripped = "\n".join(line.strip() for line in content.splitlines() if line.strip())
+          if not stripped:
+              sys.exit("`## Render evidence` section is empty.")
+          lowered = stripped.lower()
+          if lowered in placeholders:
+              sys.exit("`## Render evidence` must include real evidence or explicit justification.")
+          print("Render evidence section present.")
+          PY
+
   check:
+    needs: [pr-template]
+    if: ${{ always() && needs.pr-template.result != 'failure' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

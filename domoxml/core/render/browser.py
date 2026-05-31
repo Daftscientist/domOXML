@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 from types import TracebackType
 from typing import Any, Self
 
@@ -145,9 +144,12 @@ class BrowserSession:
             except Exception:  # capture is best-effort; never block the render
                 await route.continue_()
                 return
-            # already captured; if fulfilling fails, let the request resolve on its own
-            with contextlib.suppress(Exception):
+            try:
                 await route.fulfill(response=response)
+            except Exception:
+                # If fulfill fails, resolve the intercepted request explicitly so page load
+                # doesn't stall on an unresolved route.
+                await route.continue_()
 
         try:
             page = await context.new_page()

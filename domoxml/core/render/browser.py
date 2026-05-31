@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from types import TracebackType
 from typing import Any, Self
 
@@ -149,7 +150,8 @@ class BrowserSession:
             except Exception:
                 # If fulfill fails, resolve the intercepted request explicitly so page load
                 # doesn't stall on an unresolved route.
-                await route.continue_()
+                with contextlib.suppress(Exception):
+                    await route.continue_()
 
         try:
             page = await context.new_page()

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import re
 from types import TracebackType
 from typing import Any, Self
 
 from playwright.async_api import Browser, Playwright, Route, async_playwright
 from pydantic import BaseModel, ConfigDict, Field
+
+from domoxml.core.images import crop_png
 
 # Walks the rendered DOM and, per element, captures its box, direct text, ordered inline
 # text runs, the computed styles the extractor needs, and enough structure (index/parent)
@@ -62,6 +65,7 @@ _SNAPSHOT_JS = """
       .map((n) => n.textContent)
       .join('').trim();
     const index = out.length;
+    el.dataset.domoxmlCaptureIndex = String(index);
     out.push({
       tag: el.tagName.toLowerCase(),
       x: r.x, y: r.y, width: r.width, height: r.height,
@@ -78,6 +82,22 @@ _SNAPSHOT_JS = """
 """
 
 _CAPTURED_RESOURCE_TYPES = frozenset({"image", "font"})
+_BLUR_RE = re.compile(r"blur\(\s*([\d.]+)px\s*\)", re.IGNORECASE)
+_ISOLATE_JS = """
+(index) => {
+  const selected = document.querySelector(`[data-domoxml-capture-index="${index}"]`);
+  if (!selected) return () => {};
+  const changed = [];
+  for (const element of document.body.querySelectorAll('*')) {
+    if (selected.contains(element) || element.contains(selected)) continue;
+    changed.push([element, element.style.visibility]);
+    element.style.visibility = 'hidden';
+  }
+  return () => {
+    for (const [element, visibility] of changed) element.style.visibility = visibility;
+  };
+}
+"""
 
 
 class RenderedTextRun(BaseModel):
@@ -108,6 +128,18 @@ class RenderedNode(BaseModel):
     text_runs: tuple[RenderedTextRun, ...] = Field(default_factory=tuple, alias="textRuns")
 
 
+class RenderedRaster(BaseModel):
+    """One isolated raster fallback region, including effect overflow."""
+
+    model_config = ConfigDict(frozen=True)
+
+    png: bytes
+    x: float
+    y: float
+    width: float
+    height: float
+
+
 class RenderedSlide(BaseModel):
     """The render of one slide: its PNG, the captured layout tree, the resources Chromium
     fetched (image/font bytes keyed by URL), and the device scale the PNG was taken at."""
@@ -120,6 +152,24 @@ class RenderedSlide(BaseModel):
     scale: float = 1.0
     nodes: tuple[RenderedNode, ...]
     resources: dict[str, bytes] = Field(default_factory=dict)
+    rasters: dict[int, RenderedRaster] = Field(default_factory=dict[int, RenderedRaster])
+
+
+def _raster_padding(node: RenderedNode) -> float:
+    match = _BLUR_RE.search(node.styles.get("filter", ""))
+    return float(match.group(1)) * 3 if match is not None else 0.0
+
+
+def _needs_isolated_raster(node: RenderedNode) -> bool:
+    styles = node.styles
+    return (
+        node.tag in {"svg", "canvas", "video", "iframe"}
+        or styles.get("clipPath", "none") not in ("none", "")
+        or styles.get("mixBlendMode", "normal") not in ("normal", "")
+        or styles.get("backdropFilter", "none") not in ("none", "")
+        or styles.get("filter", "none") not in ("none", "")
+        or styles.get("transform", "none") not in ("none", "")
+    )
 
 
 class BrowserSession:
@@ -194,6 +244,32 @@ class BrowserSession:
             png = await page.screenshot(type="png")
             raw: list[dict[str, Any]] = await page.evaluate(_SNAPSHOT_JS)
             nodes = tuple(RenderedNode.model_validate(node) for node in raw)
+            rasters: dict[int, RenderedRaster] = {}
+            for node in nodes:
+                if not _needs_isolated_raster(node):
+                    continue
+                restore = await page.evaluate_handle(_ISOLATE_JS, node.index)
+                try:
+                    isolated_page = await page.screenshot(type="png")
+                finally:
+                    await restore.evaluate("(restore) => restore()")
+                    await restore.dispose()
+                padding = _raster_padding(node)
+                x = max(0.0, node.x - padding)
+                y = max(0.0, node.y - padding)
+                right = min(float(width), node.x + node.width + padding)
+                bottom = min(float(height), node.y + node.height + padding)
+                crop = crop_png(
+                    isolated_page,
+                    left=x * self._scale,
+                    top=y * self._scale,
+                    width=(right - x) * self._scale,
+                    height=(bottom - y) * self._scale,
+                )
+                if crop is not None:
+                    rasters[node.index] = RenderedRaster(
+                        png=crop, x=x, y=y, width=right - x, height=bottom - y
+                    )
             return RenderedSlide(
                 png=png,
                 width=width,
@@ -201,6 +277,7 @@ class BrowserSession:
                 scale=self._scale,
                 nodes=nodes,
                 resources=resources,
+                rasters=rasters,
             )
         finally:
             await context.close()

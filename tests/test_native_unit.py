@@ -10,9 +10,9 @@ import io
 from PIL import Image
 
 from domoxml.core.ir import extract_slide
-from domoxml.core.ir.model import GradientFill, PictureFill, SolidFill
+from domoxml.core.ir.model import Box, GradientFill, PictureFill, SolidFill
 from domoxml.core.ir.parse import parse_border_side, parse_gradient, parse_shadow
-from domoxml.core.render.browser import RenderedNode, RenderedSlide
+from domoxml.core.render.browser import RenderedNode, RenderedRaster, RenderedSlide
 from domoxml.types import Disposition
 
 
@@ -113,6 +113,24 @@ def test_css_filter_rasterises_and_warns() -> None:
     assert isinstance(result.slide.shapes[0].fill, PictureFill)  # baked pixels, not dropped
     assert result.coverage[0].disposition is Disposition.RASTER
     assert result.warnings and "filter" in result.warnings[0].message
+
+
+def test_css_filter_uses_isolated_raster_region_when_available() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=5,
+        y=6,
+        width=10,
+        height=10,
+        index=0,
+        styles={"filter": "blur(4px)", "backgroundColor": "rgb(1,2,3)"},
+    )
+    raster = RenderedRaster(png=_png(20, 20), x=1, y=2, width=18, height=18)
+    rendered = _slide(node).model_copy(update={"rasters": {0: raster}})
+    result = extract_slide(rendered)
+    shape = result.slide.shapes[0]
+    assert shape.box == Box(x=9525, y=19050, width=171450, height=171450)
+    assert isinstance(shape.fill, PictureFill) and shape.fill.data == raster.png
 
 
 def test_rasterised_parent_consumes_its_subtree() -> None:

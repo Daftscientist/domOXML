@@ -46,6 +46,17 @@ def parse_length_px(value: str | None) -> float:
     return float(match.group(1)) if match else 0.0
 
 
+def parse_radius_px(value: str | None, *, shorter_side_px: float) -> float:
+    """Resolve a CSS border radius against a box's shorter side."""
+    if not value:
+        return 0.0
+    length = _LENGTH_RE.search(value)
+    if length is not None:
+        return float(length.group(1))
+    percent = _PERCENT_RE.search(value)
+    return shorter_side_px * float(percent.group(1)) / 100 if percent is not None else 0.0
+
+
 def is_bold(font_weight: str | None) -> bool:
     """True for ``bold``/``bolder`` or a numeric weight >= 600."""
     if not font_weight:

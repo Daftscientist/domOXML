@@ -36,6 +36,7 @@ from domoxml.core.ir.parse import (
     parse_color,
     parse_gradient,
     parse_length_px,
+    parse_radius_px,
     parse_shadow,
 )
 from domoxml.core.render.browser import RenderedNode, RenderedSlide, RenderedTextRun
@@ -235,6 +236,17 @@ def _is_plain_inline(node: RenderedNode, fill: Fill | None, line: Line | None) -
 
 
 def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
+    isolated = rendered.rasters.get(node.index)
+    if isolated is not None:
+        return ShapeNode(
+            box=Box(
+                x=px_to_emu(isolated.x),
+                y=px_to_emu(isolated.y),
+                width=px_to_emu(isolated.width),
+                height=px_to_emu(isolated.height),
+            ),
+            fill=PictureFill(data=isolated.png, ext="png"),
+        )
     crop = crop_png(
         rendered.png,
         left=node.x * rendered.scale,
@@ -314,7 +326,15 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if _is_plain_inline(node, fill, line):
             coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
             continue
-        corner = px_to_emu(parse_length_px(node.styles.get("borderRadius")))
+        corner = px_to_emu(
+            parse_radius_px(
+                node.styles.get("borderRadius"), shorter_side_px=min(node.width, node.height)
+            )
+        )
+        text = _text_body(node)
+        if text is not None and fill is None and line is None:
+            padding = px_to_emu(4)
+            box = box.model_copy(update={"x": box.x - padding, "width": box.width + padding * 2})
         shapes.append(
             ShapeNode(
                 box=box,
@@ -324,7 +344,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 shadow=parse_shadow(node.styles.get("boxShadow")),
                 corner_radius_emu=corner,
                 opacity=_opacity(node.styles),
-                text=_text_body(node),
+                text=text,
             )
         )
         coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))

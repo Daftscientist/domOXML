@@ -119,7 +119,8 @@ def _text_body(body: TextBody | None) -> str:
     # anchor="t": match HTML block flow (text at the top of the box). Office centres shape
     # text vertically by default, which sits lower than the source.
     return (
-        '<p:txBody><a:bodyPr wrap="square" anchor="t"><a:normAutofit/></a:bodyPr><a:lstStyle/>'
+        '<p:txBody><a:bodyPr wrap="square" anchor="t" lIns="0" rIns="0" tIns="0" bIns="0">'
+        "<a:normAutofit/></a:bodyPr><a:lstStyle/>"
         f"{''.join(_paragraph(paragraph) for paragraph in body.paragraphs)}</p:txBody>"
     )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from domoxml.core.ir import extract_slide
 from domoxml.core.ir.model import Rgba, SolidFill
-from domoxml.core.ir.parse import is_bold, parse_color, parse_length_px
+from domoxml.core.ir.parse import is_bold, parse_color, parse_length_px, parse_radius_px
 from domoxml.core.render.browser import RenderedNode, RenderedSlide
 
 
@@ -24,6 +24,11 @@ def test_parse_length_takes_first_px() -> None:
     assert parse_length_px("8px") == 8.0
     assert parse_length_px("12px 4px 4px 12px") == 12.0
     assert parse_length_px("") == 0.0
+
+
+def test_parse_radius_resolves_percentage_against_shorter_side() -> None:
+    assert parse_radius_px("50%", shorter_side_px=200) == 100
+    assert parse_radius_px("16px", shorter_side_px=200) == 16
 
 
 def test_is_bold() -> None:

@@ -180,12 +180,7 @@ def is_complex_transform(value: str | None) -> bool:
     if match is None:
         return False
     a, b, c, d = (float(match.group(index)) for index in range(1, 5))
-    return not (
-        abs(a - 1.0) <= 1e-3
-        and abs(b) <= 1e-3
-        and abs(c) <= 1e-3
-        and abs(d - 1.0) <= 1e-3
-    )
+    return not (abs(a - 1.0) <= 1e-3 and abs(b) <= 1e-3 and abs(c) <= 1e-3 and abs(d - 1.0) <= 1e-3)
 
 
 def _needs_isolated_raster(node: RenderedNode) -> bool:

@@ -33,12 +33,17 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "ruff>=0.15.15",
-  "pyright>=1.1.409",
-  "pytest>=9.0",
-  "pytest-asyncio>=1.4",
+  # Pinned exactly so local gates produce identical pass/fail to CI (ruff/pyright
+  # output changes between versions). Bump these and CI together, never apart.
+  "ruff==0.15.15",
+  "pyright==1.1.409",
+  "pytest==9.0.3",
+  "pytest-asyncio==1.4.0",
   "python-pptx>=1.0",  # test-only: validate our hand-rolled .pptx opens correctly
 ]
+# Optional, bring-your-own-credentials Microsoft Graph fidelity backend (real PowerPoint
+# render). Never required for core conversion; no credentials ship with the project.
+graph = ["msal>=1.31"]
 docs = ["mkdocs-material>=9.7"]
 
 [project.urls]
@@ -59,7 +64,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["domoxml", "tests"]
+include = ["domoxml", "tests", "scripts"]
 venvPath = "."
 venv = ".venv"
 

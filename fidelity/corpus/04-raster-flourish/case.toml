@@ -1,0 +1,5 @@
+title = "CSS blur filter — rasterised behind editable text"
+size = "16:9"
+# Lower floor: the blurred flourish is rasterised, and LibreOffice rasterises blur slightly
+# differently than Chromium. The editable text on top is what must stay faithful.
+min_similarity = 0.8

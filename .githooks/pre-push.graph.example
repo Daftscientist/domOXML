@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Optional helper snippet: run Graph fidelity checks on push.
+#
+# This is intentionally OFF by default (slow, networked, BYO creds).
+# If you want it locally, copy the lines below into .githooks/pre-push
+# after the fast CI gate block.
+
+if [ "${DOMOXML_GRAPH_ON_PUSH:-0}" = "1" ]; then
+  echo "pre-push: fidelity_check (graph backend)"
+  run python scripts/fidelity_check.py --backend graph --heatmap
+fi

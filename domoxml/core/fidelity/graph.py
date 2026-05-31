@@ -173,6 +173,15 @@ def _graph_pdf_bytes(item_id: str, token: str, *, timeout: float) -> bytes:
 
     class _NoRedirect(urllib.request.HTTPErrorProcessor):
         def http_response(self, request: Any, response: HTTPResponse) -> HTTPResponse:
+            code = response.status
+            if code >= 400:
+                raise urllib.error.HTTPError(
+                    request.full_url,
+                    code,
+                    response.reason,
+                    response.headers,
+                    response,
+                )
             return response
 
         https_response = http_response
@@ -185,7 +194,7 @@ def _graph_pdf_bytes(item_id: str, token: str, *, timeout: float) -> bytes:
         headers={"Authorization": f"Bearer {token}"},
     )
     response = opener.open(request, timeout=timeout)
-    if response.getcode() in {301, 302, 303, 307, 308}:
+    if response.status in {301, 302, 303, 307, 308}:
         location = response.headers.get("Location")
         if not location:
             raise RuntimeError("Graph PDF redirect missing Location header")

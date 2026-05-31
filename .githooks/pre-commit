@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# domOXML pre-commit — advisory CodeRabbit review of staged changes.
+# Advisory: surfaces findings, never blocks. Skip with: git commit --no-verify
+set -uo pipefail
+
+CR="$HOME/.local/bin/coderabbit"
+[ -x "$CR" ] || CR="$(command -v coderabbit 2>/dev/null || true)"
+[ -n "${CR:-}" ] || { echo "[pre-commit] coderabbit CLI not found — skipping review." >&2; exit 0; }
+
+echo "── CodeRabbit review · staged changes (advisory; Ctrl-C to abort, --no-verify to skip) ──" >&2
+"$CR" review --type uncommitted --plain || echo "[pre-commit] review did not complete — continuing." >&2
+exit 0

@@ -1,0 +1,109 @@
+name: Fidelity
+
+on:
+  pull_request:
+    paths:
+      - "domoxml/core/ir/**"
+      - "domoxml/core/drawingml/**"
+      - "domoxml/slides/**"
+      - "domoxml/core/render/**"
+      - "domoxml/core/fidelity/**"
+      - "fidelity/corpus/**"
+      - "scripts/fidelity_check.py"
+      - ".github/workflows/fidelity.yml"
+  workflow_dispatch:
+
+jobs:
+  fidelity:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice-impress poppler-utils
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.12"
+      - name: Install (venv + dev extras)
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+      - name: Install Chromium
+        run: uv run playwright install --with-deps chromium
+      - name: Run fidelity checker (LibreOffice)
+        id: fidelity
+        run: uv run python scripts/fidelity_check.py --backend libreoffice --heatmap
+      - name: Upload fidelity artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fidelity-report-${{ github.run_id }}
+          path: out/fidelity/**
+      - name: Build fidelity summary
+        if: always()
+        id: summary
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary_json = Path("out/fidelity/summary.json")
+          lines = ["## Fidelity (LibreOffice)", ""]
+          rows = []
+          failures = 0
+          if summary_json.exists():
+              data = json.loads(summary_json.read_text())
+              for score in data.get("scores", []):
+                  if score.get("backend") != "libreoffice":
+                      continue
+                  passed = bool(score.get("passed"))
+                  failures += 0 if passed else 1
+                  rows.append(
+                      "| {case} | {slide} | {sim:.3f} | {thr:.2f} | {mark} |".format(
+                          case=score.get("case", "?"),
+                          slide=score.get("slide", "?"),
+                          sim=float(score.get("similarity", 0.0)),
+                          thr=float(score.get("threshold", 0.0)),
+                          mark="PASS" if passed else "LOW",
+                      )
+                  )
+          if rows:
+              lines.extend(
+                  [
+                      "| Case | Slide | Similarity | Threshold | Status |",
+                      "| --- | --- | --- | --- | --- |",
+                      *rows,
+                      "",
+                  ]
+              )
+          else:
+              lines.append("No fidelity scores were produced.")
+              lines.append("")
+
+          lines.append(f"- Artifact + logs: {os.environ['RUN_URL']}")
+          lines.append(f"- Slides below threshold: {failures}")
+
+          text = "\n".join(lines)
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(text)
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as fh:
+              fh.write("comment<<EOF\n")
+              fh.write(text)
+              fh.write("\nEOF\n")
+          PY
+      - name: Sticky PR comment
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2.9.4
+        with:
+          header: fidelity-report
+          message: ${{ steps.summary.outputs.comment }}

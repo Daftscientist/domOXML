@@ -36,10 +36,10 @@ class CorpusCase:
 def _read_slides(case_dir: Path) -> tuple[str, ...]:
     slides_dir = case_dir / "slides"
     if slides_dir.is_dir():
-        return tuple(p.read_text() for p in sorted(slides_dir.glob("*.html")))
+        return tuple(p.read_text(encoding="utf-8") for p in sorted(slides_dir.glob("*.html")))
     single = case_dir / "slide.html"
     if single.is_file():
-        return (single.read_text(),)
+        return (single.read_text(encoding="utf-8"),)
     return ()
 
 
@@ -47,7 +47,8 @@ def _read_meta(case_dir: Path) -> dict[str, object]:
     meta_file = case_dir / "case.toml"
     if not meta_file.is_file():
         return {}
-    return tomllib.loads(meta_file.read_text())
+    with meta_file.open("rb") as fh:
+        return tomllib.load(fh)
 
 
 def load_corpus(root: Path) -> list[CorpusCase]:

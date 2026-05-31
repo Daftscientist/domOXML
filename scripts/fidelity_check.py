@@ -86,6 +86,9 @@ def _score_backend(
     heatmap: bool,
 ) -> list[SlideScore]:
     candidates = _candidate_pngs(backend, pptx)
+    source_count = len(source_pngs)
+    candidate_count = len(candidates)
+    overlap = min(source_count, candidate_count)
     if len(candidates) != len(source_pngs):
         print(
             f"  ! {backend}: page count mismatch "
@@ -109,6 +112,23 @@ def _score_backend(
                 threshold=case.min_similarity,
             )
         )
+    if source_count != candidate_count:
+        for index in range(overlap, max(source_count, candidate_count)):
+            scores.append(
+                SlideScore(
+                    case=case.name,
+                    backend=backend,
+                    slide=index,
+                    similarity=0.0,
+                    perceptible_ratio=1.0,
+                    threshold=case.min_similarity,
+                )
+            )
+            print(
+                f"    {backend} slide{index}: missing page in "
+                f"{'candidate' if index >= candidate_count else 'source'} render [LOW]",
+                file=sys.stderr,
+            )
     return scores
 
 

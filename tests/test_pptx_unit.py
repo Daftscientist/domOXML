@@ -9,8 +9,11 @@ import pytest
 from pptx import Presentation as PptxRead  # test-only validator
 
 from domoxml.core.ir.model import (
+    AutoNumberBullet,
     Box,
+    CharBullet,
     Hyperlink,
+    LineSpacing,
     Rgba,
     ShapeNode,
     SlideIR,
@@ -190,3 +193,121 @@ def test_slide_jump_hyperlink_emits_jump_action_and_internal_slide_rel() -> None
     assert 'action="ppaction://hlinksldjump"' in xml
     assert 'Target="slide2.xml"' in rels
     assert "/relationships/slide" in rels
+
+
+# --------------------------------------------------------------------------- paragraph pPr tests
+
+
+def _para_ir(paragraph: TextParagraph) -> SlideIR:
+    """Helper: wrap a single paragraph in a minimal SlideIR."""
+    return SlideIR(
+        width=12_192_000,
+        height=6_858_000,
+        shapes=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=3_000_000, height=1_000_000),
+                text=TextBody(paragraphs=(paragraph,)),
+            ),
+        ),
+    )
+
+
+def test_ppr_line_spacing_percent_emits_spc_pct() -> None:
+    """line_spacing(percent=1.5) → <a:lnSpc><a:spcPct val="150000"/></a:lnSpc>."""
+    para = TextParagraph(
+        runs=(TextRun(text="x", font_family="Arial", size_pt=12),),
+        line_spacing=LineSpacing(percent=1.5),
+    )
+    xml = _slide_xml(build_pptx([_para_ir(para)], faces=[]))
+    assert '<a:lnSpc><a:spcPct val="150000"/></a:lnSpc>' in xml
+
+
+def test_ppr_line_spacing_points_emits_spc_pts() -> None:
+    """line_spacing(points=18.0) → <a:lnSpc><a:spcPts val="1800"/></a:lnSpc>."""
+    para = TextParagraph(
+        runs=(TextRun(text="x", font_family="Arial", size_pt=12),),
+        line_spacing=LineSpacing(points=18.0),
+    )
+    xml = _slide_xml(build_pptx([_para_ir(para)], faces=[]))
+    assert '<a:lnSpc><a:spcPts val="1800"/></a:lnSpc>' in xml
+
+
+def test_ppr_space_before_after_emits_spc_bef_aft() -> None:
+    """space_before_pt=9 → <a:spcBef><a:spcPts val="900"/>; space_after_pt=18 → val="1800"."""
+    para = TextParagraph(
+        runs=(TextRun(text="x", font_family="Arial", size_pt=12),),
+        space_before_pt=9.0,
+        space_after_pt=18.0,
+    )
+    xml = _slide_xml(build_pptx([_para_ir(para)], faces=[]))
+    assert '<a:spcBef><a:spcPts val="900"/></a:spcBef>' in xml
+    assert '<a:spcAft><a:spcPts val="1800"/></a:spcAft>' in xml
+
+
+def test_ppr_mar_l_and_indent_emit_emu_attrs() -> None:
+    """left_margin_pt=36 → marL="457200"; indent_pt=18 → indent="228600" (1pt=12700 EMU)."""
+    para = TextParagraph(
+        runs=(TextRun(text="x", font_family="Arial", size_pt=12),),
+        left_margin_pt=36.0,  # 36 * 12700 = 457200
+        indent_pt=18.0,  # 18 * 12700 = 228600
+    )
+    xml = _slide_xml(build_pptx([_para_ir(para)], faces=[]))
+    assert 'marL="457200"' in xml
+    assert 'indent="228600"' in xml
+
+
+def test_ppr_bu_char_emits_buchar_element() -> None:
+    """CharBullet(char='•') → <a:buChar char="•"/>."""
+    para = TextParagraph(
+        runs=(TextRun(text="item", font_family="Arial", size_pt=12),),
+        bullet=CharBullet(char="•"),
+    )
+    xml = _slide_xml(build_pptx([_para_ir(para)], faces=[]))
+    assert '<a:buChar char="&#x2022;"/>' in xml or '<a:buChar char="•"/>' in xml
+
+
+def test_ppr_bu_autonum_emits_buautonum_element() -> None:
+    """AutoNumberBullet(scheme='arabicPeriod') → <a:buAutoNum type="arabicPeriod" startAt="1"/>."""
+    para = TextParagraph(
+        runs=(TextRun(text="item", font_family="Arial", size_pt=12),),
+        bullet=AutoNumberBullet(scheme="arabicPeriod"),
+    )
+    xml = _slide_xml(build_pptx([_para_ir(para)], faces=[]))
+    assert 'type="arabicPeriod"' in xml
+    assert "a:buAutoNum" in xml
+
+
+def test_ppr_child_order_lnspc_before_spcbef_before_buchar() -> None:
+    """ECMA-376 child order: lnSpc < spcBef < spcAft < buChar within a:pPr."""
+    para = TextParagraph(
+        runs=(TextRun(text="item", font_family="Arial", size_pt=12),),
+        line_spacing=LineSpacing(percent=1.2),
+        space_before_pt=6.0,
+        space_after_pt=3.0,
+        bullet=CharBullet(char="•"),
+    )
+    xml = _slide_xml(build_pptx([_para_ir(para)], faces=[]))
+    lnspc_pos = xml.find("<a:lnSpc>")
+    spcbef_pos = xml.find("<a:spcBef>")
+    spcaft_pos = xml.find("<a:spcAft>")
+    buchar_pos = xml.find("<a:buChar")
+    assert lnspc_pos < spcbef_pos < spcaft_pos < buchar_pos, (
+        "ECMA child order violated: lnSpc must precede spcBef, spcAft, then buChar"
+    )
+
+
+def test_ppr_lvl_attr_emitted_for_nonzero_level() -> None:
+    """level=2 → lvl="2" in a:pPr; level=0 → no lvl attr."""
+    para_lvl2 = TextParagraph(
+        runs=(TextRun(text="deep", font_family="Arial", size_pt=12),),
+        level=2,
+        bullet=CharBullet(char="•"),
+    )
+    para_lvl0 = TextParagraph(
+        runs=(TextRun(text="top", font_family="Arial", size_pt=12),),
+        level=0,
+    )
+    xml_lvl2 = _slide_xml(build_pptx([_para_ir(para_lvl2)], faces=[]))
+    xml_lvl0 = _slide_xml(build_pptx([_para_ir(para_lvl0)], faces=[]))
+    assert 'lvl="2"' in xml_lvl2
+    assert 'lvl="0"' not in xml_lvl0

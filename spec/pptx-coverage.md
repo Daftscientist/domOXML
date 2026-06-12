@@ -86,8 +86,8 @@ CSS source = what authoring produces it on the forward path.
 | Run: hyperlink | `a:hlinkClick` (+ rel) | `<a href>` | ✅ | ✅ | external rel; `#slide-N` → in-deck slide jump |
 | Paragraph align | `a:pPr algn` | `text-align` | ✅ | ✅ | start/end normalised |
 | Vertical anchor | `a:bodyPr anchor` | (block flow) | 🟡 | ⬜ | top default; flex/align mapping pending |
-| Line spacing / indent | `a:lnSpc`, `marL` | `line-height`, indent | ⬜ | ⬜ | |
-| Bullets / numbering | `a:buChar`/`a:buAutoNum` | `<ul>`/`<ol>` | ⬜ | ⬜ | |
+| Line spacing / indent | `a:lnSpc`, `marL` | `line-height`, indent | ✅ | ✅ | percent (spcPct) and points (spcPts); marL/indent in EMU |
+| Bullets / numbering | `a:buChar`/`a:buAutoNum` | `<ul>`/`<ol>` | ✅ | ✅ | char bullets (disc/circle/square) + autonumber (arabic/alpha/roman); nested levels; fwd+rev |
 | Multi-column | `a:bodyPr numCol` | `column-count` | ⬜ | ⬜ | |
 | Autofit | `a:normAutofit`/`a:spAutoFit` | (overflow) | 🟡 | ⬜ | normAutofit emitted |
 | Text warp (WordArt) | `a:prstTxWarp` | — | ⬜ | ⬜ | |

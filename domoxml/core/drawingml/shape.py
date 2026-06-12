@@ -7,6 +7,7 @@ from collections.abc import Callable
 from xml.sax.saxutils import escape
 
 from domoxml.core.ir.model import (
+    CharBullet,
     Fill,
     GradientFill,
     Hyperlink,
@@ -20,6 +21,7 @@ from domoxml.core.ir.model import (
     TextParagraph,
     TextRun,
 )
+from domoxml.core.units import pt_to_emu
 
 # A resolver the package writer supplies: given a run hyperlink, return its slide-relationship id
 # (the writer owns the rels), or ``None`` when no rel was registered.
@@ -167,7 +169,53 @@ def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:
 def _paragraph(paragraph: TextParagraph, hyperlink_rid: HyperlinkRid) -> str:
     align = _ALIGN_TO_OOXML.get(paragraph.align, "l")
     runs = "".join(_run(run, hyperlink_rid) for run in paragraph.runs)
-    return f'<a:p><a:pPr algn="{align}"/>{runs}</a:p>'
+
+    # Build a:pPr attributes.  Mandatory: algn.
+    # marL and indent are in EMUs (ECMA-376 §21.1.2.2.6 ST_TextMargin → EMU).
+    ppr_attrs = f' algn="{align}"'
+    if paragraph.left_margin_pt:
+        ppr_attrs += f' marL="{pt_to_emu(paragraph.left_margin_pt)}"'
+    if paragraph.indent_pt:
+        ppr_attrs += f' indent="{pt_to_emu(paragraph.indent_pt)}"'
+    if paragraph.level:
+        ppr_attrs += f' lvl="{paragraph.level}"'
+
+    # Build a:pPr children in ECMA order:
+    # a:lnSpc, a:spcBef, a:spcAft, [bullet color/size/font], a:buNone/a:buChar/a:buAutoNum
+    ppr_children = ""
+
+    # a:lnSpc
+    if paragraph.line_spacing is not None:
+        ls = paragraph.line_spacing
+        if ls.percent is not None:
+            val = round(ls.percent * 100_000)
+            ppr_children += f'<a:lnSpc><a:spcPct val="{val}"/></a:lnSpc>'
+        elif ls.points is not None:
+            val = round(ls.points * 100)
+            ppr_children += f'<a:lnSpc><a:spcPts val="{val}"/></a:lnSpc>'
+
+    # a:spcBef
+    if paragraph.space_before_pt is not None:
+        val = round(paragraph.space_before_pt * 100)
+        ppr_children += f'<a:spcBef><a:spcPts val="{val}"/></a:spcBef>'
+
+    # a:spcAft
+    if paragraph.space_after_pt is not None:
+        val = round(paragraph.space_after_pt * 100)
+        ppr_children += f'<a:spcAft><a:spcPts val="{val}"/></a:spcAft>'
+
+    # bullet: a:buChar or a:buAutoNum
+    if paragraph.bullet is not None:
+        if isinstance(paragraph.bullet, CharBullet):
+            char = _attr(paragraph.bullet.char)
+            ppr_children += f'<a:buChar char="{char}"/>'
+        else:
+            scheme = _attr(paragraph.bullet.scheme)
+            start = paragraph.bullet.start_at
+            ppr_children += f'<a:buAutoNum type="{scheme}" startAt="{start}"/>'
+
+    ppr = f"<a:pPr{ppr_attrs}>{ppr_children}</a:pPr>" if ppr_children else f"<a:pPr{ppr_attrs}/>"
+    return f"<a:p>{ppr}{runs}</a:p>"
 
 
 def _text_body(body: TextBody | None, hyperlink_rid: HyperlinkRid) -> str:

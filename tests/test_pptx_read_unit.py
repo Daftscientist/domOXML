@@ -13,7 +13,9 @@ from pptx.util import Inches
 
 from domoxml import Presentation, pptx_to_html
 from domoxml.core.ir.model import (
+    AutoNumberBullet,
     Box,
+    CharBullet,
     GradientFill,
     GradientStop,
     Line,
@@ -328,3 +330,137 @@ def test_reverse_reads_slide_jump_hyperlink_into_index() -> None:
     assert slide.shapes[0].text is not None
     link = slide.shapes[0].text.paragraphs[0].runs[0].hyperlink
     assert link is not None and link.slide_index == 1  # slide2.xml is the 2nd slide (index 1)
+
+
+# --------------------------------------------------------------------------- paragraph pPr reverse
+
+
+def _para_deck(para_xml: str) -> bytes:
+    """A minimal one-slide deck whose only shape has one paragraph ``para_xml``."""
+    sp = (
+        f'<p:sp xmlns:p="{_P}" xmlns:a="{_A}" xmlns:r="{_R}"><p:nvSpPr>'
+        '<p:cNvPr id="2" name="s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="3000000" cy="1000000"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
+        f"<p:txBody><a:bodyPr/><a:lstStyle/>{para_xml}</p:txBody></p:sp>"
+    )
+    parts: dict[str, bytes | str] = {
+        "[Content_Types].xml": (
+            '<?xml version="1.0"?><Types '
+            'xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" '
+            'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/></Types>'
+        ),
+        "_rels/.rels": (
+            f'<Relationships xmlns="{_PKG_REL}"><Relationship Id="rId1" '
+            f'Type="{_R}/officeDocument" Target="ppt/presentation.xml"/></Relationships>'
+        ),
+        "ppt/presentation.xml": (
+            f'<p:presentation xmlns:p="{_P}" xmlns:r="{_R}"><p:sldIdLst>'
+            '<p:sldId id="256" r:id="rId1"/></p:sldIdLst>'
+            '<p:sldSz cx="12192000" cy="6858000"/></p:presentation>'
+        ),
+        "ppt/_rels/presentation.xml.rels": (
+            f'<Relationships xmlns="{_PKG_REL}">'
+            f'<Relationship Id="rId1" Type="{_R}/slide" Target="slides/slide1.xml"/>'
+            "</Relationships>"
+        ),
+        "ppt/slides/slide1.xml": (
+            f'<p:sld xmlns:p="{_P}" xmlns:a="{_A}"><p:cSld><p:spTree>'
+            '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>'
+            f"<p:grpSpPr/>{sp}</p:spTree></p:cSld></p:sld>"
+        ),
+        "ppt/slides/_rels/slide1.xml.rels": f'<Relationships xmlns="{_PKG_REL}"/>',
+    }
+    return write_package(parts)
+
+
+def _first_para(pptx: bytes) -> TextParagraph:
+    [slide] = read_pptx(pptx)
+    assert slide.shapes[0].text is not None
+    return slide.shapes[0].text.paragraphs[0]
+
+
+def test_reverse_reads_lnspc_pct() -> None:
+    """<a:lnSpc><a:spcPct val="150000"/> → LineSpacing(percent=1.5)."""
+    para_xml = (
+        f'<a:p xmlns:a="{_A}"><a:pPr algn="l">'
+        '<a:lnSpc><a:spcPct val="150000"/></a:lnSpc>'
+        '</a:pPr><a:r><a:rPr lang="en-US" sz="1200"/><a:t>x</a:t></a:r></a:p>'
+    )
+    para = _first_para(_para_deck(para_xml))
+    assert para.line_spacing is not None
+    assert para.line_spacing.percent == 1.5
+
+
+def test_reverse_reads_lnspc_pts() -> None:
+    """<a:lnSpc><a:spcPts val="1800"/> → LineSpacing(points=18.0)."""
+    para_xml = (
+        f'<a:p xmlns:a="{_A}"><a:pPr algn="l">'
+        '<a:lnSpc><a:spcPts val="1800"/></a:lnSpc>'
+        '</a:pPr><a:r><a:rPr lang="en-US" sz="1200"/><a:t>x</a:t></a:r></a:p>'
+    )
+    para = _first_para(_para_deck(para_xml))
+    assert para.line_spacing is not None
+    assert para.line_spacing.points == 18.0
+
+
+def test_reverse_reads_spc_bef_aft() -> None:
+    """<a:spcBef><a:spcPts val="900"/> → space_before_pt=9.0, etc."""
+    para_xml = (
+        f'<a:p xmlns:a="{_A}"><a:pPr algn="l">'
+        '<a:spcBef><a:spcPts val="900"/></a:spcBef>'
+        '<a:spcAft><a:spcPts val="1800"/></a:spcAft>'
+        '</a:pPr><a:r><a:rPr lang="en-US" sz="1200"/><a:t>x</a:t></a:r></a:p>'
+    )
+    para = _first_para(_para_deck(para_xml))
+    assert para.space_before_pt == 9.0
+    assert para.space_after_pt == 18.0
+
+
+def test_reverse_reads_mar_l_and_indent() -> None:
+    """marL="457200" → left_margin_pt=36.0; indent="228600" → indent_pt=18.0."""
+    para_xml = (
+        f'<a:p xmlns:a="{_A}"><a:pPr algn="l" marL="457200" indent="228600"/>'
+        '<a:r><a:rPr lang="en-US" sz="1200"/><a:t>x</a:t></a:r></a:p>'
+    )
+    para = _first_para(_para_deck(para_xml))
+    assert abs(para.left_margin_pt - 36.0) < 0.1  # 457200 / 12700 = 36
+    assert abs(para.indent_pt - 18.0) < 0.1  # 228600 / 12700 = 18
+
+
+def test_reverse_reads_bu_char() -> None:
+    """<a:buChar char="•"/> → CharBullet(char="•")."""
+    para_xml = (
+        f'<a:p xmlns:a="{_A}"><a:pPr algn="l">'
+        '<a:buChar char="&#x2022;"/>'
+        '</a:pPr><a:r><a:rPr lang="en-US" sz="1200"/><a:t>item</a:t></a:r></a:p>'
+    )
+    para = _first_para(_para_deck(para_xml))
+    assert isinstance(para.bullet, CharBullet)
+    assert para.bullet.char == "•"
+
+
+def test_reverse_reads_bu_autonum() -> None:
+    """<a:buAutoNum type="arabicPeriod" startAt="1"/> → AutoNumberBullet(...)."""
+    para_xml = (
+        f'<a:p xmlns:a="{_A}"><a:pPr algn="l">'
+        '<a:buAutoNum type="arabicPeriod" startAt="1"/>'
+        '</a:pPr><a:r><a:rPr lang="en-US" sz="1200"/><a:t>item</a:t></a:r></a:p>'
+    )
+    para = _first_para(_para_deck(para_xml))
+    assert isinstance(para.bullet, AutoNumberBullet)
+    assert para.bullet.scheme == "arabicPeriod"
+    assert para.bullet.start_at == 1
+
+
+def test_reverse_reads_nested_level() -> None:
+    """lvl="2" → level=2."""
+    para_xml = (
+        f'<a:p xmlns:a="{_A}"><a:pPr algn="l" lvl="2">'
+        '<a:buChar char="&#x25AA;"/>'
+        '</a:pPr><a:r><a:rPr lang="en-US" sz="1200"/><a:t>deep</a:t></a:r></a:p>'
+    )
+    para = _first_para(_para_deck(para_xml))
+    assert para.level == 2

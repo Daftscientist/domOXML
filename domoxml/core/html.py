@@ -8,6 +8,8 @@ from html import escape
 
 from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_css
 from domoxml.core.ir.model import (
+    AutoNumberBullet,
+    CharBullet,
     GradientFill,
     Node,
     PatternFill,
@@ -17,8 +19,10 @@ from domoxml.core.ir.model import (
     SlideIR,
     SolidFill,
     TextBody,
+    TextParagraph,
     TextRun,
 )
+from domoxml.core.ir.parse import autonum_to_css_list_style, bu_char_to_css_list_style
 from domoxml.core.units import emu_to_px
 from domoxml.types import (
     ConversionWarning,
@@ -167,15 +171,110 @@ def _wrap_hyperlink(inner: str, run: TextRun) -> str:
     return f'<a href="{escape(href, quote=True)}">{inner}</a>'
 
 
+def _para_spacing_style(paragraph: TextParagraph) -> str:
+    """Return inline CSS for paragraph-level spacing/indent (no trailing semicolon)."""
+    styles: list[str] = []
+    if paragraph.line_spacing is not None:
+        ls = paragraph.line_spacing
+        if ls.percent is not None:
+            styles.append(f"line-height:{_number(ls.percent)}")
+        elif ls.points is not None:
+            styles.append(f"line-height:{_number(ls.points)}pt")
+    if paragraph.space_before_pt:
+        styles.append(f"margin-top:{_number(paragraph.space_before_pt)}pt")
+    if paragraph.space_after_pt:
+        styles.append(f"margin-bottom:{_number(paragraph.space_after_pt)}pt")
+    if paragraph.indent_pt:
+        styles.append(f"text-indent:{_number(paragraph.indent_pt)}pt")
+    if paragraph.left_margin_pt:
+        styles.append(f"padding-left:{_number(paragraph.left_margin_pt)}pt")
+    return ";".join(styles)
+
+
+def _bullet_list_style(paragraph: TextParagraph) -> str:
+    """Return the CSS list-style-type value for a bulleted paragraph."""
+    bullet = paragraph.bullet
+    if isinstance(bullet, CharBullet):
+        css = bu_char_to_css_list_style(bullet.char)
+        # For known CSS types return them directly; unknowns need a content workaround
+        if css in {"disc", "circle", "square"}:
+            return css
+        # Custom char: use content via CSS — we approximate with a data URI style trick.
+        # Return it as-is; the <li> will get list-style-type:none + ::marker trick.
+        return css
+    if isinstance(bullet, AutoNumberBullet):
+        return autonum_to_css_list_style(bullet.scheme)
+    return "disc"
+
+
 def _text_html(body: TextBody | None) -> str:
+    """Serialize text body to HTML. Consecutive bulleted paragraphs at the same level
+    become nested ``<ul>``/``<ol>`` elements; plain paragraphs become ``<div>``."""
     if body is None:
         return ""
-    paragraphs = "".join(
-        f'<div class="domoxml-text" style="text-align:{paragraph.align}">'
-        f"{''.join(_run_html(run) for run in paragraph.runs)}</div>"
-        for paragraph in body.paragraphs
-    )
-    return paragraphs
+
+    # We process paragraphs in order, maintaining a list-context stack.
+    # Stack entries: (list_tag, level) — "ul" or "ol", nesting depth.
+    result: list[str] = []
+    # (list_tag, level) → open list tags we need to close
+    open_lists: list[tuple[str, int]] = []  # stack of (tag, level)
+
+    def _close_lists_to_level(target_level: int) -> None:
+        """Close all open lists above target_level."""
+        while open_lists and open_lists[-1][1] > target_level:
+            tag, _ = open_lists.pop()
+            result.append(f"</{tag}>")
+
+    def _close_all_lists() -> None:
+        while open_lists:
+            tag, _ = open_lists.pop()
+            result.append(f"</{tag}>")
+
+    for paragraph in body.paragraphs:
+        bullet = paragraph.bullet
+        if bullet is not None:
+            # Determine list tag: AutoNumberBullet → ol, CharBullet → ul.
+            list_tag = "ol" if isinstance(bullet, AutoNumberBullet) else "ul"
+            target_level = paragraph.level + 1  # 1-based for stack comparisons
+
+            # Close lists that are deeper than current level.
+            _close_lists_to_level(target_level)
+
+            # Check whether we need to open a new list at this level.
+            if not open_lists or open_lists[-1][1] < target_level:
+                # Need to open a new list.
+                list_style = _bullet_list_style(paragraph)
+                start_attr = ""
+                if isinstance(bullet, AutoNumberBullet) and bullet.start_at != 1:
+                    start_attr = f' start="{bullet.start_at}"'
+                result.append(
+                    f'<{list_tag} style="list-style-type:{escape(list_style, quote=True)}"'
+                    f"{start_attr}>"
+                )
+                open_lists.append((list_tag, target_level))
+
+            # Emit the <li>
+            spacing_style = _para_spacing_style(paragraph)
+            li_style = f"text-align:{paragraph.align}"
+            if spacing_style:
+                li_style += ";" + spacing_style
+            runs_html = "".join(_run_html(run) for run in paragraph.runs)
+            result.append(f'<li style="{escape(li_style, quote=True)}">{runs_html}</li>')
+        else:
+            # Plain paragraph — close all open lists first.
+            _close_all_lists()
+            spacing_style = _para_spacing_style(paragraph)
+            div_style = f"text-align:{paragraph.align}"
+            if spacing_style:
+                div_style += ";" + spacing_style
+            runs_html = "".join(_run_html(run) for run in paragraph.runs)
+            result.append(
+                f'<div class="domoxml-text" style="{escape(div_style, quote=True)}">'
+                f"{runs_html}</div>"
+            )
+
+    _close_all_lists()
+    return "".join(result)
 
 
 def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[ConversionWarning]) -> str:

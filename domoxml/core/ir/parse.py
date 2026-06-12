@@ -268,3 +268,49 @@ _KEYWORD_ANGLE = {
     "to bottom left": 225.0,
     "to top left": 315.0,
 }
+
+
+# --------------------------------------------------------------------------- clip-path polygon
+
+
+_POLYGON_RE = re.compile(r"polygon\s*\(([^)]+)\)", re.IGNORECASE)
+_COORD_SEP_RE = re.compile(r",\s*")
+
+
+def parse_polygon(
+    clip_path: str | None, *, width_px: float, height_px: float
+) -> list[tuple[float, float]] | None:
+    """Parse a ``clip-path: polygon(...)`` into absolute pixel coordinates.
+
+    Each vertex is ``(x_px, y_px)``.  Returns ``None`` when the clip-path is absent, is not a
+    polygon, or contains vertices we cannot convert to absolute px (e.g. ``calc(...)``).
+
+    Only ``px`` and ``%`` length values are supported — they cover the full authoring surface
+    for the forward path.
+    """
+    if not clip_path or clip_path.strip().lower() in {"none", ""}:
+        return None
+    match = _POLYGON_RE.search(clip_path)
+    if match is None:
+        return None
+    inner = match.group(1)
+    vertices: list[tuple[float, float]] = []
+    for pair in _COORD_SEP_RE.split(inner.strip()):
+        pair = pair.strip()
+        if not pair:
+            continue
+        parts = pair.split()
+        if len(parts) != 2:
+            return None  # unexpected token structure — bail out
+        px_vals: list[float] = []
+        for part, dim in zip(parts, (width_px, height_px), strict=True):
+            px_m = _LENGTH_RE.match(part)
+            pct_m = _PERCENT_RE.match(part)
+            if px_m:
+                px_vals.append(float(px_m.group(1)))
+            elif pct_m:
+                px_vals.append(float(pct_m.group(1)) / 100.0 * dim)
+            else:
+                return None  # calc(...) or other unsupported value
+        vertices.append((px_vals[0], px_vals[1]))
+    return vertices if len(vertices) >= 3 else None

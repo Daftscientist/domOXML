@@ -6,6 +6,7 @@ import hashlib
 import math
 from html import escape
 
+from domoxml.core.drawingml.presets import preset_defaults, preset_vertices
 from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_css
 from domoxml.core.ir.model import (
     GradientFill,
@@ -73,6 +74,16 @@ def _gradient(fill: GradientFill, *, opacity: float) -> str:
     return f"linear-gradient({_number(fill.angle_deg)}deg,{stops})"
 
 
+def _clip_path_css(geom: str) -> str | None:
+    """Return a ``clip-path: polygon(...)`` CSS declaration for a polygon-expressible preset,
+    using default adj values.  Returns ``None`` for rect/roundRect/ellipse and unknown kinds."""
+    verts = preset_vertices(geom, preset_defaults(geom))
+    if verts is None:
+        return None
+    points = ",".join(f"{_number(x * 100)}% {_number(y * 100)}%" for x, y in verts)
+    return f"clip-path:polygon({points})"
+
+
 def _shape_style(
     node: ShapeNode, assets: dict[str, HtmlAsset], warnings: list[ConversionWarning]
 ) -> str:
@@ -108,6 +119,12 @@ def _shape_style(
         styles.append("border-radius:50%")
     elif node.geom == "roundRect" and node.corner_radius_emu > 0:
         styles.append(f"border-radius:{_px(node.corner_radius_emu)}")
+    elif node.geom not in ("rect", "roundRect", "ellipse"):
+        # Polygon-expressible preset: emit clip-path using the shared preset formulas.
+        # adj overrides are not round-tripped on the reverse path (default values are used).
+        clip = _clip_path_css(node.geom)
+        if clip is not None:
+            styles.append(clip)
     if node.shadow is not None:
         radians = math.radians(node.shadow.direction_deg)
         offset_x = emu_to_px(round(math.cos(radians) * node.shadow.distance_emu))

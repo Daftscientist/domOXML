@@ -197,6 +197,17 @@ def test_generic_families_are_never_resolved() -> None:
     assert load_faces([_slide_with_font("monospace")]) == []
 
 
+def test_multi_word_system_family_resolves() -> None:
+    # Regression: token-splitting the fc-match family rejected every multi-word
+    # family ("DejaVu Sans" is not a token of ["dejavu", "sans"]).
+    from domoxml.core.fonts import _resolve_system_file  # pyright: ignore[reportPrivateUsage]
+
+    if _resolve_system_file("DejaVu Sans", bold=False, italic=False) is None:
+        pytest.skip("DejaVu Sans not installed")
+    faces = load_faces([_slide_with_font("DejaVu Sans")])
+    assert [f.family for f in faces] == ["DejaVu Sans"]
+
+
 def test_generic_font_deck_embeds_nothing() -> None:
     data = build_pptx([_slide_with_font("sans-serif")])
     with zipfile.ZipFile(io.BytesIO(data)) as archive:

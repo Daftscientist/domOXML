@@ -7,11 +7,13 @@ import math
 from html import escape
 
 from domoxml.core.drawingml.presets import preset_defaults, preset_vertices
+from domoxml.core.fillcrop import srcrect_to_background
 from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_css
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Blur,
     CharBullet,
+    ColorSpec,
     Glow,
     GradientFill,
     Node,
@@ -27,8 +29,10 @@ from domoxml.core.ir.model import (
     TextBody,
     TextParagraph,
     TextRun,
+    ThemeColorRef,
 )
 from domoxml.core.ir.parse import autonum_to_css_list_style, bu_char_to_css_list_style
+from domoxml.core.ir.pattern import pattern_to_css
 from domoxml.core.units import emu_to_px
 from domoxml.types import (
     ConversionWarning,
@@ -74,6 +78,37 @@ def _asset(fill: PictureFill) -> HtmlAsset:
     return HtmlAsset(path=f"assets/{digest}.{fill.ext}", data=fill.data)
 
 
+# Default theme-scheme RGB used to resolve an unresolved ThemeColorRef to a concrete colour for
+# CSS output (mirrors the reverse reader's _SCHEME_FALLBACK). Pattern fg/bg may carry a theme ref.
+_SCHEME_FALLBACK_HEX = {
+    "dk1": "000000",
+    "lt1": "FFFFFF",
+    "dk2": "44546A",
+    "lt2": "E7E6E6",
+    "accent1": "4472C4",
+    "accent2": "ED7D31",
+    "accent3": "A5A5A5",
+    "accent4": "FFC000",
+    "accent5": "5B9BD5",
+    "accent6": "70AD47",
+    "hlink": "0563C1",
+    "folHlink": "954F72",
+    "bg1": "FFFFFF",
+    "tx1": "000000",
+    "bg2": "E7E6E6",
+    "tx2": "44546A",
+    "phClr": "000000",
+}
+
+
+def _color_spec_hex(color: ColorSpec) -> str:
+    """Resolve a :class:`ColorSpec` to a 6-digit hex string (no ``#``) for CSS output. A theme
+    reference falls back to the default scheme RGB (transforms are not folded in)."""
+    if isinstance(color, ThemeColorRef):
+        return _SCHEME_FALLBACK_HEX.get(color.slot, "000000")
+    return color.hex
+
+
 def _gradient(fill: GradientFill, *, opacity: float) -> str:
     stops = ",".join(
         f"{_rgba(stop.color, opacity=opacity)} {_number(stop.pos * 100)}%" for stop in fill.stops
@@ -109,13 +144,34 @@ def _shape_style(
     elif isinstance(node.fill, PictureFill):
         asset = _asset(node.fill)
         assets.setdefault(asset.path, asset)
-        styles.extend((f"background-image:url(../{asset.path})", "background-size:100% 100%"))
+        styles.append(f"background-image:url(../{asset.path})")
+        if node.fill.crop is not None:
+            # A:srcRect crop -> background-size/position percentages (cover-style window).
+            crop = node.fill.crop
+            size, position = srcrect_to_background((crop.left, crop.top, crop.right, crop.bottom))
+            styles.append(f"background-size:{size}")
+            styles.append(f"background-position:{position}")
+            styles.append("background-repeat:no-repeat")
+        else:
+            styles.append("background-size:100% 100%")
     elif isinstance(node.fill, PatternFill):
-        # TODO(coverage): map a:pattFill to a repeating CSS background. No native CSS source
-        # yet, so warn rather than silently drop the fill (no-silent-drop policy).
-        warnings.append(
-            ConversionWarning(message="pattern fill not yet serialized to HTML; fill dropped")
-        )
+        # Map a:pattFill to CSS. The six round-trip presets become an exact
+        # repeating-linear-gradient; all other presets fall back to an inline SVG tile and warn.
+        fg_hex = _color_spec_hex(node.fill.fg)
+        bg_hex = _color_spec_hex(node.fill.bg)
+        prop, value, approximated = pattern_to_css(fg_hex, bg_hex, node.fill.preset)
+        styles.append(f"{prop}:{value}")
+        if prop == "background-image":
+            styles.append("background-repeat:repeat")
+        if approximated:
+            warnings.append(
+                ConversionWarning(
+                    message=(
+                        f"a:pattFill preset {node.fill.preset!r} approximated as an SVG tile "
+                        "(no exact CSS equivalent)"
+                    )
+                )
+            )
     fill_uses_opacity = isinstance(node.fill, PictureFill | PatternFill) or node.fill is None
     if fill_uses_opacity and node.opacity < 1.0:
         styles.append(f"opacity:{_number(node.opacity)}")

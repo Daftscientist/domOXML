@@ -66,3 +66,15 @@ def crop_png(png: bytes, *, left: float, top: float, width: float, height: float
             return buffer.getvalue()
     except (OSError, ValueError):
         return None
+
+
+def image_dimensions(data: bytes) -> tuple[int, int] | None:
+    """Return the ``(width, height)`` in pixels of an encoded image, or ``None`` if undecodable.
+
+    Used by the forward extractor to compute ``background-size: cover`` crop fractions, which
+    need the source image's intrinsic aspect ratio."""
+    try:
+        with Image.open(BytesIO(data)) as image:
+            return image.size
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return None

@@ -10,6 +10,8 @@ from domoxml.core.ir.model import (
     Arrowhead,
     Blur,
     CharBullet,
+    ColorSpec,
+    ColorTransform,
     Fill,
     Glow,
     GradientFill,
@@ -21,9 +23,11 @@ from domoxml.core.ir.model import (
     ShapeNode,
     SoftEdge,
     SolidFill,
+    SrcRect,
     TextBody,
     TextParagraph,
     TextRun,
+    ThemeColorRef,
 )
 from domoxml.core.units import pt_to_emu
 
@@ -85,11 +89,56 @@ def _gradient_fill(gradient: GradientFill, *, opacity: float) -> str:
     return f'<a:gradFill>{gs_lst}<a:lin ang="{ooxml_angle}" scaled="1"/></a:gradFill>'
 
 
-def _blip_fill(blip_rid: str) -> str:
+def _src_rect_xml(crop: SrcRect | None) -> str:
+    """Emit ``a:srcRect`` (a crop inset in 1000ths-of-a-percent) or ``""`` when there is none."""
+    if crop is None:
+        return ""
+    attrs = ""
+    for name, value in (("l", crop.left), ("t", crop.top), ("r", crop.right), ("b", crop.bottom)):
+        if value > 0:
+            attrs += f' {name}="{round(value * 100000)}"'
+    return f"<a:srcRect{attrs}/>" if attrs else ""
+
+
+def _blip_fill(blip_rid: str, crop: SrcRect | None = None) -> str:
     return (
         f'<a:blipFill><a:blip r:embed="{blip_rid}"/>'
+        f"{_src_rect_xml(crop)}"
         "<a:stretch><a:fillRect/></a:stretch></a:blipFill>"
     )
+
+
+# DrawingML colour-transform child tags (value in 1000ths of a percent).
+_TRANSFORM_TAG = {
+    "lumMod": "lumMod",
+    "lumOff": "lumOff",
+    "shade": "shade",
+    "tint": "tint",
+    "alpha": "alpha",
+    "satMod": "satMod",
+}
+
+
+def _color_transforms(transforms: tuple[ColorTransform, ...]) -> str:
+    return "".join(
+        f'<a:{_TRANSFORM_TAG[t.kind]} val="{round(t.value * 100000)}"/>' for t in transforms
+    )
+
+
+def _color_spec_xml(color: ColorSpec) -> str:
+    """Emit a colour child (``a:srgbClr`` or ``a:schemeClr``) for a resolved or theme colour."""
+    if isinstance(color, ThemeColorRef):
+        inner = _color_transforms(color.transforms)
+        return f'<a:schemeClr val="{color.slot}">{inner}</a:schemeClr>'
+    return _srgb(color)
+
+
+def _pattern_fill(fill: PatternFill) -> str:
+    """Emit ``a:pattFill`` with its preset and foreground/background colours
+    (ECMA-376 §20.1.8.40 / ST_PresetPatternVal)."""
+    fg = f"<a:fgClr>{_color_spec_xml(fill.fg)}</a:fgClr>"
+    bg = f"<a:bgClr>{_color_spec_xml(fill.bg)}</a:bgClr>"
+    return f'<a:pattFill prst="{_attr(fill.preset)}">{fg}{bg}</a:pattFill>'
 
 
 def _fill_xml(fill: Fill | None, *, opacity: float, blip_rid: str | None) -> str:
@@ -100,14 +149,9 @@ def _fill_xml(fill: Fill | None, *, opacity: float, blip_rid: str | None) -> str
     if isinstance(fill, GradientFill):
         return _gradient_fill(fill, opacity=opacity)
     if isinstance(fill, PatternFill):
-        # TODO(coverage): emit a:pattFill. No writer yet, so warn and fall back to no-fill
-        # rather than drop silently (no-silent-drop policy).
-        warnings.warn(
-            "pattern fill has no PresentationML writer yet; emitted as no-fill", stacklevel=2
-        )
-        return "<a:noFill/>"
+        return _pattern_fill(fill)
     # PictureFill: a blip fill if the package writer assigned a media relationship, else nothing.
-    return _blip_fill(blip_rid) if blip_rid is not None else "<a:noFill/>"
+    return _blip_fill(blip_rid, fill.crop) if blip_rid is not None else "<a:noFill/>"
 
 
 def _line_xml(line: Line | None) -> str:

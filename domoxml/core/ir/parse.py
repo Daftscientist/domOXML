@@ -422,3 +422,57 @@ def parse_polygon(
                 return None  # calc(...) or other unsupported value
         vertices.append((px_vals[0], px_vals[1]))
     return vertices if len(vertices) >= 3 else None
+
+
+# --------------------------------------------------------------------------- background size/pos
+
+
+def parse_background_size(value: str | None) -> tuple[str, tuple[float, float] | None]:
+    """Classify a CSS ``background-size`` computed value.
+
+    Returns ``(mode, explicit_px)`` where ``mode`` is ``"cover"``, ``"contain"``, ``"auto"``, or
+    ``"explicit"``. ``explicit_px`` is the ``(width_px, height_px)`` pair for an explicit two-px
+    size, else ``None``. Percentage and single-value sizes fall back to ``"auto"`` (the caller
+    treats them as a plain stretch)."""
+    if not value:
+        return "auto", None
+    token = value.strip().lower()
+    if token == "cover":
+        return "cover", None
+    if token == "contain":
+        return "contain", None
+    lengths = _LENGTH_RE.findall(token)
+    if len(lengths) == 2:
+        return "explicit", (float(lengths[0]), float(lengths[1]))
+    return "auto", None
+
+
+def parse_background_position(value: str | None) -> tuple[float, float]:
+    """Map a CSS ``background-position`` computed value to ``(x, y)`` fractions in ``[0, 1]``.
+
+    Chromium reports positions as percentages or px against the *positioning area*. Percentages
+    map directly to fractions; keyword forms (left/center/right/top/bottom) are handled; px and
+    unparseable values default to the CSS centre (``0.5``)."""
+    if not value:
+        return 0.5, 0.5
+    token = value.strip().lower()
+    keywords = {
+        "left": 0.0,
+        "right": 1.0,
+        "top": 0.0,
+        "bottom": 1.0,
+        "center": 0.5,
+    }
+    parts = token.split()
+    coords: list[float] = []
+    for part in parts[:2]:
+        pct = _PERCENT_RE.match(part)
+        if pct is not None:
+            coords.append(max(0.0, min(1.0, float(pct.group(1)) / 100.0)))
+        elif part in keywords:
+            coords.append(keywords[part])
+        else:
+            coords.append(0.5)
+    while len(coords) < 2:
+        coords.append(0.5)
+    return coords[0], coords[1]

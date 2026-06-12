@@ -50,8 +50,8 @@ CSS source = what authoring produces it on the forward path.
 | Solid fill (+ alpha) | `a:solidFill`/`a:srgbClr`/`a:alpha` | `background-color`, rgba | ✅ | ✅ | opacity folded into alpha |
 | No fill | `a:noFill` | transparent bg | ✅ | ✅ | |
 | Gradient (linear/radial) | `a:gradFill` | `linear/radial-gradient` | ✅ | ✅ | basic single gradient |
-| Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ✅ | shape fill and native `p:pic`; crop pending |
-| Pattern fill | `a:pattFill` | repeating patterns | ⬜ | ⬜ | |
+| Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ✅ | shape fill and native `p:pic`; **shape blipFill crop done** — `background-size:cover` → `a:srcRect` (fwd), `a:srcRect` → `background-size`/`-position` % (rev). `contain`/explicit sizes stretch (no crop) |
+| Pattern fill | `a:pattFill` | `repeating-linear-gradient` | 🟡 | 🟡 | **Fwd**: 2-colour hard-stop `repeating-linear-gradient` at 0/45/90/135deg → 6 presets (`horz`,`vert`,`ltUpDiag`,`wdUpDiag`,`ltDnDiag`,`dkUpDiag`; thin ≤4px→`lt*`, wide→`wd*`/`dk*`). 3+ colours / soft stops / off-axis fall back to raster. **Rev**: those 6 presets round-trip **exactly** to `repeating-linear-gradient`; all other ~48 ECMA presets → inline 8×8 SVG-tile `background-image` approximation + ConversionWarning |
 | Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | 🟡 | basic clrScheme lookup; clrMap/transforms pending |
 
 ## Line / stroke

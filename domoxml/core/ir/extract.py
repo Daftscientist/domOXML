@@ -330,13 +330,14 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if text is not None and fill is None and line is None:
             padding = px_to_emu(4)
             box = box.model_copy(update={"x": box.x - padding, "width": box.width + padding * 2})
+        shadow = parse_shadow(node.styles.get("boxShadow"))
         shapes.append(
             ShapeNode(
                 box=box,
                 geom=_geometry(box, corner),
                 fill=fill,
                 line=line,
-                shadow=parse_shadow(node.styles.get("boxShadow")),
+                effects=(shadow,) if shadow is not None else (),
                 corner_radius_emu=corner,
                 opacity=_opacity(node.styles),
                 text=text,

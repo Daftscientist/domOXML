@@ -284,12 +284,13 @@ def _shape(
             corner = round(int(formula.removeprefix("val ")) / 100_000 * min(box.width, box.height))
         except (TypeError, ValueError):
             corner = 0
+    shadow = _shadow(properties, colors)
     return ShapeNode(
         box=box,
         geom=geom,
         fill=_fill(properties, package, slide_part, colors),
         line=_line(properties, colors),
-        shadow=_shadow(properties, colors),
+        effects=(shadow,) if shadow is not None else (),
         corner_radius_emu=corner,
         text=_text_body(element, colors),
     )

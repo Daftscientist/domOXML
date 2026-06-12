@@ -47,11 +47,13 @@ def _sample_ir() -> SlideIR:
                 geom="roundRect",
                 fill=SolidFill(color=Rgba(r=79, g=70, b=229, a=0.75)),
                 line=Line(color=Rgba(r=1, g=2, b=3), width_emu=19_050, dash="dash"),
-                shadow=Shadow(
-                    color=Rgba(r=0, g=0, b=0, a=0.4),
-                    blur_emu=20_000,
-                    distance_emu=10_000,
-                    direction_deg=90,
+                effects=(
+                    Shadow(
+                        color=Rgba(r=0, g=0, b=0, a=0.4),
+                        blur_emu=20_000,
+                        distance_emu=10_000,
+                        direction_deg=90,
+                    ),
                 ),
                 corner_radius_emu=76_200,
                 text=TextBody(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml import shape_xml
@@ -133,6 +134,14 @@ def _slide(slide: SlideIR, media_start: int) -> tuple[str, str, dict[str, bytes]
     blip_rids: dict[int, str] = {}
     media_index = media_start
     next_rid = 2  # rId1 is the layout
+
+    # Only plain shapes have a PresentationML writer today; the richer slide.nodes
+    # (groups/connectors/tables) warn rather than drop silently (no-silent-drop policy).
+    for node in slide.nodes:
+        warnings.warn(
+            f"{type(node).__name__} has no PresentationML writer yet; node dropped",
+            stacklevel=2,
+        )
 
     for position, node in enumerate(slide.shapes):
         if isinstance(node.fill, PictureFill):

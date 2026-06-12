@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import warnings
 from xml.sax.saxutils import escape
 
 from domoxml.core.ir.model import (
     Fill,
     GradientFill,
     Line,
+    PatternFill,
     Rgba,
     Shadow,
     ShapeNode,
@@ -18,7 +20,15 @@ from domoxml.core.ir.model import (
 )
 
 _ALIGN_TO_OOXML = {"left": "l", "center": "ctr", "right": "r", "justify": "just"}
-_DASH_TO_OOXML = {"solid": "solid", "dash": "dash", "dot": "sysDot"}
+# Maps the IR DashStyle literal onto a:prstDash preset names (ECMA-376 §20.1.10.49).
+_DASH_TO_OOXML = {
+    "solid": "solid",
+    "dash": "dash",
+    "dot": "sysDot",
+    "dashDot": "dashDot",
+    "lgDash": "lgDash",
+    "sysDash": "sysDash",
+}
 
 
 def _attr(value: str) -> str:
@@ -66,6 +76,13 @@ def _fill_xml(fill: Fill | None, *, opacity: float, blip_rid: str | None) -> str
         return _solid_fill(fill.color, opacity=opacity)
     if isinstance(fill, GradientFill):
         return _gradient_fill(fill, opacity=opacity)
+    if isinstance(fill, PatternFill):
+        # TODO(coverage): emit a:pattFill. No writer yet, so warn and fall back to no-fill
+        # rather than drop silently (no-silent-drop policy).
+        warnings.warn(
+            "pattern fill has no PresentationML writer yet; emitted as no-fill", stacklevel=2
+        )
+        return "<a:noFill/>"
     # PictureFill: a blip fill if the package writer assigned a media relationship, else nothing.
     return _blip_fill(blip_rid) if blip_rid is not None else "<a:noFill/>"
 

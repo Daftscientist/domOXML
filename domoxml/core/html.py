@@ -8,6 +8,8 @@ from html import escape
 
 from domoxml.core.ir.model import (
     GradientFill,
+    Node,
+    PatternFill,
     PictureFill,
     Rgba,
     ShapeNode,
@@ -30,7 +32,16 @@ _SHARED_CSS = (
     ".domoxml-shape{position:absolute;box-sizing:border-box}"
     ".domoxml-text{white-space:pre-wrap}"
 )
-_CSS_DASH = {"solid": "solid", "dash": "dashed", "dot": "dotted"}
+# CSS has no distinct rendering for the heavier OOXML dash presets, so they fold onto the
+# nearest CSS border-style (dashed/dotted). The keys cover the whole DashStyle literal.
+_CSS_DASH = {
+    "solid": "solid",
+    "dash": "dashed",
+    "dot": "dotted",
+    "dashDot": "dashed",
+    "lgDash": "dashed",
+    "sysDash": "dashed",
+}
 
 
 def _number(value: float) -> str:
@@ -61,7 +72,9 @@ def _gradient(fill: GradientFill, *, opacity: float) -> str:
     return f"linear-gradient({_number(fill.angle_deg)}deg,{stops})"
 
 
-def _shape_style(node: ShapeNode, assets: dict[str, HtmlAsset]) -> str:
+def _shape_style(
+    node: ShapeNode, assets: dict[str, HtmlAsset], warnings: list[ConversionWarning]
+) -> str:
     styles = [
         f"left:{_px(node.box.x)}",
         f"top:{_px(node.box.y)}",
@@ -76,7 +89,14 @@ def _shape_style(node: ShapeNode, assets: dict[str, HtmlAsset]) -> str:
         asset = _asset(node.fill)
         assets.setdefault(asset.path, asset)
         styles.extend((f"background-image:url(../{asset.path})", "background-size:100% 100%"))
-    if (isinstance(node.fill, PictureFill) or node.fill is None) and node.opacity < 1.0:
+    elif isinstance(node.fill, PatternFill):
+        # TODO(coverage): map a:pattFill to a repeating CSS background. No native CSS source
+        # yet, so warn rather than silently drop the fill (no-silent-drop policy).
+        warnings.append(
+            ConversionWarning(message="pattern fill not yet serialized to HTML; fill dropped")
+        )
+    fill_uses_opacity = isinstance(node.fill, PictureFill | PatternFill) or node.fill is None
+    if fill_uses_opacity and node.opacity < 1.0:
         styles.append(f"opacity:{_number(node.opacity)}")
     if node.line is not None:
         styles.append(
@@ -122,6 +142,19 @@ def _text_html(body: TextBody | None) -> str:
     return paragraphs
 
 
+def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[ConversionWarning]) -> str:
+    """Serialize one slide node. Only :class:`ShapeNode` has an HTML mapping today; groups,
+    connectors, and tables warn and emit nothing rather than drop silently."""
+    if isinstance(node, ShapeNode):
+        style = escape(_shape_style(node, assets, warnings), quote=True)
+        return f'<div class="domoxml-shape" style="{style}">{_text_html(node.text)}</div>'
+    # TODO(coverage): GroupNode/Connector/TableNode have no HTML serializer yet. The extractor
+    # never produces them today; warn (no-silent-drop) when one reaches here.
+    kind = type(node).__name__
+    warnings.append(ConversionWarning(message=f"{kind} not yet serialized to HTML; node dropped"))
+    return ""
+
+
 def serialize_canvas(
     slides: list[SlideIR],
     *,
@@ -131,11 +164,10 @@ def serialize_canvas(
     """Serialize canvas IR to one stable HTML fragment per slide plus shared assets."""
     assets: dict[str, HtmlAsset] = {}
     html_slides: list[HtmlSlide] = []
+    emitted_warnings: list[ConversionWarning] = list(warnings)
     for slide in slides:
         shapes = "".join(
-            f'<div class="domoxml-shape" style="{escape(_shape_style(shape, assets), quote=True)}">'
-            f"{_text_html(shape.text)}</div>"
-            for shape in slide.shapes
+            _node_html(node, assets, emitted_warnings) for node in (*slide.shapes, *slide.nodes)
         )
         width_px = round(emu_to_px(slide.width))
         height_px = round(emu_to_px(slide.height))
@@ -148,6 +180,6 @@ def serialize_canvas(
         slides=tuple(html_slides),
         css=_SHARED_CSS,
         assets=tuple(assets.values()),
-        warnings=warnings,
+        warnings=tuple(emitted_warnings),
         preserved=preserved,
     )

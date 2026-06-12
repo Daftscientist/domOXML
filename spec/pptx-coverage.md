@@ -86,11 +86,11 @@ CSS source = what authoring produces it on the forward path.
 | Run: caps / letter-spacing | `cap`, `spc` | `text-transform`, `letter-spacing` | ✅ | ✅ | raw text + cap attr (not pre-cased); spc in 1/100 pt |
 | Run: hyperlink | `a:hlinkClick` (+ rel) | `<a href>` | ✅ | ✅ | external rel; `#slide-N` → in-deck slide jump |
 | Paragraph align | `a:pPr algn` | `text-align` | ✅ | ✅ | start/end normalised |
-| Vertical anchor | `a:bodyPr anchor` | (block flow) | 🟡 | ⬜ | top default; flex/align mapping pending |
+| Vertical anchor | `a:bodyPr anchor` | (block flow) | ✅ | ✅ | fwd: flex column containers — justify-content/align-items center→anchor="ctr", flex-end→"b", default→"t"; rev: anchor t/ctr/b → display:flex;flex-direction:column;justify-content flex-start/center/flex-end (only emitted when not "t") |
 | Line spacing / indent | `a:lnSpc`, `marL` | `line-height`, indent | ✅ | ✅ | percent (spcPct) and points (spcPts); marL/indent in EMU |
 | Bullets / numbering | `a:buChar`/`a:buAutoNum` | `<ul>`/`<ol>` | ✅ | ✅ | char bullets (disc/circle/square) + autonumber (arabic/alpha/roman); nested levels; fwd+rev |
-| Multi-column | `a:bodyPr numCol` | `column-count` | ⬜ | ⬜ | |
-| Autofit | `a:normAutofit`/`a:spAutoFit` | (overflow) | 🟡 | ⬜ | normAutofit emitted |
+| Multi-column | `a:bodyPr numCol` | `column-count` | ✅ | ✅ | column-count → numCol; column-gap (px→EMU) → spcCol; rev: numCol/spcCol → column-count + column-gap CSS |
+| Autofit | `a:normAutofit`/`a:spAutoFit` | (overflow) | 🟡 | 🟡 | fwd: overflow:hidden + fixed height → normAutofit; white-space:nowrap → spAutoFit; default → normAutofit. rev: spAutoFit/noAutofit carried in IR; autofit != "normal" → data-domoxml-autofit metadata attribute; normAutofit fontScale/lnSpcReduction: not mapped to CSS (no fontScale in IR), emitted as metadata only when present on reverse path |
 | Text warp (WordArt) | `a:prstTxWarp` | — | ⬜ | ⬜ | |
 | **Font embedding** | `p:embeddedFontLst` | `@font-face`/`<link>` | ✅ | ✅ | Fwd: web+system; woff2/OTF→TTF; warns if unembeddable. Rev: ODTTF deobfuscation; OS/2 fsType restricted-license check; `@font-face` + `HtmlAsset` per slot. NB: Office-online PDF service (Graph) 406s on any custom embed — desktop/LibreOffice honour it |
 

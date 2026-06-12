@@ -440,6 +440,43 @@ def _text_run(
     )
 
 
+# Maps DrawingML bodyPr anchor → IR TextBody anchor literal.
+_ANCHOR_FROM_OOXML: dict[str, Literal["top", "middle", "bottom"]] = {
+    "t": "top",
+    "ctr": "middle",
+    "b": "bottom",
+}
+
+
+def _text_body_props(
+    body: Element,
+) -> tuple[Literal["top", "middle", "bottom"], Literal["none", "normal", "shape"], int, int]:
+    """Parse ``a:bodyPr`` into ``(anchor, autofit, columns, column_gap_emu)``.
+
+    - ``anchor``: vertical alignment from ``anchor`` attr (default "t" → "top").
+    - ``autofit``: ``a:spAutoFit`` → "shape"; ``a:noAutofit`` → "none"; else "normal".
+    - ``columns``: ``numCol`` attr (default 1).
+    - ``column_gap_emu``: ``spcCol`` attr (default 0).
+    """
+    body_pr = body.find("a:bodyPr", _NS)
+    if body_pr is None:
+        return "top", "normal", 1, 0
+
+    anchor_raw = body_pr.get("anchor", "t")
+    anchor: Literal["top", "middle", "bottom"] = _ANCHOR_FROM_OOXML.get(anchor_raw, "top")
+
+    # Autofit: check for a:spAutoFit or a:noAutofit child.
+    autofit: Literal["none", "normal", "shape"] = "normal"
+    if body_pr.find("a:spAutoFit", _NS) is not None:
+        autofit = "shape"
+    elif body_pr.find("a:noAutofit", _NS) is not None:
+        autofit = "none"
+
+    columns = max(1, _int_attr(body_pr, "numCol", 1))
+    column_gap_emu = max(0, _int_attr(body_pr, "spcCol", 0))
+    return anchor, autofit, columns, column_gap_emu
+
+
 def _text_body(
     shape: Element,
     colors: ThemeColors,
@@ -448,6 +485,7 @@ def _text_body(
     body = shape.find("p:txBody", _NS)
     if body is None:
         return None
+    anchor, autofit, columns, column_gap_emu = _text_body_props(body)
     paragraphs: list[TextParagraph] = []
     for paragraph in body.findall("a:p", _NS):
         properties = paragraph.find("a:pPr", _NS)
@@ -538,7 +576,17 @@ def _text_body(
                 bullet=bullet,
             )
         )
-    return TextBody(paragraphs=tuple(paragraphs)) if paragraphs else None
+    return (
+        TextBody(
+            paragraphs=tuple(paragraphs),
+            anchor=anchor,
+            autofit=autofit,
+            columns=columns,
+            column_gap_emu=column_gap_emu,
+        )
+        if paragraphs
+        else None
+    )
 
 
 def _shape(

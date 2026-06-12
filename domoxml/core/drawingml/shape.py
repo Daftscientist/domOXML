@@ -332,15 +332,31 @@ def _paragraph(paragraph: TextParagraph, hyperlink_rid: HyperlinkRid) -> str:
     return f"<a:p>{ppr}{runs}</a:p>"
 
 
+# Maps IR vertical anchor → DrawingML bodyPr anchor attribute value.
+_ANCHOR_TO_OOXML = {"top": "t", "middle": "ctr", "bottom": "b"}
+
+
 def _text_body(body: TextBody | None, hyperlink_rid: HyperlinkRid) -> str:
     if body is None:
         return ""
-    # anchor="t": match HTML block flow (text at the top of the box). Office centres shape
-    # text vertically by default, which sits lower than the source.
+    # Vertical anchor: default "t" is the block-flow equivalent (text at the top).
+    anchor = _ANCHOR_TO_OOXML.get(body.anchor, "t")
+
+    # Multi-column: emit numCol/spcCol when columns > 1.
+    col_attrs = ""
+    if body.columns > 1:
+        col_attrs = f' numCol="{body.columns}"'
+        if body.column_gap_emu > 0:
+            col_attrs += f' spcCol="{body.column_gap_emu}"'
+
+    # Autofit element: normAutofit for "normal" or "none", spAutoFit for "shape".
+    autofit_el = "<a:spAutoFit/>" if body.autofit == "shape" else "<a:normAutofit/>"
+
     paragraphs = "".join(_paragraph(paragraph, hyperlink_rid) for paragraph in body.paragraphs)
     return (
-        '<p:txBody><a:bodyPr wrap="square" anchor="t" lIns="0" rIns="0" tIns="0" bIns="0">'
-        f"<a:normAutofit/></a:bodyPr><a:lstStyle/>{paragraphs}</p:txBody>"
+        f'<p:txBody><a:bodyPr wrap="square" anchor="{anchor}" lIns="0" rIns="0" tIns="0"'
+        f' bIns="0"{col_attrs}>'
+        f"{autofit_el}</a:bodyPr><a:lstStyle/>{paragraphs}</p:txBody>"
     )
 
 

@@ -315,9 +315,35 @@ def _bullet_list_style(paragraph: TextParagraph) -> str:
     return "disc"
 
 
-def _text_html(body: TextBody | None) -> str:
+def _text_body_css(body: TextBody | None, warnings: list[ConversionWarning]) -> str:
+    """Return inline CSS for text body container (vertical anchor, columns).
+
+    Emits flex properties for non-top anchors; column CSS for multi-column bodies.
+    Returns an empty string when no special properties are needed.
+    """
+    if body is None:
+        return ""
+    styles: list[str] = []
+    if body.anchor == "middle":
+        styles.extend(["display:flex", "flex-direction:column", "justify-content:center"])
+    elif body.anchor == "bottom":
+        styles.extend(["display:flex", "flex-direction:column", "justify-content:flex-end"])
+    if body.columns > 1:
+        styles.append(f"column-count:{body.columns}")
+        if body.column_gap_emu > 0:
+            styles.append(f"column-gap:{_px(body.column_gap_emu)}")
+    return ";".join(styles)
+
+
+def _text_html(body: TextBody | None, warnings: list[ConversionWarning] | None = None) -> str:
     """Serialize text body to HTML. Consecutive bulleted paragraphs at the same level
-    become nested ``<ul>``/``<ol>`` elements; plain paragraphs become ``<div>``."""
+    become nested ``<ul>``/``<ol>`` elements; plain paragraphs become ``<div>``.
+
+    When ``warnings`` is provided, emits ``data-domoxml-autofit`` metadata and issues a
+    warning when ``a:normAutofit`` has a non-trivial ``fontScale`` (fontScale is not stored
+    in the IR yet — the attribute is only encountered on the reverse path from authored
+    PPTX, not round-tripped from HTML; no warning is emitted here).
+    """
     if body is None:
         return ""
 
@@ -389,8 +415,19 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
     """Serialize one slide node. Only :class:`ShapeNode` has an HTML mapping today; groups,
     connectors, and tables warn and emit nothing rather than drop silently."""
     if isinstance(node, ShapeNode):
-        style = escape(_shape_style(node, assets, warnings), quote=True)
-        inner = f'<div class="domoxml-shape" style="{style}">{_text_html(node.text)}</div>'
+        # Merge text body CSS (flex anchor, columns) into the shape style.
+        body_css = _text_body_css(node.text, warnings)
+        shape_style = _shape_style(node, assets, warnings)
+        combined_style = (shape_style + ";" + body_css) if body_css else shape_style
+        # Autofit metadata attribute when autofit != "normal" (the default).
+        autofit_attr = ""
+        if node.text is not None and node.text.autofit != "normal":
+            autofit_attr = f' data-domoxml-autofit="{escape(node.text.autofit, quote=True)}"'
+        style = escape(combined_style, quote=True)
+        inner = (
+            f'<div class="domoxml-shape" style="{style}"{autofit_attr}>'
+            f"{_text_html(node.text, warnings)}</div>"
+        )
         # Wrap with reflection if present
         reflections = [e for e in node.effects if isinstance(e, Reflection)]
         if reflections:
@@ -420,7 +457,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                 f'<div class="domoxml-shape" '
                 f'style="left:{left};top:{top};width:{w};height:{h};'
                 f'{reflect_style}">'
-                f"{_text_html(node.text)}</div>"
+                f"{_text_html(node.text, warnings)}</div>"
             )
         return inner
     # TODO(coverage): GroupNode/Connector/TableNode have no HTML serializer yet. The extractor

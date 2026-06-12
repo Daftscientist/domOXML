@@ -10,6 +10,7 @@ raster/approximation yields a :class:`ConversionWarning`.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from typing import Literal
 
@@ -123,6 +124,76 @@ def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
     )
 
 
+def _detect_anchor(styles: dict[str, str]) -> Literal["top", "middle", "bottom"]:
+    """Infer vertical anchor from flex container styles.
+
+    Detection rules (conservative — only fires when clear flex alignment signals exist):
+    - ``display:flex`` with ``flex-direction:column`` (or default ``row``):
+      - ``justify-content:center`` + column → anchor "middle"
+      - ``justify-content:flex-end`` + column → anchor "bottom"
+      - ``align-items:center`` + row-ish (single-axis centering) → anchor "middle"
+      - ``align-items:flex-end`` + row-ish → anchor "bottom"
+    Default is "top" which emits no special attribute.
+    """
+    display = (styles.get("display") or "").lower()
+    if "flex" not in display:
+        return "top"
+    flex_dir = (styles.get("flexDirection") or "row").lower()
+    column_flow = flex_dir.startswith("column")
+    justify = (styles.get("justifyContent") or "").lower()
+    align = (styles.get("alignItems") or "").lower()
+    if column_flow:
+        # Main-axis aligns content vertically.
+        if justify in ("center",):
+            return "middle"
+        if justify in ("flex-end", "end"):
+            return "bottom"
+    else:
+        # Cross-axis aligns content vertically (row layout, single-line text).
+        if align in ("center",):
+            return "middle"
+        if align in ("flex-end", "end"):
+            return "bottom"
+    return "top"
+
+
+def _detect_autofit(styles: dict[str, str]) -> Literal["none", "normal", "shape"]:
+    """Infer autofit mode from CSS overflow and white-space.
+
+    Rules:
+    - ``overflow:hidden`` + fixed element → keep ``normal`` (normAutofit); text is clipped.
+    - ``white-space:nowrap`` single-line → ``shape`` (spAutoFit) is acceptable.
+    - Default → ``normal`` (normAutofit).
+    """
+    overflow = (styles.get("overflow") or "").lower()
+    white_space = (styles.get("whiteSpace") or "").lower()
+    if overflow == "hidden":
+        return "normal"
+    if white_space == "nowrap":
+        return "shape"
+    return "normal"
+
+
+def _detect_columns(styles: dict[str, str]) -> tuple[int, int]:
+    """Parse ``column-count`` and ``column-gap`` from styles.
+
+    Returns ``(columns, column_gap_emu)``; ``columns`` is at least 1.
+    ``column-gap`` is a px value converted to EMU.
+    """
+    raw_count = (styles.get("columnCount") or "").strip()
+    columns = 1
+    if raw_count and raw_count not in ("auto", "normal"):
+        with contextlib.suppress(ValueError):
+            columns = max(1, int(raw_count))
+    column_gap_emu = 0
+    raw_gap = (styles.get("columnGap") or "").strip()
+    if raw_gap and raw_gap not in ("normal", ""):
+        gap_px = parse_length_px(raw_gap)
+        if gap_px > 0:
+            column_gap_emu = px_to_emu(gap_px)
+    return columns, column_gap_emu
+
+
 def _text_body(node: RenderedNode) -> TextBody | None:
     source = node.text_runs or (
         (RenderedTextRun(text=node.text, styles=node.styles),) if node.text else ()
@@ -174,6 +245,10 @@ def _text_body(node: RenderedNode) -> TextBody | None:
             char = css_list_style_to_bu_char(list_type)
             bullet = CharBullet(char=char)
 
+    anchor = _detect_anchor(styles)
+    autofit = _detect_autofit(styles)
+    columns, column_gap_emu = _detect_columns(styles)
+
     return TextBody(
         paragraphs=tuple(
             TextParagraph(
@@ -188,7 +263,11 @@ def _text_body(node: RenderedNode) -> TextBody | None:
                 bullet=bullet,
             )
             for runs in paragraphs
-        )
+        ),
+        anchor=anchor,
+        autofit=autofit,
+        columns=columns,
+        column_gap_emu=column_gap_emu,
     )
 
 

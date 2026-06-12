@@ -100,10 +100,46 @@ def _shape_style(
     if fill_uses_opacity and node.opacity < 1.0:
         styles.append(f"opacity:{_number(node.opacity)}")
     if node.line is not None:
-        styles.append(
-            f"border:{_px(node.line.width_emu)} {_CSS_DASH[node.line.dash]} "
-            f"{_rgba(node.line.color)}"
-        )
+        line = node.line
+        border_style = _CSS_DASH.get(line.dash, "dashed")
+        if line.gradient is not None:
+            # Gradient stroke: emit border-image with a linear-gradient.
+            # CSS border-image with slice=1 stretches the gradient across all four sides.
+            # NOTE: approximation — border-image does not honour border-radius; a true
+            # gradient stroke is only achievable via outline or SVG on the web.
+            grad_css = _gradient(line.gradient, opacity=node.opacity)
+            styles.append(f"border:{_px(line.width_emu)} {border_style} transparent")
+            styles.append(f"border-image:{grad_css} 1")
+        else:
+            styles.append(f"border:{_px(line.width_emu)} {border_style} {_rgba(line.color)}")
+        # Preserve cap/join as CSS custom properties for round-trip fidelity.
+        # These have no CSS border equivalent but survive serialization.
+        if line.cap != "flat":
+            styles.append(f"--domoxml-cap:{line.cap}")
+        if line.join != "round":
+            styles.append(f"--domoxml-join:{line.join}")
+        # Arrowheads: no CSS border equivalent — emit a warning and preserve via data.
+        if line.head is not None and line.head.type != "none":
+            styles.append(f"--domoxml-head:{line.head.type}/{line.head.width}/{line.head.length}")
+            warnings.append(
+                ConversionWarning(
+                    message="arrowhead present but not rendered in HTML (connectors task pending)"
+                )
+            )
+        if line.tail is not None and line.tail.type != "none":
+            styles.append(f"--domoxml-tail:{line.tail.type}/{line.tail.width}/{line.tail.length}")
+            warnings.append(
+                ConversionWarning(
+                    message="arrowhead present but not rendered in HTML (connectors task pending)"
+                )
+            )
+        if line.gradient is not None:
+            warnings.append(
+                ConversionWarning(
+                    message="gradient stroke approximated as border-image"
+                    " (border-radius not honoured)"
+                )
+            )
     if node.geom == "ellipse":
         styles.append("border-radius:50%")
     elif node.geom == "roundRect" and node.corner_radius_emu > 0:

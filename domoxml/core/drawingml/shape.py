@@ -7,6 +7,7 @@ from collections.abc import Callable
 from xml.sax.saxutils import escape
 
 from domoxml.core.ir.model import (
+    Arrowhead,
     Fill,
     GradientFill,
     Hyperlink,
@@ -37,6 +38,14 @@ _DASH_TO_OOXML = {
     "dashDot": "dashDot",
     "lgDash": "lgDash",
     "sysDash": "sysDash",
+}
+# a:ln cap attribute values (ECMA-376 §20.1.10.30).
+_CAP_TO_OOXML = {"flat": "flat", "round": "rnd", "square": "sq"}
+# Join child elements; miter uses ECMA default limit of 800000 (8x width).
+_JOIN_OOXML_TAG = {
+    "round": "<a:round/>",
+    "bevel": "<a:bevel/>",
+    "miter": '<a:miter lim="800000"/>',
 }
 
 
@@ -99,8 +108,31 @@ def _fill_xml(fill: Fill | None, *, opacity: float, blip_rid: str | None) -> str
 def _line_xml(line: Line | None) -> str:
     if line is None:
         return ""
+    cap = _CAP_TO_OOXML.get(line.cap, "flat")
     dash = _DASH_TO_OOXML.get(line.dash, "solid")
-    return f'<a:ln w="{line.width_emu}">{_solid_fill(line.color)}<a:prstDash val="{dash}"/></a:ln>'
+    join_tag = _JOIN_OOXML_TAG.get(line.join, "<a:round/>")
+    fill_xml = (
+        _gradient_fill(line.gradient, opacity=1.0)
+        if line.gradient is not None
+        else _solid_fill(line.color)
+    )
+    head_xml = _arrowhead_xml("headEnd", line.head) if line.head is not None else ""
+    tail_xml = _arrowhead_xml("tailEnd", line.tail) if line.tail is not None else ""
+    return (
+        f'<a:ln w="{line.width_emu}" cap="{cap}">'
+        f"{fill_xml}"
+        f'<a:prstDash val="{dash}"/>'
+        f"{join_tag}"
+        f"{head_xml}{tail_xml}"
+        f"</a:ln>"
+    )
+
+
+def _arrowhead_xml(tag: str, arrow: Arrowhead) -> str:
+    """Emit ``a:headEnd`` or ``a:tailEnd`` for a line arrowhead decoration."""
+    if arrow.type == "none":
+        return f'<a:{tag} type="none"/>'
+    return f'<a:{tag} type="{arrow.type}" w="{arrow.width}" len="{arrow.length}"/>'
 
 
 def _effect_xml(shadow: Shadow | None) -> str:

@@ -1,0 +1,21 @@
+id = "borders"
+direction = "forward"
+html_file = "slide.html"
+
+[expected]
+# 4 logical elements:
+#   1. uniform-border box (1 shape with a:ln)
+#   2. left-accent bar — border-left only → 1 border rect + 1 main shape = 2 shapes
+#   3. dashed box (1 shape with prstDash)
+#   4. dotted box (1 shape with prstDash)
+# Total native shapes ≥ 5 (accent bar decomposes into 1 border rect + 1 body shape)
+min_native = 5
+max_raster = 0
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:prstDash"
+min_count = 2
+
+[visual]
+source_to_pptx_min_similarity = 0.90

@@ -114,27 +114,43 @@ def parse_letter_spacing_pt(value: str | None) -> float:
 # --------------------------------------------------------------------------- borders
 
 
-def _dash_style(style_token: str) -> Literal["solid", "dash", "dot"]:
+def _dash_style(
+    style_token: str,
+) -> tuple[Literal["solid", "dash", "dot"], str | None]:
+    """Map a CSS border-style token to a ``(DashStyle, warning_message | None)`` pair.
+
+    Unsupported styles (``double``, ``groove``, ``ridge``, ``inset``, ``outset``) are
+    approximated as ``solid`` with an explanatory warning."""
     if style_token == "dashed":
-        return "dash"
+        return "dash", None
     if style_token == "dotted":
-        return "dot"
-    return "solid"
+        return "dot", None
+    if style_token == "double":
+        return "solid", "double border approximated as solid"
+    if style_token in {"groove", "ridge", "inset", "outset"}:
+        return "solid", f"3D border style '{style_token}' approximated as solid"
+    return "solid", None
 
 
-def parse_border_side(width: str | None, style: str | None, color: str | None) -> Line | None:
-    """Map one CSS border side (computed width/style/colour) to a :class:`Line`, or ``None``
-    when there is no visible border (zero width, ``none``/``hidden`` style, transparent)."""
+def parse_border_side(
+    width: str | None, style: str | None, color: str | None
+) -> tuple[Line | None, str | None]:
+    """Map one CSS border side (computed width/style/colour) to a ``(Line, warning)`` pair.
+
+    Returns ``(None, None)`` when there is no visible border (zero width,
+    ``none``/``hidden`` style, transparent). The warning string is non-``None`` when the
+    style is approximated (e.g. ``double`` → ``solid``)."""
     style_token = (style or "none").strip().lower()
     if style_token in {"none", "hidden"}:
-        return None
+        return None, None
     width_px = parse_length_px(width)
     if width_px <= 0:
-        return None
+        return None, None
     rgba = parse_color(color)
     if rgba is None or rgba.a <= 0:
-        return None
-    return Line(color=rgba, width_emu=px_to_emu(width_px), dash=_dash_style(style_token))
+        return None, None
+    dash, warn = _dash_style(style_token)
+    return Line(color=rgba, width_emu=px_to_emu(width_px), dash=dash), warn
 
 
 # --------------------------------------------------------------------------- box-shadow

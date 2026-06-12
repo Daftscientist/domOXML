@@ -13,6 +13,9 @@ from PIL import ImageColor
 
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.ir.model import (
+    Arrowhead,
+    ArrowheadSize,
+    ArrowheadType,
     Box,
     Fill,
     GradientFill,
@@ -51,10 +54,25 @@ _ALIGN_FROM_OOXML: dict[str, Literal["left", "center", "right", "justify"]] = {
     "r": "right",
     "just": "justify",
 }
-_DASH_FROM_OOXML: dict[str, Literal["solid", "dash", "dot"]] = {
+# All prstDash presets → nearest IR DashStyle (ECMA-376 §20.1.10.49).
+_DASH_FROM_OOXML: dict[str, Literal["solid", "dash", "dot", "dashDot", "lgDash", "sysDash"]] = {
     "solid": "solid",
     "dash": "dash",
+    "lgDash": "lgDash",
+    "dashDot": "dashDot",
+    "lgDashDot": "dashDot",
+    "lgDashDotDot": "dashDot",
+    "sysDash": "sysDash",
     "sysDot": "dot",
+    "sysDashDot": "dashDot",
+    "sysDashDotDot": "dashDot",
+    "dot": "dot",
+}
+# a:ln cap attribute → IR LineCap (ECMA-376 §20.1.10.30).
+_CAP_FROM_OOXML: dict[str, Literal["flat", "round", "square"]] = {
+    "flat": "flat",
+    "rnd": "round",
+    "sq": "square",
 }
 _IMAGE_EXT = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif"}
 _SCHEME_FALLBACK = {
@@ -184,20 +202,59 @@ def _fill(
     return _picture(picture, package, slide_part) if picture is not None else None
 
 
+def _arrowhead(element: Element | None) -> Arrowhead | None:
+    """Parse ``a:headEnd``/``a:tailEnd`` into an :class:`Arrowhead`, or ``None`` when absent."""
+    if element is None:
+        return None
+    atype = element.get("type", "none")
+    if atype not in {"triangle", "stealth", "diamond", "oval", "arrow"}:
+        return None
+    # w / len attributes use the ArrowheadSize tokens (sm/med/lg).
+    width_raw = element.get("w", "med")
+    length_raw = element.get("len", "med")
+    width: ArrowheadSize = width_raw if width_raw in {"sm", "med", "lg"} else "med"  # type: ignore[assignment]
+    length: ArrowheadSize = length_raw if length_raw in {"sm", "med", "lg"} else "med"  # type: ignore[assignment]
+    atype_typed: ArrowheadType = atype  # type: ignore[assignment]
+    return Arrowhead(type=atype_typed, width=width, length=length)
+
+
 def _line(shape_properties: Element, colors: ThemeColors) -> Line | None:
     element = shape_properties.find("a:ln", _NS)
     if element is None:
         return None
-    color = _rgba(element.find("a:solidFill", _NS), colors)
+    # Color: prefer solidFill; fall back to gradFill (first stop as flat colour).
+    solid_el = element.find("a:solidFill", _NS)
+    grad_el = element.find("a:gradFill", _NS)
+    gradient: GradientFill | None = None
+    color: Rgba | None = None
+    if solid_el is not None:
+        color = _rgba(solid_el, colors)
+    elif grad_el is not None:
+        gradient = _gradient(grad_el, colors)
+        if gradient is not None and gradient.stops:
+            color = gradient.stops[0].color
     if color is None:
         return None
-    dash = element.find("a:prstDash", _NS)
+    dash_el = element.find("a:prstDash", _NS)
+    dash_val = dash_el.get("val", "solid") if dash_el is not None else "solid"
+    cap_val = element.get("cap", "flat")
+    # Join: scan child tags (round/bevel/miter); default round when absent.
+    join: Literal["round", "bevel", "miter"] = "round"
+    if element.find("a:bevel", _NS) is not None:
+        join = "bevel"
+    elif element.find("a:miter", _NS) is not None:
+        join = "miter"
+    elif element.find("a:round", _NS) is not None:
+        join = "round"
     return Line(
         color=color,
         width_emu=max(1, _int_attr(element, "w", 1)),
-        dash=_DASH_FROM_OOXML.get(
-            dash.get("val", "solid") if dash is not None else "solid", "solid"
-        ),
+        dash=_DASH_FROM_OOXML.get(dash_val, "solid"),
+        cap=_CAP_FROM_OOXML.get(cap_val, "flat"),
+        join=join,
+        gradient=gradient,
+        head=_arrowhead(element.find("a:headEnd", _NS)),
+        tail=_arrowhead(element.find("a:tailEnd", _NS)),
     )
 
 

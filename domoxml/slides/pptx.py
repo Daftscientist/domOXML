@@ -7,7 +7,7 @@ from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml import shape_xml
 from domoxml.core.fonts import FontFace, load_faces
-from domoxml.core.ir.model import PictureFill, SlideIR
+from domoxml.core.ir.model import Hyperlink, PictureFill, SlideIR, TextBody
 from domoxml.core.opc import write_package
 from domoxml.slides import _templates as t
 
@@ -23,6 +23,11 @@ _IMAGE_CT = {"png": "image/png", "jpeg": "image/jpeg", "gif": "image/gif"}
 # (face, in-package part path, relationship id) for each embedded font.
 type FontRel = tuple[FontFace, str, str]
 _SLOT_ORDER = ("regular", "bold", "italic", "boldItalic")
+
+
+def _attr(value: str) -> str:
+    """Escape a string for an XML attribute (double-quoted)."""
+    return escape(value, {'"': "&quot;"})
 
 
 def _override(part: str, content_type: str) -> str:
@@ -110,18 +115,46 @@ def _presentation_rels(n_slides: int, font_rels: list[FontRel]) -> str:
     )
 
 
-def _slide_rels(image_rels: list[tuple[str, str]]) -> str:
-    """Slide relationships: the layout (rId1) plus one rel per embedded picture."""
+def _hyperlink_target(hyperlink: Hyperlink) -> tuple[str, str]:
+    """The ``(Type, attrs)`` for a hyperlink relationship: an external URL gets
+    ``TargetMode="External"``; an in-deck slide jump targets the destination slide part."""
+    if hyperlink.slide_index is not None:
+        target = f"slide{hyperlink.slide_index + 1}.xml"
+        return f"{_REL_TYPE}/slide", f'Target="{target}"'
+    url = _attr(hyperlink.url or "")
+    return f"{_REL_TYPE}/hyperlink", f'Target="{url}" TargetMode="External"'
+
+
+def _slide_rels(
+    image_rels: list[tuple[str, str]], hyperlink_rels: list[tuple[str, Hyperlink]]
+) -> str:
+    """Slide relationships: the layout (rId1), one rel per embedded picture, one per hyperlink."""
     images = "".join(
         f'<Relationship Id="{rid}" Type="{_REL_TYPE}/image" Target="../media/{name}"/>'
         for rid, name in image_rels
     )
+    links = ""
+    for rid, hyperlink in hyperlink_rels:
+        rel_type, attrs = _hyperlink_target(hyperlink)
+        links += f'<Relationship Id="{rid}" Type="{rel_type}" {attrs}/>'
     return (
         f'{t.XML_DECL}<Relationships xmlns="{_PKG_REL_NS}">'
         f'<Relationship Id="rId1" Type="{_REL_TYPE}/slideLayout" '
         'Target="../slideLayouts/slideLayout1.xml"/>'
-        f"{images}</Relationships>"
+        f"{images}{links}</Relationships>"
     )
+
+
+def _shape_hyperlinks(body: TextBody | None) -> list[Hyperlink]:
+    """Every run hyperlink in a text body, in document order."""
+    if body is None:
+        return []
+    return [
+        run.hyperlink
+        for paragraph in body.paragraphs
+        for run in paragraph.runs
+        if run.hyperlink is not None
+    ]
 
 
 def _slide(slide: SlideIR, media_start: int) -> tuple[str, str, dict[str, bytes], int]:
@@ -153,8 +186,29 @@ def _slide(slide: SlideIR, media_start: int) -> tuple[str, str, dict[str, bytes]
             media_index += 1
             next_rid += 1
 
+    # One slide relationship per run hyperlink, in document order. Identity-keyed so two runs
+    # with structurally-equal links still each get their own rel (matching the IR objects).
+    hyperlink_rels: list[tuple[str, Hyperlink]] = []
+    rid_by_link: dict[int, str] = {}
+    for node in slide.shapes:
+        for link in _shape_hyperlinks(node.text):
+            if id(link) in rid_by_link:
+                continue
+            rid = f"rId{next_rid}"
+            rid_by_link[id(link)] = rid
+            hyperlink_rels.append((rid, link))
+            next_rid += 1
+
+    def _hyperlink_rid(link: Hyperlink) -> str | None:
+        return rid_by_link.get(id(link))
+
     shapes = "".join(
-        shape_xml(node, shape_id=position + 2, blip_rid=blip_rids.get(position))
+        shape_xml(
+            node,
+            shape_id=position + 2,
+            blip_rid=blip_rids.get(position),
+            hyperlink_rid=_hyperlink_rid,
+        )
         for position, node in enumerate(slide.shapes)
     )
     slide_xml = (
@@ -163,7 +217,7 @@ def _slide(slide: SlideIR, media_start: int) -> tuple[str, str, dict[str, bytes]
         f"{shapes}</p:spTree></p:cSld>"
         "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
     )
-    return slide_xml, _slide_rels(image_rels), media_parts, media_index
+    return slide_xml, _slide_rels(image_rels, hyperlink_rels), media_parts, media_index
 
 
 def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) -> bytes:

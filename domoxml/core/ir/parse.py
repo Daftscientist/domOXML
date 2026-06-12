@@ -70,6 +70,47 @@ def is_bold(font_weight: str | None) -> bool:
         return False
 
 
+# --------------------------------------------------------------------------- run decorations
+
+
+def parse_decoration(value: str | None) -> tuple[bool, bool]:
+    """Map CSS ``text-decoration-line`` to ``(underline, strike)`` flags.
+
+    A value can name both (``"underline line-through"``); ``"none"``/empty yields ``(False,
+    False)``. ``overline`` has no DrawingML run equivalent and is ignored."""
+    if not value:
+        return False, False
+    tokens = value.strip().lower().split()
+    return ("underline" in tokens, "line-through" in tokens)
+
+
+def parse_caps(
+    text_transform: str | None, font_variant_caps: str | None
+) -> Literal["all", "small"] | None:
+    """Map CSS ``text-transform``/``font-variant-caps`` to an ``a:rPr cap`` token.
+
+    ``text-transform: uppercase`` → ``"all"``; ``font-variant-caps`` containing ``small-caps``
+    → ``"small"``. ``uppercase`` wins when both are present (it is the stronger transform)."""
+    transform = (text_transform or "").strip().lower()
+    if transform == "uppercase":
+        return "all"
+    variant = (font_variant_caps or "").strip().lower()
+    if "small-caps" in variant:
+        return "small"
+    return None
+
+
+def parse_letter_spacing_pt(value: str | None) -> float:
+    """Map CSS ``letter-spacing`` (a ``px`` length, ``"normal"``, or empty) to points.
+
+    ``"normal"`` and unparseable values yield ``0.0``. May be negative (tracking-in)."""
+    if not value or value.strip().lower() == "normal":
+        return 0.0
+    match = _LENGTH_RE.search(value)
+    # CSS px → points (1pt = 1/72in, 96px = 1in).
+    return float(match.group(1)) * 72.0 / 96.0 if match is not None else 0.0
+
+
 # --------------------------------------------------------------------------- borders
 
 

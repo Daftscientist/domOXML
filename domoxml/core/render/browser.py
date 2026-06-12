@@ -21,6 +21,8 @@ _SNAPSHOT_JS = """
     color: cs.color, backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage,
     fontSize: cs.fontSize, fontFamily: cs.fontFamily,
     fontWeight: cs.fontWeight, fontStyle: cs.fontStyle,
+    textDecorationLine: cs.textDecorationLine, textTransform: cs.textTransform,
+    fontVariantCaps: cs.fontVariantCaps, letterSpacing: cs.letterSpacing,
     textAlign: cs.textAlign, lineHeight: cs.lineHeight,
     borderRadius: cs.borderRadius, opacity: cs.opacity,
     boxShadow: cs.boxShadow, filter: cs.filter,
@@ -36,25 +38,41 @@ _SNAPSHOT_JS = """
     borderLeftColor: cs.borderLeftColor,
     display: cs.display,
   });
+  // The nearest enclosing <a href> for the run, captured as a synthetic style key so the
+  // extractor can recover a:hlinkClick without a separate channel. textContent (not innerText)
+  // keeps the run text raw, so text-transform stays a cap attr rather than baked-in glyphs.
+  const linkHref = (el) => {
+    const anchor = el.closest && el.closest('a[href]');
+    return anchor ? anchor.getAttribute('href') : '';
+  };
   const inlineRuns = (root) => {
     const runs = [];
-    const collect = (node, inherited) => {
+    const collect = (node, inherited, href) => {
       if (node.nodeType === 3) {
-        if (node.textContent) runs.push({ text: node.textContent, styles: pick(inherited) });
+        if (node.textContent) {
+          const styles = pick(inherited);
+          if (href) styles.domoxmlHref = href;
+          runs.push({ text: node.textContent, styles });
+        }
         return;
       }
       if (node.nodeType !== 1) return;
       const el = node;
       if (el.tagName.toLowerCase() === 'br') {
-        runs.push({ text: '\\n', styles: pick(inherited) });
+        const styles = pick(inherited);
+        if (href) styles.domoxmlHref = href;
+        runs.push({ text: '\\n', styles });
         return;
       }
       const cs = getComputedStyle(el);
       if (!cs.display.startsWith('inline')) return;
-      for (const child of el.childNodes) collect(child, cs);
+      const childHref = el.tagName.toLowerCase() === 'a' && el.getAttribute('href')
+        ? el.getAttribute('href') : href;
+      for (const child of el.childNodes) collect(child, cs, childHref);
     };
     const rootStyle = getComputedStyle(root);
-    for (const child of root.childNodes) collect(child, rootStyle);
+    const rootHref = linkHref(root);
+    for (const child of root.childNodes) collect(child, rootStyle, rootHref);
     return runs;
   };
   const out = [];

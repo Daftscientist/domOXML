@@ -223,3 +223,108 @@ def test_reads_native_powerpoint_picture() -> None:
     fill = result.shapes[0].fill
     assert isinstance(fill, PictureFill)
     assert fill.ext == "png"
+
+
+def _two_slide_deck(run_xml: str, extra_slide1_rels: str = "") -> bytes:
+    """A minimal two-slide deck where slide1's only shape carries ``run_xml`` in its text body.
+
+    ``extra_slide1_rels`` injects hyperlink relationships referenced by the run XML."""
+    sp = (
+        f'<p:sp xmlns:p="{_P}" xmlns:a="{_A}" xmlns:r="{_R}"><p:nvSpPr>'
+        '<p:cNvPr id="2" name="s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="3000000" cy="1000000"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
+        f'<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="l"/>{run_xml}</a:p></p:txBody></p:sp>'
+    )
+    parts: dict[str, bytes | str] = {
+        "[Content_Types].xml": (
+            '<?xml version="1.0"?><Types '
+            'xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" '
+            'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/></Types>'
+        ),
+        "_rels/.rels": (
+            f'<Relationships xmlns="{_PKG_REL}"><Relationship Id="rId1" '
+            f'Type="{_R}/officeDocument" Target="ppt/presentation.xml"/></Relationships>'
+        ),
+        "ppt/presentation.xml": (
+            f'<p:presentation xmlns:p="{_P}" xmlns:r="{_R}"><p:sldIdLst>'
+            '<p:sldId id="256" r:id="rId1"/><p:sldId id="257" r:id="rId2"/></p:sldIdLst>'
+            '<p:sldSz cx="12192000" cy="6858000"/></p:presentation>'
+        ),
+        "ppt/_rels/presentation.xml.rels": (
+            f'<Relationships xmlns="{_PKG_REL}">'
+            f'<Relationship Id="rId1" Type="{_R}/slide" Target="slides/slide1.xml"/>'
+            f'<Relationship Id="rId2" Type="{_R}/slide" Target="slides/slide2.xml"/>'
+            "</Relationships>"
+        ),
+        "ppt/slides/slide1.xml": (
+            f'<p:sld xmlns:p="{_P}" xmlns:a="{_A}"><p:cSld><p:spTree>'
+            '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>'
+            f"<p:grpSpPr/>{sp}</p:spTree></p:cSld></p:sld>"
+        ),
+        "ppt/slides/_rels/slide1.xml.rels": (
+            f'<Relationships xmlns="{_PKG_REL}">{extra_slide1_rels}</Relationships>'
+        ),
+        "ppt/slides/slide2.xml": (
+            f'<p:sld xmlns:p="{_P}" xmlns:a="{_A}"><p:cSld><p:spTree>'
+            '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>'
+            "<p:grpSpPr/></p:spTree></p:cSld></p:sld>"
+        ),
+        "ppt/slides/_rels/slide2.xml.rels": f'<Relationships xmlns="{_PKG_REL}"/>',
+    }
+    return write_package(parts)
+
+
+def test_reverse_reads_underline_strike_caps_and_letter_spacing() -> None:
+    run = (
+        '<a:r><a:rPr lang="en-US" sz="1800" u="sng" strike="sngStrike" cap="all" spc="200">'
+        '<a:latin typeface="Inter"/></a:rPr><a:t>x</a:t></a:r>'
+    )
+    [slide, _] = read_pptx(_two_slide_deck(run))
+    text = slide.shapes[0].text
+    assert text is not None
+    r = text.paragraphs[0].runs[0]
+    assert r.underline is True
+    assert r.strike is True
+    assert r.caps == "all"
+    assert r.letter_spacing_pt == 2.0
+
+
+def test_reverse_reads_small_caps() -> None:
+    run = (
+        '<a:r><a:rPr lang="en-US" sz="1800" cap="small"><a:latin typeface="Inter"/></a:rPr>'
+        "<a:t>x</a:t></a:r>"
+    )
+    [slide, _] = read_pptx(_two_slide_deck(run))
+    assert slide.shapes[0].text is not None
+    assert slide.shapes[0].text.paragraphs[0].runs[0].caps == "small"
+
+
+def test_reverse_reads_external_hyperlink() -> None:
+    run = (
+        f'<a:r xmlns:r="{_R}"><a:rPr lang="en-US" sz="1800"><a:hlinkClick r:id="rIdL"/>'
+        '<a:latin typeface="Inter"/></a:rPr><a:t>x</a:t></a:r>'
+    )
+    rels = (
+        f'<Relationship Id="rIdL" Type="{_R}/hyperlink" '
+        'Target="https://example.com" TargetMode="External"/>'
+    )
+    [slide, _] = read_pptx(_two_slide_deck(run, rels))
+    assert slide.shapes[0].text is not None
+    link = slide.shapes[0].text.paragraphs[0].runs[0].hyperlink
+    assert link is not None and link.url == "https://example.com"
+
+
+def test_reverse_reads_slide_jump_hyperlink_into_index() -> None:
+    run = (
+        f'<a:r xmlns:r="{_R}"><a:rPr lang="en-US" sz="1800">'
+        '<a:hlinkClick r:id="rIdJ" action="ppaction://hlinksldjump"/>'
+        '<a:latin typeface="Inter"/></a:rPr><a:t>x</a:t></a:r>'
+    )
+    rels = f'<Relationship Id="rIdJ" Type="{_R}/slide" Target="slide2.xml"/>'
+    [slide, _] = read_pptx(_two_slide_deck(run, rels))
+    assert slide.shapes[0].text is not None
+    link = slide.shapes[0].text.paragraphs[0].runs[0].hyperlink
+    assert link is not None and link.slide_index == 1  # slide2.xml is the 2nd slide (index 1)

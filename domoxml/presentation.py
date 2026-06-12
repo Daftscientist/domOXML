@@ -152,5 +152,8 @@ def pptx_to_html(source: bytes | Path) -> HtmlPresentation:
     pptx = source.read_bytes() if isinstance(source, Path) else source
     result = read_pptx_result(pptx)
     return serialize_canvas(
-        list(result.slides), warnings=result.warnings, preserved=result.preserved
+        list(result.slides),
+        warnings=result.warnings,
+        preserved=result.preserved,
+        embedded_fonts=result.embedded_fonts,
     )

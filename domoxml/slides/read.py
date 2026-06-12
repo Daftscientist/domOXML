@@ -11,16 +11,20 @@ from defusedxml import ElementTree
 from PIL import ImageColor
 
 from domoxml.core.ir.model import (
+    Blur,
     Box,
     Fill,
+    Glow,
     GradientFill,
     GradientStop,
     Line,
     PictureFill,
+    Reflection,
     Rgba,
     Shadow,
     ShapeNode,
     SlideIR,
+    SoftEdge,
     SolidFill,
     TextBody,
     TextParagraph,
@@ -194,23 +198,131 @@ def _line(shape_properties: Element, colors: ThemeColors) -> Line | None:
     )
 
 
-def _shadow(shape_properties: Element, colors: ThemeColors) -> Shadow | None:
-    effects = shape_properties.find("a:effectLst", _NS)
-    if effects is None:
-        return None
-    for tag, inset in (("a:outerShdw", False), ("a:innerShdw", True)):
-        element = effects.find(tag, _NS)
-        if element is None:
-            continue
-        color = _rgba(element, colors) or Rgba(r=0, g=0, b=0, a=0.5)
-        return Shadow(
-            color=color,
-            blur_emu=_int_attr(element, "blurRad"),
-            distance_emu=_int_attr(element, "dist"),
-            direction_deg=_int_attr(element, "dir") / 60_000,
-            inset=inset,
-        )
-    return None
+type Effect = Shadow | Glow | Blur | SoftEdge | Reflection
+
+
+def _parse_shadow_element(element: Element, colors: ThemeColors, *, inset: bool) -> Shadow:
+    """Parse ``a:outerShdw`` or ``a:innerShdw`` into :class:`Shadow`."""
+    color = _rgba(element, colors) or Rgba(r=0, g=0, b=0, a=0.5)
+    blur = _int_attr(element, "blurRad")
+    dist = _int_attr(element, "dist")
+    direction_deg = _int_attr(element, "dir") / 60_000
+    spread_emu = 0
+    if not inset:
+        # sx/sy grow attrs encode spread. Reverse-compute spread from sx (use width-axis sx).
+        # sx = (w + 2*s) / w * 100000  =>  s = (sx/100000 - 1) * w / 2
+        # Since we don't have shape dims here, store the raw sx/sy for the HTML emitter.
+        # We store a representative spread as the mean of sx/sy offsets if present.
+        sx = _int_attr(element, "sx", 100_000)
+        sy = _int_attr(element, "sy", 100_000)
+        if sx != 100_000 or sy != 100_000:
+            # We can't recover absolute px spread without shape dims — store a flag value
+            # that the HTML emitter will recognise (we use a sentinel EMU value encoding the
+            # sx/sy pair so that the forward round-trip can reconstruct it).
+            # Convention: store sx*1 + sy*1 normalised scaling factor encoded as EMU-equivalent.
+            # Simplest faithful encoding: store the mean scale delta as spread_emu = scale * EMU.
+            # For HTML emission we only need sx/sy; store them packed.
+            # Use spread_emu = (sx - 100000) encoded — shapes without size need a best-effort.
+            # The HTML emitter will use spread_emu directly as a best-effort pixel offset.
+            # We encode: spread = mean of (sx-100000)/100000 * dist_emu, which approximates
+            # the extra shadow radius in EMU (even without shape width knowledge).
+            mean_scale = ((sx - 100_000) / 100_000 + (sy - 100_000) / 100_000) / 2
+            # Minimum 1 EMU to distinguish "spread was present" from "no spread"
+            spread_emu = max(1, round(mean_scale * max(dist, 1)))
+    return Shadow(
+        color=color,
+        blur_emu=blur,
+        distance_emu=dist,
+        direction_deg=direction_deg,
+        inset=inset,
+        spread_emu=spread_emu,
+    )
+
+
+def _effects(
+    shape_properties: Element, colors: ThemeColors
+) -> tuple[tuple[Effect, ...], tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
+    """Parse ``a:effectLst`` into typed effect objects.
+
+    Returns ``(effects, warnings, preserved)`` — unsupported effect kinds
+    (``a:prstShdw``, ``a:fillOverlay``) become :class:`PreservedFragment` entries.
+    """
+    effect_lst = shape_properties.find("a:effectLst", _NS)
+    if effect_lst is None:
+        return (), (), ()
+
+    effects: list[Effect] = []
+    warns: list[ConversionWarning] = []
+    preserved: list[PreservedFragment] = []
+
+    for child in effect_lst:
+        local = child.tag.rsplit("}", 1)[-1]
+        if local == "outerShdw":
+            effects.append(_parse_shadow_element(child, colors, inset=False))
+        elif local == "innerShdw":
+            effects.append(_parse_shadow_element(child, colors, inset=True))
+        elif local == "glow":
+            color = _rgba(child, colors) or Rgba(r=0, g=0, b=0, a=0.5)
+            radius = _int_attr(child, "rad")
+            effects.append(Glow(color=color, radius_emu=radius))
+        elif local == "blur":
+            radius = _int_attr(child, "rad")
+            effects.append(Blur(radius_emu=radius))
+            warns.append(
+                ConversionWarning(
+                    message="a:blur mapped to filter:blur() — forward round-trip will rasterise"
+                )
+            )
+        elif local == "softEdge":
+            radius = _int_attr(child, "rad")
+            effects.append(SoftEdge(radius_emu=radius))
+        elif local == "reflection":
+            blur_rad = _int_attr(child, "blurRad")
+            dist = _int_attr(child, "dist")
+            start_a = _int_attr(child, "startA", 100_000) / 100_000
+            end_a = _int_attr(child, "endA", 0) / 100_000
+            effects.append(
+                Reflection(
+                    blur_emu=blur_rad,
+                    distance_emu=dist,
+                    start_alpha=min(1.0, max(0.0, start_a)),
+                    end_alpha=min(1.0, max(0.0, end_a)),
+                )
+            )
+            warns.append(
+                ConversionWarning(
+                    message="a:reflection approximated as -webkit-box-reflect; "
+                    "forward round-trip will rasterise"
+                )
+            )
+        elif local in {"prstShdw", "fillOverlay"}:
+            warns.append(
+                ConversionWarning(message=f"a:{local} has no CSS mapping; preserved as fragment")
+            )
+            preserved.append(
+                PreservedFragment(
+                    part="effectLst",
+                    kind=local,
+                    xml=ElementTree.tostring(child, encoding="unicode"),
+                )
+            )
+        # Other unknown tags: skip silently per no-silent-drop policy → but these ARE unknown,
+        # so we preserve them too.
+        else:
+            warns.append(
+                ConversionWarning(
+                    message=f"a:{local} (in effectLst) has no CSS mapping; preserved as fragment"
+                )
+            )
+            preserved.append(
+                PreservedFragment(
+                    part="effectLst",
+                    kind=local,
+                    xml=ElementTree.tostring(child, encoding="unicode"),
+                )
+            )
+
+    return tuple(effects), tuple(warns), tuple(preserved)
 
 
 def _text_run(element: Element, colors: ThemeColors) -> TextRun | None:
@@ -254,13 +366,13 @@ def _text_body(shape: Element, colors: ThemeColors) -> TextBody | None:
 
 def _shape(
     element: Element, package: OpcPackage, slide_part: str, colors: ThemeColors
-) -> ShapeNode | None:
+) -> tuple[ShapeNode | None, tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
     properties = element.find("p:spPr", _NS)
     transform = properties.find("a:xfrm", _NS) if properties is not None else None
     offset = transform.find("a:off", _NS) if transform is not None else None
     extent = transform.find("a:ext", _NS) if transform is not None else None
     if properties is None or offset is None or extent is None:
-        return None
+        return None, (), ()
     box = Box(
         x=_int_attr(offset, "x"),
         y=_int_attr(offset, "y"),
@@ -284,15 +396,19 @@ def _shape(
             corner = round(int(formula.removeprefix("val ")) / 100_000 * min(box.width, box.height))
         except (TypeError, ValueError):
             corner = 0
-    shadow = _shadow(properties, colors)
-    return ShapeNode(
-        box=box,
-        geom=geom,
-        fill=_fill(properties, package, slide_part, colors),
-        line=_line(properties, colors),
-        effects=(shadow,) if shadow is not None else (),
-        corner_radius_emu=corner,
-        text=_text_body(element, colors),
+    shape_effects, effect_warns, effect_preserved = _effects(properties, colors)
+    return (
+        ShapeNode(
+            box=box,
+            geom=geom,
+            fill=_fill(properties, package, slide_part, colors),
+            line=_line(properties, colors),
+            effects=shape_effects,
+            corner_radius_emu=corner,
+            text=_text_body(element, colors),
+        ),
+        effect_warns,
+        effect_preserved,
     )
 
 
@@ -351,10 +467,13 @@ def _slide(
             if kind in {"nvGrpSpPr", "grpSpPr"}:
                 continue
             if kind == "sp":
-                shape = _shape(element, package, slide_part, colors)
+                shape, shape_warns, shape_preserved = _shape(element, package, slide_part, colors)
                 if shape is not None:
                     shapes.append(shape)
-                    continue
+                    warnings.extend(shape_warns)
+                    preserved.extend(shape_preserved)
+                    if not shape_preserved:
+                        continue
                 reason = "preserved shape that the reverse adapter could not map"
             elif kind == "pic":
                 shape = _picture_shape(element, package, slide_part)

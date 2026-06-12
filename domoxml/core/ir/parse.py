@@ -120,8 +120,9 @@ def _split_top_level(value: str) -> list[str]:
 
 
 def parse_shadow(value: str | None) -> Shadow | None:
-    """Map the first layer of a CSS ``box-shadow`` to a :class:`Shadow`, or ``None`` when
-    there is no shadow. Spread is dropped (no native OOXML equivalent)."""
+    """Map the first layer of a CSS ``box-shadow`` to a :class:`Shadow``, or ``None`` when
+    there is no shadow. Spread radius (4th length) is stored in ``spread_emu``; it will be
+    converted to OOXML grow factors by the DrawingML writer when shape dims are known."""
     if not value or value.strip().lower() == "none":
         return None
     layer = _split_top_level(value)[0]
@@ -132,6 +133,7 @@ def parse_shadow(value: str | None) -> Shadow | None:
         return None
     offset_x, offset_y = lengths[0], lengths[1]
     blur = lengths[2] if len(lengths) > 2 else 0.0
+    spread = lengths[3] if len(lengths) > 3 else 0.0
     distance = math.hypot(offset_x, offset_y)
     # OOXML direction: 0° = East, 90° = South (y grows downward, same as CSS offsets).
     direction = math.degrees(math.atan2(offset_y, offset_x)) % 360.0
@@ -141,6 +143,7 @@ def parse_shadow(value: str | None) -> Shadow | None:
         distance_emu=px_to_emu(distance),
         direction_deg=direction,
         inset=inset,
+        spread_emu=px_to_emu(spread),
     )
 
 

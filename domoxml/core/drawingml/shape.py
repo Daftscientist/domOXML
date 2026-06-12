@@ -6,13 +6,16 @@ import warnings
 from xml.sax.saxutils import escape
 
 from domoxml.core.ir.model import (
+    Blur,
     Fill,
+    Glow,
     GradientFill,
     Line,
     PatternFill,
     Rgba,
     Shadow,
     ShapeNode,
+    SoftEdge,
     SolidFill,
     TextBody,
     TextParagraph,
@@ -94,15 +97,92 @@ def _line_xml(line: Line | None) -> str:
     return f'<a:ln w="{line.width_emu}">{_solid_fill(line.color)}<a:prstDash val="{dash}"/></a:ln>'
 
 
-def _effect_xml(shadow: Shadow | None) -> str:
-    if shadow is None:
-        return ""
-    tag = "a:innerShdw" if shadow.inset else "a:outerShdw"
+def _outer_shadow_xml(shadow: Shadow, node: ShapeNode) -> str:
+    """Emit ``a:outerShdw`` with optional sx/sy grow attrs for spread.
+
+    ECMA-376 §20.1.8.55: ``sx``/``sy`` scale the shadow copy as a percentage (100000 = 100%).
+    To approximate CSS spread ``s`` on a shape of width ``w`` / height ``h``:
+        sx = round((w + 2*s) / w * 100000)
+        sy = round((h + 2*s) / h * 100000)
+    A warning is emitted when spread > 25% of the shorter shape dimension (approximation
+    degrades significantly beyond this range).
+    """
     direction = round((shadow.direction_deg % 360.0) * 60000)
+    extra = ""
+    if shadow.spread_emu != 0 and not shadow.inset:
+        w = node.box.width
+        h = node.box.height
+        s = shadow.spread_emu
+        if w > 0 and h > 0:
+            sx = round((w + 2 * s) / w * 100_000)
+            sy = round((h + 2 * s) / h * 100_000)
+            extra = f' sx="{sx}" sy="{sy}"'
+            min_dim = min(w, h)
+            if abs(s) > min_dim * 0.25:
+                warnings.warn(
+                    f"box-shadow spread ({s} EMU) > 25% of shape's shorter side "
+                    f"({min_dim} EMU); outerShdw sx/sy approximation may be poor",
+                    stacklevel=4,
+                )
     return (
-        f'<a:effectLst><{tag} blurRad="{shadow.blur_emu}" dist="{shadow.distance_emu}" '
-        f'dir="{direction}">{_srgb(shadow.color)}</{tag}></a:effectLst>'
+        f'<a:outerShdw blurRad="{shadow.blur_emu}" dist="{shadow.distance_emu}" '
+        f'dir="{direction}"{extra}>{_srgb(shadow.color)}</a:outerShdw>'
     )
+
+
+def _inner_shadow_xml(shadow: Shadow) -> str:
+    """Emit ``a:innerShdw``.
+
+    ``a:innerShdw`` has no grow attribute; spread is approximated by slightly increasing
+    ``blurRad`` (which enlarges the visible inset region). This is an honest approximation:
+    a warning is always emitted when spread is non-zero.
+    """
+    direction = round((shadow.direction_deg % 360.0) * 60000)
+    blur = shadow.blur_emu
+    if shadow.spread_emu != 0:
+        # Enlarge blur by spread to approximate choke/grow effect; it's imperfect.
+        blur = max(0, blur + shadow.spread_emu)
+        warnings.warn(
+            "innerShdw has no spread/grow attribute; "
+            "spread approximated via blurRad increase (imperfect)",
+            stacklevel=4,
+        )
+    return (
+        f'<a:innerShdw blurRad="{blur}" dist="{shadow.distance_emu}" '
+        f'dir="{direction}">{_srgb(shadow.color)}</a:innerShdw>'
+    )
+
+
+def _effects_xml(node: ShapeNode) -> str:
+    """Emit ``<a:effectLst>`` for all effects on the node, or an empty string."""
+    if not node.effects:
+        return ""
+    parts: list[str] = []
+    for effect in node.effects:
+        if isinstance(effect, Shadow):
+            if effect.inset:
+                parts.append(_inner_shadow_xml(effect))
+            else:
+                parts.append(_outer_shadow_xml(effect, node))
+        elif isinstance(effect, Glow):
+            parts.append(f'<a:glow rad="{effect.radius_emu}">{_srgb(effect.color)}</a:glow>')
+        elif isinstance(effect, Blur):
+            parts.append(f'<a:blur rad="{effect.radius_emu}" grow="1"/>')
+        elif isinstance(effect, SoftEdge):
+            parts.append(f'<a:softEdge rad="{effect.radius_emu}"/>')
+        else:
+            # Reflection is the remaining union arm.
+            parts.append(
+                f'<a:reflection blurRad="{effect.blur_emu}" '
+                f'dist="{effect.distance_emu}" '
+                f'startA="{round(effect.start_alpha * 100_000)}" '
+                f'endA="{round(effect.end_alpha * 100_000)}" '
+                f'dir="5400000" fadeDir="5400000" sx="100000" sy="-100000" '
+                f'ky="0" kx="0" algn="bl" rotWithShape="0"/>'
+            )
+    if not parts:
+        return ""
+    return f"<a:effectLst>{''.join(parts)}</a:effectLst>"
 
 
 def _geometry_xml(node: ShapeNode) -> str:
@@ -154,6 +234,6 @@ def shape_xml(node: ShapeNode, *, shape_id: int, blip_rid: str | None = None) ->
         "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
         f'<p:spPr><a:xfrm><a:off x="{node.box.x}" y="{node.box.y}"/>'
         f'<a:ext cx="{node.box.width}" cy="{node.box.height}"/></a:xfrm>'
-        f"{_geometry_xml(node)}{fill}{_line_xml(node.line)}{_effect_xml(node.shadow)}</p:spPr>"
+        f"{_geometry_xml(node)}{fill}{_line_xml(node.line)}{_effects_xml(node)}</p:spPr>"
         f"{_text_body(node.text)}</p:sp>"
     )

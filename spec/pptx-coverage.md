@@ -59,10 +59,10 @@ CSS source = what authoring produces it on the forward path.
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
 | Solid border | `a:ln`/`a:solidFill` | `border` | ✅ | ✅ | uniform border |
-| Per-side borders | (4 lines) | `border-top` … | 🟡 | ⬜ | approximated by heaviest side + warn |
-| Dash / cap / join | `a:prstDash`, `cap`, `a:round` | `border-style`, dashes | 🟡 | 🟡 | solid/dash/dot |
-| Arrowheads | `a:headEnd`/`a:tailEnd` | — | ⬜ | ⬜ | |
-| Gradient stroke | `a:gradFill` in `a:ln` | — | ⬜ | ⬜ | |
+| Per-side borders | 4 thin `p:sp` rects | `border-top` … | ✅ | ✅ | fwd: decomposed into per-side rects (radius+non-uniform → heaviest-side + warn); rev: n/a (they're just rects) |
+| Dash / cap / join | `a:prstDash`, `cap`, `a:round`/`a:bevel`/`a:miter` | `border-style`, `--domoxml-cap/join` | ✅ | ✅ | fwd: dotted→sysDot, dashed→dash, double/3D→solid+warn; rev: full preset table + cap/join; CSS custom props carry cap/join for round-trip |
+| Arrowheads | `a:headEnd`/`a:tailEnd` | `--domoxml-head/tail` | ⬜ | 🟡 | rev: type/w/len read into IR + CSS custom props; rendering deferred to connectors task; warning emitted |
+| Gradient stroke | `a:gradFill` in `a:ln` | `border-image: linear-gradient(...) 1` | ⬜ | 🟡 | rev: gradient read into `Line.gradient`; HTML approx via `border-image` (border-radius not honoured); warning emitted |
 
 ## Effects (`a:effectLst` — 8 native)
 

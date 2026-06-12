@@ -243,23 +243,91 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
     return None, None
 
 
-def _resolve_line(styles: dict[str, str]) -> tuple[Line | None, ConversionWarning | None]:
-    sides = [
-        parse_border_side(
+def _resolve_border_sides(
+    styles: dict[str, str],
+) -> tuple[
+    tuple[Line | None, Line | None, Line | None, Line | None],
+    list[str],
+]:
+    """Parse all four CSS border sides; return ``(top, right, bottom, left)`` plus any
+    approximation warning messages (e.g. ``double`` → ``solid``)."""
+    warnings: list[str] = []
+    sides: list[Line | None] = []
+    for side in ("Top", "Right", "Bottom", "Left"):
+        line, warn = parse_border_side(
             styles.get(f"border{side}Width"),
             styles.get(f"border{side}Style"),
             styles.get(f"border{side}Color"),
         )
-        for side in ("Top", "Right", "Bottom", "Left")
-    ]
-    present = [side for side in sides if side is not None]
-    if not present:
-        return None, None
-    if len(present) == 4 and all(side == present[0] for side in present):
-        return present[0], None
-    # A single a:ln can't carry four different borders; approximate with the heaviest + warn.
-    heaviest = max(present, key=lambda line: line.width_emu)
-    return heaviest, ConversionWarning(message="non-uniform border approximated by one outline")
+        sides.append(line)
+        if warn:
+            warnings.append(warn)
+    return (sides[0], sides[1], sides[2], sides[3]), warnings
+
+
+def _make_side_rect(box: Box, fill: Fill) -> ShapeNode:
+    """A zero-border, zero-corner rect ShapeNode used for per-side border decomposition."""
+    return ShapeNode(box=box, geom="rect", fill=fill)
+
+
+def _decompose_per_side(
+    base_box: Box,
+    top: Line | None,
+    right: Line | None,
+    bottom: Line | None,
+    left: Line | None,
+) -> list[ShapeNode]:
+    """Emit up to 4 thin solid rects that reproduce CSS per-side borders.
+
+    Layout convention (matches CSS border-box painting model):
+    - top/bottom span the full width of the element.
+    - left/right are clipped vertically to the space between top and bottom borders, to
+      avoid double-painting corners.
+    """
+    rects: list[ShapeNode] = []
+    top_w = top.width_emu if top is not None else 0
+    bot_w = bottom.width_emu if bottom is not None else 0
+    if top is not None:
+        rects.append(
+            _make_side_rect(
+                Box(x=base_box.x, y=base_box.y, width=base_box.width, height=top_w),
+                SolidFill(color=top.color),
+            )
+        )
+    if bottom is not None:
+        rects.append(
+            _make_side_rect(
+                Box(
+                    x=base_box.x,
+                    y=base_box.y + base_box.height - bot_w,
+                    width=base_box.width,
+                    height=bot_w,
+                ),
+                SolidFill(color=bottom.color),
+            )
+        )
+    interior_y = base_box.y + top_w
+    interior_h = base_box.height - top_w - bot_w
+    if left is not None and interior_h > 0:
+        rects.append(
+            _make_side_rect(
+                Box(x=base_box.x, y=interior_y, width=left.width_emu, height=interior_h),
+                SolidFill(color=left.color),
+            )
+        )
+    if right is not None and interior_h > 0:
+        rects.append(
+            _make_side_rect(
+                Box(
+                    x=base_box.x + base_box.width - right.width_emu,
+                    y=interior_y,
+                    width=right.width_emu,
+                    height=interior_h,
+                ),
+                SolidFill(color=right.color),
+            )
+        )
+    return rects
 
 
 def _shadow_to_effect(shadow: Shadow, box: Box, warnings: list[ConversionWarning]) -> Shadow | Glow:
@@ -403,11 +471,21 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             continue
 
         box = _box(node)
-        line, line_warning = _resolve_line(node.styles)
-        if _is_plain_inline(node, fill, line):
-            coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
-            continue
-        # When a polygon preset was matched, use that geometry; otherwise use border-radius path.
+        # Resolve borders: uniform borders use a single a:ln; per-side borders without
+        # border-radius are decomposed into four thin ShapeNode rects; per-side + radius
+        # falls back to the heaviest-side approximation.
+        (side_top, side_right, side_bottom, side_left), warn_msgs = _resolve_border_sides(
+            node.styles
+        )
+        present_sides = [s for s in (side_top, side_right, side_bottom, side_left) if s is not None]
+
+        line: Line | None = None
+        side_rect_shapes: list[ShapeNode] = []
+        line_warning: ConversionWarning | None = (
+            ConversionWarning(message=warn_msgs[0]) if warn_msgs else None
+        )
+
+        # When a polygon preset was matched, use that geometry; otherwise the border-radius path.
         if polygon_matched:
             geom: Geometry = preset_geom
             corner = 0
@@ -418,12 +496,39 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 )
             )
             geom = _geometry(box, corner)
+
+        if present_sides:
+            uniform = len(present_sides) == 4 and all(s == present_sides[0] for s in present_sides)
+            if uniform:
+                line = present_sides[0]
+            elif corner == 0:
+                # Per-side decomposition: the shape gets no a:ln; four thin solid rects carry
+                # each visible border, positioned flush to their respective edges.
+                side_rect_shapes = _decompose_per_side(
+                    box, side_top, side_right, side_bottom, side_left
+                )
+                line_warning = line_warning or ConversionWarning(
+                    message="non-uniform border decomposed into per-side rects"
+                )
+            else:
+                # border-radius + non-uniform: native decomposition is not possible —
+                # rounded borders can't be reproduced with flat rects.
+                line = max(present_sides, key=lambda s: s.width_emu)
+                line_warning = line_warning or ConversionWarning(
+                    message="non-uniform border with border-radius approximated by one outline"
+                )
+
+        if _is_plain_inline(node, fill, line):
+            coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
+            continue
         text = _text_body(node)
         if text is not None and fill is None and line is None:
             padding = px_to_emu(4)
             box = box.model_copy(update={"x": box.x - padding, "width": box.width + padding * 2})
         shadow = parse_shadow(node.styles.get("boxShadow"))
         effect = _shadow_to_effect(shadow, box, warnings) if shadow is not None else None
+        # Emit per-side border rects before the main shape so they appear behind its fill.
+        shapes.extend(side_rect_shapes)
         shapes.append(
             ShapeNode(
                 box=box,

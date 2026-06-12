@@ -6,8 +6,11 @@ from pathlib import Path
 
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir.model import (
+    AutoNumberBullet,
     Box,
+    CharBullet,
     Hyperlink,
+    LineSpacing,
     PictureFill,
     Rgba,
     ShapeNode,
@@ -158,3 +161,103 @@ def test_serialize_canvas_wraps_runs_in_hyperlinks() -> None:
     assert '<a href="https://example.com">' in html
     # slide_index=2 → 1-based #slide-3 authoring convention.
     assert '<a href="#slide-3">' in html
+
+
+# --------------------------------------------------------------------------- list reconstruction
+
+
+def _list_slide(*paragraphs: TextParagraph) -> SlideIR:
+    """Wrap paragraphs in a minimal SlideIR for HTML serialization."""
+    return SlideIR(
+        width=12_192_000,
+        height=6_858_000,
+        shapes=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=3_000_000, height=1_000_000),
+                text=TextBody(paragraphs=paragraphs),
+            ),
+        ),
+    )
+
+
+def _run(text: str) -> TextRun:
+    return TextRun(text=text, font_family="Arial", size_pt=12)
+
+
+def test_html_char_bullets_emit_ul_and_li() -> None:
+    """CharBullet paragraphs → <ul>…<li>…</li></ul>."""
+    slide = _list_slide(
+        TextParagraph(runs=(_run("Apple"),), bullet=CharBullet(char="•")),
+        TextParagraph(runs=(_run("Banana"),), bullet=CharBullet(char="•")),
+    )
+    html = serialize_canvas([slide]).slides[0].html
+    assert "<ul" in html
+    assert "<li" in html
+    assert "Apple" in html and "Banana" in html
+    assert "</ul>" in html
+
+
+def test_html_autonum_bullets_emit_ol_and_li() -> None:
+    """AutoNumberBullet paragraphs → <ol>…<li>…</li></ol>."""
+    slide = _list_slide(
+        TextParagraph(runs=(_run("First"),), bullet=AutoNumberBullet(scheme="arabicPeriod")),
+        TextParagraph(runs=(_run("Second"),), bullet=AutoNumberBullet(scheme="arabicPeriod")),
+    )
+    html = serialize_canvas([slide]).slides[0].html
+    assert "<ol" in html
+    assert "<li" in html
+    assert "First" in html and "Second" in html
+    assert "</ol>" in html
+
+
+def test_html_nested_bullets_emit_nested_ul() -> None:
+    """level=0 and level=1 bullets produce nested <ul> structure."""
+    slide = _list_slide(
+        TextParagraph(runs=(_run("Top"),), bullet=CharBullet(char="•"), level=0),
+        TextParagraph(runs=(_run("Nested"),), bullet=CharBullet(char="○"), level=1),
+        TextParagraph(runs=(_run("Back"),), bullet=CharBullet(char="•"), level=0),
+    )
+    html = serialize_canvas([slide]).slides[0].html
+    # Two separate <ul> opens: one outer, one inner for nested
+    assert html.count("<ul") >= 2
+    assert "Nested" in html
+    assert "</ul>" in html
+
+
+def test_html_plain_para_closes_open_lists() -> None:
+    """A non-bullet paragraph after bullets closes any open list tags."""
+    slide = _list_slide(
+        TextParagraph(runs=(_run("Item"),), bullet=CharBullet(char="•")),
+        TextParagraph(runs=(_run("Plain"),)),
+    )
+    html = serialize_canvas([slide]).slides[0].html
+    # The </ul> must appear before the plain paragraph content
+    ul_close = html.find("</ul>")
+    plain_pos = html.find("Plain")
+    assert ul_close < plain_pos, "</ul> should precede the plain paragraph"
+
+
+def test_html_line_spacing_emits_line_height() -> None:
+    """line_spacing(percent=1.6) → line-height:1.6 in div/li style."""
+    slide = _list_slide(
+        TextParagraph(
+            runs=(_run("x"),),
+            line_spacing=LineSpacing(percent=1.6),
+        )
+    )
+    html = serialize_canvas([slide]).slides[0].html
+    assert "line-height:1.6" in html
+
+
+def test_html_space_before_after_emits_margins() -> None:
+    """space_before_pt=9/space_after_pt=18 → margin-top:9pt;margin-bottom:18pt."""
+    slide = _list_slide(
+        TextParagraph(
+            runs=(_run("x"),),
+            space_before_pt=9.0,
+            space_after_pt=18.0,
+        )
+    )
+    html = serialize_canvas([slide]).slides[0].html
+    assert "margin-top:9pt" in html
+    assert "margin-bottom:18pt" in html

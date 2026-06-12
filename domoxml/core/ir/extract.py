@@ -18,13 +18,16 @@ from pydantic import BaseModel, ConfigDict
 from domoxml.core.drawingml.presets import match_polygon
 from domoxml.core.images import ImageExt, crop_png, decode_data_uri, normalise_image
 from domoxml.core.ir.model import (
+    AutoNumberBullet,
     Box,
+    CharBullet,
     Fill,
     Geometry,
     Glow,
     GradientFill,
     Hyperlink,
     Line,
+    LineSpacing,
     PictureFill,
     Rgba,
     Shadow,
@@ -36,6 +39,8 @@ from domoxml.core.ir.model import (
     TextRun,
 )
 from domoxml.core.ir.parse import (
+    css_list_style_to_autonum,
+    css_list_style_to_bu_char,
     is_bold,
     parse_border_side,
     parse_caps,
@@ -44,6 +49,8 @@ from domoxml.core.ir.parse import (
     parse_gradient,
     parse_length_px,
     parse_letter_spacing_pt,
+    parse_line_height,
+    parse_margin_pt,
     parse_polygon,
     parse_radius_px,
     parse_shadow,
@@ -134,8 +141,54 @@ def _text_body(node: RenderedNode) -> TextBody | None:
     if not any(paragraphs):
         return None
     align = _ALIGN.get((node.styles.get("textAlign") or "").strip().lower(), "left")
+    styles = node.styles
+
+    # Paragraph spacing from CSS margins (px → pt).
+    space_before = parse_margin_pt(styles.get("marginTop")) or None
+    space_after = parse_margin_pt(styles.get("marginBottom")) or None
+
+    # Line height — skip when "normal" to avoid embedding browser-resolved metrics.
+    raw_lh = styles.get("lineHeight", "")
+    line_spacing: LineSpacing | None = parse_line_height(raw_lh) if raw_lh != "normal" else None
+
+    # text-indent and margin-left → indent_pt / left_margin_pt.
+    indent_pt = parse_margin_pt(styles.get("textIndent"))
+    left_margin_pt = parse_margin_pt(styles.get("paddingLeft")) or parse_margin_pt(
+        styles.get("marginLeft")
+    )
+
+    # Bullet detection via list context captured by the snapshot JS.
+    bullet = None
+    level = 0
+    if node.tag == "li":
+        raw_depth = styles.get("domoxmlListDepth", "1")
+        try:
+            level = max(0, int(raw_depth) - 1)
+        except ValueError:
+            level = 0
+        list_type = styles.get("domoxmlListType") or styles.get("listStyleType") or "disc"
+        autonum_scheme = css_list_style_to_autonum(list_type)
+        if autonum_scheme is not None:
+            bullet = AutoNumberBullet(scheme=autonum_scheme)
+        else:
+            char = css_list_style_to_bu_char(list_type)
+            bullet = CharBullet(char=char)
+
     return TextBody(
-        paragraphs=tuple(TextParagraph(runs=tuple(runs), align=align) for runs in paragraphs)
+        paragraphs=tuple(
+            TextParagraph(
+                runs=tuple(runs),
+                align=align,
+                line_spacing=line_spacing,
+                space_before_pt=space_before,
+                space_after_pt=space_after,
+                indent_pt=indent_pt,
+                left_margin_pt=left_margin_pt,
+                level=level,
+                bullet=bullet,
+            )
+            for runs in paragraphs
+        )
     )
 
 

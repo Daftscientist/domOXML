@@ -10,8 +10,8 @@ import math
 import re
 from typing import Literal
 
-from domoxml.core.ir.model import GradientFill, GradientStop, Line, Rgba, Shadow
-from domoxml.core.units import px_to_emu
+from domoxml.core.ir.model import GradientFill, GradientStop, Line, LineSpacing, Rgba, Shadow
+from domoxml.core.units import px_to_emu, px_to_pt
 
 _RGB_RE = re.compile(
     r"rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\s*\)",
@@ -151,6 +151,95 @@ def parse_border_side(
         return None, None
     dash, warn = _dash_style(style_token)
     return Line(color=rgba, width_emu=px_to_emu(width_px), dash=dash), warn
+
+
+# --------------------------------------------------------------------------- para spacing/indent
+
+
+def parse_line_height(value: str | None) -> LineSpacing | None:
+    """Map a CSS ``line-height`` computed value to a :class:`LineSpacing`, or ``None``.
+
+    Chromium resolves ``normal`` to a ``px`` value, but to avoid encoding a font-metric
+    default we skip values that look like browser-resolved normal (no explicit authoring).
+    The caller should pass ``"normal"`` directly when the author wrote ``normal``; here we
+    map ``"normal"`` → ``None``.
+
+    - Unitless / percent (e.g. ``"1.6"``, ``"160%"``) → ``percent``
+    - ``px`` value → ``points`` (converted)
+    """
+    if not value or value.strip().lower() == "normal":
+        return None
+    v = value.strip()
+    # Percentage form: "160%"
+    pct = _PERCENT_RE.match(v)
+    if pct:
+        return LineSpacing(percent=float(pct.group(1)) / 100.0)
+    # px form: "24px"
+    px = _LENGTH_RE.match(v)
+    if px:
+        pt = px_to_pt(float(px.group(1)))
+        return LineSpacing(points=pt) if pt > 0 else None
+    # Unitless form: "1.5"
+    try:
+        factor = float(v)
+        if factor > 0:
+            return LineSpacing(percent=factor)
+    except ValueError:
+        pass
+    return None
+
+
+def parse_margin_pt(value: str | None) -> float:
+    """Parse the first ``px`` length in a CSS margin/padding computed value to points."""
+    if not value:
+        return 0.0
+    px = parse_length_px(value)
+    return px_to_pt(px) if px > 0 else 0.0
+
+
+# CSS list-style-type → DrawingML buChar char
+_LIST_STYLE_TO_BU_CHAR: dict[str, str] = {
+    "disc": "•",  # •
+    "circle": "○",  # ○
+    "square": "▪",  # ▪
+}
+
+# CSS list-style-type → DrawingML buAutoNum scheme
+_LIST_STYLE_TO_AUTONUM: dict[str, str] = {
+    "decimal": "arabicPeriod",
+    "lower-latin": "alphaLcPeriod",  # alias (overridden by lower-alpha in reverse)
+    "upper-latin": "alphaUcPeriod",  # alias (overridden by upper-alpha in reverse)
+    "lower-alpha": "alphaLcPeriod",
+    "upper-alpha": "alphaUcPeriod",
+    "lower-roman": "romanLcPeriod",
+    "upper-roman": "romanUcPeriod",
+}
+
+# DrawingML buChar char → CSS list-style-type (reverse)
+_BU_CHAR_TO_LIST_STYLE: dict[str, str] = {v: k for k, v in _LIST_STYLE_TO_BU_CHAR.items()}
+
+# DrawingML buAutoNum scheme → CSS list-style-type (reverse)
+_AUTONUM_TO_LIST_STYLE: dict[str, str] = {v: k for k, v in _LIST_STYLE_TO_AUTONUM.items()}
+
+
+def bu_char_to_css_list_style(char: str) -> str:
+    """Map a buChar glyph to a CSS list-style-type, or fall back to the raw char via content."""
+    return _BU_CHAR_TO_LIST_STYLE.get(char, char)
+
+
+def autonum_to_css_list_style(scheme: str) -> str:
+    """Map a buAutoNum scheme to a CSS list-style-type, defaulting to ``decimal``."""
+    return _AUTONUM_TO_LIST_STYLE.get(scheme, "decimal")
+
+
+def css_list_style_to_bu_char(list_style: str) -> str:
+    """Map a CSS list-style-type to its DrawingML buChar glyph, defaulting to ``•``."""
+    return _LIST_STYLE_TO_BU_CHAR.get(list_style, "•")
+
+
+def css_list_style_to_autonum(list_style: str) -> str | None:
+    """Map a CSS list-style-type to a DrawingML buAutoNum scheme, or ``None`` if not ordered."""
+    return _LIST_STYLE_TO_AUTONUM.get(list_style)
 
 
 # --------------------------------------------------------------------------- box-shadow

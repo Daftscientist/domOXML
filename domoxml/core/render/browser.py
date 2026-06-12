@@ -37,6 +37,9 @@ _SNAPSHOT_JS = """
     borderLeftWidth: cs.borderLeftWidth, borderLeftStyle: cs.borderLeftStyle,
     borderLeftColor: cs.borderLeftColor,
     display: cs.display,
+    marginTop: cs.marginTop, marginBottom: cs.marginBottom,
+    textIndent: cs.textIndent, paddingLeft: cs.paddingLeft,
+    listStyleType: cs.listStyleType,
   });
   // The nearest enclosing <a href> for the run, captured as a synthetic style key so the
   // extractor can recover a:hlinkClick without a separate channel. textContent (not innerText)
@@ -44,6 +47,23 @@ _SNAPSHOT_JS = """
   const linkHref = (el) => {
     const anchor = el.closest && el.closest('a[href]');
     return anchor ? anchor.getAttribute('href') : '';
+  };
+  // Count nesting depth and list type for <li> elements.
+  const listContext = (el) => {
+    let depth = 0;
+    let listType = '';
+    let node = el.parentElement;
+    while (node) {
+      const tag = node.tagName && node.tagName.toLowerCase();
+      if (tag === 'ul' || tag === 'ol') {
+        depth++;
+        if (!listType) listType = getComputedStyle(node).listStyleType;
+        if (tag === 'ol' && !listType) listType = 'decimal';
+        if (tag === 'ul' && !listType) listType = 'disc';
+      }
+      node = node.parentElement;
+    }
+    return { depth, listType };
   };
   const inlineRuns = (root) => {
     const runs = [];
@@ -84,12 +104,20 @@ _SNAPSHOT_JS = """
       .join('').trim();
     const index = out.length;
     el.dataset.domoxmlCaptureIndex = String(index);
+    const styles = pick(getComputedStyle(el));
+    const tag = el.tagName.toLowerCase();
+    // For <li> elements record the list nesting depth and list type.
+    if (tag === 'li') {
+      const ctx = listContext(el);
+      styles.domoxmlListDepth = String(ctx.depth);
+      styles.domoxmlListType = ctx.listType || styles.listStyleType || 'disc';
+    }
     out.push({
-      tag: el.tagName.toLowerCase(),
+      tag,
       x: r.x, y: r.y, width: r.width, height: r.height,
       text, index, parent,
       src: el.currentSrc || el.getAttribute('src') || '',
-      styles: pick(getComputedStyle(el)),
+      styles,
       textRuns: inlineRuns(el),
     });
     for (const child of el.children) walk(child, index);

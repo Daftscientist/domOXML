@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -16,8 +17,10 @@ from domoxml.core.ir.model import (
     Arrowhead,
     ArrowheadSize,
     ArrowheadType,
+    AutoNumberBullet,
     Blur,
     Box,
+    CharBullet,
     Fill,
     Geometry,
     GeometryKind,
@@ -26,6 +29,7 @@ from domoxml.core.ir.model import (
     GradientStop,
     Hyperlink,
     Line,
+    LineSpacing,
     PictureFill,
     Reflection,
     Rgba,
@@ -39,6 +43,7 @@ from domoxml.core.ir.model import (
     TextRun,
 )
 from domoxml.core.opc import OpcPackage
+from domoxml.core.units import emu_to_pt
 from domoxml.types import ConversionWarning, PreservedFragment
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -449,12 +454,90 @@ def _text_body(
         align = _ALIGN_FROM_OOXML.get(
             properties.get("algn", "l") if properties is not None else "l", "left"
         )
+
+        # Spacing: lnSpc, spcBef, spcAft
+        line_spacing: LineSpacing | None = None
+        space_before_pt: float | None = None
+        space_after_pt: float | None = None
+        indent_pt: float = 0.0
+        left_margin_pt: float = 0.0
+        level: int = 0
+        bullet = None
+
+        if properties is not None:
+            # marL / indent (EMUs → pt)
+            mar_l = properties.get("marL")
+            if mar_l is not None:
+                with contextlib.suppress(ValueError):
+                    left_margin_pt = emu_to_pt(int(mar_l))
+            indent_raw = properties.get("indent")
+            if indent_raw is not None:
+                with contextlib.suppress(ValueError):
+                    indent_pt = emu_to_pt(int(indent_raw))
+            lvl_raw = properties.get("lvl")
+            if lvl_raw is not None:
+                with contextlib.suppress(ValueError):
+                    level = max(0, int(lvl_raw))
+
+            # a:lnSpc
+            ln_spc = properties.find("a:lnSpc", _NS)
+            if ln_spc is not None:
+                spc_pct = ln_spc.find("a:spcPct", _NS)
+                spc_pts = ln_spc.find("a:spcPts", _NS)
+                if spc_pct is not None:
+                    val = _int_attr(spc_pct, "val", 100_000)
+                    line_spacing = LineSpacing(percent=val / 100_000)
+                elif spc_pts is not None:
+                    val = _int_attr(spc_pts, "val", 0)
+                    if val > 0:
+                        line_spacing = LineSpacing(points=val / 100)
+
+            # a:spcBef / a:spcAft
+            spc_bef = properties.find("a:spcBef", _NS)
+            if spc_bef is not None:
+                pts = spc_bef.find("a:spcPts", _NS)
+                if pts is not None:
+                    val = _int_attr(pts, "val", 0)
+                    if val > 0:
+                        space_before_pt = val / 100
+
+            spc_aft = properties.find("a:spcAft", _NS)
+            if spc_aft is not None:
+                pts = spc_aft.find("a:spcPts", _NS)
+                if pts is not None:
+                    val = _int_attr(pts, "val", 0)
+                    if val > 0:
+                        space_after_pt = val / 100
+
+            # Bullets
+            bu_char = properties.find("a:buChar", _NS)
+            bu_auto = properties.find("a:buAutoNum", _NS)
+            if bu_char is not None:
+                char = bu_char.get("char", "•")
+                bullet = CharBullet(char=char)
+            elif bu_auto is not None:
+                scheme = bu_auto.get("type", "arabicPeriod")
+                start_at = _int_attr(bu_auto, "startAt", 1)
+                bullet = AutoNumberBullet(scheme=scheme, start_at=start_at)
+
         runs = tuple(
             run
             for element in paragraph.findall("a:r", _NS)
             if (run := _text_run(element, colors, hyperlink_for)) is not None
         )
-        paragraphs.append(TextParagraph(runs=runs, align=align))
+        paragraphs.append(
+            TextParagraph(
+                runs=runs,
+                align=align,
+                line_spacing=line_spacing,
+                space_before_pt=space_before_pt,
+                space_after_pt=space_after_pt,
+                indent_pt=indent_pt,
+                left_margin_pt=left_margin_pt,
+                level=level,
+                bullet=bullet,
+            )
+        )
     return TextBody(paragraphs=tuple(paragraphs)) if paragraphs else None
 
 

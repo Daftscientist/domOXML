@@ -1,0 +1,30 @@
+id = "bullets-spacing"
+direction = "both"
+html_file = "slide.html"
+
+[expected]
+min_native = 3
+max_raster = 0
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:buChar"
+min_count = 4
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:buAutoNum"
+min_count = 2
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:lnSpc"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:spcAft"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.90

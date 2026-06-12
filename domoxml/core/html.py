@@ -6,6 +6,7 @@ import hashlib
 import math
 from html import escape
 
+from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_css
 from domoxml.core.ir.model import (
     GradientFill,
     Node,
@@ -160,6 +161,7 @@ def serialize_canvas(
     *,
     warnings: tuple[ConversionWarning, ...] = (),
     preserved: tuple[PreservedFragment, ...] = (),
+    embedded_fonts: tuple[ReverseFontFace, ...] = (),
 ) -> HtmlPresentation:
     """Serialize canvas IR to one stable HTML fragment per slide plus shared assets."""
     assets: dict[str, HtmlAsset] = {}
@@ -176,9 +178,16 @@ def serialize_canvas(
             f"{shapes}</div>"
         )
         html_slides.append(HtmlSlide(html=html, width_px=width_px, height_px=height_px))
+
+    # Emit embedded font faces as assets and @font-face CSS rules.
+    for face in embedded_fonts:
+        asset_path = f"assets/fonts/{font_asset_name(face)}"
+        assets.setdefault(asset_path, HtmlAsset(path=asset_path, data=face.data))
+    css = _SHARED_CSS + font_face_css(list(embedded_fonts))
+
     return HtmlPresentation(
         slides=tuple(html_slides),
-        css=_SHARED_CSS,
+        css=css,
         assets=tuple(assets.values()),
         warnings=tuple(emitted_warnings),
         preserved=preserved,

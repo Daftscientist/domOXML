@@ -90,7 +90,7 @@ CSS source = what authoring produces it on the forward path.
 | Multi-column | `a:bodyPr numCol` | `column-count` | ⬜ | ⬜ | |
 | Autofit | `a:normAutofit`/`a:spAutoFit` | (overflow) | 🟡 | ⬜ | normAutofit emitted |
 | Text warp (WordArt) | `a:prstTxWarp` | — | ⬜ | ⬜ | |
-| **Font embedding** | `p:embeddedFontLst` | `@font-face`/`<link>` | ✅ | ⬜ | web+system; woff2/OTF→TTF; warns if unembeddable. NB: Office-online PDF service (Graph) 406s on any custom embed — desktop/LibreOffice honour it |
+| **Font embedding** | `p:embeddedFontLst` | `@font-face`/`<link>` | ✅ | ✅ | Fwd: web+system; woff2/OTF→TTF; warns if unembeddable. Rev: ODTTF deobfuscation; OS/2 fsType restricted-license check; `@font-face` + `HtmlAsset` per slot. NB: Office-online PDF service (Graph) 406s on any custom embed — desktop/LibreOffice honour it |
 
 ## Pictures & media
 

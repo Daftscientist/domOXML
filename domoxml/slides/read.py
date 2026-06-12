@@ -10,6 +10,7 @@ from xml.etree.ElementTree import Element
 from defusedxml import ElementTree
 from PIL import ImageColor
 
+from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.ir.model import (
     Box,
     Fill,
@@ -80,6 +81,7 @@ class PptxReadResult:
     slides: tuple[SlideIR, ...]
     warnings: tuple[ConversionWarning, ...] = ()
     preserved: tuple[PreservedFragment, ...] = ()
+    embedded_fonts: tuple[ReverseFontFace, ...] = ()
 
 
 def _int_attr(element: Element, name: str, default: int = 0) -> int:
@@ -439,10 +441,15 @@ def read_pptx_result(pptx: bytes) -> PptxReadResult:
         )
         for slide_id in slide_ids
     ]
+    font_faces, font_warnings = read_embedded_fonts(package, root, presentation_part)
+    all_warnings = tuple(warning for result in results for warning in result[1]) + tuple(
+        font_warnings
+    )
     return PptxReadResult(
         slides=tuple(result[0] for result in results),
-        warnings=tuple(warning for result in results for warning in result[1]),
+        warnings=all_warnings,
         preserved=tuple(fragment for result in results for fragment in result[2]),
+        embedded_fonts=tuple(font_faces),
     )
 
 

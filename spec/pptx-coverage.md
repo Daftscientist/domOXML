@@ -68,13 +68,14 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Outer shadow | `a:outerShdw` | `box-shadow` | ✅ | 🟡 | native; spread dropped |
-| Inner shadow | `a:innerShdw` | `box-shadow inset` | ✅ | 🟡 | native |
-| Glow | `a:glow` | blurred halo | 🖼️ | ⬜ | |
-| Blur | `a:blur` | `filter: blur()` | 🖼️ | ⬜ | `filter` → raster (warned) |
-| Soft edge | `a:softEdge` | — | 🖼️ | ⬜ | |
-| Reflection | `a:reflection` | — | 🖼️ | ⬜ | |
-| Preset / fill-overlay | `a:prstShdw`, `a:fillOverlay` | — | 🖼️ | ⬜ | |
+| Outer shadow | `a:outerShdw` | `box-shadow` | ✅ | ✅ | spread → sx/sy grow attrs; warns if spread >25% of short side |
+| Inner shadow | `a:innerShdw` | `box-shadow inset` | ✅ | ✅ | spread approximated via blurRad increase (innerShdw has no grow); warned |
+| Glow | `a:glow` | blurred halo | 🟡 | 🟡 | fwd: zero-offset box-shadow (offset==0) → a:glow; rev: box-shadow 0 0 rad rad/2 approximation |
+| Blur | `a:blur` | `filter: blur()` | 🖼️ | 🟡 | `filter` → raster (warned); rev: filter:blur() + rasterise-on-forward warning |
+| Soft edge | `a:softEdge` | — | 🖼️ | 🟡 | rev: mask-image radial-gradient feathering approximation |
+| Reflection | `a:reflection` | — | 🖼️ | 🟡 | rev: -webkit-box-reflect + preserved fragment; fwd will rasterise; WebKit/Blink only |
+| Preset shadow | `a:prstShdw` | — | 🖼️ | preserved | PreservedFragment + ConversionWarning; no CSS mapping |
+| Fill overlay | `a:fillOverlay` | — | 🖼️ | preserved | PreservedFragment + ConversionWarning; no CSS mapping |
 
 ## Text (`a:txBody`)
 

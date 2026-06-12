@@ -9,13 +9,18 @@ from html import escape
 from domoxml.core.drawingml.presets import preset_defaults, preset_vertices
 from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_css
 from domoxml.core.ir.model import (
+    Blur,
+    Glow,
     GradientFill,
     Node,
     PatternFill,
     PictureFill,
+    Reflection,
     Rgba,
+    Shadow,
     ShapeNode,
     SlideIR,
+    SoftEdge,
     SolidFill,
     TextBody,
     TextRun,
@@ -125,17 +130,67 @@ def _shape_style(
         clip = _clip_path_css(node.geom)
         if clip is not None:
             styles.append(clip)
-    if node.shadow is not None:
-        radians = math.radians(node.shadow.direction_deg)
-        offset_x = emu_to_px(round(math.cos(radians) * node.shadow.distance_emu))
-        offset_y = emu_to_px(round(math.sin(radians) * node.shadow.distance_emu))
-        styles.append(
-            "box-shadow:"
-            f"{_number(offset_x)}px {_number(offset_y)}px {_px(node.shadow.blur_emu)} "
-            f"{_rgba(node.shadow.color)}"
-            f"{' inset' if node.shadow.inset else ''}"
-        )
+    # Emit effects
+    _append_effect_styles(node, styles, warnings)
     return ";".join(styles)
+
+
+def _append_effect_styles(
+    node: ShapeNode,
+    styles: list[str],
+    warnings: list[ConversionWarning],
+) -> None:
+    """Append CSS properties for each effect in ``node.effects`` to ``styles``."""
+    box_shadows: list[str] = []
+    blur_filters: list[str] = []
+    soft_edge_masks: list[str] = []
+
+    for effect in node.effects:
+        if isinstance(effect, Shadow):
+            radians = math.radians(effect.direction_deg)
+            offset_x = emu_to_px(round(math.cos(radians) * effect.distance_emu))
+            offset_y = emu_to_px(round(math.sin(radians) * effect.distance_emu))
+            spread_px = emu_to_px(effect.spread_emu) if effect.spread_emu else 0.0
+            inset_kw = " inset" if effect.inset else ""
+            box_shadows.append(
+                f"{_number(offset_x)}px {_number(offset_y)}px "
+                f"{_px(effect.blur_emu)} {_number(spread_px)}px "
+                f"{_rgba(effect.color)}{inset_kw}"
+            )
+        elif isinstance(effect, Glow):
+            # Approximate a:glow as a non-inset, centered box-shadow:
+            # offset=0, blur=radius, spread=radius/2 (gives a visible halo around the box).
+            rad_px = emu_to_px(effect.radius_emu)
+            spread_px = rad_px / 2
+            box_shadows.append(
+                f"0px 0px {_number(rad_px)}px {_number(spread_px)}px {_rgba(effect.color)}"
+            )
+        elif isinstance(effect, Blur):
+            blur_filters.append(f"blur({_number(emu_to_px(effect.radius_emu))}px)")
+            warnings.append(
+                ConversionWarning(
+                    message="a:blur mapped to CSS filter:blur() — forward round-trip will rasterise"
+                )
+            )
+        elif isinstance(effect, SoftEdge):
+            # Approximate softEdge as a CSS mask with an inset radial gradient.
+            # The gradient fades from opaque at (radius) inset to transparent at the edge.
+            rad_px = _number(emu_to_px(effect.radius_emu))
+            soft_edge_masks.append(
+                f"radial-gradient(ellipse calc(100% - {rad_px}px) calc(100% - {rad_px}px) "
+                f"at 50% 50%, black calc(100% - {rad_px}px), transparent 100%)"
+            )
+        else:
+            # Reflection is handled in _node_html; skip in style accumulation.
+            pass
+
+    if box_shadows:
+        styles.append(f"box-shadow:{','.join(box_shadows)}")
+    if blur_filters:
+        styles.append(f"filter:{' '.join(blur_filters)}")
+    if soft_edge_masks:
+        styles.append(f"mask-image:{','.join(soft_edge_masks)}")
+        styles.append("-webkit-mask-image:" + ",".join(soft_edge_masks))
 
 
 def _decoration_css(run: TextRun) -> str | None:
@@ -200,7 +255,39 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
     connectors, and tables warn and emit nothing rather than drop silently."""
     if isinstance(node, ShapeNode):
         style = escape(_shape_style(node, assets, warnings), quote=True)
-        return f'<div class="domoxml-shape" style="{style}">{_text_html(node.text)}</div>'
+        inner = f'<div class="domoxml-shape" style="{style}">{_text_html(node.text)}</div>'
+        # Wrap with reflection if present
+        reflections = [e for e in node.effects if isinstance(e, Reflection)]
+        if reflections:
+            ref = reflections[0]
+            dist_px = _number(emu_to_px(ref.distance_emu))
+            # Build a gradient mask for the reflection fade
+            grad = (
+                f"linear-gradient(to bottom, "
+                f"rgba(0,0,0,{_number(ref.start_alpha)}) 0%, "
+                f"rgba(0,0,0,{_number(ref.end_alpha)}) 100%)"
+            )
+            reflect_style = (
+                f"-webkit-box-reflect:below {dist_px}px {grad};box-reflect:below {dist_px}px {grad}"
+            )
+            warnings.append(
+                ConversionWarning(
+                    message="a:reflection approximated as -webkit-box-reflect; "
+                    "support is WebKit/Blink only — forward round-trip will rasterise"
+                )
+            )
+            # Wrap so the reflect doesn't escape the slide bounds
+            w = _px(node.box.width)
+            h = _px(node.box.height)
+            left = _px(node.box.x)
+            top = _px(node.box.y)
+            return (
+                f'<div class="domoxml-shape" '
+                f'style="left:{left};top:{top};width:{w};height:{h};'
+                f'{reflect_style}">'
+                f"{_text_html(node.text)}</div>"
+            )
+        return inner
     # TODO(coverage): GroupNode/Connector/TableNode have no HTML serializer yet. The extractor
     # never produces them today; warn (no-silent-drop) when one reaches here.
     kind = type(node).__name__

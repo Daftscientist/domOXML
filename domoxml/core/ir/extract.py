@@ -21,11 +21,13 @@ from domoxml.core.ir.model import (
     Box,
     Fill,
     Geometry,
+    Glow,
     GradientFill,
     Hyperlink,
     Line,
     PictureFill,
     Rgba,
+    Shadow,
     ShapeNode,
     SlideIR,
     SolidFill,
@@ -260,6 +262,20 @@ def _resolve_line(styles: dict[str, str]) -> tuple[Line | None, ConversionWarnin
     return heaviest, ConversionWarning(message="non-uniform border approximated by one outline")
 
 
+def _shadow_to_effect(shadow: Shadow, box: Box, warnings: list[ConversionWarning]) -> Shadow | Glow:
+    """Decide whether to emit a :class:`Glow` or keep the :class:`Shadow` as-is.
+
+    A CSS ``box-shadow`` with zero offset and a non-negative spread maps cleanly onto
+    ``a:glow`` — it is more faithful in PowerPoint than an ``outerShdw`` with zero distance.
+    Any other shadow stays as a :class:`Shadow` (outer or inner depending on ``inset``).
+    """
+    if not shadow.inset and shadow.distance_emu == 0 and shadow.spread_emu >= 0:
+        # Convert to glow: radius = blur + spread (both contribute to halo size)
+        radius = shadow.blur_emu + shadow.spread_emu
+        return Glow(color=shadow.color, radius_emu=radius)
+    return shadow
+
+
 def _geometry(box: Box, corner_emu: int) -> Literal["rect", "roundRect", "ellipse"]:
     if corner_emu <= 0:
         return "rect"
@@ -407,13 +423,14 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             padding = px_to_emu(4)
             box = box.model_copy(update={"x": box.x - padding, "width": box.width + padding * 2})
         shadow = parse_shadow(node.styles.get("boxShadow"))
+        effect = _shadow_to_effect(shadow, box, warnings) if shadow is not None else None
         shapes.append(
             ShapeNode(
                 box=box,
                 geom=geom,
                 fill=fill,
                 line=line,
-                effects=(shadow,) if shadow is not None else (),
+                effects=(effect,) if effect is not None else (),
                 corner_radius_emu=corner,
                 opacity=_opacity(node.styles),
                 text=text,

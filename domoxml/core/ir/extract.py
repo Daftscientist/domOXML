@@ -20,6 +20,7 @@ from domoxml.core.ir.model import (
     Box,
     Fill,
     GradientFill,
+    Hyperlink,
     Line,
     PictureFill,
     Rgba,
@@ -33,9 +34,12 @@ from domoxml.core.ir.model import (
 from domoxml.core.ir.parse import (
     is_bold,
     parse_border_side,
+    parse_caps,
     parse_color,
+    parse_decoration,
     parse_gradient,
     parse_length_px,
+    parse_letter_spacing_pt,
     parse_radius_px,
     parse_shadow,
 )
@@ -73,16 +77,37 @@ class ExtractResult(BaseModel):
     warnings: tuple[ConversionWarning, ...]
 
 
+def _hyperlink(href: str) -> Hyperlink | None:
+    """Map an ``<a href>`` value to a :class:`Hyperlink`. ``#slide-N`` (1-based, the authoring
+    convention) becomes an internal jump to the zero-based ``slide_index``; anything else is an
+    external URL. Empty/missing hrefs yield ``None``."""
+    href = href.strip()
+    if not href:
+        return None
+    if href.startswith("#slide-"):
+        try:
+            return Hyperlink(slide_index=int(href.removeprefix("#slide-")) - 1)
+        except ValueError:
+            return None
+    return Hyperlink(url=href)
+
+
 def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
     if not text:
         return None
+    underline, strike = parse_decoration(styles.get("textDecorationLine"))
     return TextRun(
         text=text,
         font_family=(styles.get("fontFamily") or "sans-serif").split(",")[0].strip().strip("'\""),
         size_pt=px_to_pt(parse_length_px(styles.get("fontSize")) or 16.0),
         bold=is_bold(styles.get("fontWeight")),
         italic=styles.get("fontStyle", "normal") == "italic",
+        underline=underline,
+        strike=strike,
+        caps=parse_caps(styles.get("textTransform"), styles.get("fontVariantCaps")),
+        letter_spacing_pt=parse_letter_spacing_pt(styles.get("letterSpacing")),
         color=parse_color(styles.get("color")) or _DEFAULT_TEXT_COLOR,
+        hyperlink=_hyperlink(styles.get("domoxmlHref", "")),
     )
 
 

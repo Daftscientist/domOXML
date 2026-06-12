@@ -7,6 +7,7 @@ from pathlib import Path
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir.model import (
     Box,
+    Hyperlink,
     PictureFill,
     Rgba,
     ShapeNode,
@@ -100,3 +101,60 @@ def test_html_presentation_save_writes_reverse_metadata(tmp_path: Path) -> None:
     metadata = (tmp_path / "metadata.json").read_text()
     assert "preserved unsupported node" in metadata
     assert "<p:pic/>" in metadata
+
+
+def _decorated_slide() -> SlideIR:
+    return SlideIR(
+        width=12_192_000,
+        height=6_858_000,
+        shapes=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=3_000_000, height=1_000_000),
+                text=TextBody(
+                    paragraphs=(
+                        TextParagraph(
+                            runs=(
+                                TextRun(
+                                    text="deco",
+                                    font_family="Inter",
+                                    size_pt=18,
+                                    underline=True,
+                                    strike=True,
+                                    caps="all",
+                                    letter_spacing_pt=2.0,
+                                ),
+                                TextRun(text="sc", font_family="Inter", size_pt=18, caps="small"),
+                                TextRun(
+                                    text="ext",
+                                    font_family="Inter",
+                                    size_pt=18,
+                                    hyperlink=Hyperlink(url="https://example.com"),
+                                ),
+                                TextRun(
+                                    text="jump",
+                                    font_family="Inter",
+                                    size_pt=18,
+                                    hyperlink=Hyperlink(slide_index=2),
+                                ),
+                            )
+                        ),
+                    )
+                ),
+            ),
+        ),
+    )
+
+
+def test_serialize_canvas_emits_run_decorations() -> None:
+    html = serialize_canvas([_decorated_slide()]).slides[0].html
+    assert "text-decoration-line:underline line-through" in html
+    assert "text-transform:uppercase" in html
+    assert "font-variant-caps:small-caps" in html
+    assert "letter-spacing:2pt" in html
+
+
+def test_serialize_canvas_wraps_runs_in_hyperlinks() -> None:
+    html = serialize_canvas([_decorated_slide()]).slides[0].html
+    assert '<a href="https://example.com">' in html
+    # slide_index=2 → 1-based #slide-3 authoring convention.
+    assert '<a href="#slide-3">' in html

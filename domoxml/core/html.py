@@ -121,6 +121,16 @@ def _shape_style(
     return ";".join(styles)
 
 
+def _decoration_css(run: TextRun) -> str | None:
+    """``text-decoration-line`` for the run (underline and/or line-through), or ``None``."""
+    lines: list[str] = []
+    if run.underline is not False:
+        lines.append("underline")
+    if run.strike:
+        lines.append("line-through")
+    return " ".join(lines) if lines else None
+
+
 def _run_html(run: TextRun) -> str:
     styles = [
         f"font-family:{run.font_family}",
@@ -129,7 +139,32 @@ def _run_html(run: TextRun) -> str:
         f"font-style:{'italic' if run.italic else 'normal'}",
         f"color:{_rgba(run.color)}",
     ]
-    return f'<span style="{escape(";".join(styles), quote=True)}">{escape(run.text)}</span>'
+    decoration = _decoration_css(run)
+    if decoration is not None:
+        styles.append(f"text-decoration-line:{decoration}")
+    if run.caps == "all":
+        styles.append("text-transform:uppercase")
+    elif run.caps == "small":
+        styles.append("font-variant-caps:small-caps")
+    if run.letter_spacing_pt:
+        styles.append(f"letter-spacing:{_number(run.letter_spacing_pt)}pt")
+    span = f'<span style="{escape(";".join(styles), quote=True)}">{escape(run.text)}</span>'
+    return _wrap_hyperlink(span, run)
+
+
+def _wrap_hyperlink(inner: str, run: TextRun) -> str:
+    """Wrap a run's span in an ``<a href>`` when it carries a hyperlink. An internal slide jump
+    uses the ``#slide-N`` (1-based) authoring convention; otherwise the external URL is used."""
+    link = run.hyperlink
+    if link is None:
+        return inner
+    if link.slide_index is not None:
+        href = f"#slide-{link.slide_index + 1}"
+    elif link.url is not None:
+        href = link.url
+    else:
+        return inner
+    return f'<a href="{escape(href, quote=True)}">{inner}</a>'
 
 
 def _text_html(body: TextBody | None) -> str:

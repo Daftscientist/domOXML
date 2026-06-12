@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Literal
@@ -16,6 +17,7 @@ from domoxml.core.ir.model import (
     Fill,
     GradientFill,
     GradientStop,
+    Hyperlink,
     Line,
     PictureFill,
     Rgba,
@@ -37,6 +39,9 @@ _NS = {"a": _A, "p": _P, "r": _R}
 _RID = f"{{{_R}}}id"
 _EMBED = f"{{{_R}}}embed"
 _OFFICE_DOCUMENT_REL = f"{_R}/officeDocument"
+_HYPERLINK_REL = f"{_R}/hyperlink"
+_SLIDE_REL = f"{_R}/slide"
+_SLIDE_JUMP_ACTION = "ppaction://hlinksldjump"
 _SLIDE_LAYOUT_REL = f"{_R}/slideLayout"
 _SLIDE_MASTER_REL = f"{_R}/slideMaster"
 _THEME_REL = f"{_R}/theme"
@@ -215,7 +220,26 @@ def _shadow(shape_properties: Element, colors: ThemeColors) -> Shadow | None:
     return None
 
 
-def _text_run(element: Element, colors: ThemeColors) -> TextRun | None:
+def _underline(value: str | None) -> bool | str:
+    """Map ``a:rPr u`` to the IR underline value: ``"none"``/absent → ``False``, ``"sng"`` →
+    ``True`` (single), any other style token kept verbatim (``"dbl"``, ``"heavy"``, …)."""
+    if value is None or value == "none":
+        return False
+    return True if value == "sng" else value
+
+
+def _caps(value: str | None) -> Literal["all", "small"] | None:
+    """Map ``a:rPr cap`` to the IR caps token; ``"none"``/absent/unknown → ``None``."""
+    if value == "all":
+        return "all"
+    return "small" if value == "small" else None
+
+
+def _text_run(
+    element: Element,
+    colors: ThemeColors,
+    hyperlink_for: Callable[[Element], Hyperlink | None],
+) -> TextRun | None:
     text = element.findtext("a:t", default="", namespaces=_NS)
     if not text:
         return None
@@ -231,11 +255,20 @@ def _text_run(element: Element, colors: ThemeColors) -> TextRun | None:
         size_pt=_int_attr(properties, "sz", 1200) / 100,
         bold=properties.get("b") == "1",
         italic=properties.get("i") == "1",
+        underline=_underline(properties.get("u")),
+        strike=properties.get("strike", "noStrike") not in ("noStrike", None),
+        caps=_caps(properties.get("cap")),
+        letter_spacing_pt=_int_attr(properties, "spc", 0) / 100,
         color=color,
+        hyperlink=hyperlink_for(properties),
     )
 
 
-def _text_body(shape: Element, colors: ThemeColors) -> TextBody | None:
+def _text_body(
+    shape: Element,
+    colors: ThemeColors,
+    hyperlink_for: Callable[[Element], Hyperlink | None],
+) -> TextBody | None:
     body = shape.find("p:txBody", _NS)
     if body is None:
         return None
@@ -248,14 +281,18 @@ def _text_body(shape: Element, colors: ThemeColors) -> TextBody | None:
         runs = tuple(
             run
             for element in paragraph.findall("a:r", _NS)
-            if (run := _text_run(element, colors)) is not None
+            if (run := _text_run(element, colors, hyperlink_for)) is not None
         )
         paragraphs.append(TextParagraph(runs=runs, align=align))
     return TextBody(paragraphs=tuple(paragraphs)) if paragraphs else None
 
 
 def _shape(
-    element: Element, package: OpcPackage, slide_part: str, colors: ThemeColors
+    element: Element,
+    package: OpcPackage,
+    slide_part: str,
+    colors: ThemeColors,
+    hyperlink_for: Callable[[Element], Hyperlink | None],
 ) -> ShapeNode | None:
     properties = element.find("p:spPr", _NS)
     transform = properties.find("a:xfrm", _NS) if properties is not None else None
@@ -294,7 +331,7 @@ def _shape(
         line=_line(properties, colors),
         effects=(shadow,) if shadow is not None else (),
         corner_radius_emu=corner,
-        text=_text_body(element, colors),
+        text=_text_body(element, colors, hyperlink_for),
     )
 
 
@@ -338,10 +375,54 @@ def _preserve(
     )
 
 
+def _hyperlink_resolver(
+    package: OpcPackage, slide_part: str, slide_index_by_part: dict[str, int]
+) -> Callable[[Element], Hyperlink | None]:
+    """A resolver from a run's ``a:rPr`` to its :class:`Hyperlink`.
+
+    An external ``a:hlinkClick r:id`` becomes a URL from the rel target; a slide-jump
+    (``action="ppaction://hlinksldjump"``) resolves its internal rel to the destination slide
+    part and recovers its zero-based deck index. Missing/empty links yield ``None``."""
+    relationships = {rel.id: rel for rel in package.relationships(slide_part)}
+
+    def resolve(properties: Element) -> Hyperlink | None:
+        click = properties.find("a:hlinkClick", _NS)
+        if click is None:
+            return None
+        rid = click.get(_RID)
+        action = click.get("action", "")
+        if action == _SLIDE_JUMP_ACTION:
+            if rid and rid in relationships:
+                target = package.resolve(slide_part, relationships[rid])
+                index = slide_index_by_part.get(target)
+                if index is not None:
+                    return Hyperlink(slide_index=index)
+            return None
+        if not rid:
+            return None
+        relationship = relationships.get(rid)
+        if relationship is None:
+            return None
+        if relationship.target_mode != "Internal":
+            return Hyperlink(url=relationship.target)
+        # An internal slide target without the jump action is still an in-deck jump.
+        target = package.resolve(slide_part, relationship)
+        index = slide_index_by_part.get(target)
+        return Hyperlink(slide_index=index) if index is not None else None
+
+    return resolve
+
+
 def _slide(
-    package: OpcPackage, slide_part: str, *, width: int, height: int
+    package: OpcPackage,
+    slide_part: str,
+    *,
+    width: int,
+    height: int,
+    slide_index_by_part: dict[str, int],
 ) -> tuple[SlideIR, tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
     colors = _slide_colors(package, slide_part)
+    hyperlink_for = _hyperlink_resolver(package, slide_part, slide_index_by_part)
     root = ElementTree.fromstring(package.read(slide_part))
     tree = root.find("./p:cSld/p:spTree", _NS)
     shapes: list[ShapeNode] = []
@@ -353,7 +434,7 @@ def _slide(
             if kind in {"nvGrpSpPr", "grpSpPr"}:
                 continue
             if kind == "sp":
-                shape = _shape(element, package, slide_part, colors)
+                shape = _shape(element, package, slide_part, colors, hyperlink_for)
                 if shape is not None:
                     shapes.append(shape)
                     continue
@@ -432,14 +513,20 @@ def read_pptx_result(pptx: bytes) -> PptxReadResult:
         raise ValueError("PPTX presentation has no slide size")
     width, height = _int_attr(size, "cx"), _int_attr(size, "cy")
     slide_ids = root.findall("p:sldIdLst/p:sldId", _NS)
+    slide_parts = [
+        package.related_part(presentation_part, slide_id.attrib[_RID]) for slide_id in slide_ids
+    ]
+    # Deck-order index per slide part, so a slide-jump rel can recover its zero-based target.
+    slide_index_by_part = {part: index for index, part in enumerate(slide_parts)}
     results = [
         _slide(
             package,
-            package.related_part(presentation_part, slide_id.attrib[_RID]),
+            slide_part,
             width=width,
             height=height,
+            slide_index_by_part=slide_index_by_part,
         )
-        for slide_id in slide_ids
+        for slide_part in slide_parts
     ]
     font_faces, font_warnings = read_embedded_fonts(package, root, presentation_part)
     all_warnings = tuple(warning for result in results for warning in result[1]) + tuple(

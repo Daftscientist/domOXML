@@ -81,8 +81,9 @@ CSS source = what authoring produces it on the forward path.
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
 | Run: family/size/bold/italic/colour | `a:rPr`, `a:latin`, `a:solidFill` | font-* / color | ✅ | ✅ | |
-| Run: underline / strike | `u`, `strike` | `text-decoration` | ⬜ | ⬜ | |
-| Run: caps / letter-spacing | `cap`, `spc` | `text-transform`, `letter-spacing` | ⬜ | ⬜ | |
+| Run: underline / strike | `u`, `strike` | `text-decoration` | ✅ | ✅ | both coexist; style tokens kept on rev |
+| Run: caps / letter-spacing | `cap`, `spc` | `text-transform`, `letter-spacing` | ✅ | ✅ | raw text + cap attr (not pre-cased); spc in 1/100 pt |
+| Run: hyperlink | `a:hlinkClick` (+ rel) | `<a href>` | ✅ | ✅ | external rel; `#slide-N` → in-deck slide jump |
 | Paragraph align | `a:pPr algn` | `text-align` | ✅ | ✅ | start/end normalised |
 | Vertical anchor | `a:bodyPr anchor` | (block flow) | 🟡 | ⬜ | top default; flex/align mapping pending |
 | Line spacing / indent | `a:lnSpc`, `marL` | `line-height`, indent | ⬜ | ⬜ | |

@@ -39,7 +39,7 @@ CSS source = what authoring produces it on the forward path.
 | Rectangle | `prstGeom prst="rect"` | box | ✅ | ✅ | |
 | Rounded rect | `prstGeom prst="roundRect"` | `border-radius` | ✅ | ✅ | adj from radius |
 | Ellipse / pill | `prstGeom prst="ellipse"` | `border-radius:50%` | ✅ | ✅ | radius·2 ≥ short side |
-| Other presets (187 total) | `ST_ShapeType` | `clip-path`/SVG | ⬜ | ⬜ | triangle, diamond, hexagon, star, arrows, callouts… |
+| Other presets (187 total) | `ST_ShapeType` | `clip-path`/SVG | 🟡 | 🟡 | 17 polygon-expressible presets covered: triangle, rtTriangle, diamond, pentagon, hexagon, octagon, parallelogram, trapezoid, chevron, rightArrow, leftArrow, upArrow, downArrow, plus, star4, star5, star8. Curved presets (arc, callout, gear, wave, funnel, …) pending. |
 | Custom geometry | `custGeom`/`a:path` | SVG path | ⬜ | ⬜ | |
 | Connectors | `cxnSp` | `<hr>`/lines | ⬜ | ⬜ | straight/elbow/curved |
 

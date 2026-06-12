@@ -15,10 +15,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from domoxml.core.drawingml.presets import match_polygon
 from domoxml.core.images import ImageExt, crop_png, decode_data_uri, normalise_image
 from domoxml.core.ir.model import (
     Box,
     Fill,
+    Geometry,
     GradientFill,
     Line,
     PictureFill,
@@ -36,6 +38,7 @@ from domoxml.core.ir.parse import (
     parse_color,
     parse_gradient,
     parse_length_px,
+    parse_polygon,
     parse_radius_px,
     parse_shadow,
 )
@@ -133,7 +136,13 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     styles = node.styles
     if node.tag in _RASTER_TAGS:
         return f"<{node.tag}> has no native OOXML mapping"
-    if styles.get("clipPath", "none") not in ("none", ""):
+    clip = styles.get("clipPath", "none")
+    if clip not in ("none", "") and not (
+        clip.strip().lower().startswith("polygon(") or "polygon(" in clip
+    ):
+        # Only polygon() is potentially mappable — non-polygon clip-paths still rasterise.
+        # The actual polygon→preset matching happens later in the main loop; here we just
+        # allow polygon() through.
         return "clip-path has no native mapping"
     if styles.get("mixBlendMode", "normal") not in ("normal", ""):
         return "mix-blend-mode has no native mapping"
@@ -144,6 +153,29 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     if _has_complex_transform(styles.get("transform")):
         return "rotated/skewed transform has no native mapping"
     return None
+
+
+def _resolve_preset_geom(node: RenderedNode) -> tuple[Geometry, bool]:
+    """Try to match a ``clip-path: polygon(...)`` to a preset geometry.
+
+    Returns ``(geom_name, matched)`` where ``matched`` is ``True`` when the clip-path was
+    successfully matched to a preset (the caller should use ``geom_name`` and treat the
+    element as native), or ``False`` when the clip-path is not a polygon or does not match
+    (the caller should rasterise).
+
+    When there is no clip-path at all, returns ``("rect", False)`` — the caller ignores
+    ``matched`` and uses ``_geometry()`` for the normal border-radius path.
+    """
+    clip = node.styles.get("clipPath", "none")
+    if clip in ("none", ""):
+        return "rect", False  # no clip-path; caller uses border-radius path
+    polygon = parse_polygon(clip, width_px=node.width, height_px=node.height)
+    if polygon is None:
+        return "rect", False  # non-polygon or parse error
+    preset = match_polygon(polygon, node.width, node.height)
+    if preset is None:
+        return "rect", False  # polygon doesn't match any known preset
+    return preset, True  # type: ignore[return-value]
 
 
 def _resolve_image_bytes(url: str, rendered: RenderedSlide) -> tuple[bytes, ImageExt] | None:
@@ -294,6 +326,19 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if reason is None:
             fill, reason = _resolve_fill(node, rendered)
 
+        # If the structural check let a polygon clip-path through, try to match it to a preset.
+        # If matching fails, fall back to raster (overwrite reason).
+        clip = node.styles.get("clipPath", "none")
+        has_polygon_clip = clip not in ("none", "") and (
+            clip.strip().lower().startswith("polygon(") or "polygon(" in clip
+        )
+        preset_geom: Geometry = "rect"
+        polygon_matched = False
+        if has_polygon_clip and reason is None:
+            preset_geom, polygon_matched = _resolve_preset_geom(node)
+            if not polygon_matched:
+                reason = "clip-path polygon does not match any known preset geometry"
+
         if reason is not None:
             label = _label(node)
             shape = _raster_shape(node, rendered)
@@ -321,11 +366,17 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if _is_plain_inline(node, fill, line):
             coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
             continue
-        corner = px_to_emu(
-            parse_radius_px(
-                node.styles.get("borderRadius"), shorter_side_px=min(node.width, node.height)
+        # When a polygon preset was matched, use that geometry; otherwise use border-radius path.
+        if polygon_matched:
+            geom: Geometry = preset_geom
+            corner = 0
+        else:
+            corner = px_to_emu(
+                parse_radius_px(
+                    node.styles.get("borderRadius"), shorter_side_px=min(node.width, node.height)
+                )
             )
-        )
+            geom = _geometry(box, corner)
         text = _text_body(node)
         if text is not None and fill is None and line is None:
             padding = px_to_emu(4)
@@ -334,7 +385,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         shapes.append(
             ShapeNode(
                 box=box,
-                geom=_geometry(box, corner),
+                geom=geom,
                 fill=fill,
                 line=line,
                 effects=(shadow,) if shadow is not None else (),

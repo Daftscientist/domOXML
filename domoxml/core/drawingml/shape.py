@@ -113,6 +113,8 @@ def _geometry_xml(node: ShapeNode) -> str:
             '<a:prstGeom prst="roundRect"><a:avLst>'
             f'<a:gd name="adj" fmla="val {adj}"/></a:avLst></a:prstGeom>'
         )
+    # For all other presets (including the new polygon-expressible ones) emit with empty avLst
+    # (default adj values).  Custom adj overrides are not authored on the forward path today.
     return f'<a:prstGeom prst="{node.geom}"><a:avLst/></a:prstGeom>'
 
 

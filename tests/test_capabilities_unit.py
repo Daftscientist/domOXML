@@ -19,14 +19,16 @@ from domoxml.types import CoverageItem, CoverageReport, Disposition, RenderResul
 
 def test_loads_seed_capability_fixture() -> None:
     root = Path(__file__).resolve().parent.parent / "capabilities" / "pptx"
-    [fixture] = load_capabilities(root)
+    fixtures = load_capabilities(root)
+    fixture = next(f for f in fixtures if f.id == "text-rich-runs")
     assert fixture.id == "text-rich-runs"
     assert "Coffee that tastes like" in fixture.html
     assert fixture.expected.xml[0].min_count == 3
 
 
 def test_validates_native_coverage_and_ooxml_xpath() -> None:
-    [fixture] = load_capabilities(Path(__file__).resolve().parent.parent / "capabilities" / "pptx")
+    fixtures = load_capabilities(Path(__file__).resolve().parent.parent / "capabilities" / "pptx")
+    fixture = next(f for f in fixtures if f.id == "text-rich-runs")
     body = TextBody(
         paragraphs=(
             TextParagraph(

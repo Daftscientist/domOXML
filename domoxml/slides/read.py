@@ -13,6 +13,8 @@ from PIL import ImageColor
 from domoxml.core.ir.model import (
     Box,
     Fill,
+    Geometry,
+    GeometryKind,
     GradientFill,
     GradientStop,
     Line,
@@ -269,17 +271,15 @@ def _shape(
     )
     geometry = properties.find("a:prstGeom", _NS)
     geom_name = geometry.get("prst", "rect") if geometry is not None else "rect"
-    geom: Literal["rect", "roundRect", "ellipse"]
-    if geom_name == "roundRect":
-        geom = "roundRect"
-    elif geom_name == "ellipse":
-        geom = "ellipse"
-    else:
-        geom = "rect"
+    # Map the OOXML prstGeom name onto a GeometryKind literal. Any name that is a valid
+    # GeometryKind passes through directly; unknown names fall back to "rect" so the shape
+    # is still readable (geometry just loses its silhouette).
+    _valid_geom_kinds: frozenset[str] = frozenset(GeometryKind.__args__)  # type: ignore[attr-defined]
+    geom: Geometry = geom_name if geom_name in _valid_geom_kinds else "rect"  # type: ignore[assignment]
     guide = geometry.find("a:avLst/a:gd", _NS) if geometry is not None else None
     formula = guide.get("fmla", "") if guide is not None else ""
     corner = 0
-    if formula.startswith("val "):
+    if geom == "roundRect" and formula.startswith("val "):
         try:
             corner = round(int(formula.removeprefix("val ")) / 100_000 * min(box.width, box.height))
         except (TypeError, ValueError):

@@ -170,6 +170,15 @@ def test_external_hyperlink_emits_hlinkclick_and_external_rel() -> None:
     assert "/relationships/hyperlink" in rels
 
 
+def test_out_of_range_slide_jump_is_dropped_with_warning() -> None:
+    # A rel targeting a slide part that doesn't exist makes PowerPoint repair the file.
+    deck = [_decorated_run(hyperlink=Hyperlink(slide_index=1))]  # only 1 slide in deck
+    with pytest.warns(UserWarning, match="targets slide 2"):
+        pptx = build_pptx(deck, faces=[])
+    assert 'Target="slide2.xml"' not in _slide_rels(pptx)
+    assert "hlinksldjump" not in _slide_xml(pptx)
+
+
 def test_slide_jump_hyperlink_emits_jump_action_and_internal_slide_rel() -> None:
     deck = [
         _decorated_run(hyperlink=Hyperlink(slide_index=1)),

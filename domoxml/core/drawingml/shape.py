@@ -135,12 +135,13 @@ def _underline_attr(underline: bool | str) -> str:
 def _hyperlink_xml(hyperlink: Hyperlink | None, rid: str | None) -> str:
     """An ``a:hlinkClick`` for a run, or ``""``. External links carry the rel id; slide jumps
     carry both the jump action and the rel id pointing at the target slide part."""
-    if hyperlink is None:
+    if hyperlink is None or rid is None:
+        # No relationship was written for this link (e.g. out-of-range slide jump
+        # dropped by the writer) — an hlinkClick with an empty r:id is invalid.
         return ""
-    embed = f' r:id="{rid}"' if rid is not None else ' r:id=""'
     if hyperlink.slide_index is not None:
-        return f'<a:hlinkClick{embed} action="{_SLIDE_JUMP_ACTION}"/>'
-    return f"<a:hlinkClick{embed}/>"
+        return f'<a:hlinkClick r:id="{rid}" action="{_SLIDE_JUMP_ACTION}"/>'
+    return f'<a:hlinkClick r:id="{rid}"/>'
 
 
 def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:

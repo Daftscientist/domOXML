@@ -157,7 +157,9 @@ def _shape_hyperlinks(body: TextBody | None) -> list[Hyperlink]:
     ]
 
 
-def _slide(slide: SlideIR, media_start: int) -> tuple[str, str, dict[str, bytes], int]:
+def _slide(
+    slide: SlideIR, media_start: int, slide_count: int
+) -> tuple[str, str, dict[str, bytes], int]:
     """Build one slide. Returns ``(slide_xml, slide_rels_xml, media_parts, next_media_index)``.
 
     ``media_start`` is the next free ``ppt/media/imageN`` index (unique across the deck).
@@ -193,6 +195,13 @@ def _slide(slide: SlideIR, media_start: int) -> tuple[str, str, dict[str, bytes]
     for node in slide.shapes:
         for link in _shape_hyperlinks(node.text):
             if id(link) in rid_by_link:
+                continue
+            if link.slide_index is not None and not (0 <= link.slide_index < slide_count):
+                warnings.warn(
+                    f"hyperlink targets slide {link.slide_index + 1} but the deck has "
+                    f"{slide_count} slide(s); link dropped to keep the package valid",
+                    stacklevel=2,
+                )
                 continue
             rid = f"rId{next_rid}"
             rid_by_link[id(link)] = rid
@@ -252,7 +261,7 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
     image_exts: set[str] = set()
     media_index = 1
     for i, slide in enumerate(slides, start=1):
-        slide_xml, slide_rels, media_parts, media_index = _slide(slide, media_index)
+        slide_xml, slide_rels, media_parts, media_index = _slide(slide, media_index, n)
         slide_parts[f"ppt/slides/slide{i}.xml"] = slide_xml
         slide_parts[f"ppt/slides/_rels/slide{i}.xml.rels"] = slide_rels
         for part, data in media_parts.items():

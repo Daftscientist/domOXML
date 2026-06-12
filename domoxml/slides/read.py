@@ -21,6 +21,8 @@ from domoxml.core.ir.model import (
     Blur,
     Box,
     CharBullet,
+    ColorSpec,
+    ColorTransform,
     Fill,
     Geometry,
     GeometryKind,
@@ -30,6 +32,7 @@ from domoxml.core.ir.model import (
     Hyperlink,
     Line,
     LineSpacing,
+    PatternFill,
     PictureFill,
     Reflection,
     Rgba,
@@ -38,9 +41,11 @@ from domoxml.core.ir.model import (
     SlideIR,
     SoftEdge,
     SolidFill,
+    SrcRect,
     TextBody,
     TextParagraph,
     TextRun,
+    ThemeColorRef,
 )
 from domoxml.core.opc import OpcPackage
 from domoxml.core.units import emu_to_pt
@@ -184,6 +189,25 @@ def _gradient(element: Element, colors: ThemeColors) -> GradientFill | None:
     return GradientFill(stops=tuple(stops), angle_deg=angle, radial=path is not None)
 
 
+def _src_rect(element: Element) -> SrcRect | None:
+    """Read an ``a:srcRect`` crop (1000ths-of-a-percent insets) into a :class:`SrcRect`."""
+    rect = element.find("a:srcRect", _NS)
+    if rect is None:
+        return None
+    left = _int_attr(rect, "l") / 100_000
+    top = _int_attr(rect, "t") / 100_000
+    right = _int_attr(rect, "r") / 100_000
+    bottom = _int_attr(rect, "b") / 100_000
+    if left == 0 and top == 0 and right == 0 and bottom == 0:
+        return None
+    return SrcRect(
+        left=min(1.0, max(0.0, left)),
+        top=min(1.0, max(0.0, top)),
+        right=min(1.0, max(0.0, right)),
+        bottom=min(1.0, max(0.0, bottom)),
+    )
+
+
 def _picture(element: Element, package: OpcPackage, slide_part: str) -> PictureFill | None:
     blip = element.find("a:blip", _NS)
     rid = blip.get(_EMBED) if blip is not None else None
@@ -193,7 +217,46 @@ def _picture(element: Element, package: OpcPackage, slide_part: str) -> PictureF
     ext = _IMAGE_EXT.get(PurePosixPath(part).suffix.lower().lstrip("."))
     if ext is None:
         return None
-    return PictureFill(data=package.read(part), ext=ext)  # type: ignore[arg-type]
+    return PictureFill(data=package.read(part), ext=ext, crop=_src_rect(element))  # type: ignore[arg-type]
+
+
+_TRANSFORM_KINDS = {"lumMod", "lumOff", "shade", "tint", "alpha", "satMod"}
+
+
+def _color_spec(element: Element | None, colors: ThemeColors) -> ColorSpec | None:
+    """Parse a colour container into a :class:`ColorSpec`. An ``a:schemeClr`` becomes a
+    :class:`ThemeColorRef` (slot + transforms) so the theme reference survives; anything else is
+    resolved to a concrete :class:`Rgba`."""
+    if element is None:
+        return None
+    scheme = element.find("a:schemeClr", _NS)
+    if scheme is not None:
+        slot = scheme.get("val", "")
+        if slot in ThemeColorRef.model_fields["slot"].annotation.__args__:  # type: ignore[union-attr]
+            transforms: list[ColorTransform] = []
+            for child in scheme:
+                kind = child.tag.rsplit("}", 1)[-1]
+                if kind in _TRANSFORM_KINDS:
+                    transforms.append(
+                        ColorTransform(
+                            kind=kind,  # type: ignore[arg-type]
+                            value=min(1.0, max(0.0, _int_attr(child, "val", 100_000) / 100_000)),
+                        )
+                    )
+            return ThemeColorRef(slot=slot, transforms=tuple(transforms))  # type: ignore[arg-type]
+    return _rgba(element, colors)
+
+
+def _pattern_fill(element: Element, colors: ThemeColors) -> PatternFill | None:
+    """Parse ``a:pattFill`` (preset + fg/bg colours) into a :class:`PatternFill`."""
+    preset = element.get("prst")
+    if not preset:
+        return None
+    fg = _color_spec(element.find("a:fgClr", _NS), colors)
+    bg = _color_spec(element.find("a:bgClr", _NS), colors)
+    if fg is None or bg is None:
+        return None
+    return PatternFill(preset=preset, fg=fg, bg=bg)
 
 
 def _fill(
@@ -209,6 +272,9 @@ def _fill(
     gradient = shape_properties.find("a:gradFill", _NS)
     if gradient is not None:
         return _gradient(gradient, colors)
+    pattern = shape_properties.find("a:pattFill", _NS)
+    if pattern is not None:
+        return _pattern_fill(pattern, colors)
     picture = shape_properties.find("a:blipFill", _NS)
     return _picture(picture, package, slide_part) if picture is not None else None
 
@@ -703,12 +769,11 @@ def _slide(
             elif kind == "pic":
                 shape = _picture_shape(element, package, slide_part)
                 if shape is not None:
+                    # The crop (a:srcRect) is recovered into the PictureFill and emitted as
+                    # background-size/position by the HTML writer, so nothing is preserved.
                     shapes.append(shape)
-                    if element.find("p:blipFill/a:srcRect", _NS) is None:
-                        continue
-                    reason = "preserved picture crop metadata; crop mapping pending"
-                else:
-                    reason = "preserved picture that the reverse adapter could not map"
+                    continue
+                reason = "preserved picture that the reverse adapter could not map"
             else:
                 reason = f"preserved unsupported reverse slide node: {kind}"
             warning, fragment = _preserve(slide_part, element, reason)

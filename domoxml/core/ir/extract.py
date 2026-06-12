@@ -16,7 +16,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from domoxml.core.drawingml.presets import match_polygon
-from domoxml.core.images import ImageExt, crop_png, decode_data_uri, normalise_image
+from domoxml.core.fillcrop import cover_crop_fractions
+from domoxml.core.images import (
+    ImageExt,
+    crop_png,
+    decode_data_uri,
+    image_dimensions,
+    normalise_image,
+)
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
@@ -34,6 +41,7 @@ from domoxml.core.ir.model import (
     ShapeNode,
     SlideIR,
     SolidFill,
+    SrcRect,
     TextBody,
     TextParagraph,
     TextRun,
@@ -42,6 +50,8 @@ from domoxml.core.ir.parse import (
     css_list_style_to_autonum,
     css_list_style_to_bu_char,
     is_bold,
+    parse_background_position,
+    parse_background_size,
     parse_border_side,
     parse_caps,
     parse_color,
@@ -55,6 +65,7 @@ from domoxml.core.ir.parse import (
     parse_radius_px,
     parse_shadow,
 )
+from domoxml.core.ir.pattern import match_pattern_fill
 from domoxml.core.render.browser import (
     RenderedNode,
     RenderedSlide,
@@ -263,6 +274,33 @@ def _resolve_image_bytes(url: str, rendered: RenderedSlide) -> tuple[bytes, Imag
     return normalise_image(raw) if raw is not None else None
 
 
+def _background_crop(data: bytes, node: RenderedNode) -> SrcRect | None:
+    """Compute an ``a:srcRect`` crop for a div ``background-image`` from background-size/position.
+
+    Only ``background-size: cover`` produces a source-rect crop (a window of the source shown
+    stretched to fill the shape). ``contain`` / explicit sizes letter-box the whole image, which
+    a blip ``a:srcRect`` cannot express (it crops, it does not pad) so those fall through with no
+    crop (the image stretches to fill, matching the existing behaviour). Returns ``None`` when no
+    crop applies or the image cannot be measured.
+    """
+    mode, _explicit = parse_background_size(node.styles.get("backgroundSize"))
+    if mode != "cover":
+        return None
+    dims = image_dimensions(data)
+    if dims is None:
+        return None
+    img_w, img_h = dims
+    if node.width <= 0 or node.height <= 0:
+        return None
+    pos_x, pos_y = parse_background_position(node.styles.get("backgroundPosition"))
+    left, top, right, bottom = cover_crop_fractions(
+        img_w, img_h, node.width, node.height, pos_x=pos_x, pos_y=pos_y
+    )
+    if left <= 0 and top <= 0 and right <= 0 and bottom <= 0:
+        return None
+    return SrcRect(left=left, top=top, right=right, bottom=bottom)
+
+
 def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | None, str | None]:
     """Resolve a node's fill. Returns ``(fill, raster_reason)``; a non-``None`` reason means
     the fill can't be expressed natively and the element must rasterise."""
@@ -283,7 +321,15 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
         if resolved is None:
             return None, "background image was not captured"
         data, ext = resolved
-        return PictureFill(data=data, ext=ext), None
+        crop = _background_crop(data, node)
+        return PictureFill(data=data, ext=ext, crop=crop), None
+    if "repeating-linear-gradient" in background_image.lower():
+        # Try the native two-colour stripe -> a:pattFill mapping before the gradient path.
+        pattern = match_pattern_fill(background_image)
+        if pattern is not None:
+            return pattern, None
+        # Not a clean two-colour stripe; fall through to the raster/warning path unchanged.
+        return None, "repeating gradient is not a clean two-colour pattern (rasterised)"
     if "gradient" in background_image:
         gradient: GradientFill | None = parse_gradient(background_image)
         if gradient is not None:

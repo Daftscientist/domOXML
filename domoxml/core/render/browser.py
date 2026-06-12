@@ -19,6 +19,8 @@ _SNAPSHOT_JS = """
 () => {
   const pick = (cs) => ({
     color: cs.color, backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage,
+    backgroundSize: cs.backgroundSize, backgroundPosition: cs.backgroundPosition,
+    backgroundRepeat: cs.backgroundRepeat,
     fontSize: cs.fontSize, fontFamily: cs.fontFamily,
     fontWeight: cs.fontWeight, fontStyle: cs.fontStyle,
     textDecorationLine: cs.textDecorationLine, textTransform: cs.textTransform,

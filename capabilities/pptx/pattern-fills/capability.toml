@@ -1,0 +1,23 @@
+id = "pattern-fills"
+direction = "forward"
+html_file = "slide.html"
+
+[expected]
+min_native = 3
+max_raster = 0
+
+# Card 1: thin 45deg stripes -> a:pattFill (ltUpDiag)
+# Card 2: wide horizontal stripes -> a:pattFill (horz)
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:pattFill"
+min_count = 2
+
+# Card 3: background-size:cover photo -> a:blipFill with a crop window
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:blipFill/a:srcRect"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.90

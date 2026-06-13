@@ -39,7 +39,9 @@ from domoxml.core.ir.model import (
     Rgba,
     Shadow,
     ShapeNode,
+    SlideBackground,
     SlideIR,
+    SlideTransition,
     SoftEdge,
     SolidFill,
     SrcRect,
@@ -47,6 +49,8 @@ from domoxml.core.ir.model import (
     TextParagraph,
     TextRun,
     ThemeColorRef,
+    TransitionDirection,
+    TransitionType,
 )
 from domoxml.core.opc import OpcPackage
 from domoxml.core.units import emu_to_pt
@@ -80,6 +84,31 @@ _SLIDE_JUMP_ACTION = "ppaction://hlinksldjump"
 _SLIDE_LAYOUT_REL = f"{_R}/slideLayout"
 _SLIDE_MASTER_REL = f"{_R}/slideMaster"
 _THEME_REL = f"{_R}/theme"
+# ---------------------------------------------------------------------------
+# p:transition type → IR TransitionType  (ECMA-376 §19.5.89)
+# ---------------------------------------------------------------------------
+_TRANSITION_TYPE_MAP: dict[str, TransitionType] = {
+    "fade": "fade",
+    "push": "push",
+    "wipe": "wipe",
+    "cut": "cut",
+    "split": "split",
+    "cover": "cover",
+    "uncover": "uncover",
+    "zoom": "zoom",
+    "dissolve": "dissolve",
+    "morph": "morph",
+    # Less-common aliases / synonyms from PowerPoint
+    "fly": "push",
+    "strips": "wipe",
+    "wheel": "dissolve",
+    "random": "fade",
+}
+# Direction attribute names used by the various p:transition child elements.
+_DIRECTION_ATTRS = ("dir", "side", "through")
+# Valid IR direction tokens.
+_VALID_DIRECTIONS: frozenset[str] = frozenset(TransitionDirection.__args__)  # type: ignore[attr-defined]
+
 _ALIGN_FROM_OOXML: dict[str, Literal["left", "center", "right", "justify"]] = {
     "l": "left",
     "ctr": "center",
@@ -970,6 +999,51 @@ def _media_node(element: Element, package: OpcPackage, slide_part: str) -> Media
     )
 
 
+def _parse_transition(element: Element) -> SlideTransition | None:
+    """Parse a ``p:transition`` element into a :class:`SlideTransition` IR node.
+
+    The transition type is the local name of the first child element that is a known OOXML
+    transition type (e.g. ``p:fade``, ``p:push`` …).  Direction comes from ``dir``, ``side``,
+    or ``through`` attributes on that child.  Duration is the ``dur`` attribute on
+    ``p:transition`` itself (in milliseconds).
+    """
+    # dur attribute is on p:transition directly, in ms.
+    dur_raw = element.get("dur")
+    duration_ms: int | None = None
+    if dur_raw is not None and dur_raw.isdigit():
+        duration_ms = int(dur_raw)
+
+    # Find the first child element whose local name matches a known transition type.
+    transition_type: TransitionType = "fade"
+    direction: TransitionDirection | None = None
+    for child in element:
+        local = _local_name(child)
+        if local in _TRANSITION_TYPE_MAP:
+            transition_type = _TRANSITION_TYPE_MAP[local]
+            # Try to read direction from recognized direction attributes.
+            for attr in _DIRECTION_ATTRS:
+                val = child.get(attr)
+                if val is not None and val in _VALID_DIRECTIONS:
+                    direction = val  # type: ignore[assignment]
+                    break
+            break
+
+    return SlideTransition(type=transition_type, duration_ms=duration_ms, direction=direction)
+
+
+def _parse_background(
+    element: Element, package: OpcPackage, slide_part: str, colors: ThemeColors
+) -> SlideBackground | None:
+    """Parse ``p:cSld/p:bg/p:bgPr`` into a :class:`SlideBackground` IR node."""
+    bg_pr = element.find("./p:cSld/p:bg/p:bgPr", _NS)
+    if bg_pr is None:
+        return None
+    fill = _fill(bg_pr, package, slide_part, colors)
+    if fill is None:
+        return None
+    return SlideBackground(fill=fill)
+
+
 def _local_name(element: Element) -> str:
     return element.tag.rsplit("}", 1)[-1]
 
@@ -1087,6 +1161,25 @@ def _slide(
     nodes: list[MediaNode] = []
     warnings: list[ConversionWarning] = []
     preserved: list[PreservedFragment] = []
+
+    # --- Slide-level: background (p:cSld/p:bg) ---
+    background = _parse_background(root, package, slide_part, colors)
+
+    # --- Slide-level: transition (p:transition, sibling of p:cSld) ---
+    transition_el = root.find("p:transition", _NS)
+    transition = _parse_transition(transition_el) if transition_el is not None else None
+
+    # --- Slide-level: timing/animations (p:timing, sibling of p:cSld) ---
+    timing_el = root.find("p:timing", _NS)
+    if timing_el is not None:
+        warn, frag = _preserve(
+            slide_part,
+            timing_el,
+            "p:timing (slide animations) has no CSS mapping; preserved as fragment",
+        )
+        warnings.append(warn)
+        preserved.append(frag)
+
     if tree is not None:
         for element in tree:
             kind = _local_name(element)
@@ -1121,13 +1214,37 @@ def _slide(
                     shapes.append(shape)
                     continue
                 reason = "preserved picture that the reverse adapter could not map"
+            elif kind == "graphicFrame":
+                # Detect SmartArt/diagram vs generic graphicFrame.
+                _DIAGRAM_URI = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
+                graphic_data = element.find("./a:graphic/a:graphicData", _NS)
+                uri = graphic_data.get("uri", "") if graphic_data is not None else ""
+                if uri == _DIAGRAM_URI:
+                    reason = (
+                        "p:graphicFrame (SmartArt/diagram) has no HTML mapping; "
+                        "preserved as fragment"
+                    )
+                else:
+                    reason = (
+                        "p:graphicFrame (chart/table/unsupported graphic) has no HTML mapping; "
+                        "preserved as fragment"
+                    )
+            elif kind == "oleObj":
+                reason = "p:oleObj (OLE object) has no HTML mapping; preserved as fragment"
             else:
                 reason = f"preserved unsupported reverse slide node: {kind}"
             warning, fragment = _preserve(slide_part, element, reason)
             warnings.append(warning)
             preserved.append(fragment)
     return (
-        SlideIR(width=width, height=height, shapes=tuple(shapes), nodes=tuple(nodes)),
+        SlideIR(
+            width=width,
+            height=height,
+            shapes=tuple(shapes),
+            nodes=tuple(nodes),
+            transition=transition,
+            background=background,
+        ),
         tuple(warnings),
         tuple(preserved),
     )

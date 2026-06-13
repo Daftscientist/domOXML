@@ -118,6 +118,16 @@ _SNAPSHOT_JS = """
       styles.domoxmlListDepth = String(ctx.depth);
       styles.domoxmlListType = ctx.listType || styles.listStyleType || 'disc';
     }
+    // For the slide root element (first child of body), capture data-transition* attributes
+    // so the extractor can recover SlideTransition IR.
+    if (el.parentElement === document.body) {
+      const tr = el.getAttribute('data-transition');
+      const trDur = el.getAttribute('data-transition-duration');
+      const trDir = el.getAttribute('data-transition-direction');
+      if (tr) styles.domoxmlTransition = tr;
+      if (trDur) styles.domoxmlTransitionDuration = trDur;
+      if (trDir) styles.domoxmlTransitionDirection = trDir;
+    }
     out.push({
       tag,
       x: r.x, y: r.y, width: r.width, height: r.height,

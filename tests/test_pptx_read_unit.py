@@ -206,7 +206,7 @@ def test_preserves_unsupported_slide_nodes_with_warning() -> None:
     assert html.preserved[0].kind == "graphicFrame"
     assert "graphicFrame" in html.preserved[0].xml
     assert len(html.warnings) == 1
-    assert "unsupported reverse slide node" in html.warnings[0].message
+    assert "graphicFrame" in html.warnings[0].message
 
 
 def test_reads_native_powerpoint_picture() -> None:

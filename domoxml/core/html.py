@@ -24,7 +24,9 @@ from domoxml.core.ir.model import (
     Rgba,
     Shadow,
     ShapeNode,
+    SlideBackground,
     SlideIR,
+    SlideTransition,
     SoftEdge,
     SolidFill,
     TextBody,
@@ -574,6 +576,38 @@ def _media_html(
     return f'<video controls style="{escape(pos, quote=True)}"{src_attr}{poster_attr}></video>'
 
 
+def _slide_transition_attrs(transition: SlideTransition | None) -> str:
+    """Return HTML data attribute string for the slide root element's transition."""
+    if transition is None or transition.type == "none":
+        return ""
+    attrs = f' data-transition="{transition.type}"'
+    if transition.duration_ms is not None:
+        attrs += f' data-transition-duration="{transition.duration_ms}"'
+    if transition.direction is not None:
+        attrs += f' data-transition-direction="{transition.direction}"'
+    return attrs
+
+
+def _slide_background_css(background: SlideBackground | None, assets: dict[str, HtmlAsset]) -> str:
+    """Return a CSS background declaration for the slide root element, or empty string."""
+    if background is None:
+        return ""
+    fill = background.fill
+    if isinstance(fill, SolidFill):
+        return f"background-color:{_rgba(fill.color)}"
+    if isinstance(fill, GradientFill):
+        return f"background-image:{_gradient(fill, opacity=1.0)}"
+    if isinstance(fill, PictureFill):
+        asset = _asset(fill)
+        assets.setdefault(asset.path, asset)
+        return f"background-image:url(../{asset.path});background-size:cover"
+    else:  # PatternFill
+        fg_hex = _color_spec_hex(fill.fg)
+        bg_hex = _color_spec_hex(fill.bg)
+        prop, value, _approx = pattern_to_css(fg_hex, bg_hex, fill.preset)
+        return f"{prop}:{value}"
+
+
 def serialize_canvas(
     slides: list[SlideIR],
     *,
@@ -591,10 +625,11 @@ def serialize_canvas(
         )
         width_px = round(emu_to_px(slide.width))
         height_px = round(emu_to_px(slide.height))
-        html = (
-            f'<div class="domoxml-slide" style="width:{width_px}px;height:{height_px}px">'
-            f"{shapes}</div>"
-        )
+        transition_attrs = _slide_transition_attrs(slide.transition)
+        bg_css = _slide_background_css(slide.background, assets)
+        base_style = f"width:{width_px}px;height:{height_px}px"
+        slide_style = f"{base_style};{bg_css}" if bg_css else base_style
+        html = f'<div class="domoxml-slide"{transition_attrs} style="{slide_style}">{shapes}</div>'
         html_slides.append(HtmlSlide(html=html, width_px=width_px, height_px=height_px))
 
     # Emit embedded font faces as assets and @font-face CSS rules.

@@ -7,7 +7,17 @@ from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml import shape_xml
 from domoxml.core.fonts import FontFace, load_faces
-from domoxml.core.ir.model import Hyperlink, PictureFill, SlideIR, TextBody
+from domoxml.core.ir.model import (
+    GradientFill,
+    GradientStop,
+    Hyperlink,
+    PictureFill,
+    Rgba,
+    SlideBackground,
+    SlideIR,
+    SolidFill,
+    TextBody,
+)
 from domoxml.core.opc import write_package
 from domoxml.slides import _templates as t
 
@@ -24,6 +34,112 @@ _SVG_CT = "image/svg+xml"
 # (face, in-package part path, relationship id) for each embedded font.
 type FontRel = tuple[FontFace, str, str]
 _SLOT_ORDER = ("regular", "bold", "italic", "boldItalic")
+
+
+def _srgb(color: Rgba) -> str:
+    """Hex sRGB from an :class:`Rgba` colour (ignores alpha for srgbClr)."""
+    return f"{color.r:02X}{color.g:02X}{color.b:02X}"
+
+
+def _solid_fill_xml(color: Rgba) -> str:
+    alpha_xml = ""
+    if color.a < 1.0:
+        alpha_xml = f'<a:alpha val="{round(color.a * 100_000)}"/>'
+    return f'<a:solidFill><a:srgbClr val="{_srgb(color)}">{alpha_xml}</a:srgbClr></a:solidFill>'
+
+
+def _gradient_stop_xml(stop: GradientStop) -> str:
+    pos = round(stop.pos * 100_000)
+    alpha_xml = ""
+    if stop.color.a < 1.0:
+        alpha_xml = f'<a:alpha val="{round(stop.color.a * 100_000)}"/>'
+    return f'<a:gs pos="{pos}"><a:srgbClr val="{_srgb(stop.color)}">{alpha_xml}</a:srgbClr></a:gs>'
+
+
+def _gradient_fill_xml(gradient: GradientFill) -> str:
+    stops = "".join(_gradient_stop_xml(s) for s in gradient.stops)
+    if gradient.radial:
+        fill_to = (
+            '<a:path path="circle">'
+            '<a:fillToRect l="100000" t="100000" r="100000" b="100000"/>'
+            "</a:path>"
+        )
+        return f"<a:gradFill><a:gsLst>{stops}</a:gsLst>{fill_to}</a:gradFill>"
+    # Convert CSS angle (0°=top, CW) to OOXML angle (60000ths of degree, CCW from 3 o'clock).
+    # OOXML angle = (270 + css_angle) % 360 * 60000
+    ooxml_ang = round(((270 + gradient.angle_deg) % 360) * 60_000)
+    lin = f'<a:lin ang="{ooxml_ang}" scaled="0"/>'
+    return f"<a:gradFill><a:gsLst>{stops}</a:gsLst>{lin}</a:gradFill>"
+
+
+def _bg_xml(background: SlideBackground, blip_rid: str | None = None) -> str:
+    """Emit ``<p:bg><p:bgPr>fill_xml<a:effectLst/></p:bgPr></p:bg>``."""
+    fill = background.fill
+    if isinstance(fill, SolidFill):
+        fill_xml = _solid_fill_xml(fill.color)
+    elif isinstance(fill, GradientFill):
+        fill_xml = _gradient_fill_xml(fill)
+    elif isinstance(fill, PictureFill):
+        if blip_rid is not None:
+            fill_xml = (
+                f'<a:blipFill><a:blip r:embed="{blip_rid}"/>'
+                "<a:stretch><a:fillRect/></a:stretch></a:blipFill>"
+            )
+        else:
+            fill_xml = "<a:noFill/>"
+    else:  # PatternFill
+        fg = _srgb(fill.fg) if isinstance(fill.fg, Rgba) else "000000"
+        bg = _srgb(fill.bg) if isinstance(fill.bg, Rgba) else "FFFFFF"
+        fill_xml = (
+            f'<a:pattFill prst="{fill.preset}">'
+            f'<a:fgClr><a:srgbClr val="{fg}"/></a:fgClr>'
+            f'<a:bgClr><a:srgbClr val="{bg}"/></a:bgClr>'
+            "</a:pattFill>"
+        )
+    return f"<p:bg><p:bgPr>{fill_xml}<a:effectLst/></p:bgPr></p:bg>"
+
+
+# ---------------------------------------------------------------------------
+# p:transition direction map (IR token → OOXML XML snippet attribute value)
+# ---------------------------------------------------------------------------
+_TRANSITION_DIR_ATTR: dict[str, str] = {
+    # Direction tokens used by push/cover/wipe/etc.
+    "l": "l",
+    "r": "r",
+    "u": "u",
+    "d": "d",
+    "lu": "lu",
+    "ru": "ru",
+    "ld": "ld",
+    "rd": "rd",
+    "horz": "horz",
+    "vert": "vert",
+}
+
+
+def _transition_xml(slide: SlideIR) -> str:
+    """Emit a ``<p:transition>`` element for *slide*.  Returns empty string when no transition."""
+    tr = slide.transition
+    if tr is None or tr.type == "none":
+        return ""
+    dur_attr = f' dur="{tr.duration_ms}"' if tr.duration_ms is not None else ""
+    dir_attr = f' dir="{tr.direction}"' if tr.direction is not None else ""
+    typ = tr.type
+    # Transition types whose child element takes a ``dir`` attribute.
+    if typ in {"push", "cover", "uncover"} or typ in {"wipe"}:
+        child = f"<p:{typ}{dir_attr}/>"
+    elif typ in {"split"}:
+        orient = tr.direction if tr.direction in {"horz", "vert"} else "horz"
+        child = f'<p:{typ} orient="{orient}"/>'
+    elif typ == "fade":
+        child = "<p:fade/>"
+    elif typ == "cut":
+        child = "<p:cut/>"
+    elif typ in {"zoom", "dissolve", "morph"}:
+        child = f"<p:{typ}/>"
+    else:
+        child = f"<p:{typ}/>"
+    return f"<p:transition{dur_attr}>{child}</p:transition>"
 
 
 def _attr(value: str) -> str:
@@ -186,6 +302,17 @@ def _slide(
             stacklevel=2,
         )
 
+    # Background picture fill: needs its own media part + rel.
+    bg_blip_rid: str | None = None
+    if slide.background is not None and isinstance(slide.background.fill, PictureFill):
+        pic = slide.background.fill
+        name = f"image{media_index}.{pic.ext}"
+        media_parts[f"ppt/media/{name}"] = pic.data
+        bg_blip_rid = f"rId{next_rid}"
+        image_rels.append((bg_blip_rid, name))
+        media_index += 1
+        next_rid += 1
+
     for position, node in enumerate(slide.shapes):
         if isinstance(node.fill, PictureFill):
             name = f"image{media_index}.{node.fill.ext}"
@@ -239,11 +366,13 @@ def _slide(
         )
         for position, node in enumerate(slide.shapes)
     )
+    bg_xml = _bg_xml(slide.background, bg_blip_rid) if slide.background is not None else ""
+    transition_xml = _transition_xml(slide)
     slide_xml = (
-        f"{t.XML_DECL}<p:sld {t.NS}><p:cSld><p:spTree>"
+        f"{t.XML_DECL}<p:sld {t.NS}><p:cSld>{bg_xml}<p:spTree>"
         '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
         f"{shapes}</p:spTree></p:cSld>"
-        "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
+        f"<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>{transition_xml}</p:sld>"
     )
     return slide_xml, _slide_rels(image_rels, hyperlink_rels), media_parts, media_index, has_svg
 

@@ -41,12 +41,16 @@ from domoxml.core.ir.model import (
     Rgba,
     Shadow,
     ShapeNode,
+    SlideBackground,
     SlideIR,
+    SlideTransition,
     SolidFill,
     SrcRect,
     TextBody,
     TextParagraph,
     TextRun,
+    TransitionDirection,
+    TransitionType,
 )
 from domoxml.core.ir.parse import (
     css_list_style_to_autonum,
@@ -80,6 +84,8 @@ from domoxml.types import ConversionWarning, CoverageItem, Disposition
 _DEFAULT_TEXT_COLOR = Rgba(r=0, g=0, b=0)
 _RASTER_TAGS = {"svg", "canvas", "video", "iframe"}
 _URL_RE = re.compile(r"""url\(\s*['"]?(.*?)['"]?\s*\)""", re.IGNORECASE | re.DOTALL)
+_VALID_TRANSITION_TYPES: frozenset[str] = frozenset(TransitionType.__args__)  # type: ignore[attr-defined]
+_VALID_TRANSITION_DIRECTIONS: frozenset[str] = frozenset(TransitionDirection.__args__)  # type: ignore[attr-defined]
 
 # Chromium reports logical alignments (start/end); map them to the IR's physical set.
 _ALIGN: dict[str, Literal["left", "center", "right", "justify"]] = {
@@ -677,6 +683,32 @@ def _subtree(root: int, children: dict[int, list[int]]) -> set[int]:
     return seen
 
 
+def _extract_transition(styles: dict[str, str]) -> SlideTransition | None:
+    """Read ``domoxmlTransition*`` synthetic style keys into a :class:`SlideTransition`."""
+    tr_type_raw = styles.get("domoxmlTransition", "").strip()
+    if not tr_type_raw:
+        return None
+    tr_type: TransitionType = tr_type_raw if tr_type_raw in _VALID_TRANSITION_TYPES else "fade"  # type: ignore[assignment]
+    duration_ms: int | None = None
+    dur_raw = styles.get("domoxmlTransitionDuration", "").strip()
+    if dur_raw:
+        with contextlib.suppress(ValueError):
+            duration_ms = int(dur_raw)
+    direction: TransitionDirection | None = None
+    dir_raw = styles.get("domoxmlTransitionDirection", "").strip()
+    if dir_raw and dir_raw in _VALID_TRANSITION_DIRECTIONS:
+        direction = dir_raw  # type: ignore[assignment]
+    return SlideTransition(type=tr_type, duration_ms=duration_ms, direction=direction)
+
+
+def _extract_background(node: RenderedNode, rendered: RenderedSlide) -> SlideBackground | None:
+    """Resolve a slide root node's fill into a :class:`SlideBackground`, or ``None``."""
+    fill, reason = _resolve_fill(node, rendered)
+    if fill is None or reason is not None:
+        return None
+    return SlideBackground(fill=fill)
+
+
 def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     """Map every captured node to native OOXML where possible, rasterising only the residue.
 
@@ -689,8 +721,31 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     coverage: list[CoverageItem] = []
     warnings: list[ConversionWarning] = []
 
+    # The slide root node is the first child of <body> that carries ``data-transition``
+    # attributes (captured by _SNAPSHOT_JS as ``domoxmlTransition*`` synthetic style keys).
+    # Opt-in detection: only nodes that explicitly declare themselves as the slide container
+    # (via data-transition) are treated as the canvas wrapper.  All others are shapes.
+    # ``body`` is always at index=0, parent=-1; the slide div is the first element with
+    # parent=0.  In unit tests (no browser), parent defaults to -1 so slide_root stays None.
+    slide_root: RenderedNode | None = None
+    for node in rendered.nodes:
+        if node.parent == 0 and node.styles.get("domoxmlTransition"):
+            slide_root = node
+            break
+
+    transition: SlideTransition | None = None
+    background: SlideBackground | None = None
+    if slide_root is not None:
+        transition = _extract_transition(slide_root.styles)
+        background = _extract_background(slide_root, rendered)
+
     for node in rendered.nodes:
         if node.index in consumed or node.width <= 0 or node.height <= 0:
+            continue
+
+        # Skip the slide root node itself — it is the canvas container, not a shape.
+        if slide_root is not None and node.index == slide_root.index:
+            consumed.add(node.index)
             continue
 
         reason = _structural_raster_reason(node)
@@ -812,5 +867,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         width=px_to_emu(rendered.width),
         height=px_to_emu(rendered.height),
         shapes=tuple(shapes),
+        transition=transition,
+        background=background,
     )
     return ExtractResult(slide=slide, coverage=tuple(coverage), warnings=tuple(warnings))

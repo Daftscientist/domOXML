@@ -674,13 +674,67 @@ class MediaNode(BaseModel):
 type Node = ShapeNode | GroupNode | Connector | TableNode | MediaNode
 
 
+# --------------------------------------------------------------------------- slide-level
+
+
+# Transition direction tokens (maps from p:transition dir/through/side attrs).
+TransitionDirection = Literal["l", "r", "u", "d", "lu", "ru", "ld", "rd", "horz", "vert"]
+
+# The supported p:transition child element types.  Each string is the DrawingML local name.
+TransitionType = Literal[
+    "fade",
+    "push",
+    "wipe",
+    "cut",
+    "split",
+    "cover",
+    "uncover",
+    "zoom",
+    "dissolve",
+    "morph",
+    "none",
+]
+
+
+class SlideTransition(BaseModel):
+    """Slide-to-slide transition (``p:transition``).
+
+    ``type`` maps the transition XML element to an IR token; ``duration_ms`` is the optional
+    advance/animation duration in milliseconds (``p:transition dur``); ``direction`` is an
+    optional direction hint (``dir``, ``side``, or ``through`` attribute on the child element).
+    """
+
+    model_config = _FROZEN
+
+    type: TransitionType = "fade"
+    duration_ms: int | None = None
+    direction: TransitionDirection | None = None
+
+
+class SlideBackground(BaseModel):
+    """Native slide background (``p:cSld/p:bg``).
+
+    Carries a fill that applies to the full slide canvas before any shapes are drawn.
+    Corresponds to ``p:bg/p:bgPr`` (with fill child) on the write path and
+    ``p:cSld/p:bg`` on the read path.
+    """
+
+    model_config = _FROZEN
+
+    fill: Fill
+
+
 class SlideIR(BaseModel):
     """A single slide as a canvas of positioned nodes, sized in EMUs.
 
     :attr:`shapes` carries the plain positioned shapes (the historical, backward-compatible
     container — every current producer/consumer uses it). :attr:`nodes` carries the richer
     heterogeneous node types (groups, connectors, tables) that have no extractor/serializer yet;
-    it is empty by default. Stacking is the order within each tuple, ``shapes`` then ``nodes``."""
+    it is empty by default. Stacking is the order within each tuple, ``shapes`` then ``nodes``.
+
+    :attr:`transition` carries the optional slide transition; ``None`` means no transition.
+    :attr:`background` carries the optional native slide background; ``None`` means no
+    explicit background (the slide uses the master/layout background or is transparent)."""
 
     model_config = _FROZEN
 
@@ -688,3 +742,5 @@ class SlideIR(BaseModel):
     height: int
     shapes: tuple[ShapeNode, ...]
     nodes: tuple[Node, ...] = ()
+    transition: SlideTransition | None = None
+    background: SlideBackground | None = None

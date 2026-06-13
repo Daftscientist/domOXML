@@ -1,0 +1,20 @@
+id = "transition-bg"
+direction = "forward"
+html_file = "slide.html"
+
+[expected]
+min_native = 1
+max_raster = 0
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:transition"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:bg"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.90

@@ -110,9 +110,9 @@ CSS source = what authoring produces it on the forward path.
 |---|---|---|:--:|:--:|---|
 | Table | `a:tbl` (graphicFrame) | `<table>` | ⬜ | ⬜ | native rows/cells/merges |
 | Chart | `c:chartSpace` | `<table data-chart>` / spec | ⛔ | ⛔ | data spec, not pixels |
-| Transitions | `p:transition` (~17) | `data-transition` | ⬜ | ⬜ | compile-time |
-| Animations | `p:timing` | `@keyframes` / spec | ⛔ | ⬜ | compile-time spec |
-| SmartArt / OLE / 3D | `dgm:`/`p:oleObj`/`a:sp3d` | — | ⛔ | 🖼️ | rev may rasterise to preserve looks |
+| Transitions | `p:transition` (~17) | `data-transition` | ✅ | ✅ | compile-time |
+| Animations | `p:timing` | `@keyframes` / spec | ⛔ | 🗃️ | rev preserved as fragment + warning |
+| SmartArt / OLE / 3D | `dgm:`/`p:oleObj`/`a:sp3d` | — | ⛔ | 🗃️ | rev preserved as fragment + warning |
 
 ## Round-trip methodology
 

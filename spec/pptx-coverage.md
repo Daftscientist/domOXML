@@ -99,9 +99,10 @@ CSS source = what authoring produces it on the forward path.
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
 | Image | `a:blipFill` | `<img>` | ✅ | ✅ | embedded as native picture fill |
-| SVG | `a:blip` + svgBlip | inline `<svg>` | 🖼️ | ⬜ | rasterised (warned); svgBlip later |
-| Video / audio | `a:videoFile`/`audioFile` | `<video>`/`<audio>` | 🖼️ | ⬜ | poster frame rasterised |
-| Decorative raster layer | `a:blipFill` | un-mappable flourish | 🖼️ | ⬜ | per-element raster; subtree-consuming + warned |
+| SVG (vector preserved) | `a:blip` + `asvg:svgBlip` | `<img src="*.svg">` / inline `<svg>` | ✅ | ✅ | PNG raster fallback + SVG svgBlip ext; reverse picks SVG over PNG |
+| Picture crop | `a:srcRect` | `object-fit:cover` | ✅ | ✅ | forward: cover\_crop math → srcRect; reverse: wrapper+img CSS via srcrect\_to\_css |
+| Video / audio | `p:videoFile`/`p:audioFile` | `<video>`/`<audio>` | 🖼️ | ✅ | rev: embedded or external media → `<video controls>` / `<audio controls>`; play settings preserved |
+| Decorative raster layer | `a:blipFill` `cNvPr descr` marker | un-mappable flourish | 🖼️ | ✅ | forward writes `domoxml-raster:<role>` marker; reverse restores `<img data-domoxml-raster>` |
 
 ## Tables, charts, transitions, animation
 

@@ -19,6 +19,7 @@ _REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships
 _PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 _CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 _IMAGE_CT = {"png": "image/png", "jpeg": "image/jpeg", "gif": "image/gif"}
+_SVG_CT = "image/svg+xml"
 
 # (face, in-package part path, relationship id) for each embedded font.
 type FontRel = tuple[FontFace, str, str]
@@ -34,7 +35,9 @@ def _override(part: str, content_type: str) -> str:
     return f'<Override PartName="{part}" ContentType="{content_type}"/>'
 
 
-def _content_types(n_slides: int, *, has_fonts: bool, image_exts: set[str]) -> str:
+def _content_types(
+    n_slides: int, *, has_fonts: bool, image_exts: set[str], has_svg: bool = False
+) -> str:
     overrides = [
         _override("/ppt/presentation.xml", f"{_PML}.presentation.main+xml"),
         _override("/ppt/slideMasters/slideMaster1.xml", f"{_PML}.slideMaster+xml"),
@@ -53,6 +56,8 @@ def _content_types(n_slides: int, *, has_fonts: bool, image_exts: set[str]) -> s
     defaults += [
         f'<Default Extension="{ext}" ContentType="{_IMAGE_CT[ext]}"/>' for ext in sorted(image_exts)
     ]
+    if has_svg:
+        defaults.append(f'<Default Extension="svg" ContentType="{_SVG_CT}"/>')
     return f'{t.XML_DECL}<Types xmlns="{_CT_NS}">{"".join(defaults)}{"".join(overrides)}</Types>'
 
 
@@ -159,14 +164,17 @@ def _shape_hyperlinks(body: TextBody | None) -> list[Hyperlink]:
 
 def _slide(
     slide: SlideIR, media_start: int, slide_count: int
-) -> tuple[str, str, dict[str, bytes], int]:
-    """Build one slide. Returns ``(slide_xml, slide_rels_xml, media_parts, next_media_index)``.
+) -> tuple[str, str, dict[str, bytes], int, bool]:
+    """Build one slide.
 
+    Returns ``(slide_xml, slide_rels_xml, media_parts, next_media_index, has_svg)``.
     ``media_start`` is the next free ``ppt/media/imageN`` index (unique across the deck).
     """
     media_parts: dict[str, bytes] = {}
     image_rels: list[tuple[str, str]] = []
     blip_rids: dict[int, str] = {}
+    svg_rids: dict[int, str] = {}
+    has_svg = False
     media_index = media_start
     next_rid = 2  # rId1 is the layout
 
@@ -187,6 +195,16 @@ def _slide(
             blip_rids[position] = rid
             media_index += 1
             next_rid += 1
+            # SVG source paired with the PNG: a second media part + rel for the svgBlip ext.
+            if node.fill.svg_data is not None:
+                svg_name = f"image{media_index}.svg"
+                media_parts[f"ppt/media/{svg_name}"] = node.fill.svg_data
+                svg_rid = f"rId{next_rid}"
+                image_rels.append((svg_rid, svg_name))
+                svg_rids[position] = svg_rid
+                has_svg = True
+                media_index += 1
+                next_rid += 1
 
     # One slide relationship per run hyperlink, in document order. Identity-keyed so two runs
     # with structurally-equal links still each get their own rel (matching the IR objects).
@@ -216,6 +234,7 @@ def _slide(
             node,
             shape_id=position + 2,
             blip_rid=blip_rids.get(position),
+            svg_rid=svg_rids.get(position),
             hyperlink_rid=_hyperlink_rid,
         )
         for position, node in enumerate(slide.shapes)
@@ -226,7 +245,7 @@ def _slide(
         f"{shapes}</p:spTree></p:cSld>"
         "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
     )
-    return slide_xml, _slide_rels(image_rels, hyperlink_rels), media_parts, media_index
+    return slide_xml, _slide_rels(image_rels, hyperlink_rels), media_parts, media_index, has_svg
 
 
 def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) -> bytes:
@@ -259,17 +278,25 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
 
     slide_parts: dict[str, bytes | str] = {}
     image_exts: set[str] = set()
+    has_svg = False
     media_index = 1
     for i, slide in enumerate(slides, start=1):
-        slide_xml, slide_rels, media_parts, media_index = _slide(slide, media_index, n)
+        slide_xml, slide_rels, media_parts, media_index, slide_has_svg = _slide(
+            slide, media_index, n
+        )
+        has_svg = has_svg or slide_has_svg
         slide_parts[f"ppt/slides/slide{i}.xml"] = slide_xml
         slide_parts[f"ppt/slides/_rels/slide{i}.xml.rels"] = slide_rels
         for part, data in media_parts.items():
             slide_parts[part] = data
             image_exts.add(part.rsplit(".", 1)[-1])
+    # The svg extension carries its own content type; never list it among raster _IMAGE_CT.
+    image_exts.discard("svg")
 
     parts: dict[str, bytes | str] = {
-        "[Content_Types].xml": _content_types(n, has_fonts=bool(font_rels), image_exts=image_exts),
+        "[Content_Types].xml": _content_types(
+            n, has_fonts=bool(font_rels), image_exts=image_exts, has_svg=has_svg
+        ),
         "_rels/.rels": t.ROOT_RELS,
         "ppt/presentation.xml": _presentation(width, height, n, font_rels),
         "ppt/_rels/presentation.xml.rels": _presentation_rels(n, font_rels),

@@ -100,11 +100,24 @@ def _src_rect_xml(crop: SrcRect | None) -> str:
     return f"<a:srcRect{attrs}/>" if attrs else ""
 
 
-def _blip_fill(blip_rid: str, crop: SrcRect | None = None) -> str:
+# Office 2016 DrawingML SVG blip extension (vector source alongside the PNG fallback).
+_ASVG_URI = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}"
+_ASVG_NS = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+
+
+def _blip_fill(blip_rid: str, crop: SrcRect | None = None, svg_rid: str | None = None) -> str:
+    if svg_rid is not None:
+        # Pair the raster PNG (a:blip) with the original SVG so PowerPoint renders the vector
+        # at native resolution while the PNG is the downlevel fallback.
+        ext = (
+            f'<a:ext uri="{_ASVG_URI}">'
+            f'<asvg:svgBlip xmlns:asvg="{_ASVG_NS}" r:embed="{svg_rid}"/></a:ext>'
+        )
+        blip = f'<a:blip r:embed="{blip_rid}"><a:extLst>{ext}</a:extLst></a:blip>'
+    else:
+        blip = f'<a:blip r:embed="{blip_rid}"/>'
     return (
-        f'<a:blipFill><a:blip r:embed="{blip_rid}"/>'
-        f"{_src_rect_xml(crop)}"
-        "<a:stretch><a:fillRect/></a:stretch></a:blipFill>"
+        f"<a:blipFill>{blip}{_src_rect_xml(crop)}<a:stretch><a:fillRect/></a:stretch></a:blipFill>"
     )
 
 
@@ -141,7 +154,9 @@ def _pattern_fill(fill: PatternFill) -> str:
     return f'<a:pattFill prst="{_attr(fill.preset)}">{fg}{bg}</a:pattFill>'
 
 
-def _fill_xml(fill: Fill | None, *, opacity: float, blip_rid: str | None) -> str:
+def _fill_xml(
+    fill: Fill | None, *, opacity: float, blip_rid: str | None, svg_rid: str | None = None
+) -> str:
     if fill is None:
         return "<a:noFill/>"
     if isinstance(fill, SolidFill):
@@ -151,7 +166,7 @@ def _fill_xml(fill: Fill | None, *, opacity: float, blip_rid: str | None) -> str
     if isinstance(fill, PatternFill):
         return _pattern_fill(fill)
     # PictureFill: a blip fill if the package writer assigned a media relationship, else nothing.
-    return _blip_fill(blip_rid, fill.crop) if blip_rid is not None else "<a:noFill/>"
+    return _blip_fill(blip_rid, fill.crop, svg_rid) if blip_rid is not None else "<a:noFill/>"
 
 
 def _line_xml(line: Line | None) -> str:
@@ -413,15 +428,17 @@ def shape_xml(
     *,
     shape_id: int,
     blip_rid: str | None = None,
+    svg_rid: str | None = None,
     hyperlink_rid: HyperlinkRid = _no_hyperlink_rid,
 ) -> str:
     """Build the ``<p:sp>`` for one shape. ``shape_id`` must be unique within the slide.
 
     ``blip_rid`` is the slide-relationship id for this shape's picture fill, if any (assigned
-    by the package writer, which owns the media parts). ``hyperlink_rid`` resolves a run
-    hyperlink to its slide-relationship id (also assigned by the package writer).
+    by the package writer, which owns the media parts). ``svg_rid`` is the rel id of the paired
+    SVG part for vector preservation. ``hyperlink_rid`` resolves a run hyperlink to its
+    slide-relationship id (also assigned by the package writer).
     """
-    fill = _fill_xml(node.fill, opacity=node.opacity, blip_rid=blip_rid)
+    fill = _fill_xml(node.fill, opacity=node.opacity, blip_rid=blip_rid, svg_rid=svg_rid)
     return (
         f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Shape {shape_id}"/>'
         "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"

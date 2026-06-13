@@ -164,7 +164,11 @@ class PictureFill(BaseModel):
     ``background-image:url()`` as well as the raster fallback for un-mappable elements.
 
     ``crop`` carries an optional source-rect inset; ``mode`` is how the blip fills the shape
-    (``stretch`` = ``a:stretch``, ``tile`` = ``a:tile``)."""
+    (``stretch`` = ``a:stretch``, ``tile`` = ``a:tile``).
+
+    ``raster_role`` is an optional marker used for decorative raster layers emitted by the
+    forward writer; the reverse reader recognises the marker and restores ``<img>`` with
+    ``data-domoxml-raster`` metadata so round-trips are stable."""
 
     model_config = _FROZEN
 
@@ -173,6 +177,11 @@ class PictureFill(BaseModel):
     ext: Literal["png", "jpeg", "gif"] = "png"
     crop: SrcRect | None = None
     mode: Literal["stretch", "tile"] = "stretch"
+    # Optional SVG source bytes — when set the forward writer embeds BOTH the raster PNG
+    # (a:blip) and the original SVG (asvg:svgBlip extension), preserving vector fidelity.
+    svg_data: bytes | None = None
+    # Marker for decorative raster layers so the reverse reader can round-trip them.
+    raster_role: str | None = None
 
 
 class PatternFill(BaseModel):
@@ -637,10 +646,32 @@ class TableNode(BaseModel):
     rows: tuple[TableRow, ...]
 
 
+class MediaNode(BaseModel):
+    """A video or audio element recovered from a ``p:pic`` with a ``p:videoFile``/``p:audioFile``
+    relationship in the reverse (PPTX→HTML) path.
+
+    ``box`` is the slide-space position/size.  ``media_data`` is the embedded media bytes
+    (``None`` for external references, where ``media_url`` carries the URL).
+    ``media_ext`` is the MIME-friendly file extension (e.g. ``"mp4"``, ``"ogg"``, ``"mp3"``).
+    ``kind`` is ``"video"`` or ``"audio"``.
+    ``poster_fill`` is the blip image from ``p:blipFill`` used as the poster/placeholder.
+    ``play_settings_xml`` is the raw ``p:videoPr``/``p:audioPr`` XML preserved for round-trip."""
+
+    model_config = _FROZEN
+
+    box: Box
+    kind: Literal["video", "audio"] = "video"
+    media_data: bytes | None = None
+    media_url: str | None = None
+    media_ext: str = "mp4"
+    poster_fill: PictureFill | None = None
+    play_settings_xml: str | None = None
+
+
 # A top-level slide node. ``ShapeNode`` is the historical default; groups, connectors, and tables
 # are the richer node types. Kept open (not a discriminated union) because ``ShapeNode`` has no
 # ``kind`` tag and the union members are structurally distinct.
-type Node = ShapeNode | GroupNode | Connector | TableNode
+type Node = ShapeNode | GroupNode | Connector | TableNode | MediaNode
 
 
 class SlideIR(BaseModel):

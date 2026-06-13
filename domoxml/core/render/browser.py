@@ -45,6 +45,7 @@ _SNAPSHOT_JS = """
     marginTop: cs.marginTop, marginBottom: cs.marginBottom,
     textIndent: cs.textIndent, paddingLeft: cs.paddingLeft,
     listStyleType: cs.listStyleType,
+    objectFit: cs.objectFit, objectPosition: cs.objectPosition,
   });
   // The nearest enclosing <a href> for the run, captured as a synthetic style key so the
   // extractor can recover a:hlinkClick without a separate channel. textContent (not innerText)

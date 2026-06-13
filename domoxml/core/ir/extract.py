@@ -16,6 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from domoxml.core.crop import cover_crop
 from domoxml.core.drawingml.presets import match_polygon
 from domoxml.core.fillcrop import cover_crop_fractions
 from domoxml.core.images import (
@@ -353,6 +354,70 @@ def _resolve_image_bytes(url: str, rendered: RenderedSlide) -> tuple[bytes, Imag
     return normalise_image(raw) if raw is not None else None
 
 
+def _is_svg_url(url: str) -> bool:
+    """True when ``url`` looks like an SVG resource: a ``.svg`` file or a
+    ``data:image/svg+xml`` URI."""
+    lowered = url.lower()
+    if lowered.startswith("data:image/svg"):
+        return True
+    path = lowered.split("?", 1)[0].split("#", 1)[0]
+    return path.endswith(".svg")
+
+
+def _resolve_svg_bytes(url: str, rendered: RenderedSlide) -> bytes | None:
+    """Return raw SVG bytes for ``url`` from the resource cache, or ``None``."""
+    raw = decode_data_uri(url) if url.startswith("data:") else rendered.resources.get(url)
+    if raw is None:
+        return None
+    if raw.startswith(b"\xef\xbb\xbf"):  # trim UTF-8 BOM
+        raw = raw[3:]
+    return raw
+
+
+def _svg_to_png(svg_bytes: bytes, *, width_px: int, height_px: int) -> bytes | None:
+    """Rasterise SVG to PNG via cairosvg if installed, else ``None`` (caller falls back to the
+    slide-PNG crop, which Chromium has already rendered)."""
+    try:
+        import cairosvg  # type: ignore[import-untyped]
+    except ImportError:
+        return None
+    return cairosvg.svg2png(  # type: ignore[reportUnknownMemberType,no-any-return]
+        bytestring=svg_bytes, output_width=max(1, width_px), output_height=max(1, height_px)
+    )
+
+
+def _img_crop(node: RenderedNode, rendered: RenderedSlide) -> SrcRect | None:
+    """A DrawingML ``srcRect`` for ``object-fit:cover`` on an ``<img>``, or ``None``.
+
+    Decodes the source to get the intrinsic size, then computes cover crop fractions against
+    the rendered box. ``contain``/explicit fits letterbox (no native srcRect) and return None.
+    """
+    if node.styles.get("objectFit", "").strip().lower() != "cover" or not node.src:
+        return None
+    raw = (
+        decode_data_uri(node.src)
+        if node.src.startswith("data:")
+        else rendered.resources.get(node.src)
+    )
+    if raw is None:
+        return None
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        with Image.open(BytesIO(raw)) as img:
+            src_w, src_h = img.size
+    except Exception:
+        return None
+    if src_w <= 0 or src_h <= 0 or node.width <= 0 or node.height <= 0:
+        return None
+    crop = cover_crop(src_w=src_w, src_h=src_h, dst_w=node.width, dst_h=node.height)
+    if not any((crop.left, crop.top, crop.right, crop.bottom)):
+        return None
+    return crop
+
+
 def _background_crop(data: bytes, node: RenderedNode) -> SrcRect | None:
     """Compute an ``a:srcRect`` crop for a div ``background-image`` from background-size/position.
 
@@ -386,11 +451,31 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
     styles = node.styles
 
     if node.tag == "img" and node.src:
+        # SVG source: preserve the vector via the svgBlip extension with a PNG fallback blip.
+        if _is_svg_url(node.src):
+            svg_bytes = _resolve_svg_bytes(node.src, rendered)
+            if svg_bytes is not None:
+                w_px, h_px = max(1, round(node.width)), max(1, round(node.height))
+                png = _svg_to_png(svg_bytes, width_px=w_px, height_px=h_px)
+                if png is None:
+                    # No SVG rasteriser — crop the region Chromium already rendered.
+                    png = crop_png(
+                        rendered.png,
+                        left=node.x * rendered.scale,
+                        top=node.y * rendered.scale,
+                        width=node.width * rendered.scale,
+                        height=node.height * rendered.scale,
+                    )
+                if png is not None:
+                    return PictureFill(data=png, ext="png", svg_data=svg_bytes), None
+            return None, "SVG image source was not captured"
+
         resolved = _resolve_image_bytes(node.src, rendered)
         if resolved is None:
             return None, "image source was not captured"
         data, ext = resolved
-        return PictureFill(data=data, ext=ext), None
+        crop = _img_crop(node, rendered)
+        return PictureFill(data=data, ext=ext, crop=crop), None
 
     background_image = styles.get("backgroundImage", "none")
     # Check for url(...) first, before checking for gradient keywords

@@ -32,6 +32,7 @@ from domoxml.core.ir.model import (
     Hyperlink,
     Line,
     LineSpacing,
+    MediaNode,
     PatternFill,
     PictureFill,
     Reflection,
@@ -54,9 +55,13 @@ from domoxml.types import ConversionWarning, PreservedFragment
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_ASVG_NS = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+_ASVG_URI = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}"
 _NS = {"a": _A, "p": _P, "r": _R}
 _RID = f"{{{_R}}}id"
 _EMBED = f"{{{_R}}}embed"
+_LINK = f"{{{_R}}}link"
+_RASTER_MARKER_PREFIX = "domoxml-raster:"
 _OFFICE_DOCUMENT_REL = f"{_R}/officeDocument"
 _HYPERLINK_REL = f"{_R}/hyperlink"
 _SLIDE_REL = f"{_R}/slide"
@@ -208,16 +213,47 @@ def _src_rect(element: Element) -> SrcRect | None:
     )
 
 
-def _picture(element: Element, package: OpcPackage, slide_part: str) -> PictureFill | None:
+def _svg_blip(blip: Element, package: OpcPackage, slide_part: str) -> bytes | None:
+    """Return SVG bytes from the asvg:svgBlip extension on ``blip`` (Office 2016 vector
+    extension), or ``None`` when absent/unresolvable."""
+    for ext in blip.findall("a:extLst/a:ext", _NS):
+        if ext.get("uri") != _ASVG_URI:
+            continue
+        for child in ext:
+            if child.tag.rsplit("}", 1)[-1] == "svgBlip":
+                svg_rid = child.get(_EMBED)
+                if svg_rid is not None:
+                    try:
+                        return package.read(package.related_part(slide_part, svg_rid))
+                    except KeyError:
+                        return None
+    return None
+
+
+def _picture(
+    element: Element,
+    package: OpcPackage,
+    slide_part: str,
+    *,
+    raster_role: str | None = None,
+) -> PictureFill | None:
     blip = element.find("a:blip", _NS)
     rid = blip.get(_EMBED) if blip is not None else None
     if rid is None:
         return None
+    crop = _src_rect(element)
+    # Vector wins on reverse: when a svgBlip extension is present, emit the SVG as the asset.
+    if blip is not None:
+        svg_bytes = _svg_blip(blip, package, slide_part)
+        if svg_bytes is not None:
+            return PictureFill(
+                data=svg_bytes, ext="png", svg_data=svg_bytes, crop=crop, raster_role=raster_role
+            )
     part = package.related_part(slide_part, rid)
     ext = _IMAGE_EXT.get(PurePosixPath(part).suffix.lower().lstrip("."))
     if ext is None:
         return None
-    return PictureFill(data=package.read(part), ext=ext, crop=_src_rect(element))  # type: ignore[arg-type]
+    return PictureFill(data=package.read(part), ext=ext, crop=crop, raster_role=raster_role)  # type: ignore[arg-type]
 
 
 _TRANSFORM_KINDS = {"lumMod", "lumOff", "shade", "tint", "alpha", "satMod"}
@@ -705,6 +741,15 @@ def _shape(
     )
 
 
+def _raster_role(element: Element) -> str | None:
+    """Read the decorative-raster marker the forward writer leaves on ``p:cNvPr descr``."""
+    cnvpr = element.find("p:nvPicPr/p:cNvPr", _NS)
+    descr = cnvpr.get("descr", "") if cnvpr is not None else ""
+    if descr.startswith(_RASTER_MARKER_PREFIX):
+        return descr.removeprefix(_RASTER_MARKER_PREFIX) or "decorative"
+    return None
+
+
 def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> ShapeNode | None:
     properties = element.find("p:spPr", _NS)
     transform = properties.find("a:xfrm", _NS) if properties is not None else None
@@ -713,7 +758,7 @@ def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> Sh
     fill = element.find("p:blipFill", _NS)
     if properties is None or offset is None or extent is None or fill is None:
         return None
-    picture = _picture(fill, package, slide_part)
+    picture = _picture(fill, package, slide_part, raster_role=_raster_role(element))
     if picture is None:
         return None
     return ShapeNode(
@@ -724,6 +769,72 @@ def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> Sh
             height=_int_attr(extent, "cy"),
         ),
         fill=picture,
+    )
+
+
+def _media_node(element: Element, package: OpcPackage, slide_part: str) -> MediaNode | None:
+    """If a ``p:pic`` carries a ``p:videoFile``/``p:audioFile`` relationship, return a
+    :class:`MediaNode`; otherwise ``None``. The media rel may be embedded or external; the blip
+    fill becomes the poster image and the ``p:videoPr``/``p:audioPr`` fragment is preserved."""
+    nv_pr = element.find("p:nvPicPr/p:nvPr", _NS)
+    if nv_pr is None:
+        return None
+    media_el = nv_pr.find("p:videoFile", _NS)
+    kind: Literal["video", "audio"] = "video"
+    if media_el is None:
+        media_el = nv_pr.find("p:audioFile", _NS)
+        kind = "audio"
+    if media_el is None:
+        return None
+
+    properties = element.find("p:spPr", _NS)
+    transform = properties.find("a:xfrm", _NS) if properties is not None else None
+    offset = transform.find("a:off", _NS) if transform is not None else None
+    extent = transform.find("a:ext", _NS) if transform is not None else None
+    if properties is None or offset is None or extent is None:
+        return None
+    box = Box(
+        x=_int_attr(offset, "x"),
+        y=_int_attr(offset, "y"),
+        width=_int_attr(extent, "cx"),
+        height=_int_attr(extent, "cy"),
+    )
+
+    media_rid = media_el.get(_LINK) or media_el.get(_EMBED)
+    media_data: bytes | None = None
+    media_url: str | None = None
+    media_ext = "mp4"
+    if media_rid is not None:
+        for rel in package.relationships(slide_part):
+            if rel.id != media_rid:
+                continue
+            if rel.target_mode != "Internal":
+                media_url = rel.target
+                suffix = PurePosixPath(rel.target.split("?", 1)[0]).suffix.lower().lstrip(".")
+                media_ext = suffix or media_ext
+            else:
+                try:
+                    media_part = package.resolve(slide_part, rel)
+                    media_data = package.read(media_part)
+                    suffix = PurePosixPath(media_part).suffix.lower().lstrip(".")
+                    media_ext = suffix or media_ext
+                except (KeyError, ValueError):
+                    pass
+            break
+
+    blip_fill = element.find("p:blipFill", _NS)
+    poster = _picture(blip_fill, package, slide_part) if blip_fill is not None else None
+    play_el = nv_pr.find("p:videoPr" if kind == "video" else "p:audioPr", _NS)
+    play_xml = ElementTree.tostring(play_el, encoding="unicode") if play_el is not None else None
+
+    return MediaNode(
+        box=box,
+        kind=kind,
+        media_data=media_data,
+        media_url=media_url,
+        media_ext=media_ext,
+        poster_fill=poster,
+        play_settings_xml=play_xml,
     )
 
 
@@ -796,6 +907,7 @@ def _slide(
     root = ElementTree.fromstring(package.read(slide_part))
     tree = root.find("./p:cSld/p:spTree", _NS)
     shapes: list[ShapeNode] = []
+    nodes: list[MediaNode] = []
     warnings: list[ConversionWarning] = []
     preserved: list[PreservedFragment] = []
     if tree is not None:
@@ -815,6 +927,11 @@ def _slide(
                         continue
                 reason = "preserved shape that the reverse adapter could not map"
             elif kind == "pic":
+                # Video/audio pics carry a media relationship — recover as a MediaNode.
+                media = _media_node(element, package, slide_part)
+                if media is not None:
+                    nodes.append(media)
+                    continue
                 shape = _picture_shape(element, package, slide_part)
                 if shape is not None:
                     # The crop (a:srcRect) is recovered into the PictureFill and emitted as
@@ -828,7 +945,7 @@ def _slide(
             warnings.append(warning)
             preserved.append(fragment)
     return (
-        SlideIR(width=width, height=height, shapes=tuple(shapes)),
+        SlideIR(width=width, height=height, shapes=tuple(shapes), nodes=tuple(nodes)),
         tuple(warnings),
         tuple(preserved),
     )

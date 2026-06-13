@@ -16,6 +16,7 @@ from domoxml.core.ir.model import (
     ColorSpec,
     Glow,
     GradientFill,
+    MediaNode,
     Node,
     PatternFill,
     PictureFill,
@@ -74,6 +75,11 @@ def _rgba(color: Rgba, *, opacity: float = 1.0) -> str:
 
 
 def _asset(fill: PictureFill) -> HtmlAsset:
+    # Vector wins: when an SVG source is present, emit it as the .svg asset so the browser
+    # renders the resolution-independent original rather than the PNG fallback.
+    if fill.svg_data is not None:
+        digest = hashlib.sha256(fill.svg_data).hexdigest()[:16]
+        return HtmlAsset(path=f"assets/{digest}.svg", data=fill.svg_data)
     digest = hashlib.sha256(fill.data).hexdigest()[:16]
     return HtmlAsset(path=f"assets/{digest}.{fill.ext}", data=fill.data)
 
@@ -479,9 +485,13 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
         autofit_attr = ""
         if node.text is not None and node.text.autofit != "normal":
             autofit_attr = f' data-domoxml-autofit="{escape(node.text.autofit, quote=True)}"'
+        # Decorative-raster marker round-trips via data-domoxml-raster so a re-compile is stable.
+        raster_attr = ""
+        if isinstance(node.fill, PictureFill) and node.fill.raster_role is not None:
+            raster_attr = f' data-domoxml-raster="{escape(node.fill.raster_role, quote=True)}"'
         style = escape(combined_style, quote=True)
         inner = (
-            f'<div class="domoxml-shape" style="{style}"{autofit_attr}>'
+            f'<div class="domoxml-shape" style="{style}"{autofit_attr}{raster_attr}>'
             f"{_text_html(node.text, warnings)}</div>"
         )
         # Wrap with reflection if present
@@ -516,11 +526,52 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                 f"{_text_html(node.text, warnings)}</div>"
             )
         return inner
+    if isinstance(node, MediaNode):
+        return _media_html(node, assets, warnings)
     # TODO(coverage): GroupNode/Connector/TableNode have no HTML serializer yet. The extractor
     # never produces them today; warn (no-silent-drop) when one reaches here.
     kind = type(node).__name__
     warnings.append(ConversionWarning(message=f"{kind} not yet serialized to HTML; node dropped"))
     return ""
+
+
+def _media_html(
+    node: MediaNode, assets: dict[str, HtmlAsset], warnings: list[ConversionWarning]
+) -> str:
+    """Serialize a recovered video/audio ``p:pic`` as a positioned ``<video>``/``<audio>``.
+
+    Embedded media becomes a shared asset; external media uses its URL. The poster blip (if
+    any) is the ``poster`` for video. Play settings (``p:videoPr``) are preserved out-of-band,
+    so a warning records that they don't survive to CSS/HTML."""
+    pos = (
+        f"position:absolute;left:{_px(node.box.x)};top:{_px(node.box.y)};"
+        f"width:{_px(node.box.width)};height:{_px(node.box.height)}"
+    )
+    # Resolve the media source: embedded → shared asset; external → URL.
+    src = ""
+    if node.media_data is not None:
+        digest = hashlib.sha256(node.media_data).hexdigest()[:16]
+        asset = HtmlAsset(path=f"assets/{digest}.{node.media_ext}", data=node.media_data)
+        assets.setdefault(asset.path, asset)
+        src = asset.path
+    elif node.media_url is not None:
+        src = node.media_url
+    src_attr = f' src="{escape(src, quote=True)}"' if src else ""
+    if node.play_settings_xml is not None:
+        warnings.append(
+            ConversionWarning(
+                message=f"{node.kind} play settings (p:{node.kind}Pr) preserved out-of-band; "
+                "not represented in HTML/CSS"
+            )
+        )
+    if node.kind == "audio":
+        return f'<audio controls style="{escape(pos, quote=True)}"{src_attr}></audio>'
+    poster_attr = ""
+    if node.poster_fill is not None:
+        poster = _asset(node.poster_fill)
+        assets.setdefault(poster.path, poster)
+        poster_attr = f' poster="{escape(poster.path, quote=True)}"'
+    return f'<video controls style="{escape(pos, quote=True)}"{src_attr}{poster_attr}></video>'
 
 
 def serialize_canvas(

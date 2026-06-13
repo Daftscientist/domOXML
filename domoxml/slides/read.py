@@ -50,6 +50,17 @@ from domoxml.core.ir.model import (
 )
 from domoxml.core.opc import OpcPackage
 from domoxml.core.units import emu_to_pt
+from domoxml.slides.inherit import (
+    PlaceholderContext,
+    ThemeContext,
+    build_placeholder_context,
+    inherit_sppr_child,
+    inherit_xfrm,
+    parse_theme_fonts,
+    resolve_run_rpr,
+    resolve_scheme_color,
+    resolve_typeface,
+)
 from domoxml.types import ConversionWarning, PreservedFragment
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -116,6 +127,22 @@ _SCHEME_FALLBACK = {
 }
 _SYSTEM_FALLBACK = {"window": "FFFFFF", "windowText": "000000"}
 type ThemeColors = dict[str, str]
+
+
+# ---------------------------------------------------------------------------
+# Per-slide inheritance context (layout/master/theme XML roots).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _SlideInheritCtx:
+    """Pre-parsed layout and master XML roots for one slide, plus theme context.
+
+    Used by ``_shape`` and ``_text_body`` to resolve placeholder inheritance."""
+
+    layout_root: Element | None
+    master_root: Element | None
+    theme_ctx: ThemeContext
 
 
 @dataclass(frozen=True)
@@ -517,28 +544,89 @@ def _text_run(
     element: Element,
     colors: ThemeColors,
     hyperlink_for: Callable[[Element], Hyperlink | None],
+    *,
+    fallback_rpr: Element | None = None,
+    theme_ctx: ThemeContext | None = None,
 ) -> TextRun | None:
     text = element.findtext("a:t", default="", namespaces=_NS)
     if not text:
         return None
-    properties = element.find("a:rPr", _NS)
-    if properties is None:
+    # Effective rPr: slide-level wins; inherit attrs from fallback_rpr (lvlNpPr/defRPr)
+    # when a slide-level rPr is absent or missing individual attributes.
+    slide_rpr = element.find("a:rPr", _NS)
+    properties = slide_rpr if slide_rpr is not None else fallback_rpr
+
+    # Helper: read attr from slide-rpr first, then fallback_rpr.
+    def _attr(name: str, default: str | None = None) -> str | None:
+        if slide_rpr is not None:
+            v = slide_rpr.get(name)
+            if v is not None:
+                return v
+        if fallback_rpr is not None:
+            v = fallback_rpr.get(name)
+            if v is not None:
+                return v
+        return default
+
+    # Helper: find a child element in slide-rpr first, then fallback_rpr.
+    def _child(tag: str) -> Element | None:
+        if slide_rpr is not None:
+            el = slide_rpr.find(tag, _NS)
+            if el is not None:
+                return el
+        if fallback_rpr is not None:
+            return fallback_rpr.find(tag, _NS)
+        return None
+
+    if properties is None and fallback_rpr is None:
         return TextRun(text=text, font_family="sans-serif", size_pt=12.0)
-    latin = properties.find("a:latin", _NS)
-    family = latin.get("typeface", "sans-serif") if latin is not None else "sans-serif"
-    color = _rgba(properties.find("a:solidFill", _NS), colors) or Rgba(r=0, g=0, b=0)
+
+    latin_el = _child("a:latin")
+    raw_typeface = latin_el.get("typeface", "sans-serif") if latin_el is not None else "sans-serif"
+    # Resolve +mj-lt / +mn-lt theme-font sentinels.
+    family = (
+        resolve_typeface(raw_typeface, theme_ctx)
+        if theme_ctx is not None
+        else (raw_typeface or "sans-serif")
+    )
+
+    # Size: sz in hundredths of a point (e.g. 1200 = 12 pt); default 12 pt.
+    sz_raw = _attr("sz", "1200")
+    size_pt = (int(sz_raw) / 100) if sz_raw is not None else 12.0
+
+    # Colour: prefer solidFill in the effective rPr; fall back to black.
+    solid_fill_el = _child("a:solidFill")
+    if solid_fill_el is not None:
+        # Resolve scheme colors with transforms.
+        scheme_el = solid_fill_el.find("a:schemeClr", _NS)
+        if scheme_el is not None and theme_ctx is not None:
+            result = resolve_scheme_color(scheme_el, colors)
+            if result is not None:
+                r_c, g_c, b_c, a_c = result
+                color: Rgba = Rgba(r=r_c, g=g_c, b=b_c, a=a_c)
+            else:
+                color = _rgba(solid_fill_el, colors) or Rgba(r=0, g=0, b=0)
+        else:
+            color = _rgba(solid_fill_el, colors) or Rgba(r=0, g=0, b=0)
+    else:
+        color = Rgba(r=0, g=0, b=0)
+
+    # Hyperlink: only on slide-level rPr (layout inheritance doesn't carry hrefs).
+    hlink_src = slide_rpr if slide_rpr is not None else properties
+    hyperlink = hyperlink_for(hlink_src) if hlink_src is not None else None
+
     return TextRun(
         text=text,
         font_family=family,
-        size_pt=_int_attr(properties, "sz", 1200) / 100,
-        bold=properties.get("b") == "1",
-        italic=properties.get("i") == "1",
-        underline=_underline(properties.get("u")),
-        strike=properties.get("strike", "noStrike") not in ("noStrike", None),
-        caps=_caps(properties.get("cap")),
-        letter_spacing_pt=_int_attr(properties, "spc", 0) / 100,
+        size_pt=size_pt,
+        bold=_attr("b") == "1",
+        italic=_attr("i") == "1",
+        underline=_underline(_attr("u")),
+        strike=_attr("strike", "noStrike") not in ("noStrike", None),
+        caps=_caps(_attr("cap")),
+        letter_spacing_pt=int(_attr("spc", "0") or "0") / 100,
         color=color,
-        hyperlink=hyperlink_for(properties),
+        hyperlink=hyperlink,
     )
 
 
@@ -583,6 +671,9 @@ def _text_body(
     shape: Element,
     colors: ThemeColors,
     hyperlink_for: Callable[[Element], Hyperlink | None],
+    *,
+    ph_ctx: PlaceholderContext | None = None,
+    theme_ctx: ThemeContext | None = None,
 ) -> TextBody | None:
     body = shape.find("p:txBody", _NS)
     if body is None:
@@ -591,6 +682,14 @@ def _text_body(
     paragraphs: list[TextParagraph] = []
     for paragraph in body.findall("a:p", _NS):
         properties = paragraph.find("a:pPr", _NS)
+        # Paragraph level for inheritance chain (0-based, ECMA a:pPr lvl attribute).
+        level: int = 0
+        if properties is not None:
+            lvl_raw = properties.get("lvl")
+            if lvl_raw is not None:
+                with contextlib.suppress(ValueError):
+                    level = max(0, int(lvl_raw))
+
         align = _ALIGN_FROM_OOXML.get(
             properties.get("algn", "l") if properties is not None else "l", "left"
         )
@@ -601,7 +700,6 @@ def _text_body(
         space_after_pt: float | None = None
         indent_pt: float = 0.0
         left_margin_pt: float = 0.0
-        level: int = 0
         bullet = None
 
         if properties is not None:
@@ -614,10 +712,6 @@ def _text_body(
             if indent_raw is not None:
                 with contextlib.suppress(ValueError):
                     indent_pt = emu_to_pt(int(indent_raw))
-            lvl_raw = properties.get("lvl")
-            if lvl_raw is not None:
-                with contextlib.suppress(ValueError):
-                    level = max(0, int(lvl_raw))
 
             # a:lnSpc
             ln_spc = properties.find("a:lnSpc", _NS)
@@ -660,10 +754,22 @@ def _text_body(
                 start_at = _int_attr(bu_auto, "startAt", 1)
                 bullet = AutoNumberBullet(scheme=scheme, start_at=start_at)
 
+        # Resolve effective run properties for this level via inheritance chain.
+        fallback_rpr = resolve_run_rpr(None, level, ph_ctx) if ph_ctx is not None else None
+
         runs = tuple(
             run
             for element in paragraph.findall("a:r", _NS)
-            if (run := _text_run(element, colors, hyperlink_for)) is not None
+            if (
+                run := _text_run(
+                    element,
+                    colors,
+                    hyperlink_for,
+                    fallback_rpr=fallback_rpr,
+                    theme_ctx=theme_ctx,
+                )
+            )
+            is not None
         )
         paragraphs.append(
             TextParagraph(
@@ -697,11 +803,27 @@ def _shape(
     slide_part: str,
     colors: ThemeColors,
     hyperlink_for: Callable[[Element], Hyperlink | None],
+    *,
+    inherit_ctx: _SlideInheritCtx | None = None,
 ) -> tuple[ShapeNode | None, tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
     properties = element.find("p:spPr", _NS)
-    transform = properties.find("a:xfrm", _NS) if properties is not None else None
-    offset = transform.find("a:off", _NS) if transform is not None else None
-    extent = transform.find("a:ext", _NS) if transform is not None else None
+
+    # Build placeholder context for this shape (used for geometry + text inheritance).
+    ph_ctx: PlaceholderContext | None = None
+    if inherit_ctx is not None:
+        ph_ctx = build_placeholder_context(
+            element, inherit_ctx.layout_root, inherit_ctx.master_root
+        )
+
+    # Resolve effective a:xfrm: slide spPr first, then layout/master placeholder chain.
+    xfrm = properties.find("a:xfrm", _NS) if properties is not None else None
+
+    # Fallback via placeholder inheritance when slide xfrm is absent.
+    if xfrm is None and ph_ctx is not None:
+        xfrm = inherit_xfrm(properties, ph_ctx)
+
+    offset = xfrm.find("a:off", _NS) if xfrm is not None else None
+    extent = xfrm.find("a:ext", _NS) if xfrm is not None else None
     if properties is None or offset is None or extent is None:
         return None, (), ()
     box = Box(
@@ -711,6 +833,10 @@ def _shape(
         height=_int_attr(extent, "cy"),
     )
     geometry = properties.find("a:prstGeom", _NS)
+    # Geometry may also be inherited (e.g. placeholder with no shape of its own).
+    if geometry is None and ph_ctx is not None:
+        geom_el = inherit_sppr_child("a:prstGeom", properties, ph_ctx)
+        geometry = geom_el
     geom_name = geometry.get("prst", "rect") if geometry is not None else "rect"
     # Map the OOXML prstGeom name onto a GeometryKind literal. Any name that is a valid
     # GeometryKind passes through directly; unknown names fall back to "rect" so the shape
@@ -734,7 +860,13 @@ def _shape(
             line=_line(properties, colors),
             effects=shape_effects,
             corner_radius_emu=corner,
-            text=_text_body(element, colors, hyperlink_for),
+            text=_text_body(
+                element,
+                colors,
+                hyperlink_for,
+                ph_ctx=ph_ctx,
+                theme_ctx=inherit_ctx.theme_ctx if inherit_ctx is not None else None,
+            ),
         ),
         effect_warns,
         effect_preserved,
@@ -894,6 +1026,50 @@ def _hyperlink_resolver(
     return resolve
 
 
+def _build_slide_inherit_ctx(package: OpcPackage, slide_part: str) -> _SlideInheritCtx:
+    """Build the per-slide inheritance context (layout/master XML + theme fonts).
+
+    This is called once per slide and the result is shared by all shapes on that slide."""
+    layout_root: Element | None = None
+    master_root: Element | None = None
+
+    layout_part = _related_part_by_type(package, slide_part, _SLIDE_LAYOUT_REL)
+    if layout_part is not None:
+        with contextlib.suppress(KeyError):
+            layout_root = ElementTree.fromstring(package.read(layout_part))
+
+    master_part: str | None = None
+    if layout_part is not None:
+        master_part = _related_part_by_type(package, layout_part, _SLIDE_MASTER_REL)
+    if master_part is not None:
+        with contextlib.suppress(KeyError):
+            master_root = ElementTree.fromstring(package.read(master_part))
+
+    # Theme fonts for +mj-lt / +mn-lt sentinel resolution.
+    theme_part: str | None = None
+    if master_part is not None:
+        theme_part = _related_part_by_type(package, master_part, _THEME_REL)
+    major_latin = "Calibri Light"
+    minor_latin = "Calibri"
+    if theme_part is not None:
+        with contextlib.suppress(KeyError):
+            theme_root = ElementTree.fromstring(package.read(theme_part))
+            major_latin, minor_latin = parse_theme_fonts(theme_root)
+
+    # Build colors dict for scheme color resolution in text runs.
+    colors = _slide_colors(package, slide_part)
+    theme_ctx = ThemeContext(
+        major_latin=major_latin,
+        minor_latin=minor_latin,
+        colors=colors,
+    )
+    return _SlideInheritCtx(
+        layout_root=layout_root,
+        master_root=master_root,
+        theme_ctx=theme_ctx,
+    )
+
+
 def _slide(
     package: OpcPackage,
     slide_part: str,
@@ -906,6 +1082,7 @@ def _slide(
     hyperlink_for = _hyperlink_resolver(package, slide_part, slide_index_by_part)
     root = ElementTree.fromstring(package.read(slide_part))
     tree = root.find("./p:cSld/p:spTree", _NS)
+    inherit_ctx = _build_slide_inherit_ctx(package, slide_part)
     shapes: list[ShapeNode] = []
     nodes: list[MediaNode] = []
     warnings: list[ConversionWarning] = []
@@ -917,7 +1094,12 @@ def _slide(
                 continue
             if kind == "sp":
                 shape, shape_warns, shape_preserved = _shape(
-                    element, package, slide_part, colors, hyperlink_for
+                    element,
+                    package,
+                    slide_part,
+                    colors,
+                    hyperlink_for,
+                    inherit_ctx=inherit_ctx,
                 )
                 if shape is not None:
                     shapes.append(shape)

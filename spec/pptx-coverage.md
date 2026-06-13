@@ -28,9 +28,9 @@ CSS source = what authoring produces it on the forward path.
 |---|---|:--:|:--:|---|
 | OPC package (zip, content-types, rels) | OPC | ✅ | ✅ | shared reader/writer primitives |
 | Presentation + slide size | `p:presentation`, `p:sldSz` | ✅ | ✅ | one size per deck |
-| Slide / layout / master | `p:sld`, `p:sldLayout`, `p:sldMaster` | ✅ | 🟡 | rev reads ordered slides; inheritance pending |
-| Theme | `a:theme` (clr/font/fmt scheme) | 🟡 | 🟡 | basic colour scheme resolution; transforms pending |
-| Placeholder & inheritance | `p:ph`, layout→master→theme | ⬜ | ⬜ | **the hard part of reverse** — effective-style resolution |
+| Slide / layout / master | `p:sld`, `p:sldLayout`, `p:sldMaster` | ✅ | ✅ | rev resolves placeholder geometry/text through layout→master |
+| Theme | `a:theme` (clr/font/fmt scheme) | 🟡 | ✅ | colour scheme + clrMap remap + font scheme (+mj-lt/+mn-lt) resolved |
+| Placeholder & inheritance | `p:ph`, layout→master→theme | ⬜ | ✅ | effective-style resolution: xfrm/spPr chain, txStyles (title/body/other) per lvl, slide-level overrides |
 
 ## Geometry (DrawingML §20.1)
 
@@ -52,7 +52,7 @@ CSS source = what authoring produces it on the forward path.
 | Gradient (linear/radial) | `a:gradFill` | `linear/radial-gradient` | ✅ | ✅ | basic single gradient |
 | Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ✅ | shape fill and native `p:pic`; **shape blipFill crop done** — `background-size:cover` → `a:srcRect` (fwd), `a:srcRect` → `background-size`/`-position` % (rev). `contain`/explicit sizes stretch (no crop) |
 | Pattern fill | `a:pattFill` | `repeating-linear-gradient` | 🟡 | 🟡 | **Fwd**: 2-colour hard-stop `repeating-linear-gradient` at 0/45/90/135deg → 6 presets (`horz`,`vert`,`ltUpDiag`,`wdUpDiag`,`ltDnDiag`,`dkUpDiag`; thin ≤4px→`lt*`, wide→`wd*`/`dk*`). 3+ colours / soft stops / off-axis fall back to raster. **Rev**: those 6 presets round-trip **exactly** to `repeating-linear-gradient`; all other ~48 ECMA presets → inline 8×8 SVG-tile `background-image` approximation + ConversionWarning |
-| Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | 🟡 | basic clrScheme lookup; clrMap/transforms pending |
+| Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | ✅ | clrScheme lookup + clrMap remap + lumMod/lumOff/shade/tint/alpha/satMod transforms |
 
 ## Line / stroke
 

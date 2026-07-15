@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 from html import escape
+from urllib.parse import urlsplit
 
 from domoxml.core.drawingml.presets import preset_defaults, preset_vertices
 from domoxml.core.fillcrop import srcrect_to_background
@@ -67,6 +68,7 @@ _CSS_DASH = {
     "lgDash": "dashed",
     "sysDash": "dashed",
 }
+_SAFE_HYPERLINK_SCHEMES = frozenset({"http", "https", "mailto", "tel"})
 
 
 def _number(value: float) -> str:
@@ -371,6 +373,11 @@ def _wrap_hyperlink(inner: str, run: TextRun) -> str:
         href = f"#slide-{link.slide_index + 1}"
     elif link.url is not None:
         href = link.url
+        if (
+            not (href.startswith("#slide-") and href[7:].isdigit())
+            and urlsplit(href).scheme.lower() not in _SAFE_HYPERLINK_SCHEMES
+        ):
+            return inner
     else:
         return inner
     return f'<a href="{escape(href, quote=True)}">{inner}</a>'

@@ -184,6 +184,40 @@ def _run(text: str) -> TextRun:
     return TextRun(text=text, font_family="Arial", size_pt=12)
 
 
+def test_html_rejects_active_and_unknown_hyperlink_schemes() -> None:
+    runs = tuple(
+        TextRun(text=url, font_family="Arial", size_pt=12, hyperlink=Hyperlink(url=url))
+        for url in (
+            "javascript:alert(1)",
+            "data:text/html,bad",
+            "file:///etc/passwd",
+            "relative/path",
+        )
+    )
+    html = serialize_canvas([_list_slide(TextParagraph(runs=runs))]).slides[0].html
+
+    assert "<a href=" not in html
+    assert "javascript:" in html
+
+
+def test_html_allows_safe_and_internal_hyperlink_schemes() -> None:
+    urls = (
+        "https://example.com",
+        "http://example.com",
+        "mailto:a@example.com",
+        "tel:+44123",
+        "#slide-2",
+    )
+    runs = tuple(
+        TextRun(text=url, font_family="Arial", size_pt=12, hyperlink=Hyperlink(url=url))
+        for url in urls
+    )
+    html = serialize_canvas([_list_slide(TextParagraph(runs=runs))]).slides[0].html
+
+    for url in urls:
+        assert f'<a href="{url}">' in html
+
+
 def test_html_char_bullets_emit_ul_and_li() -> None:
     """CharBullet paragraphs → <ul>…<li>…</li></ul>."""
     slide = _list_slide(

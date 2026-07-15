@@ -74,6 +74,19 @@ def _pop(tokens: list[str], index: int) -> tuple[float, int]:
     return float(tokens[index]), index + 1
 
 
+def _has_coordinates(tokens: list[str], index: int, count: int) -> bool:
+    """Return whether the next ``count`` tokens are numeric coordinates."""
+    if index + count > len(tokens):
+        return False
+    return all(
+        token.upper() not in _COORD_CMDS | _UNSUPPORTED for token in tokens[index : index + count]
+    )
+
+
+def _truncated(commands: list[PathCommand], cmd: str, arity: int) -> ParsedPath:
+    return ParsedPath(commands, f"truncated SVG command '{cmd}': expected {arity} coordinates")
+
+
 def parse_svg_path(d: str) -> ParsedPath:
     """Parse an SVG path ``d`` string into normalised absolute IR commands.
 
@@ -111,8 +124,8 @@ def parse_svg_path(d: str) -> ParsedPath:
 
         # --- M / m ---
         if cmd == "M":
-            if i >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 2):
+                return _truncated(commands, cmd, 2)
             x, i = _pop(tokens, i)
             y, i = _pop(tokens, i)
             cx, cy = x, y
@@ -122,8 +135,8 @@ def parse_svg_path(d: str) -> ParsedPath:
             continue
 
         if cmd == "m":
-            if i >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 2):
+                return _truncated(commands, cmd, 2)
             dx, i = _pop(tokens, i)
             dy, i = _pop(tokens, i)
             cx += dx
@@ -135,8 +148,8 @@ def parse_svg_path(d: str) -> ParsedPath:
 
         # --- L / l ---
         if cmd == "L":
-            if i >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 2):
+                return _truncated(commands, cmd, 2)
             x, i = _pop(tokens, i)
             y, i = _pop(tokens, i)
             cx, cy = x, y
@@ -144,8 +157,8 @@ def parse_svg_path(d: str) -> ParsedPath:
             continue
 
         if cmd == "l":
-            if i >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 2):
+                return _truncated(commands, cmd, 2)
             dx, i = _pop(tokens, i)
             dy, i = _pop(tokens, i)
             cx += dx
@@ -155,16 +168,16 @@ def parse_svg_path(d: str) -> ParsedPath:
 
         # --- H / h ---
         if cmd == "H":
-            if i >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 1):
+                return _truncated(commands, cmd, 1)
             x, i = _pop(tokens, i)
             cx = x
             commands.append(LineTo(to=Point(x=round(cx), y=round(cy))))
             continue
 
         if cmd == "h":
-            if i >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 1):
+                return _truncated(commands, cmd, 1)
             dx, i = _pop(tokens, i)
             cx += dx
             commands.append(LineTo(to=Point(x=round(cx), y=round(cy))))
@@ -172,16 +185,16 @@ def parse_svg_path(d: str) -> ParsedPath:
 
         # --- V / v ---
         if cmd == "V":
-            if i >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 1):
+                return _truncated(commands, cmd, 1)
             y, i = _pop(tokens, i)
             cy = y
             commands.append(LineTo(to=Point(x=round(cx), y=round(cy))))
             continue
 
         if cmd == "v":
-            if i >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 1):
+                return _truncated(commands, cmd, 1)
             dy, i = _pop(tokens, i)
             cy += dy
             commands.append(LineTo(to=Point(x=round(cx), y=round(cy))))
@@ -189,8 +202,8 @@ def parse_svg_path(d: str) -> ParsedPath:
 
         # --- C / c  (cubic Bézier: x1 y1 x2 y2 x y) ---
         if cmd == "C":
-            if i + 5 >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 6):
+                return _truncated(commands, cmd, 6)
             x1, i = _pop(tokens, i)
             y1, i = _pop(tokens, i)
             x2, i = _pop(tokens, i)
@@ -208,8 +221,8 @@ def parse_svg_path(d: str) -> ParsedPath:
             continue
 
         if cmd == "c":
-            if i + 5 >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 6):
+                return _truncated(commands, cmd, 6)
             dx1, i = _pop(tokens, i)
             dy1, i = _pop(tokens, i)
             dx2, i = _pop(tokens, i)
@@ -229,8 +242,8 @@ def parse_svg_path(d: str) -> ParsedPath:
 
         # --- Q / q  (quadratic Bézier: x1 y1 x y) ---
         if cmd == "Q":
-            if i + 3 >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 4):
+                return _truncated(commands, cmd, 4)
             x1, i = _pop(tokens, i)
             y1, i = _pop(tokens, i)
             x, i = _pop(tokens, i)
@@ -245,8 +258,8 @@ def parse_svg_path(d: str) -> ParsedPath:
             continue
 
         if cmd == "q":
-            if i + 3 >= len(tokens):
-                break
+            if not _has_coordinates(tokens, i, 4):
+                return _truncated(commands, cmd, 4)
             dx1, i = _pop(tokens, i)
             dy1, i = _pop(tokens, i)
             dx, i = _pop(tokens, i)

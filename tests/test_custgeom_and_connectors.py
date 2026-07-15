@@ -149,6 +149,37 @@ def test_empty_string_returns_empty() -> None:
     assert parsed.bail_reason is None
 
 
+def test_truncated_coordinate_commands_bail_without_raising() -> None:
+    paths = (
+        "M 10",
+        "m 10",
+        "M 0 0 L 10",
+        "M 0 0 l 10",
+        "M 0 0 H",
+        "M 0 0 h",
+        "M 0 0 V",
+        "M 0 0 v",
+        "M 0 0 C 1 2 3 4 5",
+        "M 0 0 c 1 2 3 4 5",
+        "M 0 0 Q 1 2 3",
+        "M 0 0 q 1 2 3",
+        "M 0 0 10",
+    )
+
+    for path in paths:
+        parsed = parse_svg_path(path)
+        assert parsed.bail_reason is not None
+        assert "truncated" in parsed.bail_reason
+
+
+def test_command_where_coordinate_is_expected_bails_without_raising() -> None:
+    parsed = parse_svg_path("M 10 L 20 20")
+
+    assert parsed.commands == []
+    assert parsed.bail_reason is not None
+    assert "truncated" in parsed.bail_reason
+
+
 def test_subpath_z_resets_pen() -> None:
     # After Z, the next M/m starts fresh; the subpath start is updated on each M.
     parsed = parse_svg_path("M 10 10 L 50 10 Z M 100 100 L 150 100 Z")

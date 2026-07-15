@@ -128,11 +128,17 @@ def read_text_run(
 
 def read_text_body_properties(
     body: Element,
-) -> tuple[Literal["top", "middle", "bottom"], Literal["none", "normal", "shape"], int, int]:
-    """Return vertical anchor, autofit mode, column count, and column gap."""
+) -> tuple[
+    Literal["top", "middle", "bottom"],
+    Literal["none", "normal", "shape"],
+    int,
+    int,
+    tuple[int, int, int, int],
+]:
+    """Return vertical anchor, autofit, columns, gap, and text-body insets."""
     properties = body.find("a:bodyPr", _NS)
     if properties is None:
-        return "top", "normal", 1, 0
+        return "top", "normal", 1, 0, (91_440, 45_720, 91_440, 45_720)
     anchor = _ANCHOR_FROM_OOXML.get(properties.get("anchor", "t"), "top")
     autofit: Literal["none", "normal", "shape"] = "normal"
     if properties.find("a:spAutoFit", _NS) is not None:
@@ -144,6 +150,12 @@ def read_text_body_properties(
         autofit,
         max(1, _int_attr(properties, "numCol", 1)),
         max(0, _int_attr(properties, "spcCol")),
+        (
+            max(0, _int_attr(properties, "lIns", 91_440)),
+            max(0, _int_attr(properties, "tIns", 45_720)),
+            max(0, _int_attr(properties, "rIns", 91_440)),
+            max(0, _int_attr(properties, "bIns", 45_720)),
+        ),
     )
 
 
@@ -159,7 +171,7 @@ def read_text_body(
     body = shape.find("p:txBody", _NS)
     if body is None:
         return None
-    anchor, autofit, columns, column_gap_emu = read_text_body_properties(body)
+    anchor, autofit, columns, column_gap_emu, margins = read_text_body_properties(body)
     paragraphs: list[TextParagraph] = []
     for paragraph in body.findall("a:p", _NS):
         properties = paragraph.find("a:pPr", _NS)
@@ -243,4 +255,5 @@ def read_text_body(
         autofit=autofit,
         columns=columns,
         column_gap_emu=column_gap_emu,
+        margins=margins,
     )

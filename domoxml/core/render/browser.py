@@ -42,9 +42,10 @@ _SNAPSHOT_JS = """
     display: cs.display, flexDirection: cs.flexDirection,
     justifyContent: cs.justifyContent, alignItems: cs.alignItems,
     overflow: cs.overflow, whiteSpace: cs.whiteSpace,
-    columnCount: cs.columnCount, columnGap: cs.columnGap,
+    columnCount: cs.columnCount, columnGap: cs.columnGap, columnFill: cs.columnFill,
     marginTop: cs.marginTop, marginBottom: cs.marginBottom,
-    textIndent: cs.textIndent, paddingLeft: cs.paddingLeft,
+    textIndent: cs.textIndent, paddingLeft: cs.paddingLeft, paddingTop: cs.paddingTop,
+    paddingRight: cs.paddingRight, paddingBottom: cs.paddingBottom,
     listStyleType: cs.listStyleType, listStylePosition: cs.listStylePosition,
     objectFit: cs.objectFit, objectPosition: cs.objectPosition,
   });
@@ -90,7 +91,8 @@ _SNAPSHOT_JS = """
     }
     return { depth, listType, ordinal };
   };
-  const consolidatesFlexText = (root) => {
+  const consolidatesText = (root) => {
+    if (root.getAttribute('data-domoxml-text-body') === 'true') return true;
     const style = getComputedStyle(root);
     const display = style.display;
     if (display !== 'flex' && display !== 'inline-flex') return false;
@@ -151,8 +153,12 @@ _SNAPSHOT_JS = """
     el.dataset.domoxmlCaptureIndex = String(index);
     const styles = pick(getComputedStyle(el));
     const tag = el.tagName.toLowerCase();
-    const consolidateFlex = consolidatesFlexText(el);
-    if (consolidateFlex) styles.domoxmlConsolidatedText = 'true';
+    if (styles.transform && styles.transform !== 'none') {
+      styles.domoxmlLayoutWidth = String(el.offsetWidth);
+      styles.domoxmlLayoutHeight = String(el.offsetHeight);
+    }
+    const consolidateText = consolidatesText(el);
+    if (consolidateText) styles.domoxmlConsolidatedText = 'true';
     // For <li> elements record the list nesting depth and list type.
     if (tag === 'li') {
       const ctx = listContext(el);
@@ -186,7 +192,7 @@ _SNAPSHOT_JS = """
       text, index, parent,
       src: svgSrc,
       styles,
-      textRuns: inlineRuns(el, consolidateFlex),
+      textRuns: inlineRuns(el, consolidateText),
     });
     for (const child of el.children) walk(child, index);
   };

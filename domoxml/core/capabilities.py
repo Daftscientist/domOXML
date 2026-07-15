@@ -10,9 +10,15 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from domoxml.types import ConversionWarning, CoverageReport, Disposition, RenderResult
+from domoxml.types import (
+    ConversionWarning,
+    CoverageReport,
+    Disposition,
+    HtmlPresentation,
+    RenderResult,
+)
 
 _NS = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -65,7 +71,21 @@ class CapabilityVisual(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     source_to_pptx_min_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+    source_to_pptx_min_regional_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     pptx_to_html_min_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+    pptx_to_html_min_regional_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class CapabilityReverseExpected(BaseModel):
+    """Structural behavior required after ingesting the fixture's PPTX."""
+
+    model_config = ConfigDict(frozen=True)
+
+    expected_slides: int = Field(default=1, ge=1)
+    html_contains: tuple[str, ...] = ()
+    max_warnings: int = Field(default=0, ge=0)
+    max_preserved: int = Field(default=0, ge=0)
+    roundtrip: bool = True
 
 
 class CapabilityFixture(BaseModel):
@@ -75,18 +95,36 @@ class CapabilityFixture(BaseModel):
 
     id: str
     direction: CapabilityDirection
-    html: str
+    html: str = ""
+    pptx: bytes | None = Field(default=None, exclude=True)
     expected: CapabilityExpected = Field(default_factory=CapabilityExpected)
+    reverse: CapabilityReverseExpected = Field(default_factory=CapabilityReverseExpected)
     visual: CapabilityVisual = Field(default_factory=CapabilityVisual)
+
+    @model_validator(mode="after")
+    def _sources_match_direction(self) -> CapabilityFixture:
+        if (
+            self.direction in (CapabilityDirection.FORWARD, CapabilityDirection.BOTH)
+            and not self.html.strip()
+        ):
+            raise ValueError(f"{self.direction} fixture requires non-empty HTML")
+        if self.direction is CapabilityDirection.REVERSE and self.pptx is None:
+            raise ValueError("reverse fixture requires pptx_file")
+        return self
 
 
 def _load_fixture(path: Path) -> CapabilityFixture:
     with path.open("rb") as handle:
         raw = tomllib.load(handle)
-    html_file = raw.pop("html_file", "slide.html")
-    if not isinstance(html_file, str):
+    html_file = raw.pop("html_file", None)
+    if html_file is not None and not isinstance(html_file, str):
         raise ValueError(f"{path}: html_file must be a string")
-    raw["html"] = (path.parent / html_file).read_text(encoding="utf-8")
+    html_path = path.parent / (html_file or "slide.html")
+    raw["html"] = html_path.read_text(encoding="utf-8") if html_path.is_file() else ""
+    pptx_file = raw.pop("pptx_file", None)
+    if pptx_file is not None and not isinstance(pptx_file, str):
+        raise ValueError(f"{path}: pptx_file must be a string")
+    raw["pptx"] = (path.parent / pptx_file).read_bytes() if pptx_file is not None else None
     return CapabilityFixture.model_validate(raw)
 
 
@@ -140,4 +178,26 @@ def validate_capability(fixture: CapabilityFixture, result: RenderResult) -> tup
         if not _warning_matches(expected, result.warnings):
             errors.append(f"missing warning containing {expected!r}")
     errors.extend(_validate_xml(fixture, result.pptx))
+    return tuple(errors)
+
+
+def validate_reverse_capability(
+    fixture: CapabilityFixture, result: HtmlPresentation
+) -> tuple[str, ...]:
+    """Return structural mismatches in PPTX -> HTML capability output."""
+    expected = fixture.reverse
+    errors: list[str] = []
+    if len(result.slides) != expected.expected_slides:
+        errors.append(f"slide count {len(result.slides)} != expected {expected.expected_slides}")
+    document = result.css + "\n" + "\n".join(slide.html for slide in result.slides)
+    for token in expected.html_contains:
+        if token not in document:
+            errors.append(f"reverse HTML missing {token!r}")
+    if len(result.warnings) > expected.max_warnings:
+        errors.append(f"reverse warnings {len(result.warnings)} > expected {expected.max_warnings}")
+    if len(result.preserved) > expected.max_preserved:
+        errors.append(
+            f"reverse preserved fragments {len(result.preserved)} "
+            f"> expected {expected.max_preserved}"
+        )
     return tuple(errors)

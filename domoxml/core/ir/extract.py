@@ -232,6 +232,24 @@ def _detect_columns(styles: dict[str, str]) -> tuple[int, int]:
     return columns, column_gap_emu
 
 
+def _text_body_margins(node: RenderedNode) -> tuple[int, int, int, int]:
+    """Recover CSS container padding as DrawingML text-body insets."""
+    styles = node.styles
+    is_container = (
+        styles.get("domoxmlConsolidatedText") == "true"
+        or "flex" in (styles.get("display") or "").lower()
+        or _detect_columns(styles)[0] > 1
+    )
+    if not is_container:
+        return (0, 0, 0, 0)
+    return (
+        px_to_emu(parse_length_px(styles.get("paddingLeft"))),
+        px_to_emu(parse_length_px(styles.get("paddingTop"))),
+        px_to_emu(parse_length_px(styles.get("paddingRight"))),
+        px_to_emu(parse_length_px(styles.get("paddingBottom"))),
+    )
+
+
 def _text_body(node: RenderedNode) -> TextBody | None:
     source = node.text_runs or (
         (RenderedTextRun(text=node.text, styles=node.styles),) if node.text else ()
@@ -262,9 +280,10 @@ def _text_body(node: RenderedNode) -> TextBody | None:
 
     # text-indent and margin-left → indent_pt / left_margin_pt.
     indent_pt = parse_margin_pt(styles.get("textIndent"))
-    left_margin_pt = parse_margin_pt(styles.get("paddingLeft")) or parse_margin_pt(
-        styles.get("marginLeft")
-    )
+    margins = _text_body_margins(node)
+    left_margin_pt = parse_margin_pt(styles.get("marginLeft"))
+    if margins == (0, 0, 0, 0):
+        left_margin_pt = parse_margin_pt(styles.get("paddingLeft")) or left_margin_pt
 
     # Bullet detection via list context captured by the snapshot JS.
     bullet = None
@@ -317,10 +336,24 @@ def _text_body(node: RenderedNode) -> TextBody | None:
         autofit=autofit,
         columns=columns,
         column_gap_emu=column_gap_emu,
+        margins=margins,
     )
 
 
 def _box(node: RenderedNode) -> Box:
+    transform = node.styles.get("transform")
+    if transform and transform != "none" and not _has_complex_transform(transform):
+        with contextlib.suppress(ValueError):
+            layout_width = float(node.styles["domoxmlLayoutWidth"])
+            layout_height = float(node.styles["domoxmlLayoutHeight"])
+            center_x = node.x + node.width / 2
+            center_y = node.y + node.height / 2
+            return Box(
+                x=px_to_emu(center_x - layout_width / 2),
+                y=px_to_emu(center_y - layout_height / 2),
+                width=px_to_emu(layout_width),
+                height=px_to_emu(layout_height),
+            )
     return Box(
         x=px_to_emu(node.x),
         y=px_to_emu(node.y),
@@ -393,6 +426,10 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     transform_val = styles.get("transform")
     if _has_complex_transform(transform_val):
         return "skew/perspective/shear transform has no native mapping"
+    if transform_val and transform_val != "none":
+        _rotation, flip_h, flip_v = parse_native_transform(transform_val)
+        if (flip_h or flip_v) and (node.text or node.text_runs):
+            return "CSS flip mirrors text but PowerPoint keeps shape text readable"
     # A non-center transform-origin cannot be faithfully round-tripped via a:xfrm
     # (which always rotates about the shape center).
     if transform_val and transform_val != "none":
@@ -795,6 +832,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if node.index in consumed or node.width <= 0 or node.height <= 0:
             continue
 
+        # An opted-in slide root owns the canvas background. The browser's synthetic body is
+        # only a rendering wrapper and must not become an opaque full-slide shape above it.
+        if slide_root is not None and node.tag == "body":
+            continue
+
         # Skip the slide root node itself — it is the canvas container, not a shape (its fill
         # becomes the slide background, captured above).
         if slide_root is not None and node.index == slide_root.index:
@@ -989,6 +1031,17 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
             continue
         text = _text_body(node)
+        if (
+            text is not None
+            and text.columns > 1
+            and (node.styles.get("columnFill") or "balance") != "auto"
+        ):
+            warnings.append(
+                ConversionWarning(
+                    message=("balanced CSS columns approximated as sequential PowerPoint columns"),
+                    element=_label(node),
+                )
+            )
         if text is not None and fill is None and line is None:
             outside_bullet = (
                 any(paragraph.bullet is not None for paragraph in text.paragraphs)

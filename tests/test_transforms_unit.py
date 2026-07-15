@@ -10,8 +10,10 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from domoxml.core.drawingml.shape import _xfrm_xml, shape_xml
+from domoxml.core.ir.extract import _box
 from domoxml.core.ir.model import Box, GroupNode, Rgba, ShapeNode, SolidFill, Transform
-from domoxml.core.render.browser import is_complex_transform, parse_native_transform
+from domoxml.core.render.browser import RenderedNode, is_complex_transform, parse_native_transform
+from domoxml.core.units import px_to_emu
 from domoxml.slides.read import _xfrm_transform
 
 # ──────────────────────────────────────────────────────────────
@@ -341,6 +343,47 @@ def test_structural_raster_center_origin_is_native() -> None:
     )
     reason = _structural_raster_reason(node)
     assert reason is None
+
+
+def test_structural_raster_flip_with_text_preserves_css_semantics() -> None:
+    from domoxml.core.ir.extract import _structural_raster_reason
+
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=100,
+        height=100,
+        text="Mirrored",
+        styles={"transform": "matrix(-1, 0, 0, 1, 0, 0)"},
+    )
+
+    reason = _structural_raster_reason(node)
+
+    assert reason is not None
+    assert "mirrors text" in reason
+
+
+def test_box_recovers_pre_transform_layout_dimensions_about_center() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=120,
+        height=80,
+        styles={
+            "transform": "matrix(0.965926, 0.258819, -0.258819, 0.965926, 0, 0)",
+            "domoxmlLayoutWidth": "100",
+            "domoxmlLayoutHeight": "60",
+        },
+    )
+
+    box = _box(node)
+
+    assert box.x == px_to_emu(10)
+    assert box.y == px_to_emu(10)
+    assert box.width == px_to_emu(100)
+    assert box.height == px_to_emu(60)
 
 
 # ──────────────────────────────────────────────────────────────

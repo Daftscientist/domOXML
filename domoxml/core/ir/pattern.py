@@ -6,23 +6,24 @@ PowerPoint's ``a:pattFill`` is a two-colour preset hatch/stripe (ECMA-376 §20.1
 ``ST_PresetPatternVal``, ~54 presets). On the web the closest *editable* CSS source is a
 ``repeating-linear-gradient`` with exactly two alternating colours and hard stops, e.g.::
 
-    repeating-linear-gradient(45deg, #111 0, #111 3px, #eee 3px, #eee 6px)
+    repeating-linear-gradient(45deg, #111 0, #111 1px, #eee 1px, #eee 4px)
 
 Only clean, unambiguous stripes map natively. The matcher is strict on purpose: three or more
 distinct colours, soft (non-coincident) stops, or an off-axis angle yield ``None`` so the
 extractor falls back to the existing raster/warning path unchanged.
 
-Forward mapping table (angle is the CSS gradient angle; *stripe width* W is one colour band in
-px; "thin" is ``W <= 4``):
+Forward mapping is deliberately limited to calibrated CSS bands matching Office's fixed preset
+density. Light line presets use a 1px foreground line plus a 3px background gap; wide presets
+use equal 8px bands:
 
-    | CSS angle  | stripes      | W      | preset    |
-    |------------|--------------|--------|-----------|
-    | 0 / 180    | horizontal   | any    | horz      |
-    | 90 / 270   | vertical     | any    | vert      |
-    | 45         | up-diag (/)  | thin   | ltUpDiag  |
-    | 45         | up-diag (/)  | wide   | wdUpDiag  |
-    | 135        | down-diag down | thin   | ltDnDiag  |
-    | 135        | down-diag down | wide   | dkUpDiag  |
+    | CSS angle  | stripes        | foreground/gap | preset    |
+    |------------|----------------|----------------|-----------|
+    | 0 / 180    | horizontal     | 1px / 3px      | horz      |
+    | 90 / 270   | vertical       | 1px / 3px      | vert      |
+    | 45         | up-diag (/)    | 1px / 3px      | ltUpDiag  |
+    | 45         | up-diag (/)    | 8px / 8px      | wdUpDiag  |
+    | 135        | down-diag (\\) | 1px / 3px      | ltDnDiag  |
+    | 135        | down-diag (\\) | 8px / 8px      | dkUpDiag  |
 
 These six presets are exactly the forward-emitted set; the reverse path maps each back to the
 identical ``repeating-linear-gradient`` so the round trip is stable.
@@ -35,27 +36,22 @@ import re
 from domoxml.core.ir.model import PatternFill, Rgba
 from domoxml.core.ir.parse import parse_color
 
-# One colour band of W px or fewer is "thin" -> the light (lt*) preset family.
-_THIN_STRIPE_PX = 4.0
 # Angle matching tolerance (deg). Authors write exact axis angles; allow tiny float drift.
 _ANGLE_TOL = 1.0
+# CSS computed styles may carry small decimal drift around canonical pixel widths.
+_WIDTH_TOL = 0.05
 
 _FUNC_RE = re.compile(r"\brepeating-linear-gradient\s*\(", re.IGNORECASE)
 _ANGLE_RE = re.compile(r"^\s*(-?[\d.]+)\s*deg\s*$", re.IGNORECASE)
 _LEN_RE = re.compile(r"(-?[\d.]+)\s*px", re.IGNORECASE)
 _RGB_STRIP_RE = re.compile(r"rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}|[a-zA-Z]+", re.IGNORECASE)
 
-# Forward angle/width -> preset, and the inverse for round-tripping.
-# Keyed by (axis_angle, is_thin) where axis_angle is the normalised 0/45/90/135.
-_FORWARD_PRESET: dict[tuple[int, bool], str] = {
-    (0, True): "horz",
-    (0, False): "horz",
-    (90, True): "vert",
-    (90, False): "vert",
-    (45, True): "ltUpDiag",
-    (45, False): "wdUpDiag",
-    (135, True): "ltDnDiag",
-    (135, False): "dkUpDiag",
+# Canonical native presets keyed by angle. Entries are (preset, foreground width, gap width).
+_FORWARD_PATTERNS: dict[int, tuple[tuple[str, float, float], ...]] = {
+    0: (("horz", 1.0, 3.0),),
+    90: (("vert", 1.0, 3.0),),
+    45: (("ltUpDiag", 1.0, 3.0), ("wdUpDiag", 8.0, 8.0)),
+    135: (("ltDnDiag", 1.0, 3.0), ("dkUpDiag", 8.0, 8.0)),
 }
 
 
@@ -141,7 +137,7 @@ def match_pattern_fill(background_image: str | None) -> PatternFill | None:
 
     Returns ``None`` (so the caller keeps its existing raster/gradient handling) unless the
     value is a single ``repeating-linear-gradient`` at 0/45/90/135deg with exactly two
-    alternating colours and hard stops forming equal-width bands (``c1 0, c1 W, c2 W, c2 2W``).
+    alternating colours and hard stops matching a calibrated native preset.
     """
     if not background_image or "repeating-linear-gradient" not in background_image.lower():
         return None
@@ -179,34 +175,35 @@ def match_pattern_fill(background_image: str | None) -> PatternFill | None:
         # Pattern presets are two opaque colours; translucent stripes are not a clean match.
         return None
 
-    # Hard stops: band1 is [p0, p1] of colour c0, band2 is [p1=p2, p3] of colour c2, equal width.
-    width = p1 - p0
-    if width <= 0 or abs(p2 - p1) > 1e-6:
+    # Hard stops: foreground is [p0, p1], background is [p1=p2, p3].
+    foreground_width = p1 - p0
+    if foreground_width <= 0 or abs(p2 - p1) > 1e-6:
         return None
-    band2 = p3 - p2
-    if abs(band2 - width) > 1e-6 or abs(p0) > 1e-6:
-        # Bands must start at 0 and be equal width (a regular stripe).
+    gap_width = p3 - p2
+    if gap_width <= 0 or abs(p0) > 1e-6:
         return None
 
-    is_thin = width <= _THIN_STRIPE_PX
-    preset = _FORWARD_PRESET.get((axis, is_thin))
-    if preset is None:
-        return None
-    # fg = the stripe (first) colour, bg = the gap (second) colour.
-    return PatternFill(preset=preset, fg=c0, bg=c2)
+    for preset, expected_foreground, expected_gap in _FORWARD_PATTERNS.get(axis, ()):
+        if (
+            abs(foreground_width - expected_foreground) <= _WIDTH_TOL
+            and abs(gap_width - expected_gap) <= _WIDTH_TOL
+        ):
+            # fg = the stripe (first) colour, bg = the gap (second) colour.
+            return PatternFill(preset=preset, fg=c0, bg=c2)
+    return None
 
 
 # ----------------------------------------------------------------------- reverse: pattFill -> CSS
 
 # Inverse of _FORWARD_PRESET: the six presets that round-trip to an exact
-# ``repeating-linear-gradient``. Value is ``(css_angle_deg, stripe_width_px)``.
-_REVERSE_EXACT: dict[str, tuple[int, int]] = {
-    "horz": (0, 8),
-    "vert": (90, 8),
-    "ltUpDiag": (45, 3),
-    "wdUpDiag": (45, 8),
-    "ltDnDiag": (135, 3),
-    "dkUpDiag": (135, 8),
+# ``repeating-linear-gradient``. Value is ``(angle, foreground width, total period)``.
+_REVERSE_EXACT: dict[str, tuple[int, int, int]] = {
+    "horz": (0, 1, 4),
+    "vert": (90, 1, 4),
+    "ltUpDiag": (45, 1, 4),
+    "wdUpDiag": (45, 8, 16),
+    "ltDnDiag": (135, 1, 4),
+    "dkUpDiag": (135, 8, 16),
 }
 
 # Every other ECMA preset is approximated with an 8x8 SVG tile. The value chooses the tile
@@ -287,12 +284,13 @@ def pattern_to_css(fg_hex: str, bg_hex: str, preset: str) -> tuple[str, str, boo
     """
     exact = _REVERSE_EXACT.get(preset)
     if exact is not None:
-        angle, width = exact
+        angle, foreground_width, period = exact
         fg = _hex_to_rgb(fg_hex)
         bg = _hex_to_rgb(bg_hex)
         value = (
             f"repeating-linear-gradient({angle}deg,"
-            f"{fg} 0,{fg} {width}px,{bg} {width}px,{bg} {width * 2}px)"
+            f"{fg} 0,{fg} {foreground_width}px,"
+            f"{bg} {foreground_width}px,{bg} {period}px)"
         )
         return ("background", value, False)
     return ("background-image", _svg_tile(fg_hex, bg_hex, _tile_kind(preset)), True)

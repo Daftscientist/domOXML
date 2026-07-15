@@ -32,4 +32,16 @@ xpath = ".//a:rPr[@spc]"
 min_count = 1
 
 [visual]
-source_to_pptx_min_similarity = 0.90
+source_to_pptx_min_similarity = 0.97
+source_to_pptx_min_regional_similarity = 0.96
+pptx_to_html_min_similarity = 0.99
+pptx_to_html_min_regional_similarity = 0.98
+
+[reverse]
+html_contains = [
+  "text-decoration-line:underline",
+  "text-decoration-line:line-through",
+  "text-transform:uppercase",
+  "font-variant-caps:small-caps",
+  "letter-spacing:1.5pt",
+]

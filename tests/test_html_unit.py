@@ -150,6 +150,7 @@ def _decorated_slide() -> SlideIR:
 
 def test_serialize_canvas_emits_run_decorations() -> None:
     html = serialize_canvas([_decorated_slide()]).slides[0].html
+    assert 'data-domoxml-text-body="true"' in html
     assert "text-decoration-line:underline line-through" in html
     assert "text-transform:uppercase" in html
     assert "font-variant-caps:small-caps" in html
@@ -229,6 +230,7 @@ def test_html_char_bullets_emit_ul_and_li() -> None:
     assert "<li" in html
     assert "Apple" in html and "Banana" in html
     assert "</ul>" in html
+    assert "data-domoxml-text-body" not in html
 
 
 def test_html_autonum_bullets_emit_ol_and_li() -> None:

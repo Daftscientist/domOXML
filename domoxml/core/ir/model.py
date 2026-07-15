@@ -416,7 +416,8 @@ class TextBody(BaseModel):
 
     ``anchor`` is the vertical text anchor (``a:bodyPr anchor``); ``autofit`` maps ``a:noAutofit``
     /``a:normAutofit``/``a:spAutoFit``; ``columns``/``column_gap_emu`` map ``a:bodyPr numCol``/
-    ``spcCol``."""
+    ``spcCol``; ``margins`` stores left/top/right/bottom text insets (``lIns``/``tIns``/``rIns``/
+    ``bIns``) in EMUs."""
 
     model_config = _FROZEN
 
@@ -425,6 +426,7 @@ class TextBody(BaseModel):
     autofit: Literal["none", "normal", "shape"] = "normal"
     columns: int = Field(default=1, ge=1)
     column_gap_emu: int = Field(default=0, ge=0)
+    margins: tuple[int, int, int, int] = (0, 0, 0, 0)
 
 
 # --------------------------------------------------------------------------- geometry

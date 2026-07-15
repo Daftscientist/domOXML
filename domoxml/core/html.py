@@ -434,9 +434,18 @@ def _text_body_css(body: TextBody | None, warnings: list[ConversionWarning]) -> 
         styles.extend(["display:flex", "flex-direction:column", "justify-content:flex-end"])
     if body.columns > 1:
         styles.append(f"column-count:{body.columns}")
+        styles.append("column-fill:auto")
         if body.column_gap_emu > 0:
             styles.append(f"column-gap:{_px(body.column_gap_emu)}")
+    if any(body.margins):
+        left, top, right, bottom = body.margins
+        styles.append(f"padding:{_px(top)} {_px(right)} {_px(bottom)} {_px(left)}")
     return ";".join(styles)
+
+
+def _plain_text_body(body: TextBody | None) -> bool:
+    """Whether emitted block children can safely consolidate back into one text shape."""
+    return body is not None and all(paragraph.bullet is None for paragraph in body.paragraphs)
 
 
 def _text_html(body: TextBody | None, warnings: list[ConversionWarning] | None = None) -> str:
@@ -739,13 +748,15 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
         autofit_attr = ""
         if node.text is not None and node.text.autofit != "normal":
             autofit_attr = f' data-domoxml-autofit="{escape(node.text.autofit, quote=True)}"'
+        text_body_attr = ' data-domoxml-text-body="true"' if _plain_text_body(node.text) else ""
         # Decorative-raster marker round-trips via data-domoxml-raster so a re-compile is stable.
         raster_attr = ""
         if isinstance(node.fill, PictureFill) and node.fill.raster_role is not None:
             raster_attr = f' data-domoxml-raster="{escape(node.fill.raster_role, quote=True)}"'
         style = escape(combined_style, quote=True)
         inner = (
-            f'<div class="domoxml-shape" style="{style}"{autofit_attr}{raster_attr}>'
+            f'<div class="domoxml-shape" style="{style}"'
+            f"{autofit_attr}{text_body_attr}{raster_attr}>"
             f"{_text_html(node.text, warnings)}</div>"
         )
         # Wrap with reflection if present

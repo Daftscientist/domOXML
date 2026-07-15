@@ -17,6 +17,7 @@ from domoxml.core.capabilities import (
     validate_reverse_capability,
 )
 from domoxml.core.fidelity import (
+    align_candidate_png,
     compare,
     has_libreoffice,
     has_poppler,
@@ -107,7 +108,9 @@ def _validate_forward_visual(
             out_dir.mkdir(parents=True, exist_ok=True)
             stem = f"{fixture.id}-slide{index}"
             (out_dir / f"{stem}-source.png").write_bytes(reference)
-            (out_dir / f"{stem}-libreoffice.png").write_bytes(candidate)
+            (out_dir / f"{stem}-libreoffice.png").write_bytes(
+                align_candidate_png(reference, candidate)
+            )
             if report.diff_png is not None:
                 (out_dir / f"{stem}-libreoffice-diff.png").write_bytes(report.diff_png)
         if global_floor is not None and report.similarity < global_floor:
@@ -130,7 +133,7 @@ def _validate_forward_visual(
 
 def _validate_reverse_visual(
     fixture: CapabilityFixture,
-    source: RenderResult,
+    source_pngs: tuple[bytes, ...],
     reverse: RenderResult,
     out_dir: Path | None = None,
     *,
@@ -140,17 +143,17 @@ def _validate_reverse_visual(
     regional_floor = fixture.visual.pptx_to_html_min_regional_similarity
     if global_floor is None and regional_floor is None:
         return ()
-    if len(source.pngs) != len(reverse.pngs):
-        return (f"reverse visual page count {len(reverse.pngs)} != source {len(source.pngs)}",)
+    if len(source_pngs) != len(reverse.pngs):
+        return (f"reverse visual page count {len(reverse.pngs)} != source {len(source_pngs)}",)
 
     errors: list[str] = []
-    for index, (reference, candidate) in enumerate(zip(source.pngs, reverse.pngs, strict=True)):
+    for index, (reference, candidate) in enumerate(zip(source_pngs, reverse.pngs, strict=True)):
         report = compare(reference, candidate, heatmap=out_dir is not None)
         if out_dir is not None:
             out_dir.mkdir(parents=True, exist_ok=True)
             stem = f"{fixture.id}-slide{index}"
             (out_dir / f"{stem}-source.png").write_bytes(reference)
-            (out_dir / f"{stem}-reverse.png").write_bytes(candidate)
+            (out_dir / f"{stem}-reverse.png").write_bytes(align_candidate_png(reference, candidate))
             if report.diff_png is not None:
                 (out_dir / f"{stem}-reverse-diff.png").write_bytes(report.diff_png)
         if global_floor is not None and report.similarity < global_floor:
@@ -219,12 +222,19 @@ def _validate_fixture(
             errors.extend(
                 f"roundtrip: {error}" for error in validate_capability(fixture, roundtrip)
             )
-            if forward is not None:
+            has_reverse_threshold = (
+                fixture.visual.pptx_to_html_min_similarity is not None
+                or fixture.visual.pptx_to_html_min_regional_similarity is not None
+            )
+            source_pngs: tuple[bytes, ...] = forward.pngs if forward is not None else ()
+            if not source_pngs and has_reverse_threshold and forward_visual_available:
+                source_pngs = tuple(render_pptx_to_pngs(source_pptx))
+            if source_pngs:
                 errors.extend(
                     f"visual: {error}"
                     for error in _validate_reverse_visual(
                         fixture,
-                        forward,
+                        source_pngs,
                         roundtrip,
                         out_dir,
                         report_scores=report_scores,

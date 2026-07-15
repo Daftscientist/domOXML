@@ -21,4 +21,4 @@ min_count = 1
 
 [visual]
 source_to_pptx_min_similarity = 0.94
-source_to_pptx_min_regional_similarity = 0.93
+source_to_pptx_min_regional_similarity = 0.935

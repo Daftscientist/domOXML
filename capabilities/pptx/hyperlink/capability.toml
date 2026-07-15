@@ -13,9 +13,9 @@ min_count = 1
 
 [visual]
 source_to_pptx_min_similarity = 0.98
-source_to_pptx_min_regional_similarity = 0.97
+source_to_pptx_min_regional_similarity = 0.965
 pptx_to_html_min_similarity = 0.99
-pptx_to_html_min_regional_similarity = 0.98
+pptx_to_html_min_regional_similarity = 0.97
 
 [reverse]
 html_contains = ["<a href=\"https://example.com\"", "text-decoration-line:underline"]

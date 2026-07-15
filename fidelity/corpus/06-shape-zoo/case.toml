@@ -1,3 +1,4 @@
 title = "Preset polygon geometry zoo (triangle, diamond, hexagon, star5, chevron, right-arrow, parallelogram, plus)"
 size = "16:9"
 min_similarity = 0.95
+min_regional_similarity = 0.965

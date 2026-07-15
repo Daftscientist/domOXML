@@ -49,7 +49,7 @@ def _rlg(angle: int, fg: str, bg: str, foreground: int, gap: int) -> str:
         (45, 1, 3, "ltUpDiag"),
         (45, 8, 8, "wdUpDiag"),
         (135, 1, 3, "ltDnDiag"),
-        (135, 8, 8, "dkUpDiag"),
+        (135, 8, 8, "wdDnDiag"),
     ],
 )
 def test_match_pattern_positive_by_angle_and_width(
@@ -129,7 +129,7 @@ def test_pattern_fill_does_not_warn() -> None:
 # ------------------------------------------------------------------------- reverse pattFill -> CSS
 
 
-@pytest.mark.parametrize("preset", ["horz", "vert", "ltUpDiag", "wdUpDiag", "ltDnDiag", "dkUpDiag"])
+@pytest.mark.parametrize("preset", ["horz", "vert", "ltUpDiag", "wdUpDiag", "ltDnDiag", "wdDnDiag"])
 def test_reverse_pattern_six_presets_round_trip(preset: str) -> None:
     prop, value, approximated = pattern_to_css("1E3A8A", "DBEAFE", preset)
     assert prop == "background"

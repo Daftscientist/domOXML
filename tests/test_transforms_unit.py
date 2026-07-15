@@ -386,6 +386,24 @@ def test_box_recovers_pre_transform_layout_dimensions_about_center() -> None:
     assert box.height == px_to_emu(60)
 
 
+def test_box_falls_back_when_pre_transform_layout_dimensions_are_missing() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=10,
+        y=20,
+        width=120,
+        height=80,
+        styles={"transform": "matrix(0.965926, 0.258819, -0.258819, 0.965926, 0, 0)"},
+    )
+
+    box = _box(node)
+
+    assert box.x == px_to_emu(10)
+    assert box.y == px_to_emu(20)
+    assert box.width == px_to_emu(120)
+    assert box.height == px_to_emu(80)
+
+
 # ──────────────────────────────────────────────────────────────
 # Reverse: _xfrm_transform (read.py)
 # ──────────────────────────────────────────────────────────────

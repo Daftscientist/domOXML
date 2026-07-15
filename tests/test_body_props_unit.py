@@ -273,6 +273,11 @@ def test_html_columns_emits_column_count() -> None:
     assert "column-gap:" in html
 
 
+def test_html_columns_emits_explicit_zero_gap() -> None:
+    html = _html_for(_simple_body(columns=2, column_gap_emu=0))
+    assert "column-gap:0" in html
+
+
 def test_html_single_column_no_column_css() -> None:
     html = _html_for(_simple_body(columns=1))
     assert "column-count" not in html

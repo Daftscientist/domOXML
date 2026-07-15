@@ -343,7 +343,7 @@ def _text_body(node: RenderedNode) -> TextBody | None:
 def _box(node: RenderedNode) -> Box:
     transform = node.styles.get("transform")
     if transform and transform != "none" and not _has_complex_transform(transform):
-        with contextlib.suppress(ValueError):
+        with contextlib.suppress(KeyError, ValueError):
             layout_width = float(node.styles["domoxmlLayoutWidth"])
             layout_height = float(node.styles["domoxmlLayoutHeight"])
             center_x = node.x + node.width / 2

@@ -18,10 +18,11 @@ from domoxml.core.fidelity.libreoffice import (
     render_pptx_to_pdf,
     render_pptx_to_pngs,
 )
-from domoxml.core.fidelity.score import FidelityReport, compare
+from domoxml.core.fidelity.score import FidelityReport, align_candidate_png, compare
 
 __all__ = [
     "FidelityReport",
+    "align_candidate_png",
     "compare",
     "device_login",
     "has_graph_auth",

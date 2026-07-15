@@ -383,7 +383,7 @@ def _wrap_hyperlink(inner: str, run: TextRun) -> str:
     return f'<a href="{escape(href, quote=True)}">{inner}</a>'
 
 
-def _para_spacing_style(paragraph: TextParagraph) -> str:
+def _para_spacing_style(paragraph: TextParagraph, *, include_indentation: bool = True) -> str:
     """Return inline CSS for paragraph-level spacing/indent (no trailing semicolon)."""
     styles: list[str] = []
     if paragraph.line_spacing is not None:
@@ -396,10 +396,11 @@ def _para_spacing_style(paragraph: TextParagraph) -> str:
         styles.append(f"margin-top:{_number(paragraph.space_before_pt)}pt")
     if paragraph.space_after_pt:
         styles.append(f"margin-bottom:{_number(paragraph.space_after_pt)}pt")
-    if paragraph.indent_pt:
-        styles.append(f"text-indent:{_number(paragraph.indent_pt)}pt")
-    if paragraph.left_margin_pt:
-        styles.append(f"padding-left:{_number(paragraph.left_margin_pt)}pt")
+    if include_indentation:
+        if paragraph.indent_pt:
+            styles.append(f"text-indent:{_number(paragraph.indent_pt)}pt")
+        if paragraph.left_margin_pt:
+            styles.append(f"padding-left:{_number(paragraph.left_margin_pt)}pt")
     return ";".join(styles)
 
 
@@ -435,8 +436,7 @@ def _text_body_css(body: TextBody | None, warnings: list[ConversionWarning]) -> 
     if body.columns > 1:
         styles.append(f"column-count:{body.columns}")
         styles.append("column-fill:auto")
-        if body.column_gap_emu > 0:
-            styles.append(f"column-gap:{_px(body.column_gap_emu)}")
+        styles.append(f"column-gap:{_px(body.column_gap_emu)}")
     if any(body.margins):
         left, top, right, bottom = body.margins
         styles.append(f"padding:{_px(top)} {_px(right)} {_px(bottom)} {_px(left)}")
@@ -494,14 +494,18 @@ def _text_html(body: TextBody | None, warnings: list[ConversionWarning] | None =
                 start_attr = ""
                 if isinstance(bullet, AutoNumberBullet) and bullet.start_at != 1:
                     start_attr = f' start="{bullet.start_at}"'
-                result.append(
-                    f'<{list_tag} style="list-style-type:{escape(list_style, quote=True)}"'
-                    f"{start_attr}>"
+                marker_gutter_pt = paragraph.left_margin_pt or 13.5
+                list_css = (
+                    f"list-style-type:{escape(list_style, quote=True)};"
+                    f"padding-left:{_number(marker_gutter_pt)}pt"
                 )
+                result.append(f'<{list_tag} style="{list_css}"{start_attr}>')
                 open_lists.append((list_tag, target_level))
 
             # Emit the <li>
-            spacing_style = _para_spacing_style(paragraph)
+            # CSS's native outside marker implements DrawingML's hanging indent. Applying the
+            # paragraph margin/indent again on the <li> would double the gutter on round-trip.
+            spacing_style = _para_spacing_style(paragraph, include_indentation=False)
             li_style = f"text-align:{paragraph.align}"
             if spacing_style:
                 li_style += ";" + spacing_style

@@ -6,7 +6,7 @@ import io
 
 from PIL import Image, ImageDraw
 
-from domoxml.core.fidelity import compare
+from domoxml.core.fidelity import align_candidate_png, compare
 
 
 def _png(color: tuple[int, int, int], size: tuple[int, int] = (64, 64)) -> bytes:
@@ -32,6 +32,14 @@ def test_black_vs_white_is_maximally_different() -> None:
 def test_candidate_is_resized_to_reference() -> None:
     report = compare(_png((0, 0, 0), (100, 100)), _png((0, 0, 0), (50, 50)))
     assert report.similarity == 1.0  # both black, different sizes → resized, identical
+
+
+def test_aligned_candidate_artifact_uses_reference_dimensions() -> None:
+    aligned = Image.open(
+        io.BytesIO(align_candidate_png(_png((0, 0, 0), (100, 80)), _png((0, 0, 0), (50, 40))))
+    )
+
+    assert aligned.size == (100, 80)
 
 
 def test_half_different_scores_in_between() -> None:
@@ -71,3 +79,19 @@ def test_regional_similarity_exposes_local_foreground_loss() -> None:
 
     assert report.similarity > 0.95
     assert report.regional_similarity < 0.9
+
+
+def test_regional_similarity_weights_only_worst_decile() -> None:
+    reference = Image.new("RGB", (160, 90), "white")
+    candidate = reference.copy()
+    ImageDraw.Draw(reference).rectangle((0, 0, 9, 9), fill="black")
+
+    def to_png(image: Image.Image) -> bytes:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    report = compare(to_png(reference), to_png(candidate))
+
+    # One small changed object must not be averaged across the mostly blank slide.
+    assert report.regional_similarity < 0.95

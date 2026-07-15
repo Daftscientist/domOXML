@@ -1,3 +1,4 @@
 title = "Shadow offset+spread, inset shadow, glow halo"
 size = "16:9"
 min_similarity = 0.95
+min_regional_similarity = 0.975

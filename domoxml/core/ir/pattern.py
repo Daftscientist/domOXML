@@ -23,7 +23,7 @@ use equal 8px bands:
     | 45         | up-diag (/)    | 1px / 3px      | ltUpDiag  |
     | 45         | up-diag (/)    | 8px / 8px      | wdUpDiag  |
     | 135        | down-diag (\\) | 1px / 3px      | ltDnDiag  |
-    | 135        | down-diag (\\) | 8px / 8px      | dkUpDiag  |
+    | 135        | down-diag (\\) | 8px / 8px      | wdDnDiag  |
 
 These six presets are exactly the forward-emitted set; the reverse path maps each back to the
 identical ``repeating-linear-gradient`` so the round trip is stable.
@@ -51,7 +51,7 @@ _FORWARD_PATTERNS: dict[int, tuple[tuple[str, float, float], ...]] = {
     0: (("horz", 1.0, 3.0),),
     90: (("vert", 1.0, 3.0),),
     45: (("ltUpDiag", 1.0, 3.0), ("wdUpDiag", 8.0, 8.0)),
-    135: (("ltDnDiag", 1.0, 3.0), ("dkUpDiag", 8.0, 8.0)),
+    135: (("ltDnDiag", 1.0, 3.0), ("wdDnDiag", 8.0, 8.0)),
 }
 
 
@@ -203,7 +203,7 @@ _REVERSE_EXACT: dict[str, tuple[int, int, int]] = {
     "ltUpDiag": (45, 1, 4),
     "wdUpDiag": (45, 8, 16),
     "ltDnDiag": (135, 1, 4),
-    "dkUpDiag": (135, 8, 16),
+    "wdDnDiag": (135, 8, 16),
 }
 
 # Every other ECMA preset is approximated with an 8x8 SVG tile. The value chooses the tile

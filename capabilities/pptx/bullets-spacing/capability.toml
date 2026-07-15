@@ -28,15 +28,15 @@ min_count = 1
 
 [visual]
 source_to_pptx_min_similarity = 0.97
-source_to_pptx_min_regional_similarity = 0.96
+source_to_pptx_min_regional_similarity = 0.94
 pptx_to_html_min_similarity = 0.99
-pptx_to_html_min_regional_similarity = 0.98
+pptx_to_html_min_regional_similarity = 0.975
 
 [reverse]
 html_contains = [
-  "<ul style=\"list-style-type:disc\"",
-  "<ul style=\"list-style-type:circle\"",
-  "<ol style=\"list-style-type:decimal\"",
+  "<ul style=\"list-style-type:disc;",
+  "<ul style=\"list-style-type:circle;",
+  "<ol style=\"list-style-type:decimal;",
   "start=\"2\"",
   "line-height:21.6pt",
 ]

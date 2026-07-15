@@ -233,6 +233,23 @@ def test_html_char_bullets_emit_ul_and_li() -> None:
     assert "data-domoxml-text-body" not in html
 
 
+def test_html_bullet_gutter_is_on_list_container() -> None:
+    slide = _list_slide(
+        TextParagraph(
+            runs=(_run("Indented"),),
+            bullet=CharBullet(char="•"),
+            indent_pt=-12.75,
+            left_margin_pt=13.5,
+        )
+    )
+
+    html = serialize_canvas([slide]).slides[0].html
+
+    assert '<ul style="list-style-type:disc;padding-left:13.5pt">' in html
+    assert "text-indent" not in html
+    assert html.count("padding-left") == 1
+
+
 def test_html_autonum_bullets_emit_ol_and_li() -> None:
     """AutoNumberBullet paragraphs → <ol>…<li>…</li></ol>."""
     slide = _list_slide(

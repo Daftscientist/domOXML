@@ -6,8 +6,9 @@ domOXML stands on each feature — in **both** directions:
 - **Forward** — HTML/CSS → editable `.pptx`
 - **Reverse** — `.pptx` → typed canvas IR → HTML/CSS (the round-trip / ingest direction)
 
-This is the source of truth for the coverage roadmap and (later) the CI capability
-fixtures. It is *not* a copy of the spec — see ECMA-376 §19 (PresentationML) and §20.1
+This is the source of truth for the coverage roadmap and CI capability fixtures. A feature is
+bidirectional only when the capability runner executes both paths; manifest direction metadata by
+itself is not proof. It is *not* a copy of the spec — see ECMA-376 §19 (PresentationML) and §20.1
 (DrawingML) for the authoritative definitions: <https://ecma-international.org/publications-and-standards/standards/ecma-376/>.
 
 ## Legend

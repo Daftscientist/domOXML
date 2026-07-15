@@ -12,8 +12,9 @@ survives the round-trip, or to spot-check against real PowerPoint (Graph backend
 
 Outputs per slide land in ``--out`` (default ``out/fidelity/``, git-ignored): the source PNG,
 each backend's candidate PNG, an optional diff heatmap, plus ``summary.md`` / ``summary.json``.
-A backend with no tooling/credentials is skipped with a note (never a hard error), and the
-process exits non-zero only if a present backend scores a slide below its threshold.
+A backend with no tooling/credentials is skipped with a note by default. CI can pass
+``--require-backend`` to fail closed instead. The process also exits non-zero when a present
+backend scores a slide below either its global or regional threshold.
 """
 
 from __future__ import annotations
@@ -187,6 +188,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="override every case's worst-region similarity floor",
     )
+    parser.add_argument(
+        "--require-backend",
+        action="store_true",
+        help="fail if any requested renderer is unavailable (intended for CI)",
+    )
     args = parser.parse_args(argv)
 
     backends = list(_BACKENDS) if args.backend == "both" else [args.backend]
@@ -201,6 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     for backend in backends:
         available, reason = _backend_available(backend)
         (active if available else skipped).append(backend if available else f"{backend}: {reason}")
+    if skipped and args.require_backend:
+        print("required fidelity backend unavailable:\n  " + "\n  ".join(skipped), file=sys.stderr)
+        _write_summary([], skipped, args.out)
+        return 2
     if not active:
         print("no fidelity backend available:\n  " + "\n  ".join(skipped), file=sys.stderr)
         _write_summary([], skipped, args.out)

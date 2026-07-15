@@ -13,6 +13,23 @@ capability fixtures for every supported behavior.
 5. Reuse external projects as references, benchmarks, and attributed donors only when their
    licenses and runtime boundaries fit the MIT library.
 
+## Current Position
+
+Phases 0-3 now have working end-to-end baselines. Phase 4 is active: the library has broad
+forward and reverse primitives, 15 capability fixtures, and a nine-case visual corpus. The
+remaining risk is proof depth rather than raw file count:
+
+- the capability runner currently executes only the forward path, even for the six fixtures
+  declaring `direction = "both"`;
+- the visual corpus is authored from isolated HTML examples rather than representative external
+  PowerPoint decks;
+- several useful families remain partial in one direction, especially themes, placeholders,
+  groups, connectors, curved geometry, strokes, and advanced text behavior;
+- unsupported constructs have preservation models, but external-deck tests must prove there are
+  no silent drops across realistic packages.
+
+Do not count a capability as bidirectional until the runner executes and asserts both directions.
+
 ## Phase 0: Make The Contract Executable
 
 Before broadening conversion coverage:
@@ -116,6 +133,50 @@ Expand by capability family, not by file:
 Every forward feature must specify reverse behavior, and every reverse feature must specify
 what happens when emitted HTML is compiled forward again.
 
+## Coverage Acceleration Program
+
+Speed comes from repeatable vertical slices and shared test infrastructure, not larger pull
+requests. A capability slice is complete only when it includes:
+
+1. Forward proof: HTML/CSS -> typed IR -> PPTX, with coverage disposition and OOXML assertions.
+2. Reverse proof: PPTX -> typed IR -> deterministic HTML/CSS, with structural assertions.
+3. Round-trip proof: the feature survives both `HTML -> PPTX -> HTML` and
+   `PPTX -> HTML -> PPTX`, or has an explicit preserved/raster/unsupported contract.
+4. Visual proof: source, LibreOffice, and regional diff evidence; Graph/PowerPoint evidence for
+   renderer-sensitive behavior and release baselines.
+5. Contract proof: capability manifest, coverage matrix, warnings, and preservation metadata all
+   describe the same behavior.
+6. Regression proof: focused unit tests plus the smallest useful integration fixture.
+
+Keep feature PRs narrow enough to review independently. Shared enablers land first; capability
+families can then progress independently without weakening the common gates.
+
+### Ordered Delivery Lanes
+
+1. **Make bidirectional claims executable**: extend the capability schema and runner with reverse
+   inputs, IR/HTML assertions, round-trip assertions, and explicit failures for untested `both`.
+2. **Establish a real-deck corpus**: sanitized Microsoft-authored and representative external
+   decks covering masters, themes, placeholders, groups, media, and unsupported extensions.
+3. **Close core editable asymmetries**: forward theme references/placeholders, group authoring,
+   connector arrowheads, gradient strokes, and the highest-use curved preset geometry.
+4. **Deepen text and layout**: autofit parameters, inherited paragraph fields, WordArt fallback,
+   and multi-column edge cases.
+5. **Deepen fills and effects**: remaining pattern presets, renderer-calibrated effects, and
+   explicit native-versus-raster portability rules.
+6. **Prove preservation**: animation, SmartArt, OLE, charts, 3D, and extension lists must survive
+   ingest/re-emission or report a precise unsupported disposition without silent data loss.
+
+### PPTX Readiness Gate
+
+PPTX is ready for a stable release when:
+
+- every core editable family has executable forward and reverse fixtures;
+- the real-deck corpus has no crashes, unsafe output, or silent drops;
+- package/relationship assertions and schema validation pass for generated decks;
+- LibreOffice global and regional fidelity are merge-blocking;
+- Graph/PowerPoint baselines pass for renderer-sensitive cases before release;
+- partial, raster, preserved, and unsupported behavior is accurately surfaced to callers.
+
 ## Phase 5: DOCX Seams
 
 Do not implement DOCX by positioning boxes scraped from Chromium. Add a flow IR and semantic
@@ -170,5 +231,8 @@ into the MIT library. Do not treat opaque release binaries as implementation sou
 3. [x] Add deterministic `canvas IR -> HtmlPresentation` serialization.
 4. [x] Add shared OPC reading primitives.
 5. [x] Implement `Presentation.from_pptx(...)` for one baseline deck.
-6. [ ] Expand relationship, theme, shape, picture, and text readers incrementally.
-7. Run external adapters as comparative benchmarks, not runtime dependencies.
+6. [x] Expand relationship, theme, shape, picture, and text readers incrementally.
+7. [ ] Make the capability fixture runner execute both declared directions.
+8. [ ] Add representative external PPTX round-trip fixtures and preservation assertions.
+9. [ ] Add package/schema validation for generated and re-emitted decks.
+10. [ ] Run external adapters as comparative benchmarks, not runtime dependencies.

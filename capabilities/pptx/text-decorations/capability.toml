@@ -1,0 +1,35 @@
+id = "text-decorations"
+direction = "both"
+html_file = "slide.html"
+
+[expected]
+min_native = 1
+max_raster = 0
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:rPr[@u='sng']"
+min_count = 2
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:rPr[@strike='sngStrike']"
+min_count = 2
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:rPr[@cap='all']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:rPr[@cap='small']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:rPr[@spc]"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.90

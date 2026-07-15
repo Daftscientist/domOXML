@@ -41,3 +41,16 @@ def emu_to_px(emu: int) -> float:
 def px_to_pt(px: float) -> float:
     """Convert CSS pixels to typographic points (1pt = 1/72in)."""
     return px * 72.0 / PX_PER_INCH
+
+
+_EMU_PER_PT = EMU_PER_INCH / 72.0  # 12700.0
+
+
+def pt_to_emu(pt: float) -> int:
+    """Convert typographic points to EMUs."""
+    return round(pt * _EMU_PER_PT)
+
+
+def emu_to_pt(emu: int) -> float:
+    """Convert EMUs to typographic points."""
+    return emu / _EMU_PER_PT

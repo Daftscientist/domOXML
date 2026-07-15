@@ -1,0 +1,29 @@
+id = "effects"
+direction = "forward"
+html_file = "slide.html"
+
+[expected]
+min_native = 2
+max_raster = 1
+warnings = ["LibreOffice ignores a:innerShdw"]
+
+# Shadowed card: box-shadow with offset+blur+spread → outerShdw with sx/sy grow attrs
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:outerShdw[@sx]"
+min_count = 1
+
+# Inset shadow card: raster fallback because LibreOffice ignores a:innerShdw
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:blipFill"
+min_count = 1
+
+# Glow halo card: zero-offset box-shadow → a:glow (preferred) or outerShdw
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:glow | .//a:outerShdw[@dist='0']"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.90

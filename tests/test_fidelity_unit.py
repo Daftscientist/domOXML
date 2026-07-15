@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from domoxml.core.fidelity import compare
 
@@ -55,3 +55,19 @@ def test_heatmap_is_a_png_when_requested() -> None:
     report = compare(_png((0, 0, 0)), _png((255, 255, 255)), heatmap=True)
     assert report.diff_png is not None
     assert report.diff_png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_regional_similarity_exposes_local_foreground_loss() -> None:
+    reference = Image.new("RGB", (160, 90), "white")
+    candidate = reference.copy()
+    ImageDraw.Draw(reference).rectangle((64, 30, 95, 59), fill=(20, 70, 200))
+
+    def to_png(image: Image.Image) -> bytes:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    report = compare(to_png(reference), to_png(candidate))
+
+    assert report.similarity > 0.95
+    assert report.regional_similarity < 0.9

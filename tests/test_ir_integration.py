@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from domoxml.core.ir import extract_slide
-from domoxml.core.ir.model import SlideIR, SolidFill
+from domoxml.core.ir.model import AutoNumberBullet, SlideIR, SolidFill
 from domoxml.core.render import BrowserSession, compose_page
 from domoxml.core.units import pixels
 from domoxml.types import SlideSize, Theme
@@ -60,3 +60,63 @@ async def test_extracts_nested_inline_text_as_ordered_editable_runs() -> None:
     assert [run.text for run in runs] == ["Coffee that tastes like ", "calm", "."]
     assert runs[1].italic is True
     assert runs[1].color.hex == "4F46E5"
+
+
+async def test_extracts_ordered_list_item_ordinals() -> None:
+    ir = await _render_and_extract(
+        "<ol start='3'><li>Third</li><li value='7'>Seventh</li><li>Eighth</li></ol>"
+    )
+
+    numbered = [
+        paragraph.bullet.start_at
+        for shape in ir.shapes
+        if shape.text is not None
+        for paragraph in shape.text.paragraphs
+        if isinstance(paragraph.bullet, AutoNumberBullet)
+    ]
+    assert numbered == [3, 7, 8]
+
+
+async def test_formatted_nested_list_does_not_create_whitespace_bullets() -> None:
+    ir = await _render_and_extract(
+        """
+        <ul>
+          <li>Parent
+            <ul>
+              <li>Child</li>
+            </ul>
+          </li>
+        </ul>
+        """
+    )
+
+    bullet_texts = [
+        "".join(run.text for run in paragraph.runs).strip()
+        for shape in ir.shapes
+        if shape.text is not None
+        for paragraph in shape.text.paragraphs
+        if paragraph.bullet is not None
+    ]
+    assert bullet_texts == ["Parent", "Child"]
+
+
+@pytest.mark.integration
+async def test_simple_flex_text_children_consolidate_into_anchored_parent() -> None:
+    html = """
+    <div style="position:absolute;left:20px;top:20px;width:300px;height:180px;
+                display:flex;flex-direction:column;justify-content:center;background:#4472c4">
+      <span style="font-size:20px;color:white">Heading</span>
+      <span style="font-size:14px;color:white">Supporting text</span>
+    </div>
+    """
+
+    ir = await _render_and_extract(html)
+    anchored = [shape for shape in ir.shapes if shape.text is not None]
+
+    assert len(anchored) == 1
+    assert anchored[0].text is not None
+    assert anchored[0].text.anchor == "middle"
+    assert [[run.text for run in paragraph.runs] for paragraph in anchored[0].text.paragraphs] == [
+        ["Heading"],
+        ["Supporting text"],
+    ]

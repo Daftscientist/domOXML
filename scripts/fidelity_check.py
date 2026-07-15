@@ -45,12 +45,17 @@ class SlideScore:
     backend: str
     slide: int
     similarity: float
+    regional_similarity: float
     perceptible_ratio: float
     threshold: float
+    regional_threshold: float
 
     @property
     def passed(self) -> bool:
-        return self.similarity >= self.threshold
+        return (
+            self.similarity >= self.threshold
+            and self.regional_similarity >= self.regional_threshold
+        )
 
 
 def _candidate_pngs(backend: str, pptx: bytes) -> list[bytes]:
@@ -108,8 +113,10 @@ def _score_backend(
                 backend=backend,
                 slide=index,
                 similarity=report.similarity,
+                regional_similarity=report.regional_similarity,
                 perceptible_ratio=report.perceptible_ratio,
                 threshold=case.min_similarity,
+                regional_threshold=case.min_regional_similarity,
             )
         )
     if source_count != candidate_count:
@@ -120,8 +127,10 @@ def _score_backend(
                     backend=backend,
                     slide=index,
                     similarity=0.0,
+                    regional_similarity=0.0,
                     perceptible_ratio=1.0,
                     threshold=case.min_similarity,
+                    regional_threshold=case.min_regional_similarity,
                 )
             )
             print(
@@ -135,13 +144,15 @@ def _score_backend(
 def _write_summary(scores: list[SlideScore], skipped: list[str], out_dir: Path) -> None:
     rows = "\n".join(
         f"| {s.case} | {s.backend} | {s.slide} | {s.similarity:.3f} | "
-        f"{s.perceptible_ratio:.3f} | {s.threshold:.2f} | {'✅' if s.passed else '❌'} |"
+        f"{s.regional_similarity:.3f} | {s.perceptible_ratio:.3f} | "
+        f"{s.threshold:.2f} | {s.regional_threshold:.2f} | {'✅' if s.passed else '❌'} |"
         for s in scores
     )
     md = (
         "# Fidelity report\n\n"
-        "| Case | Backend | Slide | Similarity | Perceptible | Threshold | Pass |\n"
-        "| --- | --- | --- | --- | --- | --- | --- |\n"
+        "| Case | Backend | Slide | Similarity | Regional | Perceptible | "
+        "Threshold | Regional threshold | Pass |\n"
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
         f"{rows}\n"
     )
     if skipped:
@@ -169,6 +180,12 @@ def main(argv: list[str] | None = None) -> int:
         type=float,
         default=None,
         help="override every case's min_similarity floor",
+    )
+    parser.add_argument(
+        "--regional-threshold",
+        type=float,
+        default=None,
+        help="override every case's worst-region similarity floor",
     )
     args = parser.parse_args(argv)
 
@@ -202,13 +219,21 @@ def main(argv: list[str] | None = None) -> int:
                 min_similarity=(
                     args.threshold if args.threshold is not None else case.min_similarity
                 ),
+                min_regional_similarity=(
+                    args.regional_threshold
+                    if args.regional_threshold is not None
+                    else case.min_regional_similarity
+                ),
             )
             scores = _score_backend(
                 effective, backend, source_pngs, pptx, args.out, heatmap=args.heatmap
             )
             for s in scores:
                 flag = "ok" if s.passed else "LOW"
-                print(f"    {backend} slide{s.slide}: {s.similarity:.3f} [{flag}]")
+                print(
+                    f"    {backend} slide{s.slide}: global {s.similarity:.3f}, "
+                    f"regional {s.regional_similarity:.3f} [{flag}]"
+                )
             all_scores.extend(scores)
 
     _write_summary(all_scores, skipped, args.out)

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; padding: 0; }
+  .slide { position: relative; width: 1280px; height: 720px; background: white; }
+  .box { position: absolute; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div class="slide">
+  <!-- 1. Uniform solid border box -->
+  <div class="box" style="left:60px;top:60px;width:280px;height:180px;
+    border:4px solid rgb(37,99,235);background-color:rgb(239,246,255);">
+    <span style="font-family:sans-serif;font-size:14px;color:rgb(30,64,175);padding:8px;display:block;">
+      Uniform border
+    </span>
+  </div>
+
+  <!-- 2. Left-accent card — border-left only -->
+  <div class="box" style="left:400px;top:60px;width:280px;height:180px;
+    border-left:6px solid rgb(220,38,38);background-color:rgb(254,242,242);">
+    <span style="font-family:sans-serif;font-size:14px;color:rgb(153,27,27);padding:8px 8px 8px:14px;display:block;">
+      Left accent bar
+    </span>
+  </div>
+
+  <!-- 3. Dashed border box -->
+  <div class="box" style="left:60px;top:300px;width:280px;height:180px;
+    border:3px dashed rgb(22,163,74);background-color:rgb(240,253,244);">
+    <span style="font-family:sans-serif;font-size:14px;color:rgb(21,128,61);padding:8px;display:block;">
+      Dashed border
+    </span>
+  </div>
+
+  <!-- 4. Dotted border box -->
+  <div class="box" style="left:400px;top:300px;width:280px;height:180px;
+    border:3px dotted rgb(124,58,237);background-color:rgb(245,243,255);">
+    <span style="font-family:sans-serif;font-size:14px;color:rgb(109,40,217);padding:8px;display:block;">
+      Dotted border
+    </span>
+  </div>
+</div>
+</body>
+</html>

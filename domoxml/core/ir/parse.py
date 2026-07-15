@@ -10,8 +10,8 @@ import math
 import re
 from typing import Literal
 
-from domoxml.core.ir.model import GradientFill, GradientStop, Line, Rgba, Shadow
-from domoxml.core.units import px_to_emu
+from domoxml.core.ir.model import GradientFill, GradientStop, Line, LineSpacing, Rgba, Shadow
+from domoxml.core.units import px_to_emu, px_to_pt
 
 _RGB_RE = re.compile(
     r"rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\s*\)",
@@ -70,30 +70,176 @@ def is_bold(font_weight: str | None) -> bool:
         return False
 
 
+# --------------------------------------------------------------------------- run decorations
+
+
+def parse_decoration(value: str | None) -> tuple[bool, bool]:
+    """Map CSS ``text-decoration-line`` to ``(underline, strike)`` flags.
+
+    A value can name both (``"underline line-through"``); ``"none"``/empty yields ``(False,
+    False)``. ``overline`` has no DrawingML run equivalent and is ignored."""
+    if not value:
+        return False, False
+    tokens = value.strip().lower().split()
+    return ("underline" in tokens, "line-through" in tokens)
+
+
+def parse_caps(
+    text_transform: str | None, font_variant_caps: str | None
+) -> Literal["all", "small"] | None:
+    """Map CSS ``text-transform``/``font-variant-caps`` to an ``a:rPr cap`` token.
+
+    ``text-transform: uppercase`` → ``"all"``; ``font-variant-caps`` containing ``small-caps``
+    → ``"small"``. ``uppercase`` wins when both are present (it is the stronger transform)."""
+    transform = (text_transform or "").strip().lower()
+    if transform == "uppercase":
+        return "all"
+    variant = (font_variant_caps or "").strip().lower()
+    if "small-caps" in variant:
+        return "small"
+    return None
+
+
+def parse_letter_spacing_pt(value: str | None) -> float:
+    """Map CSS ``letter-spacing`` (a ``px`` length, ``"normal"``, or empty) to points.
+
+    ``"normal"`` and unparseable values yield ``0.0``. May be negative (tracking-in)."""
+    if not value or value.strip().lower() == "normal":
+        return 0.0
+    match = _LENGTH_RE.search(value)
+    # CSS px → points (1pt = 1/72in, 96px = 1in).
+    return float(match.group(1)) * 72.0 / 96.0 if match is not None else 0.0
+
+
 # --------------------------------------------------------------------------- borders
 
 
-def _dash_style(style_token: str) -> Literal["solid", "dash", "dot"]:
+def _dash_style(
+    style_token: str,
+) -> tuple[Literal["solid", "dash", "dot"], str | None]:
+    """Map a CSS border-style token to a ``(DashStyle, warning_message | None)`` pair.
+
+    Unsupported styles (``double``, ``groove``, ``ridge``, ``inset``, ``outset``) are
+    approximated as ``solid`` with an explanatory warning."""
     if style_token == "dashed":
-        return "dash"
+        return "dash", None
     if style_token == "dotted":
-        return "dot"
-    return "solid"
+        return "dot", None
+    if style_token == "double":
+        return "solid", "double border approximated as solid"
+    if style_token in {"groove", "ridge", "inset", "outset"}:
+        return "solid", f"3D border style '{style_token}' approximated as solid"
+    return "solid", None
 
 
-def parse_border_side(width: str | None, style: str | None, color: str | None) -> Line | None:
-    """Map one CSS border side (computed width/style/colour) to a :class:`Line`, or ``None``
-    when there is no visible border (zero width, ``none``/``hidden`` style, transparent)."""
+def parse_border_side(
+    width: str | None, style: str | None, color: str | None
+) -> tuple[Line | None, str | None]:
+    """Map one CSS border side (computed width/style/colour) to a ``(Line, warning)`` pair.
+
+    Returns ``(None, None)`` when there is no visible border (zero width,
+    ``none``/``hidden`` style, transparent). The warning string is non-``None`` when the
+    style is approximated (e.g. ``double`` → ``solid``)."""
     style_token = (style or "none").strip().lower()
     if style_token in {"none", "hidden"}:
-        return None
+        return None, None
     width_px = parse_length_px(width)
     if width_px <= 0:
-        return None
+        return None, None
     rgba = parse_color(color)
     if rgba is None or rgba.a <= 0:
+        return None, None
+    dash, warn = _dash_style(style_token)
+    return Line(color=rgba, width_emu=px_to_emu(width_px), dash=dash), warn
+
+
+# --------------------------------------------------------------------------- para spacing/indent
+
+
+def parse_line_height(value: str | None) -> LineSpacing | None:
+    """Map a CSS ``line-height`` computed value to a :class:`LineSpacing`, or ``None``.
+
+    Chromium resolves ``normal`` to a ``px`` value, but to avoid encoding a font-metric
+    default we skip values that look like browser-resolved normal (no explicit authoring).
+    The caller should pass ``"normal"`` directly when the author wrote ``normal``; here we
+    map ``"normal"`` → ``None``.
+
+    - Unitless / percent (e.g. ``"1.6"``, ``"160%"``) → ``percent``
+    - ``px`` value → ``points`` (converted)
+    """
+    if not value or value.strip().lower() == "normal":
         return None
-    return Line(color=rgba, width_emu=px_to_emu(width_px), dash=_dash_style(style_token))
+    v = value.strip()
+    # Percentage form: "160%"
+    pct = _PERCENT_RE.match(v)
+    if pct:
+        return LineSpacing(percent=float(pct.group(1)) / 100.0)
+    # px form: "24px"
+    px = _LENGTH_RE.match(v)
+    if px:
+        pt = px_to_pt(float(px.group(1)))
+        return LineSpacing(points=pt) if pt > 0 else None
+    # Unitless form: "1.5"
+    try:
+        factor = float(v)
+        if factor > 0:
+            return LineSpacing(percent=factor)
+    except ValueError:
+        pass
+    return None
+
+
+def parse_margin_pt(value: str | None) -> float:
+    """Parse the first ``px`` length in a CSS margin/padding computed value to points."""
+    if not value:
+        return 0.0
+    px = parse_length_px(value)
+    return px_to_pt(px) if px > 0 else 0.0
+
+
+# CSS list-style-type → DrawingML buChar char
+_LIST_STYLE_TO_BU_CHAR: dict[str, str] = {
+    "disc": "•",  # •
+    "circle": "○",  # ○
+    "square": "▪",  # ▪
+}
+
+# CSS list-style-type → DrawingML buAutoNum scheme
+_LIST_STYLE_TO_AUTONUM: dict[str, str] = {
+    "decimal": "arabicPeriod",
+    "lower-latin": "alphaLcPeriod",  # alias (overridden by lower-alpha in reverse)
+    "upper-latin": "alphaUcPeriod",  # alias (overridden by upper-alpha in reverse)
+    "lower-alpha": "alphaLcPeriod",
+    "upper-alpha": "alphaUcPeriod",
+    "lower-roman": "romanLcPeriod",
+    "upper-roman": "romanUcPeriod",
+}
+
+# DrawingML buChar char → CSS list-style-type (reverse)
+_BU_CHAR_TO_LIST_STYLE: dict[str, str] = {v: k for k, v in _LIST_STYLE_TO_BU_CHAR.items()}
+
+# DrawingML buAutoNum scheme → CSS list-style-type (reverse)
+_AUTONUM_TO_LIST_STYLE: dict[str, str] = {v: k for k, v in _LIST_STYLE_TO_AUTONUM.items()}
+
+
+def bu_char_to_css_list_style(char: str) -> str:
+    """Map a buChar glyph to a CSS list-style-type, or fall back to the raw char via content."""
+    return _BU_CHAR_TO_LIST_STYLE.get(char, char)
+
+
+def autonum_to_css_list_style(scheme: str) -> str:
+    """Map a buAutoNum scheme to a CSS list-style-type, defaulting to ``decimal``."""
+    return _AUTONUM_TO_LIST_STYLE.get(scheme, "decimal")
+
+
+def css_list_style_to_bu_char(list_style: str) -> str:
+    """Map a CSS list-style-type to its DrawingML buChar glyph, defaulting to ``•``."""
+    return _LIST_STYLE_TO_BU_CHAR.get(list_style, "•")
+
+
+def css_list_style_to_autonum(list_style: str) -> str | None:
+    """Map a CSS list-style-type to a DrawingML buAutoNum scheme, or ``None`` if not ordered."""
+    return _LIST_STYLE_TO_AUTONUM.get(list_style)
 
 
 # --------------------------------------------------------------------------- box-shadow
@@ -120,8 +266,9 @@ def _split_top_level(value: str) -> list[str]:
 
 
 def parse_shadow(value: str | None) -> Shadow | None:
-    """Map the first layer of a CSS ``box-shadow`` to a :class:`Shadow`, or ``None`` when
-    there is no shadow. Spread is dropped (no native OOXML equivalent)."""
+    """Map the first layer of a CSS ``box-shadow`` to a :class:`Shadow``, or ``None`` when
+    there is no shadow. Spread radius (4th length) is stored in ``spread_emu``; it will be
+    converted to OOXML grow factors by the DrawingML writer when shape dims are known."""
     if not value or value.strip().lower() == "none":
         return None
     layer = _split_top_level(value)[0]
@@ -132,6 +279,7 @@ def parse_shadow(value: str | None) -> Shadow | None:
         return None
     offset_x, offset_y = lengths[0], lengths[1]
     blur = lengths[2] if len(lengths) > 2 else 0.0
+    spread = lengths[3] if len(lengths) > 3 else 0.0
     distance = math.hypot(offset_x, offset_y)
     # OOXML direction: 0° = East, 90° = South (y grows downward, same as CSS offsets).
     direction = math.degrees(math.atan2(offset_y, offset_x)) % 360.0
@@ -141,6 +289,7 @@ def parse_shadow(value: str | None) -> Shadow | None:
         distance_emu=px_to_emu(distance),
         direction_deg=direction,
         inset=inset,
+        spread_emu=px_to_emu(spread),
     )
 
 
@@ -227,3 +376,103 @@ _KEYWORD_ANGLE = {
     "to bottom left": 225.0,
     "to top left": 315.0,
 }
+
+
+# --------------------------------------------------------------------------- clip-path polygon
+
+
+_POLYGON_RE = re.compile(r"polygon\s*\(([^)]+)\)", re.IGNORECASE)
+_COORD_SEP_RE = re.compile(r",\s*")
+
+
+def parse_polygon(
+    clip_path: str | None, *, width_px: float, height_px: float
+) -> list[tuple[float, float]] | None:
+    """Parse a ``clip-path: polygon(...)`` into absolute pixel coordinates.
+
+    Each vertex is ``(x_px, y_px)``.  Returns ``None`` when the clip-path is absent, is not a
+    polygon, or contains vertices we cannot convert to absolute px (e.g. ``calc(...)``).
+
+    Only ``px`` and ``%`` length values are supported — they cover the full authoring surface
+    for the forward path.
+    """
+    if not clip_path or clip_path.strip().lower() in {"none", ""}:
+        return None
+    match = _POLYGON_RE.search(clip_path)
+    if match is None:
+        return None
+    inner = match.group(1)
+    vertices: list[tuple[float, float]] = []
+    for pair in _COORD_SEP_RE.split(inner.strip()):
+        pair = pair.strip()
+        if not pair:
+            continue
+        parts = pair.split()
+        if len(parts) != 2:
+            return None  # unexpected token structure — bail out
+        px_vals: list[float] = []
+        for part, dim in zip(parts, (width_px, height_px), strict=True):
+            px_m = _LENGTH_RE.match(part)
+            pct_m = _PERCENT_RE.match(part)
+            if px_m:
+                px_vals.append(float(px_m.group(1)))
+            elif pct_m:
+                px_vals.append(float(pct_m.group(1)) / 100.0 * dim)
+            else:
+                return None  # calc(...) or other unsupported value
+        vertices.append((px_vals[0], px_vals[1]))
+    return vertices if len(vertices) >= 3 else None
+
+
+# --------------------------------------------------------------------------- background size/pos
+
+
+def parse_background_size(value: str | None) -> tuple[str, tuple[float, float] | None]:
+    """Classify a CSS ``background-size`` computed value.
+
+    Returns ``(mode, explicit_px)`` where ``mode`` is ``"cover"``, ``"contain"``, ``"auto"``, or
+    ``"explicit"``. ``explicit_px`` is the ``(width_px, height_px)`` pair for an explicit two-px
+    size, else ``None``. Percentage and single-value sizes fall back to ``"auto"`` (the caller
+    treats them as a plain stretch)."""
+    if not value:
+        return "auto", None
+    token = value.strip().lower()
+    if token == "cover":
+        return "cover", None
+    if token == "contain":
+        return "contain", None
+    lengths = _LENGTH_RE.findall(token)
+    if len(lengths) == 2:
+        return "explicit", (float(lengths[0]), float(lengths[1]))
+    return "auto", None
+
+
+def parse_background_position(value: str | None) -> tuple[float, float]:
+    """Map a CSS ``background-position`` computed value to ``(x, y)`` fractions in ``[0, 1]``.
+
+    Chromium reports positions as percentages or px against the *positioning area*. Percentages
+    map directly to fractions; keyword forms (left/center/right/top/bottom) are handled; px and
+    unparseable values default to the CSS centre (``0.5``)."""
+    if not value:
+        return 0.5, 0.5
+    token = value.strip().lower()
+    keywords = {
+        "left": 0.0,
+        "right": 1.0,
+        "top": 0.0,
+        "bottom": 1.0,
+        "center": 0.5,
+    }
+    parts = token.split()
+    coords: list[float] = []
+    for part in parts[:2]:
+        pct = _PERCENT_RE.match(part)
+        if pct is not None:
+            coords.append(max(0.0, min(1.0, float(pct.group(1)) / 100.0)))
+        elif part in keywords:
+            coords.append(keywords[part])
+        else:
+            coords.append(0.5)
+    while len(coords) < 2:
+        coords.append(0.5)
+    return coords[0], coords[1]

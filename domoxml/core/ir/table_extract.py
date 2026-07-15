@@ -47,6 +47,20 @@ def extract_table(
     """Convert one rendered ``<table>`` subtree into a native table node."""
     by_index = {item.index: item for item in nodes}
 
+    def effective_cell_fill(cell: RenderedNode, row: RenderedNode) -> Fill | None:
+        fill = fill_for(cell)
+        if fill is not None:
+            return fill
+        current: RenderedNode | None = row
+        while current is not None:
+            fill = fill_for(current)
+            if fill is not None:
+                return fill
+            if current.index == node.index:
+                break
+            current = by_index.get(current.parent)
+        return None
+
     def descendants_with_tag(root: int, tag: str) -> list[int]:
         found: list[int] = []
         for child_index in children.get(root, []):
@@ -83,7 +97,7 @@ def extract_table(
             cells.append(
                 TableCell(
                     text=text_for(cell_node),
-                    fill=fill_for(cell_node),
+                    fill=effective_cell_fill(cell_node, row_node),
                     borders=borders,
                     margins=_margins(cell_node.styles),
                     row_span=row_span,

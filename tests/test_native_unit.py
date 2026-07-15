@@ -12,7 +12,12 @@ from PIL import Image
 from domoxml.core.ir import extract_slide
 from domoxml.core.ir.model import Box, GradientFill, PictureFill, SolidFill
 from domoxml.core.ir.parse import parse_border_side, parse_gradient, parse_shadow
-from domoxml.core.render.browser import RenderedNode, RenderedRaster, RenderedSlide
+from domoxml.core.render.browser import (
+    RenderedNode,
+    RenderedRaster,
+    RenderedSlide,
+    _needs_isolated_raster,
+)
 from domoxml.types import Disposition
 
 
@@ -114,6 +119,40 @@ def test_css_filter_rasterises_and_warns() -> None:
     assert isinstance(result.slide.shapes[0].fill, PictureFill)  # baked pixels, not dropped
     assert result.coverage[0].disposition is Disposition.RASTER
     assert result.warnings and "filter" in result.warnings[0].message
+
+
+def test_inset_css_shadow_rasterises_for_portable_fidelity() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "boxShadow": "rgba(0, 0, 0, 0.25) 4px 4px 12px 2px inset",
+            "backgroundColor": "rgb(241,245,249)",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].disposition is Disposition.RASTER
+    assert "inset box-shadow" in (result.coverage[0].reason or "")
+
+
+def test_browser_requests_isolated_raster_for_inset_shadow() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        styles={"boxShadow": "rgb(0, 0, 0) 2px 2px 4px inset"},
+    )
+
+    assert _needs_isolated_raster(node)
 
 
 def test_css_filter_uses_isolated_raster_region_when_available() -> None:

@@ -24,6 +24,7 @@ from domoxml.core.ir.parse import (
     parse_radius_px,
 )
 from domoxml.core.render.browser import RenderedNode, RenderedSlide
+from domoxml.core.units import px_to_emu
 
 
 def test_parse_color_rgb_and_rgba() -> None:
@@ -118,6 +119,47 @@ def test_extract_normalizes_logical_text_align() -> None:
     ir = extract_slide(RenderedSlide(png=b"x", width=100, height=100, nodes=(node,))).slide
     assert ir.shapes[0].text is not None
     assert ir.shapes[0].text.paragraphs[0].align == "left"  # 'start' → 'left'
+
+
+def test_extract_infers_center_alignment_from_row_flex() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=100,
+        height=50,
+        text="Centered",
+        styles={
+            "display": "flex",
+            "flexDirection": "row",
+            "justifyContent": "center",
+            "alignItems": "center",
+            "textAlign": "start",
+        },
+    )
+
+    ir = extract_slide(RenderedSlide(png=b"x", width=100, height=50, nodes=(node,))).slide
+
+    assert ir.shapes[0].text is not None
+    assert ir.shapes[0].text.paragraphs[0].align == "center"
+    assert ir.shapes[0].text.anchor == "middle"
+
+
+def test_explicit_text_align_overrides_flex_positioning() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=100,
+        height=50,
+        text="Left",
+        styles={"display": "flex", "justifyContent": "center", "textAlign": "left"},
+    )
+
+    ir = extract_slide(RenderedSlide(png=b"x", width=100, height=50, nodes=(node,))).slide
+
+    assert ir.shapes[0].text is not None
+    assert ir.shapes[0].text.paragraphs[0].align == "left"
 
 
 def test_extract_maps_box_fill_and_text() -> None:
@@ -265,6 +307,9 @@ def test_extract_li_char_bullet() -> None:
     assert para.level == 0
     assert isinstance(para.bullet, CharBullet)
     assert para.bullet.char == "•"
+    assert para.left_margin_pt == 13.5
+    assert para.indent_pt == -12.75
+    assert ir.shapes[0].box.x == -px_to_emu(18)
 
 
 def test_extract_li_autonum_bullet() -> None:
@@ -282,6 +327,7 @@ def test_extract_li_autonum_bullet() -> None:
             "fontFamily": "sans-serif",
             "domoxmlListDepth": "1",
             "domoxmlListType": "decimal",
+            "domoxmlListOrdinal": "3",
             "listStyleType": "decimal",
         },
     )
@@ -290,6 +336,7 @@ def test_extract_li_autonum_bullet() -> None:
     para = ir.shapes[0].text.paragraphs[0]
     assert isinstance(para.bullet, AutoNumberBullet)
     assert para.bullet.scheme == "arabicPeriod"
+    assert para.bullet.start_at == 3
 
 
 def test_extract_li_nested_level() -> None:

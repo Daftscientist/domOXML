@@ -14,7 +14,9 @@ def test_loads_single_slide_with_meta(tmp_path: Path) -> None:
     case = tmp_path / "01-case"
     case.mkdir()
     (case / "slide.html").write_text("<p>hi</p>")
-    (case / "case.toml").write_text('title = "T"\nsize = "4:3"\nmin_similarity = 0.7\n')
+    (case / "case.toml").write_text(
+        'title = "T"\nsize = "4:3"\nmin_similarity = 0.7\nmin_regional_similarity = 0.8\n'
+    )
 
     [loaded] = load_corpus(tmp_path)
     assert loaded.name == "01-case"
@@ -22,6 +24,7 @@ def test_loads_single_slide_with_meta(tmp_path: Path) -> None:
     assert loaded.title == "T"
     assert loaded.size is SlideSize.STANDARD_4_3
     assert loaded.min_similarity == 0.7
+    assert loaded.min_regional_similarity == 0.8
 
 
 def test_defaults_without_meta(tmp_path: Path) -> None:
@@ -32,6 +35,7 @@ def test_defaults_without_meta(tmp_path: Path) -> None:
     [loaded] = load_corpus(tmp_path)
     assert loaded.size is SlideSize.WIDE_16_9
     assert loaded.min_similarity == 0.9
+    assert loaded.min_regional_similarity == 0.97
     assert loaded.title == ""
 
 

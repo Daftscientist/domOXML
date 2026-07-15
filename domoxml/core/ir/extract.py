@@ -176,6 +176,25 @@ def _detect_anchor(styles: dict[str, str]) -> Literal["top", "middle", "bottom"]
     return "top"
 
 
+def _detect_text_align(
+    styles: dict[str, str],
+) -> Literal["left", "center", "right", "justify"]:
+    """Infer horizontal text alignment, including flex main/cross-axis positioning."""
+    raw = (styles.get("textAlign") or "").strip().lower()
+    if raw not in ("", "start"):
+        return _ALIGN.get(raw, "left")
+    if "flex" not in (styles.get("display") or "").lower():
+        return _ALIGN.get(raw, "left")
+    column_flow = (styles.get("flexDirection") or "row").lower().startswith("column")
+    horizontal = styles.get("alignItems") if column_flow else styles.get("justifyContent")
+    horizontal = (horizontal or "").lower()
+    if horizontal == "center":
+        return "center"
+    if horizontal in ("flex-end", "end"):
+        return "right"
+    return "left"
+
+
 def _detect_autofit(styles: dict[str, str]) -> Literal["none", "normal", "shape"]:
     """Infer autofit mode from CSS overflow and white-space.
 
@@ -230,7 +249,7 @@ def _text_body(node: RenderedNode) -> TextBody | None:
                 paragraphs.append([])
     if not any(paragraphs):
         return None
-    align = _ALIGN.get((node.styles.get("textAlign") or "").strip().lower(), "left")
+    align = _detect_text_align(node.styles)
     styles = node.styles
 
     # Paragraph spacing from CSS margins (px → pt).
@@ -259,10 +278,21 @@ def _text_body(node: RenderedNode) -> TextBody | None:
         list_type = styles.get("domoxmlListType") or styles.get("listStyleType") or "disc"
         autonum_scheme = css_list_style_to_autonum(list_type)
         if autonum_scheme is not None:
-            bullet = AutoNumberBullet(scheme=autonum_scheme)
+            raw_ordinal = styles.get("domoxmlListOrdinal", "1")
+            try:
+                ordinal = max(1, int(raw_ordinal))
+            except ValueError:
+                ordinal = 1
+            bullet = AutoNumberBullet(scheme=autonum_scheme, start_at=ordinal)
         else:
             char = css_list_style_to_bu_char(list_type)
             bullet = CharBullet(char=char)
+        if styles.get("listStylePosition", "outside") != "inside":
+            # LibreOffice supplies a large default list margin when DrawingML omits these
+            # values. Keep CSS's outside marker gutter explicit so marker and text retain
+            # their browser positions. Any authored padding remains part of the text margin.
+            left_margin_pt += 13.5
+            indent_pt = -(left_margin_pt - 0.75)
 
     anchor = _detect_anchor(styles)
     autofit = _detect_autofit(styles)
@@ -357,6 +387,9 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
         return "backdrop-filter has no native mapping"
     if styles.get("filter", "none") not in ("none", ""):
         return "CSS filter has no native mapping"
+    shadow = parse_shadow(styles.get("boxShadow"))
+    if shadow is not None and shadow.inset:
+        return "inset box-shadow is rasterised because LibreOffice ignores a:innerShdw"
     transform_val = styles.get("transform")
     if _has_complex_transform(transform_val):
         return "skew/perspective/shear transform has no native mapping"
@@ -644,9 +677,14 @@ def _shadow_to_effect(shadow: Shadow, box: Box, warnings: list[ConversionWarning
     Any other shadow stays as a :class:`Shadow` (outer or inner depending on ``inset``).
     """
     if not shadow.inset and shadow.distance_emu == 0 and shadow.spread_emu >= 0:
-        # Convert to glow: radius = blur + spread (both contribute to halo size)
-        radius = shadow.blur_emu + shadow.spread_emu
-        return Glow(color=shadow.color, radius_emu=radius)
+        # CSS and DrawingML use different blur kernels. These factors are calibrated against
+        # Chromium's CSS raster and LibreOffice's DrawingML renderer so the visible falloff,
+        # rather than the nominal radius, is preserved.
+        radius = round((shadow.blur_emu + shadow.spread_emu) * 0.85)
+        color = shadow.color.model_copy(update={"a": shadow.color.a * 0.6})
+        return Glow(color=color, radius_emu=radius)
+    if not shadow.inset:
+        return shadow.model_copy(update={"blur_emu": round(shadow.blur_emu * 0.75)})
     return shadow
 
 
@@ -952,8 +990,18 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             continue
         text = _text_body(node)
         if text is not None and fill is None and line is None:
-            padding = px_to_emu(4)
-            box = box.model_copy(update={"x": box.x - padding, "width": box.width + padding * 2})
+            outside_bullet = (
+                any(paragraph.bullet is not None for paragraph in text.paragraphs)
+                and node.styles.get("listStylePosition", "outside") != "inside"
+            )
+            left_padding = px_to_emu(18 if outside_bullet else 4)
+            right_padding = px_to_emu(4)
+            box = box.model_copy(
+                update={
+                    "x": box.x - left_padding,
+                    "width": box.width + left_padding + right_padding,
+                }
+            )
         shadow = parse_shadow(node.styles.get("boxShadow"))
         effect = _shadow_to_effect(shadow, box, warnings) if shadow is not None else None
         # Emit per-side border rects before the main shape so they appear behind its fill.
@@ -971,6 +1019,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 transform=_parse_transform(node.styles),
             )
         )
+        if node.styles.get("domoxmlConsolidatedText") == "true":
+            consumed |= _subtree(node.index, children) - {node.index}
         coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
         if line_warning is not None:
             warnings.append(line_warning.model_copy(update={"element": _label(node)}))

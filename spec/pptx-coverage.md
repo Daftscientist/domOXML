@@ -49,7 +49,7 @@ CSS source = what authoring produces it on the forward path.
 |---|---|---|:--:|:--:|---|
 | Solid fill (+ alpha) | `a:solidFill`/`a:srgbClr`/`a:alpha` | `background-color`, rgba | ✅ | ✅ | opacity folded into alpha |
 | No fill | `a:noFill` | transparent bg | ✅ | ✅ | |
-| Gradient (linear/radial) | `a:gradFill` | `linear/radial-gradient` | ✅ | ✅ | basic single gradient |
+| Gradient (linear/radial) | `a:gradFill` | `linear/radial-gradient` | ✅ | ✅ | shape gradients use aspect-corrected angles and subdivided sRGB stops to match PowerPoint's linear-light interpolation |
 | Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ✅ | shape fill and native `p:pic`; **shape blipFill crop done** — `background-size:cover` → `a:srcRect` (fwd), `a:srcRect` → `background-size`/`-position` % (rev). `contain`/explicit sizes stretch (no crop) |
 | Pattern fill | `a:pattFill` | `repeating-linear-gradient` | 🟡 | 🟡 | **Fwd**: 2-colour hard-stop `repeating-linear-gradient` at 0/45/90/135deg → 6 presets (`horz`,`vert`,`ltUpDiag`,`wdUpDiag`,`ltDnDiag`,`dkUpDiag`; thin ≤4px→`lt*`, wide→`wd*`/`dk*`). 3+ colours / soft stops / off-axis fall back to raster. **Rev**: those 6 presets round-trip **exactly** to `repeating-linear-gradient`; all other ~48 ECMA presets → inline 8×8 SVG-tile `background-image` approximation + ConversionWarning |
 | Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | ✅ | clrScheme lookup + clrMap remap + lumMod/lumOff/shade/tint/alpha/satMod transforms |
@@ -68,9 +68,9 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Outer shadow | `a:outerShdw` | `box-shadow` | ✅ | ✅ | spread → sx/sy grow attrs; warns if spread >25% of short side |
-| Inner shadow | `a:innerShdw` | `box-shadow inset` | ✅ | ✅ | spread approximated via blurRad increase (innerShdw has no grow); warned |
-| Glow | `a:glow` | blurred halo | 🟡 | 🟡 | fwd: zero-offset box-shadow (offset==0) → a:glow; rev: box-shadow 0 0 rad rad/2 approximation |
+| Outer shadow | `a:outerShdw` | `box-shadow` | 🟡 | ✅ | spread → sx/sy grow attrs; CSS blur is calibrated to DrawingML's different falloff; warns if spread >25% of short side |
+| Inner shadow | `a:innerShdw` | `box-shadow inset` | 🖼️ | ✅ | authored CSS inset shadows rasterise because LibreOffice ignores `a:innerShdw`; native reverse/read-write support remains |
+| Glow | `a:glow` | blurred halo | 🟡 | 🟡 | fwd: zero-offset box-shadow → calibrated `a:glow`; rev: box-shadow 0 0 rad rad/2 approximation |
 | Blur | `a:blur` | `filter: blur()` | 🖼️ | 🟡 | `filter` → raster (warned); rev: filter:blur() + rasterise-on-forward warning |
 | Soft edge | `a:softEdge` | — | 🖼️ | 🟡 | rev: mask-image radial-gradient feathering approximation |
 | Reflection | `a:reflection` | — | 🖼️ | 🟡 | rev: -webkit-box-reflect + preserved fragment; fwd will rasterise; WebKit/Blink only |

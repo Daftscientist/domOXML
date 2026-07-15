@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import warnings
 from collections.abc import Callable
 from xml.sax.saxutils import escape
@@ -9,6 +10,7 @@ from xml.sax.saxutils import escape
 from domoxml.core.ir.model import (
     Arrowhead,
     Blur,
+    Box,
     CharBullet,
     ColorSpec,
     ColorTransform,
@@ -17,6 +19,7 @@ from domoxml.core.ir.model import (
     Fill,
     Glow,
     GradientFill,
+    GradientStop,
     Hyperlink,
     Line,
     LineTo,
@@ -78,10 +81,34 @@ def _solid_fill(color: Rgba, *, opacity: float = 1.0) -> str:
     return f"<a:solidFill>{_srgb(color, opacity=opacity)}</a:solidFill>"
 
 
-def _gradient_fill(gradient: GradientFill, *, opacity: float) -> str:
+def _powerpoint_gradient_stops(gradient: GradientFill) -> tuple[GradientStop, ...]:
+    """Subdivide sRGB stops so PowerPoint's linear-light interpolation tracks CSS."""
+    expanded: list[GradientStop] = []
+    subdivisions = 8
+    for index, (start, end) in enumerate(zip(gradient.stops, gradient.stops[1:], strict=False)):
+        for step in range(subdivisions + 1):
+            if index > 0 and step == 0:
+                continue
+            amount = step / subdivisions
+            expanded.append(
+                GradientStop(
+                    pos=start.pos + (end.pos - start.pos) * amount,
+                    color=Rgba(
+                        r=round(start.color.r + (end.color.r - start.color.r) * amount),
+                        g=round(start.color.g + (end.color.g - start.color.g) * amount),
+                        b=round(start.color.b + (end.color.b - start.color.b) * amount),
+                        a=start.color.a + (end.color.a - start.color.a) * amount,
+                    ),
+                )
+            )
+    return tuple(expanded)
+
+
+def _gradient_fill(gradient: GradientFill, *, opacity: float, box: Box | None = None) -> str:
+    gradient_stops = _powerpoint_gradient_stops(gradient) if box is not None else gradient.stops
     stops = "".join(
         f'<a:gs pos="{round(stop.pos * 100000)}">{_srgb(stop.color, opacity=opacity)}</a:gs>'
-        for stop in gradient.stops
+        for stop in gradient_stops
     )
     gs_lst = f"<a:gsLst>{stops}</a:gsLst>"
     if gradient.radial:
@@ -89,8 +116,17 @@ def _gradient_fill(gradient: GradientFill, *, opacity: float) -> str:
             '<a:path path="circle"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path>'
         )
         return f"<a:gradFill>{gs_lst}{path}</a:gradFill>"
-    # CSS angle (0 = up, clockwise) → OOXML angle (0 = right, clockwise), in 60000ths.
-    ooxml_angle = round(((gradient.angle_deg + 270.0) % 360.0) * 60000)
+    # CSS gradients use the physical box aspect ratio to find their corner endpoints, while
+    # DrawingML's scaled angle is measured in normalized shape coordinates. Correct the angle
+    # by the shape aspect ratio before serializing it.
+    angle_deg = (gradient.angle_deg + 270.0) % 360.0
+    if box is not None and box.width > 0 and box.height > 0:
+        angle = math.radians(angle_deg)
+        angle_deg = (
+            math.degrees(math.atan2(math.sin(angle) * box.height, math.cos(angle) * box.width))
+            % 360.0
+        )
+    ooxml_angle = round(angle_deg * 60000)
     return f'<a:gradFill>{gs_lst}<a:lin ang="{ooxml_angle}" scaled="1"/></a:gradFill>'
 
 
@@ -160,14 +196,19 @@ def _pattern_fill(fill: PatternFill) -> str:
 
 
 def _fill_xml(
-    fill: Fill | None, *, opacity: float, blip_rid: str | None, svg_rid: str | None = None
+    fill: Fill | None,
+    *,
+    opacity: float,
+    blip_rid: str | None,
+    svg_rid: str | None = None,
+    box: Box | None = None,
 ) -> str:
     if fill is None:
         return "<a:noFill/>"
     if isinstance(fill, SolidFill):
         return _solid_fill(fill.color, opacity=opacity)
     if isinstance(fill, GradientFill):
-        return _gradient_fill(fill, opacity=opacity)
+        return _gradient_fill(fill, opacity=opacity, box=box)
     if isinstance(fill, PatternFill):
         return _pattern_fill(fill)
     # PictureFill: a blip fill if the package writer assigned a media relationship, else nothing.
@@ -502,7 +543,13 @@ def shape_xml(
     SVG part for vector preservation. ``hyperlink_rid`` resolves a run hyperlink to its
     slide-relationship id (also assigned by the package writer).
     """
-    fill = _fill_xml(node.fill, opacity=node.opacity, blip_rid=blip_rid, svg_rid=svg_rid)
+    fill = _fill_xml(
+        node.fill,
+        opacity=node.opacity,
+        blip_rid=blip_rid,
+        svg_rid=svg_rid,
+        box=node.box,
+    )
     return (
         f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Shape {shape_id}"/>'
         "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"

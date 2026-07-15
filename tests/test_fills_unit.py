@@ -15,7 +15,16 @@ from domoxml.core.fillcrop import (
     explicit_fill_fractions,
     srcrect_to_background,
 )
-from domoxml.core.ir.model import Box, PatternFill, PictureFill, Rgba, ShapeNode, SrcRect
+from domoxml.core.ir.model import (
+    Box,
+    GradientFill,
+    GradientStop,
+    PatternFill,
+    PictureFill,
+    Rgba,
+    ShapeNode,
+    SrcRect,
+)
 from domoxml.core.ir.pattern import match_pattern_fill, pattern_to_css
 
 
@@ -248,6 +257,22 @@ def test_blip_fill_without_crop_has_no_src_rect() -> None:
     node = ShapeNode(box=Box(x=0, y=0, width=100, height=100), fill=PictureFill(data=b"x"))
     xml = shape_xml(node, shape_id=3, blip_rid="rId2")
     assert "<a:srcRect" not in xml
+
+
+def test_shape_gradient_is_aspect_corrected_and_subdivided_for_powerpoint() -> None:
+    fill = GradientFill(
+        stops=(
+            GradientStop(pos=0.0, color=Rgba(r=244, g=114, b=182)),
+            GradientStop(pos=1.0, color=Rgba(r=99, g=102, b=241)),
+        ),
+        angle_deg=135.0,
+    )
+    node = ShapeNode(box=Box(x=0, y=0, width=1280, height=720), fill=fill)
+
+    xml = shape_xml(node, shape_id=3)
+
+    assert xml.count("<a:gs pos=") == 9
+    assert '<a:lin ang="1761465" scaled="1"/>' in xml
 
 
 # --------------------------------------------------------------------------- reverse read + html

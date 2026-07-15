@@ -121,8 +121,8 @@ def test_zero_offset_shadow_becomes_glow() -> None:
     box = Box(x=0, y=0, width=9_525_000, height=4_762_500)
     effect = _shadow_to_effect(shadow, box, dummy_warnings)
     assert isinstance(effect, Glow)
-    assert effect.radius_emu == shadow.blur_emu + shadow.spread_emu
-    assert effect.color == shadow.color
+    assert effect.radius_emu == round((shadow.blur_emu + shadow.spread_emu) * 0.85)
+    assert effect.color == shadow.color.model_copy(update={"a": shadow.color.a * 0.6})
 
 
 def test_nonzero_offset_shadow_stays_shadow() -> None:
@@ -133,6 +133,9 @@ def test_nonzero_offset_shadow_stays_shadow() -> None:
     box = Box(x=0, y=0, width=9_525_000, height=4_762_500)
     effect = _shadow_to_effect(shadow, box, dummy_warnings)
     assert isinstance(effect, Shadow)
+    assert effect.blur_emu == round(shadow.blur_emu * 0.75)
+    assert effect.distance_emu == shadow.distance_emu
+    assert effect.spread_emu == shadow.spread_emu
 
 
 def test_inset_shadow_stays_shadow_not_glow() -> None:

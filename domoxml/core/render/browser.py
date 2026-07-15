@@ -45,7 +45,7 @@ _SNAPSHOT_JS = """
     columnCount: cs.columnCount, columnGap: cs.columnGap,
     marginTop: cs.marginTop, marginBottom: cs.marginBottom,
     textIndent: cs.textIndent, paddingLeft: cs.paddingLeft,
-    listStyleType: cs.listStyleType,
+    listStyleType: cs.listStyleType, listStylePosition: cs.listStylePosition,
     objectFit: cs.objectFit, objectPosition: cs.objectPosition,
   });
   // The nearest enclosing <a href> for the run, captured as a synthetic style key so the
@@ -59,6 +59,7 @@ _SNAPSHOT_JS = """
   const listContext = (el) => {
     let depth = 0;
     let listType = '';
+    let ordinal = null;
     let node = el.parentElement;
     while (node) {
       const tag = node.tagName && node.tagName.toLowerCase();
@@ -67,19 +68,48 @@ _SNAPSHOT_JS = """
         if (!listType) listType = getComputedStyle(node).listStyleType;
         if (tag === 'ol' && !listType) listType = 'decimal';
         if (tag === 'ul' && !listType) listType = 'disc';
+        if (depth === 1 && tag === 'ol') {
+          const items = Array.from(node.children).filter(
+            (child) => child.tagName && child.tagName.toLowerCase() === 'li'
+          );
+          const step = node.reversed ? -1 : 1;
+          let value = node.hasAttribute('start')
+            ? node.start
+            : (node.reversed ? items.length : 1);
+          for (const item of items) {
+            if (item.hasAttribute('value')) value = item.value;
+            if (item === el) {
+              ordinal = value;
+              break;
+            }
+            value += step;
+          }
+        }
       }
       node = node.parentElement;
     }
-    return { depth, listType };
+    return { depth, listType, ordinal };
   };
-  const inlineRuns = (root) => {
+  const consolidatesFlexText = (root) => {
+    const style = getComputedStyle(root);
+    const display = style.display;
+    if (display !== 'flex' && display !== 'inline-flex') return false;
+    if (!style.flexDirection.startsWith('column')) return false;
+    const elements = Array.from(root.children);
+    return elements.length > 0 && elements.every((child) => child.children.length === 0);
+  };
+  const inlineRuns = (root, consolidateFlex) => {
     const runs = [];
-    const collect = (node, inherited, href) => {
+    const collect = (node, inherited, href, allowBlock = false) => {
       if (node.nodeType === 3) {
-        if (node.textContent) {
+        let text = node.textContent || '';
+        if (inherited.whiteSpace === 'normal' || inherited.whiteSpace === 'nowrap') {
+          text = text.replace(/\\s+/g, ' ');
+        }
+        if (text) {
           const styles = pick(inherited);
           if (href) styles.domoxmlHref = href;
-          runs.push({ text: node.textContent, styles });
+          runs.push({ text, styles });
         }
         return;
       }
@@ -92,15 +122,23 @@ _SNAPSHOT_JS = """
         return;
       }
       const cs = getComputedStyle(el);
-      if (!cs.display.startsWith('inline')) return;
+      if (!allowBlock && !cs.display.startsWith('inline')) return;
       const childHref = el.tagName.toLowerCase() === 'a' && el.getAttribute('href')
         ? el.getAttribute('href') : href;
       for (const child of el.childNodes) collect(child, cs, childHref);
     };
     const rootStyle = getComputedStyle(root);
     const rootHref = linkHref(root);
-    for (const child of root.childNodes) collect(child, rootStyle, rootHref);
-    return runs;
+    for (const child of root.childNodes) {
+      if (consolidateFlex && child.nodeType === 3 && !child.textContent.trim()) continue;
+      const before = runs.length;
+      collect(child, rootStyle, rootHref, consolidateFlex && child.nodeType === 1);
+      if (consolidateFlex && runs.slice(before).some((run) => run.text.trim())) {
+        runs.push({ text: '\\n', styles: pick(rootStyle) });
+      }
+    }
+    if (consolidateFlex && runs.at(-1)?.text === '\\n') runs.pop();
+    return runs.some((run) => run.text.trim()) ? runs : [];
   };
   const out = [];
   const walk = (el, parent) => {
@@ -113,11 +151,14 @@ _SNAPSHOT_JS = """
     el.dataset.domoxmlCaptureIndex = String(index);
     const styles = pick(getComputedStyle(el));
     const tag = el.tagName.toLowerCase();
+    const consolidateFlex = consolidatesFlexText(el);
+    if (consolidateFlex) styles.domoxmlConsolidatedText = 'true';
     // For <li> elements record the list nesting depth and list type.
     if (tag === 'li') {
       const ctx = listContext(el);
       styles.domoxmlListDepth = String(ctx.depth);
       styles.domoxmlListType = ctx.listType || styles.listStyleType || 'disc';
+      if (ctx.ordinal !== null) styles.domoxmlListOrdinal = String(ctx.ordinal);
     }
     // For SVG path elements, capture the 'd' attribute in the src slot so the extractor
     // can parse it as a custom geometry without needing the HTML source.
@@ -145,7 +186,7 @@ _SNAPSHOT_JS = """
       text, index, parent,
       src: svgSrc,
       styles,
-      textRuns: inlineRuns(el),
+      textRuns: inlineRuns(el, consolidateFlex),
     });
     for (const child of el.children) walk(child, index);
   };
@@ -383,6 +424,7 @@ def _needs_isolated_raster(node: RenderedNode) -> bool:
     styles = node.styles
     return (
         node.tag in {"svg", "canvas", "video", "iframe"}
+        or "inset" in styles.get("boxShadow", "").lower()
         or styles.get("clipPath", "none") not in ("none", "")
         or styles.get("mixBlendMode", "normal") not in ("normal", "")
         or styles.get("backdropFilter", "none") not in ("none", "")

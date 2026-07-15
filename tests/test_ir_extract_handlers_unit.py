@@ -82,6 +82,45 @@ def test_table_handler_builds_grid_through_resolver_contracts() -> None:
     assert extracted.rows[0].cells[0].margins[0] == 38_100
 
 
+def test_table_handler_uses_row_fill_behind_transparent_cells() -> None:
+    table = RenderedNode(tag="table", x=0, y=0, width=100, height=20, index=0, parent=-1)
+    row = RenderedNode(tag="tr", x=0, y=0, width=100, height=20, index=1, parent=0)
+    cell = RenderedNode(tag="th", x=0, y=0, width=100, height=20, index=2, parent=1)
+    row_fill = SolidFill(color=Rgba(r=68, g=114, b=196))
+
+    extracted = extract_table(
+        table,
+        (table, row, cell),
+        {0: [1], 1: [2]},
+        fill_for=lambda node: row_fill if node is row else None,
+        borders_for=lambda _styles: ((None, None, None, None), []),
+        text_for=lambda _node: None,
+    )
+
+    assert extracted is not None
+    assert extracted.rows[0].cells[0].fill == row_fill
+
+
+def test_table_handler_prefers_explicit_cell_fill_over_row_fill() -> None:
+    table = RenderedNode(tag="table", x=0, y=0, width=100, height=20, index=0, parent=-1)
+    row = RenderedNode(tag="tr", x=0, y=0, width=100, height=20, index=1, parent=0)
+    cell = RenderedNode(tag="td", x=0, y=0, width=100, height=20, index=2, parent=1)
+    row_fill = SolidFill(color=Rgba(r=1, g=2, b=3))
+    cell_fill = SolidFill(color=Rgba(r=4, g=5, b=6))
+
+    extracted = extract_table(
+        table,
+        (table, row, cell),
+        {0: [1], 1: [2]},
+        fill_for=lambda node: cell_fill if node is cell else row_fill,
+        borders_for=lambda _styles: ((None, None, None, None), []),
+        text_for=lambda _node: None,
+    )
+
+    assert extracted is not None
+    assert extracted.rows[0].cells[0].fill == cell_fill
+
+
 def test_svg_handler_returns_geometry_and_path_style_owner() -> None:
     svg = RenderedNode(
         tag="svg", x=0, y=0, width=100, height=50, src="0 0 100 50", index=0, parent=-1

@@ -18,6 +18,7 @@ from domoxml.types import (
 )
 from scripts.capability_check import (
     _inline_assets,
+    _is_transient_render_error,
     _validate_forward_visual,
     _validate_reverse_visual,
 )
@@ -37,6 +38,16 @@ def _render_result(png: bytes) -> RenderResult:
         coverage=CoverageReport(items=()),
         warnings=(),
     )
+
+
+def test_only_known_browser_transport_errors_are_retryable() -> None:
+    assert _is_transient_render_error(
+        RuntimeError("Page.captureScreenshot: Unable to capture screenshot")
+    )
+    assert _is_transient_render_error(
+        RuntimeError("Target page, context or browser has been closed")
+    )
+    assert not _is_transient_render_error(RuntimeError("regional similarity below threshold"))
 
 
 def test_inline_assets_rewrites_css_and_slide_references() -> None:

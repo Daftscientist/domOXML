@@ -25,6 +25,16 @@ from domoxml.core.fidelity import (
 from domoxml.presentation import Presentation, Slide
 from domoxml.types import CustomSize, HtmlPresentation, OutputFormat, RenderResult
 
+_TRANSIENT_RENDER_ERRORS = (
+    "Unable to capture screenshot",
+    "Target page, context or browser has been closed",
+)
+
+
+def _is_transient_render_error(error: Exception) -> bool:
+    message = str(error)
+    return any(token in message for token in _TRANSIENT_RENDER_ERRORS)
+
 
 def _render_forward(fixture: CapabilityFixture) -> RenderResult:
     return (
@@ -250,15 +260,22 @@ def main(argv: list[str] | None = None) -> int:
 
     failures = 0
     for fixture in fixtures:
-        try:
-            errors = _validate_fixture(
-                fixture,
-                args.out,
-                forward_visual_available=forward_visual_available,
-                report_scores=True,
-            )
-        except Exception as exc:  # CLI boundary: report the fixture and continue the corpus.
-            errors = (f"raised {type(exc).__name__}: {exc}",)
+        errors: tuple[str, ...] = ()
+        for attempt in range(2):
+            try:
+                errors = _validate_fixture(
+                    fixture,
+                    args.out,
+                    forward_visual_available=forward_visual_available,
+                    report_scores=True,
+                )
+                break
+            except Exception as exc:  # CLI boundary: retry transport errors; report and continue.
+                if attempt == 0 and _is_transient_render_error(exc):
+                    print(f"retry {fixture.id}: transient browser capture failure", file=sys.stderr)
+                    continue
+                errors = (f"raised {type(exc).__name__}: {exc}",)
+                break
         if errors:
             failures += 1
             print(f"FAIL {fixture.id}")

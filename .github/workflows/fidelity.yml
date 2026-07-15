@@ -16,7 +16,6 @@ on:
 jobs:
   fidelity:
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       contents: read
       pull-requests: write
@@ -40,7 +39,11 @@ jobs:
         run: uv run playwright install --with-deps chromium
       - name: Run fidelity checker (LibreOffice)
         id: fidelity
-        run: uv run python scripts/fidelity_check.py --backend libreoffice --heatmap
+        run: >-
+          uv run python scripts/fidelity_check.py
+          --backend libreoffice
+          --require-backend
+          --heatmap
       - name: Upload fidelity artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -52,49 +55,16 @@ jobs:
         id: summary
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FIDELITY_OUTCOME: ${{ steps.fidelity.outcome }}
         run: |
           python - <<'PY'
-          import json
           import os
           from pathlib import Path
 
-          summary_json = Path("out/fidelity/summary.json")
-          lines = ["## Fidelity (LibreOffice)", ""]
-          rows = []
-          failures = 0
-          if summary_json.exists():
-              data = json.loads(summary_json.read_text())
-              for score in data.get("scores", []):
-                  if score.get("backend") != "libreoffice":
-                      continue
-                  passed = bool(score.get("passed"))
-                  failures += 0 if passed else 1
-                  rows.append(
-                      "| {case} | {slide} | {sim:.3f} | {thr:.2f} | {mark} |".format(
-                          case=score.get("case", "?"),
-                          slide=score.get("slide", "?"),
-                          sim=float(score.get("similarity", 0.0)),
-                          thr=float(score.get("threshold", 0.0)),
-                          mark="PASS" if passed else "LOW",
-                      )
-                  )
-          if rows:
-              lines.extend(
-                  [
-                      "| Case | Slide | Similarity | Threshold | Status |",
-                      "| --- | --- | --- | --- | --- |",
-                      *rows,
-                      "",
-                  ]
-              )
-          else:
-              lines.append("No fidelity scores were produced.")
-              lines.append("")
-
-          lines.append(f"- Artifact + logs: {os.environ['RUN_URL']}")
-          lines.append(f"- Slides below threshold: {failures}")
-
-          text = "\n".join(lines)
+          report = Path("out/fidelity/summary.md")
+          text = report.read_text() if report.exists() else "# Fidelity report\n\nNo report was produced.\n"
+          text += f"\n- Check outcome: {os.environ['FIDELITY_OUTCOME']}\n"
+          text += f"- Artifacts and logs: {os.environ['RUN_URL']}\n"
           Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(text)
           with Path(os.environ["GITHUB_OUTPUT"]).open("a") as fh:
               fh.write("comment<<EOF\n")

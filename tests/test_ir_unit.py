@@ -3,8 +3,26 @@
 from __future__ import annotations
 
 from domoxml.core.ir import extract_slide
-from domoxml.core.ir.model import Rgba, SolidFill
-from domoxml.core.ir.parse import is_bold, parse_color, parse_length_px, parse_radius_px
+from domoxml.core.ir.model import (
+    AutoNumberBullet,
+    CharBullet,
+    LineSpacing,
+    Rgba,
+    SolidFill,
+    TableNode,
+)
+from domoxml.core.ir.parse import (
+    autonum_to_css_list_style,
+    bu_char_to_css_list_style,
+    css_list_style_to_autonum,
+    css_list_style_to_bu_char,
+    is_bold,
+    parse_color,
+    parse_length_px,
+    parse_line_height,
+    parse_margin_pt,
+    parse_radius_px,
+)
 from domoxml.core.render.browser import RenderedNode, RenderedSlide
 
 
@@ -38,6 +56,59 @@ def test_is_bold() -> None:
     assert not is_bold("400")
     assert not is_bold("normal")
     assert not is_bold(None)
+
+
+def test_extract_builds_table_node_from_html_table() -> None:
+    # Regression: a <table> subtree must become a native TableNode in slide.nodes, not fall
+    # through to shape extraction. Build a 2-row, 2-col table (the header cell spans 2).
+    table = RenderedNode(tag="table", x=0, y=0, width=400, height=200, index=0, parent=-1)
+    tr1 = RenderedNode(tag="tr", x=0, y=0, width=400, height=100, index=1, parent=0)
+    th1 = RenderedNode(
+        tag="th",
+        x=0,
+        y=0,
+        width=400,
+        height=100,
+        text="Header",
+        index=2,
+        parent=1,
+        styles={"domoxmlColSpan": "2", "domoxmlRowSpan": "1"},
+    )
+    tr2 = RenderedNode(tag="tr", x=0, y=100, width=400, height=100, index=3, parent=0)
+    td1 = RenderedNode(
+        tag="td",
+        x=0,
+        y=100,
+        width=200,
+        height=100,
+        text="A",
+        index=4,
+        parent=3,
+        styles={"domoxmlColSpan": "1", "domoxmlRowSpan": "1"},
+    )
+    td2 = RenderedNode(
+        tag="td",
+        x=200,
+        y=100,
+        width=200,
+        height=100,
+        text="B",
+        index=5,
+        parent=3,
+        styles={"domoxmlColSpan": "1", "domoxmlRowSpan": "1"},
+    )
+    rendered = RenderedSlide(
+        png=b"x", width=1280, height=720, nodes=(table, tr1, th1, tr2, td1, td2)
+    )
+    ir = extract_slide(rendered).slide
+    tables = [n for n in ir.nodes if isinstance(n, TableNode)]
+    assert len(tables) == 1
+    tbl = tables[0]
+    assert len(tbl.rows) == 2
+    assert tbl.rows[0].cells[0].col_span == 2  # header spans both columns
+    assert tbl.rows[1].cells[0].text is not None
+    # The table is not also emitted as shapes (subtree consumed).
+    assert ir.shapes == ()
 
 
 def test_extract_normalizes_logical_text_align() -> None:
@@ -91,3 +162,200 @@ def test_transparent_background_is_no_fill() -> None:
     )
     ir = extract_slide(RenderedSlide(png=b"x", width=100, height=100, nodes=(node,))).slide
     assert ir.shapes[0].fill is None
+
+
+# --------------------------------------------------------------------------- parse_line_height
+
+
+def test_parse_line_height_normal_returns_none() -> None:
+    assert parse_line_height("normal") is None
+    assert parse_line_height(None) is None
+    assert parse_line_height("") is None
+
+
+def test_parse_line_height_unitless_factor() -> None:
+    ls = parse_line_height("1.6")
+    assert ls is not None
+    assert ls.percent == 1.6
+    assert ls.points is None
+
+
+def test_parse_line_height_percent() -> None:
+    ls = parse_line_height("150%")
+    assert ls is not None
+    assert ls.percent == 1.5
+
+
+def test_parse_line_height_px() -> None:
+    # 24px = 24 * 72/96 = 18 pt
+    ls = parse_line_height("24px")
+    assert ls is not None
+    assert ls.points is not None
+    assert abs(ls.points - 18.0) < 0.01
+
+
+# --------------------------------------------------------------------------- parse_margin_pt
+
+
+def test_parse_margin_pt_from_px() -> None:
+    # 24px = 18pt
+    assert abs(parse_margin_pt("24px") - 18.0) < 0.01
+
+
+def test_parse_margin_pt_zero_returns_zero() -> None:
+    assert parse_margin_pt("0px") == 0.0
+    assert parse_margin_pt("") == 0.0
+
+
+# --------------------------------------------------------------------------- list style mappings
+
+
+def test_css_list_style_to_bu_char_disc() -> None:
+    assert css_list_style_to_bu_char("disc") == "•"
+    assert css_list_style_to_bu_char("circle") == "○"
+    assert css_list_style_to_bu_char("square") == "▪"
+    assert css_list_style_to_bu_char("unknown") == "•"  # default
+
+
+def test_css_list_style_to_autonum_ordered() -> None:
+    assert css_list_style_to_autonum("decimal") == "arabicPeriod"
+    assert css_list_style_to_autonum("lower-alpha") == "alphaLcPeriod"
+    assert css_list_style_to_autonum("upper-roman") == "romanUcPeriod"
+    assert css_list_style_to_autonum("disc") is None  # unordered → no autonum
+
+
+def test_bu_char_to_css_list_style_round_trip() -> None:
+    assert bu_char_to_css_list_style("•") == "disc"
+    assert bu_char_to_css_list_style("○") == "circle"
+    assert bu_char_to_css_list_style("▪") == "square"
+    assert bu_char_to_css_list_style("X") == "X"  # unknown char → itself
+
+
+def test_autonum_to_css_list_style_round_trip() -> None:
+    assert autonum_to_css_list_style("arabicPeriod") == "decimal"
+    assert autonum_to_css_list_style("alphaLcPeriod") == "lower-alpha"
+    assert autonum_to_css_list_style("romanLcPeriod") == "lower-roman"
+    assert autonum_to_css_list_style("unknown") == "decimal"  # default
+
+
+# --------------------------------------------------------------------------- extract li bullets
+
+
+def test_extract_li_char_bullet() -> None:
+    """An <li> node in a ul gets a CharBullet with the correct char."""
+    node = RenderedNode(
+        tag="li",
+        x=0,
+        y=0,
+        width=100,
+        height=20,
+        text="item",
+        styles={
+            "color": "rgb(0,0,0)",
+            "fontSize": "12px",
+            "fontFamily": "sans-serif",
+            "domoxmlListDepth": "1",
+            "domoxmlListType": "disc",
+            "listStyleType": "disc",
+        },
+    )
+    ir = extract_slide(RenderedSlide(png=b"x", width=200, height=100, nodes=(node,))).slide
+    assert ir.shapes[0].text is not None
+    para = ir.shapes[0].text.paragraphs[0]
+    assert para.level == 0
+    assert isinstance(para.bullet, CharBullet)
+    assert para.bullet.char == "•"
+
+
+def test_extract_li_autonum_bullet() -> None:
+    """An <li> node in an ol gets an AutoNumberBullet."""
+    node = RenderedNode(
+        tag="li",
+        x=0,
+        y=0,
+        width=100,
+        height=20,
+        text="item",
+        styles={
+            "color": "rgb(0,0,0)",
+            "fontSize": "12px",
+            "fontFamily": "sans-serif",
+            "domoxmlListDepth": "1",
+            "domoxmlListType": "decimal",
+            "listStyleType": "decimal",
+        },
+    )
+    ir = extract_slide(RenderedSlide(png=b"x", width=200, height=100, nodes=(node,))).slide
+    assert ir.shapes[0].text is not None
+    para = ir.shapes[0].text.paragraphs[0]
+    assert isinstance(para.bullet, AutoNumberBullet)
+    assert para.bullet.scheme == "arabicPeriod"
+
+
+def test_extract_li_nested_level() -> None:
+    """Nested <li> at depth 2 gets level=1."""
+    node = RenderedNode(
+        tag="li",
+        x=0,
+        y=0,
+        width=100,
+        height=20,
+        text="nested",
+        styles={
+            "color": "rgb(0,0,0)",
+            "fontSize": "12px",
+            "fontFamily": "sans-serif",
+            "domoxmlListDepth": "2",
+            "domoxmlListType": "disc",
+        },
+    )
+    ir = extract_slide(RenderedSlide(png=b"x", width=200, height=100, nodes=(node,))).slide
+    assert ir.shapes[0].text is not None
+    assert ir.shapes[0].text.paragraphs[0].level == 1
+
+
+def test_extract_paragraph_spacing() -> None:
+    """margin-top/bottom → space_before_pt/space_after_pt."""
+    node = RenderedNode(
+        tag="p",
+        x=0,
+        y=0,
+        width=100,
+        height=20,
+        text="text",
+        styles={
+            "color": "rgb(0,0,0)",
+            "fontSize": "12px",
+            "fontFamily": "sans-serif",
+            "marginTop": "12px",  # 9pt
+            "marginBottom": "24px",  # 18pt
+        },
+    )
+    ir = extract_slide(RenderedSlide(png=b"x", width=200, height=100, nodes=(node,))).slide
+    assert ir.shapes[0].text is not None
+    para = ir.shapes[0].text.paragraphs[0]
+    assert para.space_before_pt is not None and abs(para.space_before_pt - 9.0) < 0.1
+    assert para.space_after_pt is not None and abs(para.space_after_pt - 18.0) < 0.1
+
+
+def test_extract_line_height_unitless() -> None:
+    """line-height:1.6 (non-normal) → LineSpacing(percent=1.6)."""
+    node = RenderedNode(
+        tag="p",
+        x=0,
+        y=0,
+        width=100,
+        height=20,
+        text="text",
+        styles={
+            "color": "rgb(0,0,0)",
+            "fontSize": "12px",
+            "fontFamily": "sans-serif",
+            "lineHeight": "1.6",
+        },
+    )
+    ir = extract_slide(RenderedSlide(png=b"x", width=200, height=100, nodes=(node,))).slide
+    assert ir.shapes[0].text is not None
+    ls = ir.shapes[0].text.paragraphs[0].line_spacing
+    assert ls is not None
+    assert isinstance(ls, LineSpacing) and ls.percent == 1.6

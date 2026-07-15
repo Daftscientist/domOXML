@@ -82,6 +82,38 @@ The PowerPoint reverse reader must resolve relationships and effective values ac
 layout, master, and theme parts. The HTML writer serializes resolved appearance while retaining
 the metadata needed to preserve Office-specific constructs across a later round trip.
 
+## Feature Adapter Ownership
+
+`slides/pptx.py` and `slides/read.py` orchestrate package-level conversion. They should not
+accumulate the XML implementation for each new capability. A feature that has its own IR model
+or can be tested independently belongs in a focused adapter module, shared by the forward and
+reverse orchestration layers where practical.
+
+Current examples include:
+
+| Capability | Owning module |
+|---|---|
+| Slide backgrounds | `slides/background.py` |
+| Slide transitions | `slides/transition.py` |
+| Reverse tables and graphic frames | `slides/graphic_frame.py` |
+| Reverse connectors | `slides/connector_read.py` |
+| Reverse effects | `slides/effect_read.py` |
+| Reverse video and audio | `slides/media_read.py` |
+| Reverse colors, fills, pictures, and lines | `slides/appearance_read.py` |
+| Reverse text bodies, paragraphs, and runs | `slides/text_read.py` |
+| Table XML writing | `core/drawingml/table_xml.py` |
+| Rendered HTML tables | `core/ir/table_extract.py` |
+| Rendered connectors | `core/ir/connector_extract.py` |
+| Rendered slide properties | `core/ir/slide_properties_extract.py` |
+| Inline SVG custom geometry | `core/ir/svg_extract.py` |
+| Shape geometry | `core/drawingml/shape.py` and `core/drawingml/presets.py` |
+| Layout/master/theme inheritance | `slides/inherit.py` |
+
+New capability work should extend an existing owner or introduce a similarly narrow adapter.
+The orchestration modules should retain package traversal, relationship allocation, ordering,
+and dispatch only. Each extracted adapter needs direct unit tests in addition to end-to-end
+capability coverage.
+
 ## Capability Contract
 
 Coverage is measured in both directions. Each capability fixture should declare:

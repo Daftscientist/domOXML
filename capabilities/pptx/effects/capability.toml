@@ -1,0 +1,28 @@
+id = "effects"
+direction = "forward"
+html_file = "slide.html"
+
+[expected]
+min_native = 3
+max_raster = 0
+
+# Shadowed card: box-shadow with offset+blur+spread → outerShdw with sx/sy grow attrs
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:outerShdw[@sx]"
+min_count = 1
+
+# Inset shadow card → innerShdw
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:innerShdw"
+min_count = 1
+
+# Glow halo card: zero-offset box-shadow → a:glow (preferred) or outerShdw
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:glow | .//a:outerShdw[@dist='0']"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.90

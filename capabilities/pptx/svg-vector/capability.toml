@@ -1,0 +1,22 @@
+id = "svg-vector"
+direction = "forward"
+html_file = "slide.html"
+
+[expected]
+min_native = 1
+max_raster = 0
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+# domOXML emits images as a shape blip fill (p:sp/a:blipFill), not p:pic.
+xpath = ".//a:blipFill"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+# The vector is preserved via the Office 2016 asvg:svgBlip extension.
+xpath = ".//asvg:svgBlip"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.90

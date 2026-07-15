@@ -1,0 +1,50 @@
+id = "preset-shapes"
+direction = "forward"
+html_file = "slide.html"
+
+[expected]
+min_native = 8
+max_raster = 0
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:prstGeom[@prst='triangle']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:prstGeom[@prst='diamond']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:prstGeom[@prst='hexagon']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:prstGeom[@prst='star5']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:prstGeom[@prst='chevron']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:prstGeom[@prst='rightArrow']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:prstGeom[@prst='parallelogram']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:prstGeom[@prst='plus']"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.90

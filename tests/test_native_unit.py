@@ -62,11 +62,12 @@ def test_unmappable_gradients_return_none() -> None:
 
 
 def test_parse_border_side() -> None:
-    line = parse_border_side("2px", "solid", "rgb(0, 0, 0)")
+    line, warn = parse_border_side("2px", "solid", "rgb(0, 0, 0)")
     assert line is not None and line.width_emu == 19050 and line.dash == "solid"
-    assert parse_border_side("0px", "solid", "rgb(0,0,0)") is None
-    assert parse_border_side("2px", "none", "rgb(0,0,0)") is None
-    dashed = parse_border_side("1px", "dashed", "rgb(0,0,0)")
+    assert warn is None
+    assert parse_border_side("0px", "solid", "rgb(0,0,0)") == (None, None)
+    assert parse_border_side("2px", "none", "rgb(0,0,0)") == (None, None)
+    dashed, _ = parse_border_side("1px", "dashed", "rgb(0,0,0)")
     assert dashed is not None and dashed.dash == "dash"
 
 

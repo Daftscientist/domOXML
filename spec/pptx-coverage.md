@@ -28,9 +28,9 @@ CSS source = what authoring produces it on the forward path.
 |---|---|:--:|:--:|---|
 | OPC package (zip, content-types, rels) | OPC | ✅ | ✅ | shared reader/writer primitives |
 | Presentation + slide size | `p:presentation`, `p:sldSz` | ✅ | ✅ | one size per deck |
-| Slide / layout / master | `p:sld`, `p:sldLayout`, `p:sldMaster` | ✅ | 🟡 | rev reads ordered slides; inheritance pending |
-| Theme | `a:theme` (clr/font/fmt scheme) | 🟡 | 🟡 | basic colour scheme resolution; transforms pending |
-| Placeholder & inheritance | `p:ph`, layout→master→theme | ⬜ | ⬜ | **the hard part of reverse** — effective-style resolution |
+| Slide / layout / master | `p:sld`, `p:sldLayout`, `p:sldMaster` | ✅ | ✅ | rev resolves placeholder geometry/text through layout→master |
+| Theme | `a:theme` (clr/font/fmt scheme) | 🟡 | ✅ | colour scheme + clrMap remap + font scheme (+mj-lt/+mn-lt) resolved |
+| Placeholder & inheritance | `p:ph`, layout→master→theme | ⬜ | ✅ | effective-style resolution: xfrm/spPr chain, txStyles (title/body/other) per lvl, slide-level overrides |
 
 ## Geometry (DrawingML §20.1)
 
@@ -39,9 +39,9 @@ CSS source = what authoring produces it on the forward path.
 | Rectangle | `prstGeom prst="rect"` | box | ✅ | ✅ | |
 | Rounded rect | `prstGeom prst="roundRect"` | `border-radius` | ✅ | ✅ | adj from radius |
 | Ellipse / pill | `prstGeom prst="ellipse"` | `border-radius:50%` | ✅ | ✅ | radius·2 ≥ short side |
-| Other presets (187 total) | `ST_ShapeType` | `clip-path`/SVG | ⬜ | ⬜ | triangle, diamond, hexagon, star, arrows, callouts… |
-| Custom geometry | `custGeom`/`a:path` | SVG path | ⬜ | ⬜ | |
-| Connectors | `cxnSp` | `<hr>`/lines | ⬜ | ⬜ | straight/elbow/curved |
+| Other presets (187 total) | `ST_ShapeType` | `clip-path`/SVG | 🟡 | 🟡 | 17 polygon-expressible presets covered: triangle, rtTriangle, diamond, pentagon, hexagon, octagon, parallelogram, trapezoid, chevron, rightArrow, leftArrow, upArrow, downArrow, plus, star4, star5, star8. Curved presets (arc, callout, gear, wave, funnel, …) pending. |
+| Custom geometry | `custGeom`/`a:path` | SVG path | 🟡 | 🟡 | **Fwd**: inline `<svg>` with single `<path>`, M/L/C/Q/H/V/Z subset → `a:custGeom`; S/T/A bail to raster+warn; multi-path/complex SVG rasters. **Rev**: `a:custGeom` → inline `<svg><path d="..."/>`, fill+stroke applied; formula-driven `gdLst` paths preserved+warn. |
+| Connectors | `cxnSp` | `<hr>`/lines | 🟡 | 🟡 | **Fwd**: `<hr>` and unfilled elements ≤2px tall & ≥40px wide (or vertical equiv) → `p:cxnSp prst="line"`. **Rev**: straight → SVG `<line>`; bent/curved → SVG `<path>`; arrowheads → SVG `<marker>` (triangle, scaled coarsely). |
 
 ## Fills
 
@@ -50,66 +50,79 @@ CSS source = what authoring produces it on the forward path.
 | Solid fill (+ alpha) | `a:solidFill`/`a:srgbClr`/`a:alpha` | `background-color`, rgba | ✅ | ✅ | opacity folded into alpha |
 | No fill | `a:noFill` | transparent bg | ✅ | ✅ | |
 | Gradient (linear/radial) | `a:gradFill` | `linear/radial-gradient` | ✅ | ✅ | basic single gradient |
-| Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ✅ | shape fill and native `p:pic`; crop pending |
-| Pattern fill | `a:pattFill` | repeating patterns | ⬜ | ⬜ | |
-| Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | 🟡 | basic clrScheme lookup; clrMap/transforms pending |
+| Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ✅ | shape fill and native `p:pic`; **shape blipFill crop done** — `background-size:cover` → `a:srcRect` (fwd), `a:srcRect` → `background-size`/`-position` % (rev). `contain`/explicit sizes stretch (no crop) |
+| Pattern fill | `a:pattFill` | `repeating-linear-gradient` | 🟡 | 🟡 | **Fwd**: 2-colour hard-stop `repeating-linear-gradient` at 0/45/90/135deg → 6 presets (`horz`,`vert`,`ltUpDiag`,`wdUpDiag`,`ltDnDiag`,`dkUpDiag`; thin ≤4px→`lt*`, wide→`wd*`/`dk*`). 3+ colours / soft stops / off-axis fall back to raster. **Rev**: those 6 presets round-trip **exactly** to `repeating-linear-gradient`; all other ~48 ECMA presets → inline 8×8 SVG-tile `background-image` approximation + ConversionWarning |
+| Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | ✅ | clrScheme lookup + clrMap remap + lumMod/lumOff/shade/tint/alpha/satMod transforms |
 
 ## Line / stroke
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
 | Solid border | `a:ln`/`a:solidFill` | `border` | ✅ | ✅ | uniform border |
-| Per-side borders | (4 lines) | `border-top` … | 🟡 | ⬜ | approximated by heaviest side + warn |
-| Dash / cap / join | `a:prstDash`, `cap`, `a:round` | `border-style`, dashes | 🟡 | 🟡 | solid/dash/dot |
-| Arrowheads | `a:headEnd`/`a:tailEnd` | — | ⬜ | ⬜ | |
-| Gradient stroke | `a:gradFill` in `a:ln` | — | ⬜ | ⬜ | |
+| Per-side borders | 4 thin `p:sp` rects | `border-top` … | ✅ | ✅ | fwd: decomposed into per-side rects (radius+non-uniform → heaviest-side + warn); rev: n/a (they're just rects) |
+| Dash / cap / join | `a:prstDash`, `cap`, `a:round`/`a:bevel`/`a:miter` | `border-style`, `--domoxml-cap/join` | ✅ | ✅ | fwd: dotted→sysDot, dashed→dash, double/3D→solid+warn; rev: full preset table + cap/join; CSS custom props carry cap/join for round-trip |
+| Arrowheads | `a:headEnd`/`a:tailEnd` | `--domoxml-head/tail` | ⬜ | 🟡 | rev: type/w/len read into IR + CSS custom props; rendering deferred to connectors task; warning emitted |
+| Gradient stroke | `a:gradFill` in `a:ln` | `border-image: linear-gradient(...) 1` | ⬜ | 🟡 | rev: gradient read into `Line.gradient`; HTML approx via `border-image` (border-radius not honoured); warning emitted |
 
 ## Effects (`a:effectLst` — 8 native)
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Outer shadow | `a:outerShdw` | `box-shadow` | ✅ | 🟡 | native; spread dropped |
-| Inner shadow | `a:innerShdw` | `box-shadow inset` | ✅ | 🟡 | native |
-| Glow | `a:glow` | blurred halo | 🖼️ | ⬜ | |
-| Blur | `a:blur` | `filter: blur()` | 🖼️ | ⬜ | `filter` → raster (warned) |
-| Soft edge | `a:softEdge` | — | 🖼️ | ⬜ | |
-| Reflection | `a:reflection` | — | 🖼️ | ⬜ | |
-| Preset / fill-overlay | `a:prstShdw`, `a:fillOverlay` | — | 🖼️ | ⬜ | |
+| Outer shadow | `a:outerShdw` | `box-shadow` | ✅ | ✅ | spread → sx/sy grow attrs; warns if spread >25% of short side |
+| Inner shadow | `a:innerShdw` | `box-shadow inset` | ✅ | ✅ | spread approximated via blurRad increase (innerShdw has no grow); warned |
+| Glow | `a:glow` | blurred halo | 🟡 | 🟡 | fwd: zero-offset box-shadow (offset==0) → a:glow; rev: box-shadow 0 0 rad rad/2 approximation |
+| Blur | `a:blur` | `filter: blur()` | 🖼️ | 🟡 | `filter` → raster (warned); rev: filter:blur() + rasterise-on-forward warning |
+| Soft edge | `a:softEdge` | — | 🖼️ | 🟡 | rev: mask-image radial-gradient feathering approximation |
+| Reflection | `a:reflection` | — | 🖼️ | 🟡 | rev: -webkit-box-reflect + preserved fragment; fwd will rasterise; WebKit/Blink only |
+| Preset shadow | `a:prstShdw` | — | 🖼️ | preserved | PreservedFragment + ConversionWarning; no CSS mapping |
+| Fill overlay | `a:fillOverlay` | — | 🖼️ | preserved | PreservedFragment + ConversionWarning; no CSS mapping |
 
 ## Text (`a:txBody`)
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
 | Run: family/size/bold/italic/colour | `a:rPr`, `a:latin`, `a:solidFill` | font-* / color | ✅ | ✅ | |
-| Run: underline / strike | `u`, `strike` | `text-decoration` | ⬜ | ⬜ | |
-| Run: caps / letter-spacing | `cap`, `spc` | `text-transform`, `letter-spacing` | ⬜ | ⬜ | |
+| Run: underline / strike | `u`, `strike` | `text-decoration` | ✅ | ✅ | both coexist; style tokens kept on rev |
+| Run: caps / letter-spacing | `cap`, `spc` | `text-transform`, `letter-spacing` | ✅ | ✅ | raw text + cap attr (not pre-cased); spc in 1/100 pt |
+| Run: hyperlink | `a:hlinkClick` (+ rel) | `<a href>` | ✅ | ✅ | external rel; `#slide-N` → in-deck slide jump |
 | Paragraph align | `a:pPr algn` | `text-align` | ✅ | ✅ | start/end normalised |
-| Vertical anchor | `a:bodyPr anchor` | (block flow) | 🟡 | ⬜ | top default; flex/align mapping pending |
-| Line spacing / indent | `a:lnSpc`, `marL` | `line-height`, indent | ⬜ | ⬜ | |
-| Bullets / numbering | `a:buChar`/`a:buAutoNum` | `<ul>`/`<ol>` | ⬜ | ⬜ | |
-| Multi-column | `a:bodyPr numCol` | `column-count` | ⬜ | ⬜ | |
-| Autofit | `a:normAutofit`/`a:spAutoFit` | (overflow) | 🟡 | ⬜ | normAutofit emitted |
+| Vertical anchor | `a:bodyPr anchor` | (block flow) | ✅ | ✅ | fwd: flex column containers — justify-content/align-items center→anchor="ctr", flex-end→"b", default→"t"; rev: anchor t/ctr/b → display:flex;flex-direction:column;justify-content flex-start/center/flex-end (only emitted when not "t") |
+| Line spacing / indent | `a:lnSpc`, `marL` | `line-height`, indent | ✅ | ✅ | percent (spcPct) and points (spcPts); marL/indent in EMU |
+| Bullets / numbering | `a:buChar`/`a:buAutoNum` | `<ul>`/`<ol>` | ✅ | ✅ | char bullets (disc/circle/square) + autonumber (arabic/alpha/roman); nested levels; fwd+rev |
+| Multi-column | `a:bodyPr numCol` | `column-count` | ✅ | ✅ | column-count → numCol; column-gap (px→EMU) → spcCol; rev: numCol/spcCol → column-count + column-gap CSS |
+| Autofit | `a:normAutofit`/`a:spAutoFit` | (overflow) | 🟡 | 🟡 | fwd: overflow:hidden + fixed height → normAutofit; white-space:nowrap → spAutoFit; default → normAutofit. rev: spAutoFit/noAutofit carried in IR; autofit != "normal" → data-domoxml-autofit metadata attribute; normAutofit fontScale/lnSpcReduction: not mapped to CSS (no fontScale in IR), emitted as metadata only when present on reverse path |
 | Text warp (WordArt) | `a:prstTxWarp` | — | ⬜ | ⬜ | |
-| **Font embedding** | `p:embeddedFontLst` | `@font-face`/`<link>` | ✅ | ⬜ | web+system; woff2/OTF→TTF; warns if unembeddable. NB: Office-online PDF service (Graph) 406s on any custom embed — desktop/LibreOffice honour it |
+| **Font embedding** | `p:embeddedFontLst` | `@font-face`/`<link>` | ✅ | ✅ | Fwd: web+system; woff2/OTF→TTF; warns if unembeddable. Rev: ODTTF deobfuscation; OS/2 fsType restricted-license check; `@font-face` + `HtmlAsset` per slot. NB: Office-online PDF service (Graph) 406s on any custom embed — desktop/LibreOffice honour it |
 
 ## Pictures & media
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
 | Image | `a:blipFill` | `<img>` | ✅ | ✅ | embedded as native picture fill |
-| SVG | `a:blip` + svgBlip | inline `<svg>` | 🖼️ | ⬜ | rasterised (warned); svgBlip later |
-| Video / audio | `a:videoFile`/`audioFile` | `<video>`/`<audio>` | 🖼️ | ⬜ | poster frame rasterised |
-| Decorative raster layer | `a:blipFill` | un-mappable flourish | 🖼️ | ⬜ | per-element raster; subtree-consuming + warned |
+| SVG (vector preserved) | `a:blip` + `asvg:svgBlip` | `<img src="*.svg">` / inline `<svg>` | ✅ | ✅ | PNG raster fallback + SVG svgBlip ext; reverse picks SVG over PNG |
+| Picture crop | `a:srcRect` | `object-fit:cover` | ✅ | ✅ | forward: cover\_crop math → srcRect; reverse: wrapper+img CSS via srcrect\_to\_css |
+| Video / audio | `p:videoFile`/`p:audioFile` | `<video>`/`<audio>` | 🖼️ | ✅ | rev: embedded or external media → `<video controls>` / `<audio controls>`; play settings preserved |
+| Decorative raster layer | `a:blipFill` `cNvPr descr` marker | un-mappable flourish | 🖼️ | ✅ | forward writes `domoxml-raster:<role>` marker; reverse restores `<img data-domoxml-raster>` |
+
+## Transforms and groups
+
+| Feature | OOXML | CSS source | Fwd | Rev | Notes |
+|---|---|---|:--:|:--:|---|
+| Rotation | `a:xfrm rot` | `transform:rotate(Ndeg)` | ✅ | ✅ | CSS degrees = OOXML 60000ths-of-degree (both clockwise-positive — no sign flip). **Constraint**: `transform-origin` must be center (the OOXML default); non-center origins fall back to raster+warn. Pure rotation is NOT rasterised. |
+| Horizontal flip | `a:xfrm flipH="1"` | `transform:scaleX(-1)` | ✅ | ✅ | Combined rotate+flip allowed. |
+| Vertical flip | `a:xfrm flipV="1"` | `transform:scaleY(-1)` | ✅ | ✅ | |
+| Complex transforms (shear, perspective) | — | `skewX/Y`, `perspective`, `matrix` with shear | 🖼️ | — | Still rasterised with ConversionWarning; not expressible via `a:xfrm`. |
+| Group shapes | `p:grpSp` | (flat div layout) | ⬜ | ✅ | **Fwd**: children emitted as flat siblings (no `p:grpSp` authored). **Rev**: child coordinates remapped from group-child-space to absolute slide EMUs (`child_slide_x = grp_off_x + (child_x − grp_chOff_x) × scale_x`); flattened to flat positioned divs. Group transform (rot/flip on the group itself) preserved via `Transform` IR node. |
 
 ## Tables, charts, transitions, animation
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Table | `a:tbl` (graphicFrame) | `<table>` | ⬜ | ⬜ | native rows/cells/merges |
+| Table | `a:tbl` (graphicFrame) | `<table>` | ✅ | ✅ | native rows/cells/merges; col/row spans; cell fill, borders, margins; text bodies |
 | Chart | `c:chartSpace` | `<table data-chart>` / spec | ⛔ | ⛔ | data spec, not pixels |
-| Transitions | `p:transition` (~17) | `data-transition` | ⬜ | ⬜ | compile-time |
-| Animations | `p:timing` | `@keyframes` / spec | ⛔ | ⬜ | compile-time spec |
-| SmartArt / OLE / 3D | `dgm:`/`p:oleObj`/`a:sp3d` | — | ⛔ | 🖼️ | rev may rasterise to preserve looks |
+| Transitions | `p:transition` (~17) | `data-transition` | ✅ | ✅ | compile-time |
+| Animations | `p:timing` | `@keyframes` / spec | ⛔ | 🗃️ | rev preserved as fragment + warning |
+| SmartArt / OLE / 3D | `dgm:`/`p:oleObj`/`a:sp3d` | — | ⛔ | 🗃️ | rev preserved as fragment + warning |
 
 ## Round-trip methodology
 

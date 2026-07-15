@@ -1,0 +1,25 @@
+id = "custom-path"
+direction = "forward"
+html_file = "slide.html"
+
+[expected]
+min_native = 2
+max_raster = 0
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:custGeom"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:cubicBezTo"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:cxnSp"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.90

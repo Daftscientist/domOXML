@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+import warnings
 from xml.sax.saxutils import escape
 
-from domoxml.core.drawingml import shape_xml
+from domoxml.core.drawingml import line_xml, shape_xml, table_xml
 from domoxml.core.fonts import FontFace, load_faces
-from domoxml.core.ir.model import PictureFill, SlideIR
+from domoxml.core.ir.model import (
+    Connector,
+    Hyperlink,
+    PictureFill,
+    SlideIR,
+    TableNode,
+    TextBody,
+)
 from domoxml.core.opc import write_package
 from domoxml.slides import _templates as t
+from domoxml.slides.background import background_xml
+from domoxml.slides.transition import transition_xml
 
 _PML = "application/vnd.openxmlformats-officedocument.presentationml"
 _THEME_CT = "application/vnd.openxmlformats-officedocument.theme+xml"
@@ -18,17 +28,25 @@ _REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships
 _PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 _CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 _IMAGE_CT = {"png": "image/png", "jpeg": "image/jpeg", "gif": "image/gif"}
+_SVG_CT = "image/svg+xml"
 
 # (face, in-package part path, relationship id) for each embedded font.
 type FontRel = tuple[FontFace, str, str]
 _SLOT_ORDER = ("regular", "bold", "italic", "boldItalic")
 
 
+def _attr(value: str) -> str:
+    """Escape a string for an XML attribute (double-quoted)."""
+    return escape(value, {'"': "&quot;"})
+
+
 def _override(part: str, content_type: str) -> str:
     return f'<Override PartName="{part}" ContentType="{content_type}"/>'
 
 
-def _content_types(n_slides: int, *, has_fonts: bool, image_exts: set[str]) -> str:
+def _content_types(
+    n_slides: int, *, has_fonts: bool, image_exts: set[str], has_svg: bool = False
+) -> str:
     overrides = [
         _override("/ppt/presentation.xml", f"{_PML}.presentation.main+xml"),
         _override("/ppt/slideMasters/slideMaster1.xml", f"{_PML}.slideMaster+xml"),
@@ -47,6 +65,8 @@ def _content_types(n_slides: int, *, has_fonts: bool, image_exts: set[str]) -> s
     defaults += [
         f'<Default Extension="{ext}" ContentType="{_IMAGE_CT[ext]}"/>' for ext in sorted(image_exts)
     ]
+    if has_svg:
+        defaults.append(f'<Default Extension="svg" ContentType="{_SVG_CT}"/>')
     return f'{t.XML_DECL}<Types xmlns="{_CT_NS}">{"".join(defaults)}{"".join(overrides)}</Types>'
 
 
@@ -109,30 +129,109 @@ def _presentation_rels(n_slides: int, font_rels: list[FontRel]) -> str:
     )
 
 
-def _slide_rels(image_rels: list[tuple[str, str]]) -> str:
-    """Slide relationships: the layout (rId1) plus one rel per embedded picture."""
+def _hyperlink_target(hyperlink: Hyperlink) -> tuple[str, str]:
+    """The ``(Type, attrs)`` for a hyperlink relationship: an external URL gets
+    ``TargetMode="External"``; an in-deck slide jump targets the destination slide part."""
+    if hyperlink.slide_index is not None:
+        target = f"slide{hyperlink.slide_index + 1}.xml"
+        return f"{_REL_TYPE}/slide", f'Target="{target}"'
+    url = _attr(hyperlink.url or "")
+    return f"{_REL_TYPE}/hyperlink", f'Target="{url}" TargetMode="External"'
+
+
+def _slide_rels(
+    image_rels: list[tuple[str, str]], hyperlink_rels: list[tuple[str, Hyperlink]]
+) -> str:
+    """Slide relationships: the layout (rId1), one rel per embedded picture, one per hyperlink."""
     images = "".join(
         f'<Relationship Id="{rid}" Type="{_REL_TYPE}/image" Target="../media/{name}"/>'
         for rid, name in image_rels
     )
+    links = ""
+    for rid, hyperlink in hyperlink_rels:
+        rel_type, attrs = _hyperlink_target(hyperlink)
+        links += f'<Relationship Id="{rid}" Type="{rel_type}" {attrs}/>'
     return (
         f'{t.XML_DECL}<Relationships xmlns="{_PKG_REL_NS}">'
         f'<Relationship Id="rId1" Type="{_REL_TYPE}/slideLayout" '
         'Target="../slideLayouts/slideLayout1.xml"/>'
-        f"{images}</Relationships>"
+        f"{images}{links}</Relationships>"
     )
 
 
-def _slide(slide: SlideIR, media_start: int) -> tuple[str, str, dict[str, bytes], int]:
-    """Build one slide. Returns ``(slide_xml, slide_rels_xml, media_parts, next_media_index)``.
+def _shape_hyperlinks(body: TextBody | None) -> list[Hyperlink]:
+    """Every run hyperlink in a text body, in document order."""
+    if body is None:
+        return []
+    return [
+        run.hyperlink
+        for paragraph in body.paragraphs
+        for run in paragraph.runs
+        if run.hyperlink is not None
+    ]
 
+
+def _connector_xml(conn: Connector, *, shape_id: int) -> str:
+    """Emit a ``<p:cxnSp>`` element for a connector node."""
+    x = min(conn.start.x, conn.end.x)
+    y = min(conn.start.y, conn.end.y)
+    cx = max(1, abs(conn.end.x - conn.start.x))
+    cy = max(1, abs(conn.end.y - conn.start.y))
+    line = line_xml(conn.line)
+    return (
+        f"<p:cxnSp>"
+        f"<p:nvCxnSpPr>"
+        f'<p:cNvPr id="{shape_id}" name="Connector {shape_id}"/>'
+        f"<p:cNvCxnSpPr/>"
+        f"<p:nvPr/>"
+        f"</p:nvCxnSpPr>"
+        f"<p:spPr>"
+        f'<a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
+        f'<a:prstGeom prst="line"><a:avLst/></a:prstGeom>'
+        f"{line}"
+        f"</p:spPr>"
+        f"</p:cxnSp>"
+    )
+
+
+def _slide(
+    slide: SlideIR, media_start: int, slide_count: int
+) -> tuple[str, str, dict[str, bytes], int, bool]:
+    """Build one slide.
+
+    Returns ``(slide_xml, slide_rels_xml, media_parts, next_media_index, has_svg)``.
     ``media_start`` is the next free ``ppt/media/imageN`` index (unique across the deck).
     """
     media_parts: dict[str, bytes] = {}
     image_rels: list[tuple[str, str]] = []
     blip_rids: dict[int, str] = {}
+    svg_rids: dict[int, str] = {}
+    has_svg = False
     media_index = media_start
     next_rid = 2  # rId1 is the layout
+
+    # Plain shapes occupy shape IDs starting at 2 (1 is the group sp).
+    # Table nodes follow shapes; each gets a unique incrementing shape_id.
+    n_shapes = len(slide.shapes)
+
+    # Warn on any node types still without a writer (Connector and TableNode are handled below).
+    for node in slide.nodes:
+        if not isinstance(node, Connector | TableNode):
+            warnings.warn(
+                f"{type(node).__name__} has no PresentationML writer yet; node dropped",
+                stacklevel=2,
+            )
+
+    # Background picture fill: needs its own media part + rel.
+    bg_blip_rid: str | None = None
+    if slide.background is not None and isinstance(slide.background.fill, PictureFill):
+        pic = slide.background.fill
+        name = f"image{media_index}.{pic.ext}"
+        media_parts[f"ppt/media/{name}"] = pic.data
+        bg_blip_rid = f"rId{next_rid}"
+        image_rels.append((bg_blip_rid, name))
+        media_index += 1
+        next_rid += 1
 
     for position, node in enumerate(slide.shapes):
         if isinstance(node.fill, PictureFill):
@@ -143,18 +242,71 @@ def _slide(slide: SlideIR, media_start: int) -> tuple[str, str, dict[str, bytes]
             blip_rids[position] = rid
             media_index += 1
             next_rid += 1
+            # SVG source paired with the PNG: a second media part + rel for the svgBlip ext.
+            if node.fill.svg_data is not None:
+                svg_name = f"image{media_index}.svg"
+                media_parts[f"ppt/media/{svg_name}"] = node.fill.svg_data
+                svg_rid = f"rId{next_rid}"
+                image_rels.append((svg_rid, svg_name))
+                svg_rids[position] = svg_rid
+                has_svg = True
+                media_index += 1
+                next_rid += 1
+
+    # One slide relationship per run hyperlink, in document order. Identity-keyed so two runs
+    # with structurally-equal links still each get their own rel (matching the IR objects).
+    hyperlink_rels: list[tuple[str, Hyperlink]] = []
+    rid_by_link: dict[int, str] = {}
+    for node in slide.shapes:
+        for link in _shape_hyperlinks(node.text):
+            if id(link) in rid_by_link:
+                continue
+            if link.slide_index is not None and not (0 <= link.slide_index < slide_count):
+                warnings.warn(
+                    f"hyperlink targets slide {link.slide_index + 1} but the deck has "
+                    f"{slide_count} slide(s); link dropped to keep the package valid",
+                    stacklevel=2,
+                )
+                continue
+            rid = f"rId{next_rid}"
+            rid_by_link[id(link)] = rid
+            hyperlink_rels.append((rid, link))
+            next_rid += 1
+
+    def _hyperlink_rid(link: Hyperlink) -> str | None:
+        return rid_by_link.get(id(link))
 
     shapes = "".join(
-        shape_xml(node, shape_id=position + 2, blip_rid=blip_rids.get(position))
+        shape_xml(
+            node,
+            shape_id=position + 2,
+            blip_rid=blip_rids.get(position),
+            svg_rid=svg_rids.get(position),
+            hyperlink_rid=_hyperlink_rid,
+        )
         for position, node in enumerate(slide.shapes)
     )
-    slide_xml = (
-        f"{t.XML_DECL}<p:sld {t.NS}><p:cSld><p:spTree>"
-        '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
-        f"{shapes}</p:spTree></p:cSld>"
-        "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
+    n_shapes = len(slide.shapes)
+    connector_nodes = [node for node in slide.nodes if isinstance(node, Connector)]
+    connectors = "".join(
+        _connector_xml(node, shape_id=n_shapes + 2 + position)
+        for position, node in enumerate(connector_nodes)
     )
-    return slide_xml, _slide_rels(image_rels), media_parts, media_index
+    # Tables get ids after the shapes and connectors so cNvPr ids stay unique on the slide.
+    table_id_base = n_shapes + 2 + len(connector_nodes)
+    tables = "".join(
+        table_xml(node, shape_id=table_id_base + t_idx)
+        for t_idx, node in enumerate(n for n in slide.nodes if isinstance(n, TableNode))
+    )
+    bg_xml = background_xml(slide.background, bg_blip_rid) if slide.background is not None else ""
+    transition = transition_xml(slide.transition)
+    slide_xml = (
+        f"{t.XML_DECL}<p:sld {t.NS}><p:cSld>{bg_xml}<p:spTree>"
+        '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
+        f"{shapes}{connectors}{tables}</p:spTree></p:cSld>"
+        f"<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>{transition}</p:sld>"
+    )
+    return slide_xml, _slide_rels(image_rels, hyperlink_rels), media_parts, media_index, has_svg
 
 
 def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) -> bytes:
@@ -187,17 +339,25 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
 
     slide_parts: dict[str, bytes | str] = {}
     image_exts: set[str] = set()
+    has_svg = False
     media_index = 1
     for i, slide in enumerate(slides, start=1):
-        slide_xml, slide_rels, media_parts, media_index = _slide(slide, media_index)
+        slide_xml, slide_rels, media_parts, media_index, slide_has_svg = _slide(
+            slide, media_index, n
+        )
+        has_svg = has_svg or slide_has_svg
         slide_parts[f"ppt/slides/slide{i}.xml"] = slide_xml
         slide_parts[f"ppt/slides/_rels/slide{i}.xml.rels"] = slide_rels
         for part, data in media_parts.items():
             slide_parts[part] = data
             image_exts.add(part.rsplit(".", 1)[-1])
+    # The svg extension carries its own content type; never list it among raster _IMAGE_CT.
+    image_exts.discard("svg")
 
     parts: dict[str, bytes | str] = {
-        "[Content_Types].xml": _content_types(n, has_fonts=bool(font_rels), image_exts=image_exts),
+        "[Content_Types].xml": _content_types(
+            n, has_fonts=bool(font_rels), image_exts=image_exts, has_svg=has_svg
+        ),
         "_rels/.rels": t.ROOT_RELS,
         "ppt/presentation.xml": _presentation(width, height, n, font_rels),
         "ppt/_rels/presentation.xml.rels": _presentation_rels(n, font_rels),

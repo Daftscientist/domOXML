@@ -201,7 +201,7 @@ def _validate_coverage(
 
 
 def _validate_xml(fixture: CapabilityFixture, pptx: bytes | None) -> list[str]:
-    if not fixture.expected.xml:
+    if not fixture.expected.xml and not fixture.expected.required_parts:
         return []
     if pptx is None:
         return ["fixture requires OOXML assertions but render produced no PPTX"]

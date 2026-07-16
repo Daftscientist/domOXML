@@ -131,12 +131,13 @@ CSS source = what authoring produces it on the forward path.
 
 ## Round-trip methodology
 
-Reverse coverage is validated the same way as forward — by **measured fidelity**
-(`core/fidelity`): `pptx → HTML → re-render → compare to the original pptx render`. Global,
-worst-region, and structural edge similarity are enforced together, with semantic HTML assertions
-to prevent a visually similar raster fallback from being counted as editable parity. Each feature
-should land with a round-trip fixture so the score is tracked and the evidence is also reviewed
-directly.
+For fixtures with reverse round trips and configured visual floors, reverse coverage is validated
+the same way as forward — by **measured fidelity** (`core/fidelity`):
+`pptx → HTML → re-render → compare to the original pptx render`. Configured global, worst-region,
+and structural edge floors are enforced together, with semantic HTML assertions to prevent a
+visually similar raster fallback from being counted as editable parity. Each feature should land
+with a round-trip fixture and all three floors so the score is tracked and the evidence is also
+reviewed directly.
 
 Representative external decks additionally run `source PPTX → renderer` against
 `source PPTX → HTML → PPTX → the same renderer`, with pinned provenance, OPC relationship

@@ -48,6 +48,9 @@ _SNAPSHOT_JS = """
     paddingRight: cs.paddingRight, paddingBottom: cs.paddingBottom,
     listStyleType: cs.listStyleType, listStylePosition: cs.listStylePosition,
     objectFit: cs.objectFit, objectPosition: cs.objectPosition,
+    fill: cs.fill, stroke: cs.stroke, strokeWidth: cs.strokeWidth,
+    strokeDasharray: cs.strokeDasharray, strokeLinecap: cs.strokeLinecap,
+    strokeLinejoin: cs.strokeLinejoin,
   });
   // The nearest enclosing <a href> for the run, captured as a synthetic style key so the
   // extractor can recover a:hlinkClick without a separate channel. textContent (not innerText)
@@ -197,6 +200,7 @@ _SNAPSHOT_JS = """
       domoxmlOwnerNodeId: 'data-domoxml-owner-node-id',
       domoxmlLayerRole: 'data-domoxml-layer-role',
       domoxmlPreservedPayload: 'data-domoxml-preserved-payload',
+      domoxmlConnector: 'data-domoxml-connector',
     };
     for (const [key, attribute] of Object.entries(metadata)) {
       const value = el.getAttribute(attribute);

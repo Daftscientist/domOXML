@@ -46,6 +46,7 @@ from domoxml.core.ir.parse import autonum_to_css_list_style, bu_char_to_css_list
 from domoxml.core.ir.pattern import pattern_to_css
 from domoxml.core.opc import encode_payload
 from domoxml.core.svg_path import commands_to_svg_d
+from domoxml.core.svg_stroke import svg_dash_lengths
 from domoxml.core.units import emu_to_px
 from domoxml.types import (
     ConversionWarning,
@@ -799,10 +800,21 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
             if node.line is not None:
                 line = node.line
                 stroke_w_px = _number(emu_to_px(line.width_emu))
+                dash_lengths = svg_dash_lengths(line.dash, emu_to_px(line.width_emu))
+                dash_attr = (
+                    ' stroke-dasharray="'
+                    + " ".join(_number(length) for length in dash_lengths)
+                    + '"'
+                    if dash_lengths
+                    else ""
+                )
+                cap = "butt" if line.cap == "flat" else line.cap
                 stroke_attrs = (
                     f' stroke="rgba({line.color.r},{line.color.g},{line.color.b},'
                     f'{_number(line.color.a)})"'
                     f' stroke-width="{stroke_w_px}"'
+                    f'{dash_attr} stroke-linecap="{cap}" stroke-linejoin="{line.join}"'
+                    ' vector-effect="non-scaling-stroke"'
                 )
             inner = (
                 f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}'
@@ -920,6 +932,7 @@ def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:
         f"position:absolute;left:{_number(min_x)}px;top:{_number(min_y)}px;"
         f"width:{_number(svg_w)}px;height:{_number(svg_h)}px;overflow:visible"
     )
+    connector_payload = escape(node.model_dump_json(exclude={"node_id", "provenance"}), quote=True)
 
     # Build arrowhead markers.
     defs = ""
@@ -976,6 +989,7 @@ def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}'
+        f' data-domoxml-connector="{connector_payload}"'
         f' style="{escape(pos_style, quote=True)}">'
         f"{defs}{shape_el}</svg>"
     )

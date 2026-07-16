@@ -11,10 +11,10 @@ Snapshot audited on **2026-07-16** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 636 tests are collected.
-- 18 atomic PPTX capability fixtures exist; 15 are bidirectional and one is a reverse-first chart
+- 642 tests are collected.
+- 18 atomic PPTX capability fixtures exist; 16 are bidirectional and one is a reverse-first chart
   preservation fixture.
-- `custom-path` and `effects` remain forward-only fixtures.
+- `effects` remains the only forward-only fixture.
 - 9 authored HTML fidelity cases exist.
 - 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and attached
   chart-graph re-emission with a visual gate.
@@ -221,9 +221,10 @@ silently lowering the expected score.
 2. [x] Add stable node IDs and provenance; the ordered `SlideIR.contents` sequence is implemented.
 3. [x] Attach preserved source payloads and prove real re-emission for the chart case; expand the
    same contract to remaining preserved visual families under items 5 and 7.
-4. [ ] Make the remaining forward-only capability fixtures genuinely bidirectional. SVG vector
-   pictures now retain their original asset and `asvg:svgBlip` extension through the full loop;
-   custom paths and effects remain.
+4. [ ] Make the remaining forward-only capability fixture genuinely bidirectional. SVG vector
+   pictures retain their original asset and `asvg:svgBlip` extension through the full loop;
+   custom paths retain solid SVG fill/stroke and exact connector IR through normalized HTML.
+   Effects remains.
 5. [ ] Add reverse visual layers for unknown PPTX nodes instead of HTML omission plus detached XML.
 6. [ ] Add package/schema validation for generated and re-emitted decks.
 7. [ ] Add groups, media, masters/layouts/placeholders, notes, and extensions to the real-deck

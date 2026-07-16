@@ -85,6 +85,7 @@ from domoxml.core.render.browser import (
     is_complex_transform,
     parse_native_transform,
 )
+from domoxml.core.svg_stroke import parse_svg_dasharray
 from domoxml.core.units import px_to_emu, px_to_pt
 from domoxml.types import (
     ConversionWarning,
@@ -633,6 +634,15 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
     the fill can't be expressed natively and the element must rasterise."""
     styles = node.styles
 
+    if node.tag == "path":
+        svg_fill = styles.get("fill", "none").strip().lower()
+        if svg_fill not in {"", "none"}:
+            color = parse_color(svg_fill)
+            if color is None:
+                return None, "SVG fill paint has no native mapping"
+            if color.a > 0:
+                return SolidFill(color=color), None
+
     if node.tag == "img" and node.src:
         # SVG source: preserve the vector via the svgBlip extension with a PNG fallback blip.
         if _is_svg_url(node.src):
@@ -687,6 +697,41 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
     if background is not None and background.a > 0:
         return SolidFill(color=background), None
     return None, None
+
+
+def _resolve_svg_line(styles: dict[str, str]) -> tuple[Line | None, str | None]:
+    """Resolve a solid SVG stroke into a native DrawingML line."""
+    stroke = styles.get("stroke", "none").strip().lower()
+    if stroke in {"", "none"}:
+        return None, None
+    color = parse_color(stroke)
+    if color is None:
+        return None, "SVG stroke paint has no native mapping"
+    width_px = parse_length_px(styles.get("strokeWidth"))
+    if color.a <= 0 or width_px <= 0:
+        return None, None
+    dasharray = styles.get("strokeDasharray", "none").strip().lower()
+    dash = "solid"
+    if dasharray not in {"", "none"}:
+        parsed_dash = parse_svg_dasharray(dasharray, width_px)
+        if parsed_dash is None:
+            return None, "SVG custom dash array has no native mapping"
+        dash = parsed_dash
+    cap_token = styles.get("strokeLinecap", "butt")
+    cap: Literal["flat", "round", "square"] = (
+        "round" if cap_token == "round" else "square" if cap_token == "square" else "flat"
+    )
+    join_token = styles.get("strokeLinejoin", "round")
+    join: Literal["round", "bevel", "miter"] = (
+        "bevel" if join_token == "bevel" else "miter" if join_token == "miter" else "round"
+    )
+    return Line(
+        color=color,
+        width_emu=px_to_emu(width_px),
+        dash=dash,
+        cap=cap,
+        join=join,
+    ), None
 
 
 def _resolve_border_sides(
@@ -993,17 +1038,25 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # An inline <svg> with exactly one <path> child whose d attribute was captured
         # can be converted to a native a:custGeom instead of being rasterised.
         if node.tag == "svg":
+            connector = extract_connector(node, None, None)
+            if connector is not None:
+                contents.append(identities.apply(connector, node))
+                consumed |= _subtree(node.index, children)
+                coverage.append(_native_coverage(_label(node)))
+                continue
             svg = extract_custom_geometry(node, rendered.nodes, children)
             if svg.warning is not None:
                 warnings.append(svg.warning)
             if svg.geometry is not None:
                 fill_node = svg.style_node
                 fill, fill_reason = _resolve_fill(fill_node, rendered)
-                if fill_reason is not None:
+                line, line_reason = _resolve_svg_line(fill_node.styles)
+                paint_reason = fill_reason or line_reason
+                if paint_reason is not None:
                     label = _label(node)
                     shape = _raster_shape(node, rendered)
                     consumed |= _subtree(node.index, children)
-                    raster_reason = f"SVG custom geometry fill cannot map natively: {fill_reason}"
+                    raster_reason = f"SVG custom geometry paint cannot map natively: {paint_reason}"
                     if shape is None:
                         coverage.append(_failed_coverage(label, raster_reason))
                         warnings.append(
@@ -1021,25 +1074,6 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             )
                         )
                     continue
-                (side_top, side_right, side_bottom, side_left), border_warnings = (
-                    _resolve_border_sides(fill_node.styles)
-                )
-                present_sides = [
-                    s for s in (side_top, side_right, side_bottom, side_left) if s is not None
-                ]
-                line: Line | None = None
-                if present_sides:
-                    uniform = len(present_sides) == 4 and all(
-                        s == present_sides[0] for s in present_sides
-                    )
-                    if uniform:
-                        line = present_sides[0]
-                    else:
-                        line = max(present_sides, key=lambda s: s.width_emu)
-                        border_warnings.append(
-                            "non-uniform SVG border approximated by the heaviest outline"
-                        )
-
                 # Build the ShapeNode with custom_geom
                 box = _box(node)
                 contents.append(
@@ -1054,25 +1088,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                 )
                 consumed |= _subtree(node.index, children)
-                approximation_reasons = list(border_warnings)
-                if approximation_reasons:
-                    approximation_reason = "; ".join(dict.fromkeys(approximation_reasons))
-                    coverage.append(
-                        CoverageItem(
-                            element=_label(node),
-                            representation=Representation.APPROXIMATED,
-                            editability=Editability.SEMANTIC,
-                            reason=approximation_reason,
-                        )
-                    )
-                    warnings.append(
-                        ConversionWarning(
-                            message=approximation_reason,
-                            element=_label(node),
-                        )
-                    )
-                else:
-                    coverage.append(_native_coverage(_label(node)))
+                coverage.append(_native_coverage(_label(node)))
                 continue
             else:
                 # SVG custom-geometry failed: fall through to raster
@@ -1188,7 +1204,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
 
         # --- HR / thin-element connector detection ---
         # Check before emitting a ShapeNode; <hr> and thin unfilled elements become Connectors.
-        connector = extract_connector(node, fill, line)
+        connector_line = line
+        if node.tag == "hr" and connector_line is None and present_sides:
+            connector_line = max(present_sides, key=lambda side: side.width_emu)
+        connector = extract_connector(node, fill, connector_line)
         if connector is not None:
             contents.append(identities.apply(connector, node))
             consumed.add(node.index)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pydantic import ValidationError
+
 from domoxml.core.ir.model import Connector, Fill, Line, Point, Rgba
 from domoxml.core.render.browser import RenderedNode
 from domoxml.core.units import px_to_emu
@@ -12,6 +14,13 @@ _MIN_LONG_PX = 40.0
 
 def extract_connector(node: RenderedNode, fill: Fill | None, line: Line | None) -> Connector | None:
     """Map ``<hr>`` or a conservative thin unfilled element to a straight connector."""
+    serialized = node.styles.get("domoxmlConnector")
+    if node.tag == "svg" and serialized:
+        try:
+            return Connector.model_validate_json(serialized)
+        except ValidationError:
+            return None
+
     horizontal = node.height <= _MAX_THIN_PX and node.width >= _MIN_LONG_PX
     vertical = node.width <= _MAX_THIN_PX and node.height >= _MIN_LONG_PX
     if node.tag != "hr" and (fill is not None or not (horizontal or vertical)):

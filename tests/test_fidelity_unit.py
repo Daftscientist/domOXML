@@ -104,3 +104,22 @@ def test_regional_similarity_weights_only_worst_decile() -> None:
 
     # One small changed object must not be averaged across the mostly blank slide.
     assert report.regional_similarity < 0.95
+
+
+def test_structural_similarity_detects_missing_small_foreground() -> None:
+    reference = Image.new("RGB", (960, 720), "white")
+    candidate = reference.copy()
+    draw = ImageDraw.Draw(reference)
+    draw.rectangle((96, 96, 672, 288), fill=(79, 129, 189))
+    for offset in (0, 9, 18):
+        draw.rectangle((110, 110 + offset, 250, 114 + offset), fill="white")
+
+    def to_png(image: Image.Image) -> bytes:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    report = compare(to_png(reference), to_png(candidate))
+
+    assert report.similarity > 0.9
+    assert report.structural_similarity < 0.9

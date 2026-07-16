@@ -99,9 +99,12 @@ def _tc_pr_xml(
 def _tx_body_xml(body: TextBody | None, hyperlink_rid: HyperlinkRid) -> str:
     """Emit ``<a:txBody>`` for a table cell."""
     if body is None:
-        return '<a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="l"/></a:p></a:txBody>'
+        return (
+            '<a:txBody><a:bodyPr wrap="square"/><a:lstStyle/>'
+            '<a:p><a:pPr algn="l"/></a:p></a:txBody>'
+        )
     paragraphs = "".join(_paragraph(p, hyperlink_rid) for p in body.paragraphs)
-    return f"<a:txBody><a:bodyPr/><a:lstStyle/>{paragraphs}</a:txBody>"
+    return f'<a:txBody><a:bodyPr wrap="square"/><a:lstStyle/>{paragraphs}</a:txBody>'
 
 
 def _merge_continuation_tc() -> str:

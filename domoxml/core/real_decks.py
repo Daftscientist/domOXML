@@ -67,6 +67,7 @@ class DeckVisualExpected(BaseModel):
     slide: int = Field(ge=0)
     min_similarity: float = Field(ge=0.0, le=1.0)
     min_regional_similarity: float = Field(ge=0.0, le=1.0)
+    min_structural_similarity: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class RealDeckCase(BaseModel):
@@ -179,6 +180,9 @@ def validate_real_deck_roundtrip(case: RealDeckCase, pptx: bytes) -> tuple[str, 
     """Validate re-emitted OPC relationships and required editable XML text/content."""
     errors = list(validate_opc_package(pptx))
     package = OpcPackage.from_bytes(pptx)
+    slide_count = sum(bool(_SLIDE_PART.fullmatch(part)) for part in package.parts)
+    if slide_count != case.package.slides:
+        errors.append(f"roundtrip slide count {slide_count} != expected {case.package.slides}")
     xml = "\n".join(
         package.read(part).decode("utf-8", errors="replace")
         for part in package.parts

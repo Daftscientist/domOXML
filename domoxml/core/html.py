@@ -616,7 +616,7 @@ def _table_html(
     table_style = (
         f"position:absolute;left:{left};top:{top};"
         f"width:{w};height:{h};"
-        "border-collapse:collapse;table-layout:fixed"
+        "box-sizing:border-box;border-collapse:collapse;table-layout:fixed"
     )
 
     # colgroup
@@ -690,7 +690,7 @@ def _table_html(
 
             col_cursor += max(1, cell.col_span)
 
-        rows_html += f"<tr>{cells_html}</tr>"
+        rows_html += f'<tr style="height:{_px(row.height_emu)}">{cells_html}</tr>'
 
     return (
         f'<table style="{escape(table_style, quote=True)}">'

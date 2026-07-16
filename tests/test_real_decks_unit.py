@@ -9,10 +9,12 @@ import pytest
 from pydantic import ValidationError
 
 from domoxml.core.real_decks import (
+    DeckPackageExpected,
     RealDeckCase,
     load_real_decks,
     validate_opc_package,
     validate_real_deck,
+    validate_real_deck_roundtrip,
 )
 from domoxml.presentation import Presentation
 
@@ -34,6 +36,17 @@ def test_repository_real_decks_have_valid_pins_and_relationships() -> None:
 def test_repository_real_decks_match_reverse_contracts() -> None:
     for case in load_real_decks(Path("real-decks/pptx")):
         assert validate_real_deck(case, Presentation.from_pptx(case.pptx)) == ()
+
+
+def test_real_deck_roundtrip_rejects_dropped_slides() -> None:
+    case = next(
+        case for case in load_real_decks(Path("real-decks/pptx")) if case.package.slides == 1
+    )
+    expected_two_slides = case.model_copy(update={"package": DeckPackageExpected(slides=2)})
+
+    errors = validate_real_deck_roundtrip(expected_two_slides, case.pptx)
+
+    assert "roundtrip slide count 1 != expected 2" in errors
 
 
 def test_real_deck_requires_visual_gate_or_exclusion() -> None:

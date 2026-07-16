@@ -179,6 +179,7 @@ def test_table_xml_cell_text() -> None:
     node = _simple_table(n_rows=1, n_cols=1)
     xml = table_xml(node, shape_id=2)
     assert "r0c0" in xml
+    assert '<a:bodyPr wrap="square"/>' in xml
 
 
 def test_table_xml_cell_fill() -> None:
@@ -366,6 +367,15 @@ def test_html_table_has_colgroup() -> None:
     html = serialize_canvas([slide]).slides[0].html
     assert "<colgroup" in html
     assert html.count("<col ") == 3
+
+
+def test_html_table_preserves_authored_row_heights_and_border_box() -> None:
+    slide = _slide_with_table(_simple_table(n_rows=2, n_cols=1))
+
+    html = serialize_canvas([slide]).slides[0].html
+
+    assert "box-sizing:border-box" in html
+    assert html.count('<tr style="height:52.4934px">') == 2
 
 
 # --------------------------------------------------------------------------- full round-trip

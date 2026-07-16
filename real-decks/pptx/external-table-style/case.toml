@@ -25,9 +25,18 @@ html_contains = [
   "rgba(79,129,189,1)",
   "rgba(208,216,232,1)",
 ]
-roundtrip_xml_contains = ["Wide table cell remains visible", "B1", "A2", "B2"]
+roundtrip_xml_contains = [
+  "Wide table cell remains visible",
+  "B1",
+  "A2",
+  "B2",
+  'sz="1800"',
+  'typeface="Calibri"',
+  'wrap="square"',
+]
 
 [[visual]]
 slide = 0
 min_similarity = 0.99
 min_regional_similarity = 0.965
+min_structural_similarity = 0.92

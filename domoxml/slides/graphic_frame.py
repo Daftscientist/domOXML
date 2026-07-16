@@ -37,6 +37,7 @@ _ALIGN_FROM_OOXML: dict[str, Literal["left", "center", "right", "justify"]] = {
 _POWERPOINT_DEFAULT_TABLE_STYLE = "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"
 _DEFAULT_CELL_MARGINS = (91_440, 45_720, 91_440, 45_720)
 _DEFAULT_TABLE_BORDER_WIDTH = 12_700
+_DEFAULT_TABLE_FONT_SIZE_PT = 18.0
 
 type FillParser = Callable[[Element], Fill | None]
 type LineParser = Callable[[Element], Line | None]
@@ -74,12 +75,25 @@ def preservation_reason(uri: str) -> str:
     )
 
 
+def _has_attribute(primary: Element | None, fallback: Element | None, name: str) -> bool:
+    return (primary is not None and primary.get(name) is not None) or (
+        fallback is not None and fallback.get(name) is not None
+    )
+
+
+def _has_child(primary: Element | None, fallback: Element | None, tag: str) -> bool:
+    return (primary is not None and primary.find(tag, _NS) is not None) or (
+        fallback is not None and fallback.find(tag, _NS) is not None
+    )
+
+
 def _text_body(
     cell: Element,
     text_run_for: TextRunParser,
     *,
     default_color: Rgba | None = None,
     default_bold: bool = False,
+    default_font_family: str = "sans-serif",
 ) -> TextBody | None:
     body = cell.find("a:txBody", _NS)
     if body is None:
@@ -95,13 +109,20 @@ def _text_body(
             run = text_run_for(element)
             if run is None:
                 continue
-            properties = element.find("a:rPr", _NS)
+            run_properties = element.find("a:rPr", _NS)
+            default_properties = (
+                properties.find("a:defRPr", _NS) if properties is not None else None
+            )
             update: dict[str, object] = {}
-            if default_color is not None and (
-                properties is None or properties.find("a:solidFill", _NS) is None
+            if not _has_attribute(run_properties, default_properties, "sz"):
+                update["size_pt"] = _DEFAULT_TABLE_FONT_SIZE_PT
+            if not _has_child(run_properties, default_properties, "a:latin"):
+                update["font_family"] = default_font_family
+            if default_color is not None and not _has_child(
+                run_properties, default_properties, "a:solidFill"
             ):
                 update["color"] = default_color
-            if default_bold and (properties is None or properties.get("b") is None):
+            if default_bold and not _has_attribute(run_properties, default_properties, "b"):
                 update["bold"] = True
             runs.append(run.model_copy(update=update) if update else run)
         if runs:
@@ -166,13 +187,13 @@ def _default_table_style(
     return fill, borders, light if is_header else None, is_header
 
 
-def _borders(properties: Element, line_for: LineParser) -> SideLines | None:
-    lines = {
-        side: line_for(element)
-        if (element := properties.find(f"a:{tag}", _NS)) is not None
-        else None
-        for side, tag in (("left", "lnL"), ("right", "lnR"), ("top", "lnT"), ("bottom", "lnB"))
-    }
+def _borders(
+    properties: Element, line_for: LineParser, defaults: SideLines | None = None
+) -> SideLines | None:
+    lines: dict[str, Line | None] = {}
+    for side, tag in (("left", "lnL"), ("right", "lnR"), ("top", "lnT"), ("bottom", "lnB")):
+        element = properties.find(f"a:{tag}", _NS)
+        lines[side] = line_for(element) if element is not None else getattr(defaults, side, None)
     return SideLines(**lines) if any(lines.values()) else None  # type: ignore[arg-type]
 
 
@@ -183,6 +204,7 @@ def parse_table(
     line_for: LineParser,
     text_run_for: TextRunParser,
     theme_colors: Mapping[str, str] | None = None,
+    default_font_family: str = "sans-serif",
 ) -> TableNode | None:
     """Parse a table ``p:graphicFrame`` using caller-provided style resolvers."""
     transform = element.find("p:xfrm", _NS)
@@ -218,7 +240,15 @@ def parse_table(
                     _int_attr(properties, "marB", _DEFAULT_CELL_MARGINS[3]),
                 )
             explicit_fill = fill_for(properties) if properties is not None else None
-            explicit_borders = _borders(properties, line_for) if properties is not None else None
+            has_explicit_no_fill = (
+                properties is not None and properties.find("a:noFill", _NS) is not None
+            )
+            fill = None if has_explicit_no_fill else explicit_fill or style_fill
+            borders = (
+                _borders(properties, line_for, style_borders)
+                if properties is not None
+                else style_borders
+            )
             cells.append(
                 TableCell(
                     text=_text_body(
@@ -226,9 +256,10 @@ def parse_table(
                         text_run_for,
                         default_color=style_text_color,
                         default_bold=style_bold,
+                        default_font_family=default_font_family,
                     ),
-                    fill=explicit_fill or style_fill,
-                    borders=explicit_borders or style_borders,
+                    fill=fill,
+                    borders=borders,
                     margins=margins,
                     col_span=max(1, _int_attr(cell, "gridSpan", 1)),
                     row_span=max(1, _int_attr(cell, "rowSpan", 1)),
@@ -254,6 +285,7 @@ def read_graphic_frame(
     line_for: LineParser,
     text_run_for: TextRunParser,
     theme_colors: Mapping[str, str] | None = None,
+    default_font_family: str = "sans-serif",
 ) -> GraphicFrameRead:
     """Read a supported graphic frame or classify it for explicit preservation."""
     uri = graphic_frame_uri(element)
@@ -264,6 +296,7 @@ def read_graphic_frame(
             line_for=line_for,
             text_run_for=text_run_for,
             theme_colors=theme_colors,
+            default_font_family=default_font_family,
         )
         if table is not None:
             return GraphicFrameRead(table=table)

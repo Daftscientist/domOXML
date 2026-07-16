@@ -157,6 +157,23 @@ def test_repeated_bitmap_reuses_one_media_relationship() -> None:
     assert media == ["ppt/media/image1.png"]
 
 
+def test_repeated_bitmap_reuses_one_media_part_across_slides() -> None:
+    picture = PictureFill(data=b"same-png")
+    slide = SlideIR(
+        width=12_192_000,
+        height=6_858_000,
+        shapes=(ShapeNode(box=Box(x=0, y=0, width=100, height=100), fill=picture),),
+    )
+
+    pptx = build_pptx([slide, slide], faces=[])
+    with zipfile.ZipFile(io.BytesIO(pptx)) as archive:
+        media = [name for name in archive.namelist() if name.startswith("ppt/media/")]
+
+    assert media == ["ppt/media/image1.png"]
+    assert 'Target="../media/image1.png"' in _slide_rels(pptx)
+    assert 'Target="../media/image1.png"' in _slide_rels(pptx, "ppt/slides/_rels/slide2.xml.rels")
+
+
 def test_build_pptx_requires_a_slide() -> None:
     with pytest.raises(ValueError, match="at least one slide"):
         build_pptx([])

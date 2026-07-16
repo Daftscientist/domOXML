@@ -195,34 +195,37 @@ def _connector_xml(conn: Connector, *, shape_id: int) -> str:
 
 
 def _slide(
-    slide: SlideIR, media_start: int, slide_count: int
-) -> tuple[str, str, dict[str, bytes], int, bool]:
+    slide: SlideIR,
+    media_registry: dict[tuple[str, bytes], str],
+    slide_count: int,
+) -> tuple[str, str, dict[str, bytes], bool]:
     """Build one slide.
 
-    Returns ``(slide_xml, slide_rels_xml, media_parts, next_media_index, has_svg)``.
-    ``media_start`` is the next free ``ppt/media/imageN`` index (unique across the deck).
+    Media payloads are registered once across the deck, while each slide retains its own
+    relationship IDs.
     """
     media_parts: dict[str, bytes] = {}
     image_rels: list[tuple[str, str]] = []
     blip_rids: dict[int, str] = {}
     svg_rids: dict[int, str] = {}
     has_svg = False
-    media_index = media_start
     next_rid = 2  # rId1 is the layout
-    media_rids: dict[tuple[str, bytes], str] = {}
+    media_rids: dict[str, str] = {}
 
     def register_media(data: bytes, ext: str) -> str:
-        nonlocal media_index, next_rid
+        nonlocal next_rid
         key = (ext, data)
-        existing = media_rids.get(key)
-        if existing is not None:
-            return existing
-        name = f"image{media_index}.{ext}"
-        media_parts[f"ppt/media/{name}"] = data
+        name = media_registry.get(key)
+        if name is None:
+            name = f"image{len(media_registry) + 1}.{ext}"
+            media_registry[key] = name
+            media_parts[f"ppt/media/{name}"] = data
+        existing_rid = media_rids.get(name)
+        if existing_rid is not None:
+            return existing_rid
         rid = f"rId{next_rid}"
         image_rels.append((rid, name))
-        media_rids[key] = rid
-        media_index += 1
+        media_rids[name] = rid
         next_rid += 1
         return rid
 
@@ -318,7 +321,7 @@ def _slide(
         f"{shapes}{connectors}{tables}</p:spTree></p:cSld>"
         f"<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>{transition}</p:sld>"
     )
-    return slide_xml, _slide_rels(image_rels, hyperlink_rels), media_parts, media_index, has_svg
+    return slide_xml, _slide_rels(image_rels, hyperlink_rels), media_parts, has_svg
 
 
 def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) -> bytes:
@@ -352,11 +355,9 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
     slide_parts: dict[str, bytes | str] = {}
     image_exts: set[str] = set()
     has_svg = False
-    media_index = 1
+    media_registry: dict[tuple[str, bytes], str] = {}
     for i, slide in enumerate(slides, start=1):
-        slide_xml, slide_rels, media_parts, media_index, slide_has_svg = _slide(
-            slide, media_index, n
-        )
+        slide_xml, slide_rels, media_parts, slide_has_svg = _slide(slide, media_registry, n)
         has_svg = has_svg or slide_has_svg
         slide_parts[f"ppt/slides/slide{i}.xml"] = slide_xml
         slide_parts[f"ppt/slides/_rels/slide{i}.xml.rels"] = slide_rels

@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import math
 
-from PIL import Image, ImageChops, ImageFilter, ImageOps, ImageStat
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps, ImageStat
 from pydantic import BaseModel, ConfigDict
 
 # A per-pixel luma difference above this reads as a *visible* difference (below it is
@@ -15,6 +15,9 @@ _REGION_COLUMNS = 16
 _REGION_ROWS = 9
 _WORST_REGION_FRACTION = 0.10
 _REGION_BLUR_RADIUS_AT_2560 = 3.0
+_EDGE_THRESHOLD = 12
+_EDGE_BLUR_RADIUS_AT_720 = 0.6
+_EDGE_TOLERANCE_RADIUS_AT_720 = 2
 
 
 class FidelityReport(BaseModel):
@@ -24,6 +27,7 @@ class FidelityReport(BaseModel):
 
     similarity: float  # 1.0 = identical; 1 - (mean absolute diff / 255)
     regional_similarity: float  # same scale, over the worst decile of slide regions
+    structural_similarity: float  # tolerant edge precision/recall, sensitive to missing objects
     perceptible_ratio: float  # fraction of pixels that differ visibly (> threshold)
     mean_diff: float  # mean absolute per-channel difference, 0..255
     diff_png: bytes | None = None  # amplified difference heatmap, when requested
@@ -49,6 +53,42 @@ def align_candidate_png(reference: bytes, candidate: bytes) -> bytes:
     buffer = io.BytesIO()
     cand.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _edge_similarity(ref: Image.Image, cand: Image.Image) -> float:
+    scale = max(0.5, min(ref.width / 960.0, ref.height / 720.0))
+    blur_radius = _EDGE_BLUR_RADIUS_AT_720 * scale
+    tolerance_radius = max(1, round(_EDGE_TOLERANCE_RADIUS_AT_720 * scale))
+    tolerance_size = tolerance_radius * 2 + 1
+
+    def edges(image: Image.Image) -> Image.Image:
+        result = (
+            image.convert("L")
+            .filter(ImageFilter.GaussianBlur(blur_radius))
+            .filter(ImageFilter.FIND_EDGES)
+        )
+        ImageDraw.Draw(result).rectangle((0, 0, result.width - 1, result.height - 1), outline=0)
+        return result
+
+    reference_edges = edges(ref)
+    candidate_edges = edges(cand)
+    mask_lut = [0] * _EDGE_THRESHOLD + [255] * (256 - _EDGE_THRESHOLD)
+    reference_mask = reference_edges.point(mask_lut)  # pyright: ignore[reportUnknownMemberType]
+    candidate_mask = candidate_edges.point(mask_lut)  # pyright: ignore[reportUnknownMemberType]
+    reference_tolerance = reference_edges.filter(ImageFilter.MaxFilter(tolerance_size))
+    candidate_tolerance = candidate_edges.filter(ImageFilter.MaxFilter(tolerance_size))
+
+    def recall(source: Image.Image, target: Image.Image, mask: Image.Image) -> float:
+        count = ImageStat.Stat(mask).sum[0] / 255
+        if count == 0:
+            return 1.0
+        loss = ImageStat.Stat(ImageChops.subtract(source, target), mask).sum[0]
+        return max(0.0, 1.0 - loss / count / 255)
+
+    return min(
+        recall(reference_edges, candidate_tolerance, reference_mask),
+        recall(candidate_edges, reference_tolerance, candidate_mask),
+    )
 
 
 def compare(reference: bytes, candidate: bytes, *, heatmap: bool = False) -> FidelityReport:
@@ -91,6 +131,7 @@ def compare(reference: bytes, candidate: bytes, *, heatmap: bool = False) -> Fid
     return FidelityReport(
         similarity=1.0 - mean_diff / 255.0,
         regional_similarity=1.0 - worst_region_diff / 255.0,
+        structural_similarity=_edge_similarity(ref, cand),
         perceptible_ratio=perceptible,
         mean_diff=mean_diff,
         diff_png=diff_png,

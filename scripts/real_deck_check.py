@@ -99,7 +99,8 @@ def main(argv: list[str] | None = None) -> int:
                     (target / f"{stem}-diff.png").write_bytes(report.diff_png)
                 print(
                     f"     {backend} slide{expected.slide}: global {report.similarity:.3f}, "
-                    f"regional {report.regional_similarity:.3f}"
+                    f"regional {report.regional_similarity:.3f}, "
+                    f"structural {report.structural_similarity:.3f}"
                 )
                 if report.similarity < expected.min_similarity:
                     errors.append(
@@ -111,6 +112,12 @@ def main(argv: list[str] | None = None) -> int:
                         f"{backend} slide {expected.slide} regional "
                         f"{report.regional_similarity:.3f} "
                         f"< expected {expected.min_regional_similarity:.3f}"
+                    )
+                if report.structural_similarity < expected.min_structural_similarity:
+                    errors.append(
+                        f"{backend} slide {expected.slide} structural "
+                        f"{report.structural_similarity:.3f} "
+                        f"< expected {expected.min_structural_similarity:.3f}"
                     )
 
         if errors:

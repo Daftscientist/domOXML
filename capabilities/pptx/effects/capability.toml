@@ -16,7 +16,7 @@ min_count = 1
 # Inset shadow card: raster fallback because LibreOffice ignores a:innerShdw
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"
-xpath = ".//a:blipFill"
+xpath = ".//p:pic/p:blipFill"
 min_count = 1
 
 # Glow halo card: zero-offset box-shadow → a:glow (preferred) or outerShdw

@@ -133,6 +133,40 @@ def explicit_fill_fractions(
     return (left, top, right, bottom)
 
 
+def explicit_crop_fractions(
+    draw_w: float,
+    draw_h: float,
+    box_w: float,
+    box_h: float,
+    *,
+    pos_x: float = 0.5,
+    pos_y: float = 0.5,
+) -> Insets:
+    """Recover ``a:srcRect`` insets from an explicitly sized oversized background.
+
+    CSS percentage sizes emitted by :func:`srcrect_to_background` enlarge the source so the
+    visible window fills the shape. When the painted image covers the box on both axes, its
+    clipped overflow maps exactly to source-image crop fractions. A smaller painted axis would
+    introduce padding, which ``a:srcRect`` cannot represent, so that case returns no crop.
+    """
+    if (
+        draw_w <= 0
+        or draw_h <= 0
+        or box_w <= 0
+        or box_h <= 0
+        or draw_w + 1e-6 < box_w
+        or draw_h + 1e-6 < box_h
+    ):
+        return (0.0, 0.0, 0.0, 0.0)
+    overflow_x = max(0.0, 1.0 - box_w / draw_w)
+    overflow_y = max(0.0, 1.0 - box_h / draw_h)
+    left = overflow_x * _clamp01(pos_x)
+    right = overflow_x - left
+    top = overflow_y * _clamp01(pos_y)
+    bottom = overflow_y - top
+    return (left, top, right, bottom)
+
+
 def srcrect_to_background(insets: Insets) -> tuple[str, str]:
     """Invert an ``a:srcRect`` crop (cover semantics) back to CSS ``(background-size,
     background-position)``.

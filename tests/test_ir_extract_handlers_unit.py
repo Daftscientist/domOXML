@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from domoxml.core.ir.model import Rgba, SolidFill
+from domoxml.core.ir.model import Rgba, SolidFill, TextBody, TextParagraph, TextRun
 from domoxml.core.ir.slide_properties_extract import (
     extract_slide_properties,
     extract_transition,
@@ -80,6 +80,30 @@ def test_table_handler_builds_grid_through_resolver_contracts() -> None:
     assert extracted.col_widths_emu == (952_500, 952_500)
     assert extracted.rows[0].cells[0].col_span == 2
     assert extracted.rows[0].cells[0].margins[0] == 38_100
+
+
+def test_table_handler_recovers_text_from_nested_reverse_html_body() -> None:
+    table = RenderedNode(tag="table", x=0, y=0, width=100, height=20, index=0, parent=-1)
+    row = RenderedNode(tag="tr", x=0, y=0, width=100, height=20, index=1, parent=0)
+    cell = RenderedNode(tag="td", x=0, y=0, width=100, height=20, index=2, parent=1)
+    text_container = RenderedNode(tag="div", x=0, y=0, width=100, height=20, index=3, parent=2)
+    body = TextBody(
+        paragraphs=(
+            TextParagraph(runs=(TextRun(text="Nested cell", font_family="Arial", size_pt=12),)),
+        )
+    )
+
+    extracted = extract_table(
+        table,
+        (table, row, cell, text_container),
+        {0: [1], 1: [2], 2: [3]},
+        fill_for=lambda _node: None,
+        borders_for=lambda _styles: ((None, None, None, None), []),
+        text_for=lambda node: body if node is text_container else None,
+    )
+
+    assert extracted is not None
+    assert extracted.rows[0].cells[0].text == body
 
 
 def test_table_handler_uses_row_fill_behind_transparent_cells() -> None:

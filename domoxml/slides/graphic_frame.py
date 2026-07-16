@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 from xml.etree.ElementTree import Element
@@ -11,7 +11,9 @@ from domoxml.core.ir.model import (
     Box,
     Fill,
     Line,
+    Rgba,
     SideLines,
+    SolidFill,
     TableCell,
     TableNode,
     TableRow,
@@ -32,6 +34,10 @@ _ALIGN_FROM_OOXML: dict[str, Literal["left", "center", "right", "justify"]] = {
     "r": "right",
     "just": "justify",
 }
+_POWERPOINT_DEFAULT_TABLE_STYLE = "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"
+_DEFAULT_CELL_MARGINS = (91_440, 45_720, 91_440, 45_720)
+_DEFAULT_TABLE_BORDER_WIDTH = 12_700
+_DEFAULT_TABLE_FONT_SIZE_PT = 18.0
 
 type FillParser = Callable[[Element], Fill | None]
 type LineParser = Callable[[Element], Line | None]
@@ -69,7 +75,26 @@ def preservation_reason(uri: str) -> str:
     )
 
 
-def _text_body(cell: Element, text_run_for: TextRunParser) -> TextBody | None:
+def _has_attribute(primary: Element | None, fallback: Element | None, name: str) -> bool:
+    return (primary is not None and primary.get(name) is not None) or (
+        fallback is not None and fallback.get(name) is not None
+    )
+
+
+def _has_child(primary: Element | None, fallback: Element | None, tag: str) -> bool:
+    return (primary is not None and primary.find(tag, _NS) is not None) or (
+        fallback is not None and fallback.find(tag, _NS) is not None
+    )
+
+
+def _text_body(
+    cell: Element,
+    text_run_for: TextRunParser,
+    *,
+    default_color: Rgba | None = None,
+    default_bold: bool = False,
+    default_font_family: str = "sans-serif",
+) -> TextBody | None:
     body = cell.find("a:txBody", _NS)
     if body is None:
         return None
@@ -79,23 +104,96 @@ def _text_body(cell: Element, text_run_for: TextRunParser) -> TextBody | None:
         alignment = _ALIGN_FROM_OOXML.get(
             properties.get("algn", "l") if properties is not None else "l", "left"
         )
-        runs = tuple(
-            run
-            for element in paragraph.findall("a:r", _NS)
-            if (run := text_run_for(element)) is not None
-        )
+        runs: list[TextRun] = []
+        for element in paragraph.findall("a:r", _NS):
+            run = text_run_for(element)
+            if run is None:
+                continue
+            run_properties = element.find("a:rPr", _NS)
+            default_properties = (
+                properties.find("a:defRPr", _NS) if properties is not None else None
+            )
+            update: dict[str, object] = {}
+            if not _has_attribute(run_properties, default_properties, "sz"):
+                update["size_pt"] = _DEFAULT_TABLE_FONT_SIZE_PT
+            if not _has_child(run_properties, default_properties, "a:latin"):
+                update["font_family"] = default_font_family
+            if default_color is not None and not _has_child(
+                run_properties, default_properties, "a:solidFill"
+            ):
+                update["color"] = default_color
+            if default_bold and not _has_attribute(run_properties, default_properties, "b"):
+                update["bold"] = True
+            runs.append(run.model_copy(update=update) if update else run)
         if runs:
-            paragraphs.append(TextParagraph(runs=runs, align=alignment))
+            paragraphs.append(TextParagraph(runs=tuple(runs), align=alignment))
     return TextBody(paragraphs=tuple(paragraphs)) if paragraphs else None
 
 
-def _borders(properties: Element, line_for: LineParser) -> SideLines | None:
-    lines = {
-        side: line_for(element)
-        if (element := properties.find(f"a:{tag}", _NS)) is not None
-        else None
-        for side, tag in (("left", "lnL"), ("right", "lnR"), ("top", "lnT"), ("bottom", "lnB"))
-    }
+def _theme_color(colors: Mapping[str, str], slot: str) -> Rgba | None:
+    value = colors.get(slot, "")
+    if len(value) != 6:
+        return None
+    try:
+        return Rgba(r=int(value[:2], 16), g=int(value[2:4], 16), b=int(value[4:], 16))
+    except ValueError:
+        return None
+
+
+def _tint(color: Rgba, amount: float) -> Rgba:
+    def to_linear(channel: int) -> float:
+        value = channel / 255
+        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+
+    def to_srgb(channel: float) -> int:
+        value = channel * 12.92 if channel <= 0.0031308 else 1.055 * channel ** (1 / 2.4) - 0.055
+        return round(max(0.0, min(1.0, value)) * 255)
+
+    return Rgba(
+        r=to_srgb(to_linear(color.r) * amount + (1 - amount)),
+        g=to_srgb(to_linear(color.g) * amount + (1 - amount)),
+        b=to_srgb(to_linear(color.b) * amount + (1 - amount)),
+        a=color.a,
+    )
+
+
+def _default_table_style(
+    table: Element,
+    row_index: int,
+    colors: Mapping[str, str],
+) -> tuple[SolidFill | None, SideLines | None, Rgba | None, bool]:
+    properties = table.find("a:tblPr", _NS)
+    style_id = (
+        properties.findtext("a:tableStyleId", default="", namespaces=_NS)
+        if properties is not None
+        else ""
+    )
+    if style_id.upper() != _POWERPOINT_DEFAULT_TABLE_STYLE:
+        return None, None, None, False
+
+    accent = _theme_color(colors, "accent1")
+    light = _theme_color(colors, "lt1") or Rgba(r=255, g=255, b=255)
+    if accent is None:
+        return None, None, None, False
+
+    first_row = properties is not None and properties.get("firstRow") == "1"
+    band_rows = properties is not None and properties.get("bandRow") == "1"
+    is_header = first_row and row_index == 0
+    body_index = row_index - (1 if first_row else 0)
+    is_band = band_rows and body_index >= 0 and body_index % 2 == 0
+    fill = SolidFill(color=accent if is_header else _tint(accent, 0.4 if is_band else 0.2))
+    border = Line(color=light, width_emu=_DEFAULT_TABLE_BORDER_WIDTH)
+    borders = SideLines(left=border, right=border, top=border, bottom=border)
+    return fill, borders, light if is_header else None, is_header
+
+
+def _borders(
+    properties: Element, line_for: LineParser, defaults: SideLines | None = None
+) -> SideLines | None:
+    lines: dict[str, Line | None] = {}
+    for side, tag in (("left", "lnL"), ("right", "lnR"), ("top", "lnT"), ("bottom", "lnB")):
+        element = properties.find(f"a:{tag}", _NS)
+        lines[side] = line_for(element) if element is not None else getattr(defaults, side, None)
     return SideLines(**lines) if any(lines.values()) else None  # type: ignore[arg-type]
 
 
@@ -105,6 +203,8 @@ def parse_table(
     fill_for: FillParser,
     line_for: LineParser,
     text_run_for: TextRunParser,
+    theme_colors: Mapping[str, str] | None = None,
+    default_font_family: str = "sans-serif",
 ) -> TableNode | None:
     """Parse a table ``p:graphicFrame`` using caller-provided style resolvers."""
     transform = element.find("p:xfrm", _NS)
@@ -112,12 +212,6 @@ def parse_table(
     extent = transform.find("a:ext", _NS) if transform is not None else None
     if offset is None or extent is None:
         return None
-    box = Box(
-        x=_int_attr(offset, "x"),
-        y=_int_attr(offset, "y"),
-        width=_int_attr(extent, "cx"),
-        height=_int_attr(extent, "cy"),
-    )
     table = element.find("a:graphic/a:graphicData/a:tbl", _NS)
     if table is None:
         return None
@@ -128,25 +222,44 @@ def parse_table(
         return None
 
     rows: list[TableRow] = []
-    for row in table.findall("a:tr", _NS):
+    for row_index, row in enumerate(table.findall("a:tr", _NS)):
+        style_fill, style_borders, style_text_color, style_bold = _default_table_style(
+            table, row_index, theme_colors or {}
+        )
         cells: list[TableCell] = []
         for cell in row.findall("a:tc", _NS):
             if cell.get("hMerge") == "1" or cell.get("vMerge") == "1":
                 continue
             properties = cell.find("a:tcPr", _NS)
-            margins = (0, 0, 0, 0)
+            margins = _DEFAULT_CELL_MARGINS
             if properties is not None:
                 margins = (
-                    _int_attr(properties, "marL"),
-                    _int_attr(properties, "marT"),
-                    _int_attr(properties, "marR"),
-                    _int_attr(properties, "marB"),
+                    _int_attr(properties, "marL", _DEFAULT_CELL_MARGINS[0]),
+                    _int_attr(properties, "marT", _DEFAULT_CELL_MARGINS[1]),
+                    _int_attr(properties, "marR", _DEFAULT_CELL_MARGINS[2]),
+                    _int_attr(properties, "marB", _DEFAULT_CELL_MARGINS[3]),
                 )
+            explicit_fill = fill_for(properties) if properties is not None else None
+            has_explicit_no_fill = (
+                properties is not None and properties.find("a:noFill", _NS) is not None
+            )
+            fill = None if has_explicit_no_fill else explicit_fill or style_fill
+            borders = (
+                _borders(properties, line_for, style_borders)
+                if properties is not None
+                else style_borders
+            )
             cells.append(
                 TableCell(
-                    text=_text_body(cell, text_run_for),
-                    fill=fill_for(properties) if properties is not None else None,
-                    borders=_borders(properties, line_for) if properties is not None else None,
+                    text=_text_body(
+                        cell,
+                        text_run_for,
+                        default_color=style_text_color,
+                        default_bold=style_bold,
+                        default_font_family=default_font_family,
+                    ),
+                    fill=fill,
+                    borders=borders,
                     margins=margins,
                     col_span=max(1, _int_attr(cell, "gridSpan", 1)),
                     row_span=max(1, _int_attr(cell, "rowSpan", 1)),
@@ -154,7 +267,15 @@ def parse_table(
             )
         if cells:
             rows.append(TableRow(height_emu=_int_attr(row, "h"), cells=tuple(cells)))
-    return TableNode(box=box, col_widths_emu=column_widths, rows=tuple(rows)) if rows else None
+    if not rows:
+        return None
+    box = Box(
+        x=_int_attr(offset, "x"),
+        y=_int_attr(offset, "y"),
+        width=max(_int_attr(extent, "cx"), sum(column_widths)),
+        height=max(_int_attr(extent, "cy"), sum(row.height_emu for row in rows)),
+    )
+    return TableNode(box=box, col_widths_emu=column_widths, rows=tuple(rows))
 
 
 def read_graphic_frame(
@@ -163,6 +284,8 @@ def read_graphic_frame(
     fill_for: FillParser,
     line_for: LineParser,
     text_run_for: TextRunParser,
+    theme_colors: Mapping[str, str] | None = None,
+    default_font_family: str = "sans-serif",
 ) -> GraphicFrameRead:
     """Read a supported graphic frame or classify it for explicit preservation."""
     uri = graphic_frame_uri(element)
@@ -172,6 +295,8 @@ def read_graphic_frame(
             fill_for=fill_for,
             line_for=line_for,
             text_run_for=text_run_for,
+            theme_colors=theme_colors,
+            default_font_family=default_font_family,
         )
         if table is not None:
             return GraphicFrameRead(table=table)

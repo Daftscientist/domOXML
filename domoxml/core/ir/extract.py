@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict
 
 from domoxml.core.crop import cover_crop
 from domoxml.core.drawingml.presets import match_polygon
-from domoxml.core.fillcrop import cover_crop_fractions
+from domoxml.core.fillcrop import cover_crop_fractions, explicit_crop_fractions
 from domoxml.core.images import (
     ImageExt,
     crop_png,
@@ -534,25 +534,32 @@ def _img_crop(node: RenderedNode, rendered: RenderedSlide) -> SrcRect | None:
 def _background_crop(data: bytes, node: RenderedNode) -> SrcRect | None:
     """Compute an ``a:srcRect`` crop for a div ``background-image`` from background-size/position.
 
-    Only ``background-size: cover`` produces a source-rect crop (a window of the source shown
-    stretched to fill the shape). ``contain`` / explicit sizes letter-box the whole image, which
-    a blip ``a:srcRect`` cannot express (it crops, it does not pad) so those fall through with no
-    crop (the image stretches to fill, matching the existing behaviour). Returns ``None`` when no
-    crop applies or the image cannot be measured.
+    ``background-size: cover`` and oversized explicit sizes produce a source-rect crop (a window
+    of the source shown stretched to fill the shape). ``contain`` and undersized explicit sizes
+    letter-box the whole image, which a blip ``a:srcRect`` cannot express, so those fall through
+    with no crop. Returns ``None`` when no crop applies or the image cannot be measured.
     """
-    mode, _explicit = parse_background_size(node.styles.get("backgroundSize"))
-    if mode != "cover":
-        return None
-    dims = image_dimensions(data)
-    if dims is None:
-        return None
-    img_w, img_h = dims
     if node.width <= 0 or node.height <= 0:
         return None
-    pos_x, pos_y = parse_background_position(node.styles.get("backgroundPosition"))
-    left, top, right, bottom = cover_crop_fractions(
-        img_w, img_h, node.width, node.height, pos_x=pos_x, pos_y=pos_y
+    mode, explicit = parse_background_size(
+        node.styles.get("backgroundSize"),
+        box_width_px=node.width,
+        box_height_px=node.height,
     )
+    pos_x, pos_y = parse_background_position(node.styles.get("backgroundPosition"))
+    if mode == "cover":
+        dims = image_dimensions(data)
+        if dims is None:
+            return None
+        img_w, img_h = dims
+        crop = cover_crop_fractions(img_w, img_h, node.width, node.height, pos_x=pos_x, pos_y=pos_y)
+    elif mode == "explicit" and explicit is not None:
+        crop = explicit_crop_fractions(
+            explicit[0], explicit[1], node.width, node.height, pos_x=pos_x, pos_y=pos_y
+        )
+    else:
+        return None
+    left, top, right, bottom = crop
     if left <= 0 and top <= 0 and right <= 0 and bottom <= 0:
         return None
     return SrcRect(left=left, top=top, right=right, bottom=bottom)

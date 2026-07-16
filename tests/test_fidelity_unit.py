@@ -42,6 +42,15 @@ def test_aligned_candidate_artifact_uses_reference_dimensions() -> None:
     assert aligned.size == (100, 80)
 
 
+def test_aligned_candidate_preserves_bytes_when_canvas_matches() -> None:
+    reference = _png((255, 255, 255), (100, 80))
+    buffer = io.BytesIO()
+    Image.new("RGB", (100, 80), (10, 20, 30)).save(buffer, format="PNG", dpi=(96, 96))
+    candidate = buffer.getvalue()
+
+    assert align_candidate_png(reference, candidate) == candidate
+
+
 def test_half_different_scores_in_between() -> None:
     black = Image.new("RGB", (64, 64), (0, 0, 0))
     half = Image.new("RGB", (64, 64), (0, 0, 0))
@@ -95,3 +104,22 @@ def test_regional_similarity_weights_only_worst_decile() -> None:
 
     # One small changed object must not be averaged across the mostly blank slide.
     assert report.regional_similarity < 0.95
+
+
+def test_structural_similarity_detects_missing_small_foreground() -> None:
+    reference = Image.new("RGB", (960, 720), "white")
+    candidate = reference.copy()
+    draw = ImageDraw.Draw(reference)
+    draw.rectangle((96, 96, 672, 288), fill=(79, 129, 189))
+    for offset in (0, 9, 18):
+        draw.rectangle((110, 110 + offset, 250, 114 + offset), fill="white")
+
+    def to_png(image: Image.Image) -> bytes:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    report = compare(to_png(reference), to_png(candidate))
+
+    assert report.similarity > 0.9
+    assert report.structural_similarity < 0.9

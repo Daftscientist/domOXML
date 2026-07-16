@@ -1,0 +1,35 @@
+id = "external-image-crop"
+pptx_file = "source.pptx"
+
+[provenance]
+source_url = "https://github.com/aiden0z/pptx-renderer/blob/68cb570940fb28d5c4628f31d1365016c4483521/docs/example/image-crop-css-reset/source.pptx"
+source_revision = "68cb570940fb28d5c4628f31d1365016c4483521"
+license = "Apache-2.0"
+sha256 = "9dbe795077fb0907b5943b4f43cd485ecb0efc819523ea3325a75eda3674de66"
+
+[package]
+slides = 1
+required_parts = [
+  "ppt/slides/slide1.xml",
+  "ppt/media/image1.png",
+  "ppt/theme/theme1.xml",
+]
+
+[reverse]
+min_assets = 1
+max_warnings = 0
+preserved_count = 0
+html_contains = ["background-size", "background-position"]
+roundtrip_xml_contains = [
+  "Image crop vs host CSS reset",
+  '<a:srcRect r="66667"/>',
+  '<a:srcRect l="33333" r="33333"/>',
+  '<a:srcRect l="66667"/>',
+]
+
+[[visual]]
+slide = 0
+# Distro LibreOffice repositions editable labels independently of crop correctness. The three
+# exact srcRect assertions above gate crop semantics; regional similarity guards gross drift.
+min_similarity = 0.982
+min_regional_similarity = 0.91

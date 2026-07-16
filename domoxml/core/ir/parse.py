@@ -427,13 +427,18 @@ def parse_polygon(
 # --------------------------------------------------------------------------- background size/pos
 
 
-def parse_background_size(value: str | None) -> tuple[str, tuple[float, float] | None]:
+def parse_background_size(
+    value: str | None,
+    *,
+    box_width_px: float | None = None,
+    box_height_px: float | None = None,
+) -> tuple[str, tuple[float, float] | None]:
     """Classify a CSS ``background-size`` computed value.
 
     Returns ``(mode, explicit_px)`` where ``mode`` is ``"cover"``, ``"contain"``, ``"auto"``, or
-    ``"explicit"``. ``explicit_px`` is the ``(width_px, height_px)`` pair for an explicit two-px
-    size, else ``None``. Percentage and single-value sizes fall back to ``"auto"`` (the caller
-    treats them as a plain stretch)."""
+    ``"explicit"``. ``explicit_px`` is the resolved ``(width_px, height_px)`` pair for a two-value
+    pixel or percentage size. Percentages require the corresponding box dimensions. Single-value
+    and unsupported sizes fall back to ``"auto"`` (the caller treats them as a plain stretch)."""
     if not value:
         return "auto", None
     token = value.strip().lower()
@@ -441,9 +446,20 @@ def parse_background_size(value: str | None) -> tuple[str, tuple[float, float] |
         return "cover", None
     if token == "contain":
         return "contain", None
-    lengths = _LENGTH_RE.findall(token)
-    if len(lengths) == 2:
-        return "explicit", (float(lengths[0]), float(lengths[1]))
+    parts = token.split()
+    if len(parts) == 2:
+        resolved: list[float] = []
+        for part, dimension in zip(parts, (box_width_px, box_height_px), strict=True):
+            length = _LENGTH_RE.fullmatch(part)
+            percent = _PERCENT_RE.fullmatch(part)
+            if length is not None:
+                resolved.append(float(length.group(1)))
+            elif percent is not None and dimension is not None:
+                resolved.append(float(percent.group(1)) / 100.0 * dimension)
+            else:
+                break
+        if len(resolved) == 2:
+            return "explicit", (resolved[0], resolved[1])
     return "auto", None
 
 

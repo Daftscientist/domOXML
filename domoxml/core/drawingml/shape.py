@@ -25,6 +25,7 @@ from domoxml.core.ir.model import (
     LineTo,
     MoveTo,
     PatternFill,
+    PictureFill,
     QuadTo,
     Rgba,
     Shadow,
@@ -146,7 +147,13 @@ _ASVG_URI = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}"
 _ASVG_NS = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
 
 
-def _blip_fill(blip_rid: str, crop: SrcRect | None = None, svg_rid: str | None = None) -> str:
+def _blip_fill(
+    blip_rid: str,
+    crop: SrcRect | None = None,
+    svg_rid: str | None = None,
+    *,
+    tag: str = "a:blipFill",
+) -> str:
     if svg_rid is not None:
         # Pair the raster PNG (a:blip) with the original SVG so PowerPoint renders the vector
         # at native resolution while the PNG is the downlevel fallback.
@@ -157,9 +164,7 @@ def _blip_fill(blip_rid: str, crop: SrcRect | None = None, svg_rid: str | None =
         blip = f'<a:blip r:embed="{blip_rid}"><a:extLst>{ext}</a:extLst></a:blip>'
     else:
         blip = f'<a:blip r:embed="{blip_rid}"/>'
-    return (
-        f"<a:blipFill>{blip}{_src_rect_xml(crop)}<a:stretch><a:fillRect/></a:stretch></a:blipFill>"
-    )
+    return f"<{tag}>{blip}{_src_rect_xml(crop)}<a:stretch><a:fillRect/></a:stretch></{tag}>"
 
 
 # DrawingML colour-transform child tags (value in 1000ths of a percent).
@@ -562,4 +567,45 @@ def shape_xml(
         f"<p:spPr>{_xfrm_xml(node)}"
         f"{_geometry_xml(node)}{fill}{line_xml(node.line)}{_effects_xml(node)}</p:spPr>"
         f"{_text_body(node.text, hyperlink_rid)}</p:sp>"
+    )
+
+
+def can_emit_picture(node: ShapeNode) -> bool:
+    """Whether a shape is a pure bitmap that maps losslessly to native ``p:pic``."""
+    return (
+        isinstance(node.fill, PictureFill)
+        and node.geom == "rect"
+        and node.custom_geom is None
+        and node.line is None
+        and node.side_lines is None
+        and not node.effects
+        and node.corner_radius_emu == 0
+        and node.opacity == 1.0
+        and node.text is None
+    )
+
+
+def picture_xml(
+    node: ShapeNode,
+    *,
+    shape_id: int,
+    blip_rid: str,
+    svg_rid: str | None = None,
+) -> str:
+    """Build an interoperable native ``p:pic`` for one pure bitmap node."""
+    if not can_emit_picture(node):
+        raise ValueError("native picture output requires a pure rectangular PictureFill node")
+    fill = node.fill
+    assert isinstance(fill, PictureFill)
+    descr = (
+        f' descr="{_attr(f"domoxml-raster:{fill.raster_role}")}"'
+        if fill.raster_role is not None
+        else ""
+    )
+    blip_fill = _blip_fill(blip_rid, fill.crop, svg_rid, tag="p:blipFill")
+    return (
+        f'<p:pic><p:nvPicPr><p:cNvPr id="{shape_id}" name="Picture {shape_id}"{descr}/>'
+        '<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>'
+        f"{blip_fill}<p:spPr>{_xfrm_xml(node)}"
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>'
     )

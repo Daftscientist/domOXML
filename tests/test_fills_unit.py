@@ -12,6 +12,7 @@ from domoxml.core.drawingml.shape import shape_xml
 from domoxml.core.fillcrop import (
     contain_fill_fractions,
     cover_crop_fractions,
+    explicit_crop_fractions,
     explicit_fill_fractions,
     srcrect_to_background,
 )
@@ -25,6 +26,7 @@ from domoxml.core.ir.model import (
     ShapeNode,
     SrcRect,
 )
+from domoxml.core.ir.parse import parse_background_size
 from domoxml.core.ir.pattern import match_pattern_fill, pattern_to_css
 
 
@@ -209,6 +211,28 @@ def test_explicit_fill_larger_than_box_is_negative() -> None:
     left, _top, right, _bottom = explicit_fill_fractions(800, 400, 400, 400)
     assert left == pytest.approx(-0.5)
     assert right == pytest.approx(-0.5)
+
+
+@pytest.mark.parametrize(
+    ("pos_x", "expected_left", "expected_right"),
+    [(0.0, 0.0, 2 / 3), (0.5, 1 / 3, 1 / 3), (1.0, 2 / 3, 0.0)],
+)
+def test_explicit_oversized_background_recovers_source_crop(
+    pos_x: float, expected_left: float, expected_right: float
+) -> None:
+    left, top, right, bottom = explicit_crop_fractions(300, 100, 100, 100, pos_x=pos_x, pos_y=0.5)
+
+    assert left == pytest.approx(expected_left)
+    assert right == pytest.approx(expected_right)
+    assert top == pytest.approx(0.0)
+    assert bottom == pytest.approx(0.0)
+
+
+def test_background_size_resolves_percentages_against_shape_box() -> None:
+    assert parse_background_size("300% 100%", box_width_px=456, box_height_px=129.6) == (
+        "explicit",
+        (1368.0, 129.6),
+    )
 
 
 # --------------------------------------------------------------------------- srcRect inversion

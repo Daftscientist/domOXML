@@ -15,6 +15,7 @@ from domoxml.core.capabilities import (
     CapabilityVisual,
     load_capabilities,
 )
+from domoxml.core.roundtrip import inline_assets
 from domoxml.types import (
     CoverageReport,
     HtmlAsset,
@@ -23,7 +24,6 @@ from domoxml.types import (
     RenderResult,
 )
 from scripts.capability_check import (
-    _inline_assets,
     _is_transient_render_error,
     _validate_fixture,
     _validate_forward_visual,
@@ -73,7 +73,7 @@ def test_inline_assets_rewrites_css_and_slide_references() -> None:
         ),
     )
 
-    inlined = _inline_assets(html)
+    inlined = inline_assets(html)
 
     assert inlined.assets == ()
     assert "../assets/" not in inlined.css

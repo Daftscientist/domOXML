@@ -56,7 +56,8 @@ def _validate_forward_visual(
 ) -> tuple[str, ...]:
     global_floor = fixture.visual.source_to_pptx_min_similarity
     regional_floor = fixture.visual.source_to_pptx_min_regional_similarity
-    if global_floor is None and regional_floor is None:
+    structural_floor = fixture.visual.source_to_pptx_min_structural_similarity
+    if global_floor is None and regional_floor is None and structural_floor is None:
         return ()
     if len(source.pngs) != len(candidates):
         return (f"forward visual page count {len(candidates)} != source {len(source.pngs)}",)
@@ -83,10 +84,16 @@ def _validate_forward_visual(
                 f"forward slide {index} regional similarity {report.regional_similarity:.3f} "
                 f"< expected {regional_floor:.3f}"
             )
+        if structural_floor is not None and report.structural_similarity < structural_floor:
+            errors.append(
+                f"forward slide {index} structural similarity "
+                f"{report.structural_similarity:.3f} < expected {structural_floor:.3f}"
+            )
         if report_scores:
             print(
                 f"     libreoffice slide{index}: global {report.similarity:.3f}, "
-                f"regional {report.regional_similarity:.3f}"
+                f"regional {report.regional_similarity:.3f}, "
+                f"structural {report.structural_similarity:.3f}"
             )
     return tuple(errors)
 
@@ -101,7 +108,8 @@ def _validate_reverse_visual(
 ) -> tuple[str, ...]:
     global_floor = fixture.visual.pptx_to_html_min_similarity
     regional_floor = fixture.visual.pptx_to_html_min_regional_similarity
-    if global_floor is None and regional_floor is None:
+    structural_floor = fixture.visual.pptx_to_html_min_structural_similarity
+    if global_floor is None and regional_floor is None and structural_floor is None:
         return ()
     if len(source_pngs) != len(reverse.pngs):
         return (f"reverse visual page count {len(reverse.pngs)} != source {len(source_pngs)}",)
@@ -126,10 +134,16 @@ def _validate_reverse_visual(
                 f"reverse slide {index} regional similarity {report.regional_similarity:.3f} "
                 f"< expected {regional_floor:.3f}"
             )
+        if structural_floor is not None and report.structural_similarity < structural_floor:
+            errors.append(
+                f"reverse slide {index} structural similarity "
+                f"{report.structural_similarity:.3f} < expected {structural_floor:.3f}"
+            )
         if report_scores:
             print(
                 f"     reverse slide{index}: global {report.similarity:.3f}, "
-                f"regional {report.regional_similarity:.3f}"
+                f"regional {report.regional_similarity:.3f}, "
+                f"structural {report.structural_similarity:.3f}"
             )
     return tuple(errors)
 
@@ -152,6 +166,7 @@ def _validate_fixture(
         has_forward_threshold = (
             fixture.visual.source_to_pptx_min_similarity is not None
             or fixture.visual.source_to_pptx_min_regional_similarity is not None
+            or fixture.visual.source_to_pptx_min_structural_similarity is not None
         )
         if has_forward_threshold and forward_visual_available:
             if source_pptx is None:
@@ -185,6 +200,7 @@ def _validate_fixture(
             has_reverse_threshold = (
                 fixture.visual.pptx_to_html_min_similarity is not None
                 or fixture.visual.pptx_to_html_min_regional_similarity is not None
+                or fixture.visual.pptx_to_html_min_structural_similarity is not None
             )
             source_pngs: tuple[bytes, ...] = forward.pngs if forward is not None else ()
             if not source_pngs and has_reverse_threshold and forward_visual_available:

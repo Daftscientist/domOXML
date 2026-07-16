@@ -20,8 +20,9 @@ forward and reverse primitives, 15 capability fixtures, a nine-case authored vis
 a four-deck pinned external round-trip corpus. The
 remaining risk is proof depth rather than raw file count:
 
-- the capability runner now executes both paths for six fixtures, but the remaining nine fixtures
-  must gain reverse contracts before their behavior is bidirectional;
+- the capability runner now executes both paths for 12 of 15 fixtures; the remaining custom-path,
+  effects, and SVG-vector fixtures stay forward-only until connector structure, renderer-specific
+  effect contracts, and SVG vector re-emission survive the reverse path;
 - the external corpus now covers tables, crop, embedded-font diagnostics, and exact chart
   preservation, but still needs representative groups, media, masters, and extension lists;
 - several useful families remain partial in one direction, especially themes, placeholders,
@@ -63,8 +64,10 @@ count = 3
 [visual]
 source_to_pptx_min_similarity = 0.98
 source_to_pptx_min_regional_similarity = 0.96
+source_to_pptx_min_structural_similarity = 0.96
 pptx_to_html_min_similarity = 0.98
 pptx_to_html_min_regional_similarity = 0.96
+pptx_to_html_min_structural_similarity = 0.96
 ```
 
 ## Phase 1: Repair The Shared Canvas IR
@@ -157,7 +160,8 @@ families can then progress independently without weakening the common gates.
 ### Ordered Delivery Lanes
 
 1. **Make bidirectional claims executable (complete)**: the capability schema and runner now cover
-   reverse inputs, HTML assertions, round-trip assertions, and global/regional visual gates.
+   reverse inputs, HTML assertions, round-trip assertions, and global/regional/structural visual
+   gates.
 2. **Establish a real-deck corpus**: sanitized Microsoft-authored and representative external
    decks covering masters, themes, placeholders, groups, media, and unsupported extensions.
 3. **Close core editable asymmetries**: forward theme references/placeholders, group authoring,
@@ -176,7 +180,7 @@ PPTX is ready for a stable release when:
 - every core editable family has executable forward and reverse fixtures;
 - the real-deck corpus has no crashes, unsafe output, or silent drops;
 - package/relationship assertions and schema validation pass for generated decks;
-- LibreOffice global and regional fidelity are merge-blocking;
+- LibreOffice global, regional, and structural fidelity are merge-blocking;
 - Graph/PowerPoint baselines pass for renderer-sensitive cases before release;
 - partial, raster, preserved, and unsupported behavior is accurately surfaced to callers.
 

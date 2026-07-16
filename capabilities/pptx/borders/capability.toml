@@ -1,5 +1,5 @@
 id = "borders"
-direction = "forward"
+direction = "both"
 html_file = "slide.html"
 
 [expected]
@@ -20,3 +20,14 @@ min_count = 2
 [visual]
 source_to_pptx_min_similarity = 0.97
 source_to_pptx_min_regional_similarity = 0.96
+source_to_pptx_min_structural_similarity = 0.95
+pptx_to_html_min_similarity = 0.995
+pptx_to_html_min_regional_similarity = 0.98
+pptx_to_html_min_structural_similarity = 0.97
+
+[reverse]
+html_contains = [
+  "border:4px solid rgba(37,99,235,1)",
+  "border:3px dashed rgba(22,163,74,1)",
+  "border:3px dotted rgba(124,58,237,1)",
+]

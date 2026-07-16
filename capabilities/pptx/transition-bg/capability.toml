@@ -1,5 +1,5 @@
 id = "transition-bg"
-direction = "forward"
+direction = "both"
 html_file = "slide.html"
 
 [expected]
@@ -19,3 +19,14 @@ min_count = 1
 [visual]
 source_to_pptx_min_similarity = 0.98
 source_to_pptx_min_regional_similarity = 0.955
+source_to_pptx_min_structural_similarity = 0.95
+pptx_to_html_min_similarity = 0.995
+pptx_to_html_min_regional_similarity = 0.99
+pptx_to_html_min_structural_similarity = 0.99
+
+[reverse]
+html_contains = [
+  'data-transition="fade"',
+  'data-transition-duration="500"',
+  "background-image:linear-gradient(135deg,rgba(102,126,234,1) 0%,rgba(118,75,162,1) 100%)",
+]

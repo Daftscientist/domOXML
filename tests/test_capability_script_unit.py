@@ -6,7 +6,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from pytest import MonkeyPatch
 
 from domoxml.core.capabilities import (
@@ -34,6 +34,15 @@ from scripts.capability_check import (
 def _png(color: str) -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (64, 64), color).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _png_with_foreground(*, include_foreground: bool) -> bytes:
+    image = Image.new("RGB", (160, 90), "white")
+    if include_foreground:
+        ImageDraw.Draw(image).rectangle((64, 30, 95, 59), fill=(20, 70, 200))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
     return buffer.getvalue()
 
 
@@ -175,3 +184,25 @@ def test_forward_visual_gate_checks_global_and_regional_similarity(tmp_path: Pat
     assert (tmp_path / "text-rich-runs-slide0-source.png").is_file()
     assert (tmp_path / "text-rich-runs-slide0-libreoffice.png").is_file()
     assert (tmp_path / "text-rich-runs-slide0-libreoffice-diff.png").is_file()
+
+
+def test_structural_similarity_is_enforced_in_both_visual_directions() -> None:
+    reference = _png_with_foreground(include_foreground=True)
+    candidate = _png_with_foreground(include_foreground=False)
+    fixture = CapabilityFixture(
+        id="structural",
+        direction=CapabilityDirection.BOTH,
+        html="<div>fixture</div>",
+        visual=CapabilityVisual(
+            source_to_pptx_min_structural_similarity=0.99,
+            pptx_to_html_min_structural_similarity=0.99,
+        ),
+    )
+
+    forward_errors = _validate_forward_visual(fixture, _render_result(reference), [candidate])
+    reverse_errors = _validate_reverse_visual(fixture, (reference,), _render_result(candidate))
+
+    assert len(forward_errors) == 1
+    assert "structural similarity" in forward_errors[0]
+    assert len(reverse_errors) == 1
+    assert "structural similarity" in reverse_errors[0]

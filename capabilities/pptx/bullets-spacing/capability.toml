@@ -29,8 +29,10 @@ min_count = 1
 [visual]
 source_to_pptx_min_similarity = 0.97
 source_to_pptx_min_regional_similarity = 0.94
+source_to_pptx_min_structural_similarity = 0.93
 pptx_to_html_min_similarity = 0.99
 pptx_to_html_min_regional_similarity = 0.975
+pptx_to_html_min_structural_similarity = 0.98
 
 [reverse]
 html_contains = [

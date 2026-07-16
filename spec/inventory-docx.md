@@ -1,609 +1,649 @@
-# OOXML element inventory — docx
+# DOCX-Specific WordprocessingML Inventory
 
-Auto-generated from the ECMA-376 XSD schemas (do not hand-edit). 599 distinct elements, 267 complex types. Forward-covered: **6/599**.
+No DOCX adapter exists in the current repository. Previous checkmarks in this file were false
+positives caused by matching local element names such as `p`, `r`, and `t` across unrelated
+namespaces. This document is therefore a schema discovery inventory, not an implementation claim.
 
-✅ forward-covered · ⬜ not yet. Reverse (OOXML→HTML/CSS) is ⬜ across the board until ingest lands.
+DOCX starts after the shared Canvas/PPTX foundation is stable. It will add a Flow IR and
+WordprocessingML-specific sections, styles, lists, headers/footers, fields, notes, pagination,
+revisions, and compatibility behavior while reusing shared OPC, DrawingML, themes, fonts, assets,
+charts, preservation, normalized HTML, and fidelity systems.
 
-Namespaces: `http://schemas.openxmlformats.org/wordprocessingml/2006/main`
+See [`architecture.md`](architecture.md) for ownership and
+[`implementation-roadmap.md`](implementation-roadmap.md) for sequencing.
 
-| Element | Type | Fwd | Rev |
-|---|---|:--:|:--:|
-| `abstractNum` | CT_AbstractNum | ⬜ | ⬜ |
-| `abstractNumId` | CT_DecimalNumber | ⬜ | ⬜ |
-| `active` | CT_OnOff | ⬜ | ⬜ |
-| `activeRecord` | CT_DecimalNumber | ⬜ | ⬜ |
-| `activeWritingStyle` | CT_WritingStyle | ⬜ | ⬜ |
-| `addressFieldName` | CT_String | ⬜ | ⬜ |
-| `adjustLineHeightInTable` | CT_OnOff | ⬜ | ⬜ |
-| `adjustRightInd` | CT_OnOff | ⬜ | ⬜ |
-| `alias` | CT_String | ⬜ | ⬜ |
-| `aliases` | CT_String | ⬜ | ⬜ |
-| `alignBordersAndEdges` | CT_OnOff | ⬜ | ⬜ |
-| `alignTablesRowByRow` | CT_OnOff | ⬜ | ⬜ |
-| `allowPNG` | CT_OnOff | ⬜ | ⬜ |
-| `allowSpaceOfSameStyleInTable` | CT_OnOff | ⬜ | ⬜ |
-| `altChunk` | CT_AltChunk | ⬜ | ⬜ |
-| `altChunkPr` | CT_AltChunkPr | ⬜ | ⬜ |
-| `altName` | CT_String | ⬜ | ⬜ |
-| `alwaysMergeEmptyNamespace` | CT_OnOff | ⬜ | ⬜ |
-| `alwaysShowPlaceholderText` | CT_OnOff | ⬜ | ⬜ |
-| `annotationRef` | CT_Empty | ⬜ | ⬜ |
-| `applyBreakingRules` | CT_OnOff | ⬜ | ⬜ |
-| `attachedSchema` | CT_String | ⬜ | ⬜ |
-| `attachedTemplate` | CT_Rel | ⬜ | ⬜ |
-| `attr` | CT_Attr | ⬜ | ⬜ |
-| `autoCaption` | CT_AutoCaption | ⬜ | ⬜ |
-| `autoCaptions` | CT_AutoCaptions | ⬜ | ⬜ |
-| `autoFormatOverride` | CT_OnOff | ⬜ | ⬜ |
-| `autoHyphenation` | CT_OnOff | ⬜ | ⬜ |
-| `autoRedefine` | CT_OnOff | ⬜ | ⬜ |
-| `autoSpaceDE` | CT_OnOff | ⬜ | ⬜ |
-| `autoSpaceDN` | CT_OnOff | ⬜ | ⬜ |
-| `autoSpaceLikeWord95` | CT_OnOff | ⬜ | ⬜ |
-| `autofitToFirstFixedWidthCell` | CT_OnOff | ⬜ | ⬜ |
-| `b` | CT_OnOff | ⬜ | ⬜ |
-| `bCs` | CT_OnOff | ⬜ | ⬜ |
-| `background` | CT_Background | ⬜ | ⬜ |
-| `balanceSingleByteDoubleByteWidth` | CT_OnOff | ⬜ | ⬜ |
-| `bar` | CT_Border | ⬜ | ⬜ |
-| `basedOn` | CT_String | ⬜ | ⬜ |
-| `bdr` | CT_Border | ⬜ | ⬜ |
-| `behavior` | CT_DocPartBehavior | ⬜ | ⬜ |
-| `behaviors` | CT_DocPartBehaviors | ⬜ | ⬜ |
-| `between` | CT_Border | ⬜ | ⬜ |
-| `bibliography` | CT_Empty | ⬜ | ⬜ |
-| `bidi` | CT_OnOff | ⬜ | ⬜ |
-| `bidiVisual` | CT_OnOff | ⬜ | ⬜ |
-| `blockQuote` | CT_OnOff | ⬜ | ⬜ |
-| `body` | CT_Body | ⬜ | ⬜ |
-| `bodyDiv` | CT_OnOff | ⬜ | ⬜ |
-| `bookFoldPrinting` | CT_OnOff | ⬜ | ⬜ |
-| `bookFoldPrintingSheets` | CT_DecimalNumber | ⬜ | ⬜ |
-| `bookFoldRevPrinting` | CT_OnOff | ⬜ | ⬜ |
-| `bookmarkEnd` | CT_MarkupRange | ⬜ | ⬜ |
-| `bookmarkStart` | CT_Bookmark | ⬜ | ⬜ |
-| `bordersDoNotSurroundFooter` | CT_OnOff | ⬜ | ⬜ |
-| `bordersDoNotSurroundHeader` | CT_OnOff | ⬜ | ⬜ |
-| `bottom` | CT_Border | ⬜ | ⬜ |
-| `br` | CT_Br | ⬜ | ⬜ |
-| `cachedColBalance` | CT_OnOff | ⬜ | ⬜ |
-| `calcOnExit` | CT_OnOff | ⬜ | ⬜ |
-| `calendar` | CT_CalendarType | ⬜ | ⬜ |
-| `cantSplit` | CT_OnOff | ⬜ | ⬜ |
-| `caps` | CT_OnOff | ⬜ | ⬜ |
-| `caption` | CT_Caption | ⬜ | ⬜ |
-| `captions` | CT_Captions | ⬜ | ⬜ |
-| `category` | CT_DocPartCategory | ⬜ | ⬜ |
-| `cellDel` | CT_TrackChange | ⬜ | ⬜ |
-| `cellIns` | CT_TrackChange | ⬜ | ⬜ |
-| `cellMerge` | CT_CellMergeTrackChange | ⬜ | ⬜ |
-| `characterSpacingControl` | CT_CharacterSpacing | ⬜ | ⬜ |
-| `charset` | CT_UcharHexNumber | ⬜ | ⬜ |
-| `checkBox` | CT_FFCheckBox | ⬜ | ⬜ |
-| `checkErrors` | CT_DecimalNumber | ⬜ | ⬜ |
-| `checked` | CT_OnOff | ⬜ | ⬜ |
-| `citation` | CT_Empty | ⬜ | ⬜ |
-| `clickAndTypeStyle` | CT_String | ⬜ | ⬜ |
-| `clrSchemeMapping` | CT_ColorSchemeMapping | ⬜ | ⬜ |
-| `cnfStyle` | CT_Cnf | ⬜ | ⬜ |
-| `col` | CT_Column | ⬜ | ⬜ |
-| `colDelim` | CT_DecimalNumber | ⬜ | ⬜ |
-| `color` | CT_Color | ⬜ | ⬜ |
-| `cols` | CT_Columns | ⬜ | ⬜ |
-| `column` | CT_DecimalNumber | ⬜ | ⬜ |
-| `comboBox` | CT_SdtComboBox | ⬜ | ⬜ |
-| `comment` | CT_Comment | ⬜ | ⬜ |
-| `commentRangeEnd` | CT_MarkupRange | ⬜ | ⬜ |
-| `commentRangeStart` | CT_MarkupRange | ⬜ | ⬜ |
-| `commentReference` | CT_Markup | ⬜ | ⬜ |
-| `comments` | CT_Comments | ⬜ | ⬜ |
-| `compat` | CT_Compat | ⬜ | ⬜ |
-| `connectString` | CT_String | ⬜ | ⬜ |
-| `consecutiveHyphenLimit` | CT_DecimalNumber | ⬜ | ⬜ |
-| `contextualSpacing` | CT_OnOff | ⬜ | ⬜ |
-| `continuationSeparator` | CT_Empty | ⬜ | ⬜ |
-| `control` | CT_Control | ⬜ | ⬜ |
-| `convMailMergeEsc` | CT_OnOff | ⬜ | ⬜ |
-| `cr` | CT_Empty | ⬜ | ⬜ |
-| `cs` | CT_OnOff | ✅ | ⬜ |
-| `customXml` | CT_CustomXmlRun | ⬜ | ⬜ |
-| `customXmlDelRangeEnd` | CT_Markup | ⬜ | ⬜ |
-| `customXmlDelRangeStart` | CT_TrackChange | ⬜ | ⬜ |
-| `customXmlInsRangeEnd` | CT_Markup | ⬜ | ⬜ |
-| `customXmlInsRangeStart` | CT_TrackChange | ⬜ | ⬜ |
-| `customXmlMoveFromRangeEnd` | CT_Markup | ⬜ | ⬜ |
-| `customXmlMoveFromRangeStart` | CT_TrackChange | ⬜ | ⬜ |
-| `customXmlMoveToRangeEnd` | CT_Markup | ⬜ | ⬜ |
-| `customXmlMoveToRangeStart` | CT_TrackChange | ⬜ | ⬜ |
-| `customXmlPr` | CT_CustomXmlPr | ⬜ | ⬜ |
-| `dataBinding` | CT_DataBinding | ⬜ | ⬜ |
-| `dataSource` | CT_Rel | ⬜ | ⬜ |
-| `dataType` | CT_MailMergeDataType | ⬜ | ⬜ |
-| `date` | CT_SdtDate | ⬜ | ⬜ |
-| `dateFormat` | CT_String | ⬜ | ⬜ |
-| `dayLong` | CT_Empty | ⬜ | ⬜ |
-| `dayShort` | CT_Empty | ⬜ | ⬜ |
-| `ddList` | CT_FFDDList | ⬜ | ⬜ |
-| `decimalSymbol` | CT_String | ⬜ | ⬜ |
-| `default` | CT_OnOff | ⬜ | ⬜ |
-| `defaultTabStop` | CT_TwipsMeasure | ⬜ | ⬜ |
-| `defaultTableStyle` | CT_String | ⬜ | ⬜ |
-| `del` | CT_RPrChange | ⬜ | ⬜ |
-| `delInstrText` | CT_Text | ⬜ | ⬜ |
-| `delText` | CT_Text | ⬜ | ⬜ |
-| `description` | CT_String | ⬜ | ⬜ |
-| `destination` | CT_MailMergeDest | ⬜ | ⬜ |
-| `dirty` | CT_OnOff | ⬜ | ⬜ |
-| `displayBackgroundShape` | CT_OnOff | ⬜ | ⬜ |
-| `displayHangulFixedWidth` | CT_OnOff | ⬜ | ⬜ |
-| `displayHorizontalDrawingGridEvery` | CT_DecimalNumber | ⬜ | ⬜ |
-| `displayVerticalDrawingGridEvery` | CT_DecimalNumber | ⬜ | ⬜ |
-| `div` | CT_Div | ⬜ | ⬜ |
-| `divBdr` | CT_DivBdr | ⬜ | ⬜ |
-| `divId` | CT_DecimalNumber | ⬜ | ⬜ |
-| `divs` | CT_Divs | ⬜ | ⬜ |
-| `divsChild` | CT_Divs | ⬜ | ⬜ |
-| `doNotAutoCompressPictures` | CT_OnOff | ⬜ | ⬜ |
-| `doNotAutofitConstrainedTables` | CT_OnOff | ⬜ | ⬜ |
-| `doNotBreakConstrainedForcedTable` | CT_OnOff | ⬜ | ⬜ |
-| `doNotBreakWrappedTables` | CT_OnOff | ⬜ | ⬜ |
-| `doNotDemarcateInvalidXml` | CT_OnOff | ⬜ | ⬜ |
-| `doNotDisplayPageBoundaries` | CT_OnOff | ⬜ | ⬜ |
-| `doNotEmbedSmartTags` | CT_OnOff | ⬜ | ⬜ |
-| `doNotExpandShiftReturn` | CT_OnOff | ⬜ | ⬜ |
-| `doNotHyphenateCaps` | CT_OnOff | ⬜ | ⬜ |
-| `doNotIncludeSubdocsInStats` | CT_OnOff | ⬜ | ⬜ |
-| `doNotLeaveBackslashAlone` | CT_OnOff | ⬜ | ⬜ |
-| `doNotOrganizeInFolder` | CT_OnOff | ⬜ | ⬜ |
-| `doNotRelyOnCSS` | CT_OnOff | ⬜ | ⬜ |
-| `doNotSaveAsSingleFile` | CT_OnOff | ⬜ | ⬜ |
-| `doNotShadeFormData` | CT_OnOff | ⬜ | ⬜ |
-| `doNotSnapToGridInCell` | CT_OnOff | ⬜ | ⬜ |
-| `doNotSuppressBlankLines` | CT_OnOff | ⬜ | ⬜ |
-| `doNotSuppressIndentation` | CT_OnOff | ⬜ | ⬜ |
-| `doNotSuppressParagraphBorders` | CT_OnOff | ⬜ | ⬜ |
-| `doNotTrackFormatting` | CT_OnOff | ⬜ | ⬜ |
-| `doNotTrackMoves` | CT_OnOff | ⬜ | ⬜ |
-| `doNotUseEastAsianBreakRules` | CT_OnOff | ⬜ | ⬜ |
-| `doNotUseHTMLParagraphAutoSpacing` | CT_OnOff | ⬜ | ⬜ |
-| `doNotUseIndentAsNumberingTabStop` | CT_OnOff | ⬜ | ⬜ |
-| `doNotUseLongFileNames` | CT_OnOff | ⬜ | ⬜ |
-| `doNotUseMarginsForDrawingGridOrigin` | CT_OnOff | ⬜ | ⬜ |
-| `doNotValidateAgainstSchema` | CT_OnOff | ⬜ | ⬜ |
-| `doNotVertAlignCellWithSp` | CT_OnOff | ⬜ | ⬜ |
-| `doNotVertAlignInTxbx` | CT_OnOff | ⬜ | ⬜ |
-| `doNotWrapTextWithPunct` | CT_OnOff | ⬜ | ⬜ |
-| `docDefaults` | CT_DocDefaults | ⬜ | ⬜ |
-| `docGrid` | CT_DocGrid | ⬜ | ⬜ |
-| `docPart` | CT_String | ⬜ | ⬜ |
-| `docPartBody` | CT_Body | ⬜ | ⬜ |
-| `docPartCategory` | CT_String | ⬜ | ⬜ |
-| `docPartGallery` | CT_String | ⬜ | ⬜ |
-| `docPartList` | CT_SdtDocPart | ⬜ | ⬜ |
-| `docPartObj` | CT_SdtDocPart | ⬜ | ⬜ |
-| `docPartPr` | CT_DocPartPr | ⬜ | ⬜ |
-| `docPartUnique` | CT_OnOff | ⬜ | ⬜ |
-| `docParts` | CT_DocParts | ⬜ | ⬜ |
-| `docVar` | CT_DocVar | ⬜ | ⬜ |
-| `docVars` | CT_DocVars | ⬜ | ⬜ |
-| `document` | CT_Document | ⬜ | ⬜ |
-| `documentProtection` | CT_DocProtect | ⬜ | ⬜ |
-| `documentType` | CT_DocType | ⬜ | ⬜ |
-| `drawing` | CT_Drawing | ⬜ | ⬜ |
-| `drawingGridHorizontalOrigin` | CT_TwipsMeasure | ⬜ | ⬜ |
-| `drawingGridHorizontalSpacing` | CT_TwipsMeasure | ⬜ | ⬜ |
-| `drawingGridVerticalOrigin` | CT_TwipsMeasure | ⬜ | ⬜ |
-| `drawingGridVerticalSpacing` | CT_TwipsMeasure | ⬜ | ⬜ |
-| `dropDownList` | CT_SdtDropDownList | ⬜ | ⬜ |
-| `dstrike` | CT_OnOff | ⬜ | ⬜ |
-| `dynamicAddress` | CT_OnOff | ⬜ | ⬜ |
-| `eastAsianLayout` | CT_EastAsianLayout | ⬜ | ⬜ |
-| `effect` | CT_TextEffect | ⬜ | ⬜ |
-| `em` | CT_Em | ⬜ | ⬜ |
-| `embedBold` | CT_FontRel | ⬜ | ⬜ |
-| `embedBoldItalic` | CT_FontRel | ⬜ | ⬜ |
-| `embedItalic` | CT_FontRel | ⬜ | ⬜ |
-| `embedRegular` | CT_FontRel | ⬜ | ⬜ |
-| `embedSystemFonts` | CT_OnOff | ⬜ | ⬜ |
-| `embedTrueTypeFonts` | CT_OnOff | ⬜ | ⬜ |
-| `emboss` | CT_OnOff | ⬜ | ⬜ |
-| `enabled` | CT_OnOff | ⬜ | ⬜ |
-| `encoding` | CT_String | ⬜ | ⬜ |
-| `endnote` | CT_FtnEdnSepRef | ⬜ | ⬜ |
-| `endnotePr` | CT_EdnProps | ⬜ | ⬜ |
-| `endnoteRef` | CT_Empty | ⬜ | ⬜ |
-| `endnoteReference` | CT_FtnEdnRef | ⬜ | ⬜ |
-| `endnotes` | CT_Endnotes | ⬜ | ⬜ |
-| `entryMacro` | CT_MacroName | ⬜ | ⬜ |
-| `equation` | CT_Empty | ⬜ | ⬜ |
-| `evenAndOddHeaders` | CT_OnOff | ⬜ | ⬜ |
-| `exitMacro` | CT_MacroName | ⬜ | ⬜ |
-| `fHdr` | CT_OnOff | ⬜ | ⬜ |
-| `family` | CT_FontFamily | ⬜ | ⬜ |
-| `ffData` | CT_FFData | ⬜ | ⬜ |
-| `fieldMapData` | CT_OdsoFieldMapData | ⬜ | ⬜ |
-| `fitText` | CT_FitText | ⬜ | ⬜ |
-| `flatBorders` | CT_OnOff | ⬜ | ⬜ |
-| `fldChar` | CT_FldChar | ⬜ | ⬜ |
-| `fldData` | CT_Text | ⬜ | ⬜ |
-| `fldSimple` | CT_SimpleField | ⬜ | ⬜ |
-| `font` | CT_Font | ⬜ | ⬜ |
-| `fonts` | CT_FontsList | ⬜ | ⬜ |
-| `footerReference` | CT_HdrFtrRef | ⬜ | ⬜ |
-| `footnote` | CT_FtnEdnSepRef | ⬜ | ⬜ |
-| `footnoteLayoutLikeWW8` | CT_OnOff | ⬜ | ⬜ |
-| `footnotePr` | CT_FtnProps | ⬜ | ⬜ |
-| `footnoteRef` | CT_Empty | ⬜ | ⬜ |
-| `footnoteReference` | CT_FtnEdnRef | ⬜ | ⬜ |
-| `footnotes` | CT_Footnotes | ⬜ | ⬜ |
-| `forceUpgrade` | CT_Empty | ⬜ | ⬜ |
-| `forgetLastTabAlignment` | CT_OnOff | ⬜ | ⬜ |
-| `formProt` | CT_OnOff | ⬜ | ⬜ |
-| `format` | CT_String | ⬜ | ⬜ |
-| `formsDesign` | CT_OnOff | ⬜ | ⬜ |
-| `frame` | CT_Frame | ⬜ | ⬜ |
-| `frameLayout` | CT_FrameLayout | ⬜ | ⬜ |
-| `framePr` | CT_FramePr | ⬜ | ⬜ |
-| `frameset` | CT_Frameset | ⬜ | ⬜ |
-| `framesetSplitbar` | CT_FramesetSplitbar | ⬜ | ⬜ |
-| `ftr` | CT_HdrFtr | ⬜ | ⬜ |
-| `gallery` | CT_DocPartGallery | ⬜ | ⬜ |
-| `glossaryDocument` | CT_GlossaryDocument | ⬜ | ⬜ |
-| `gridAfter` | CT_DecimalNumber | ⬜ | ⬜ |
-| `gridBefore` | CT_DecimalNumber | ⬜ | ⬜ |
-| `gridCol` | CT_TblGridCol | ⬜ | ⬜ |
-| `gridSpan` | CT_DecimalNumber | ⬜ | ⬜ |
-| `group` | CT_Empty | ⬜ | ⬜ |
-| `growAutofit` | CT_OnOff | ⬜ | ⬜ |
-| `guid` | CT_Guid | ⬜ | ⬜ |
-| `gutterAtTop` | CT_OnOff | ⬜ | ⬜ |
-| `hMerge` | CT_HMerge | ⬜ | ⬜ |
-| `hdr` | CT_HdrFtr | ⬜ | ⬜ |
-| `hdrShapeDefaults` | CT_ShapeDefaults | ⬜ | ⬜ |
-| `headerReference` | CT_HdrFtrRef | ⬜ | ⬜ |
-| `headerSource` | CT_Rel | ⬜ | ⬜ |
-| `helpText` | CT_FFHelpText | ⬜ | ⬜ |
-| `hidden` | CT_OnOff | ⬜ | ⬜ |
-| `hideGrammaticalErrors` | CT_OnOff | ⬜ | ⬜ |
-| `hideMark` | CT_OnOff | ⬜ | ⬜ |
-| `hideSpellingErrors` | CT_OnOff | ⬜ | ⬜ |
-| `highlight` | CT_Highlight | ⬜ | ⬜ |
-| `hps` | CT_HpsMeasure | ⬜ | ⬜ |
-| `hpsBaseText` | CT_HpsMeasure | ⬜ | ⬜ |
-| `hpsRaise` | CT_HpsMeasure | ⬜ | ⬜ |
-| `hyperlink` | CT_Hyperlink | ⬜ | ⬜ |
-| `hyphenationZone` | CT_TwipsMeasure | ⬜ | ⬜ |
-| `i` | CT_OnOff | ⬜ | ⬜ |
-| `iCs` | CT_OnOff | ⬜ | ⬜ |
-| `id` | CT_DecimalNumber | ⬜ | ⬜ |
-| `ignoreMixedContent` | CT_OnOff | ⬜ | ⬜ |
-| `ilvl` | CT_DecimalNumber | ⬜ | ⬜ |
-| `imprint` | CT_OnOff | ⬜ | ⬜ |
-| `ind` | CT_Ind | ⬜ | ⬜ |
-| `ins` | CT_TrackChange | ⬜ | ⬜ |
-| `insideH` | CT_Border | ⬜ | ⬜ |
-| `insideV` | CT_Border | ⬜ | ⬜ |
-| `instrText` | CT_Text | ⬜ | ⬜ |
-| `isLgl` | CT_OnOff | ⬜ | ⬜ |
-| `jc` | CT_Jc | ⬜ | ⬜ |
-| `keepLines` | CT_OnOff | ⬜ | ⬜ |
-| `keepNext` | CT_OnOff | ⬜ | ⬜ |
-| `kern` | CT_HpsMeasure | ⬜ | ⬜ |
-| `kinsoku` | CT_OnOff | ⬜ | ⬜ |
-| `lang` | CT_Language | ⬜ | ⬜ |
-| `lastRenderedPageBreak` | CT_Empty | ⬜ | ⬜ |
-| `latentStyles` | CT_LatentStyles | ⬜ | ⬜ |
-| `layoutRawTableWidth` | CT_OnOff | ⬜ | ⬜ |
-| `layoutTableRowsApart` | CT_OnOff | ⬜ | ⬜ |
-| `left` | CT_Border | ⬜ | ⬜ |
-| `legacy` | CT_LvlLegacy | ⬜ | ⬜ |
-| `lid` | CT_Lang | ⬜ | ⬜ |
-| `lineWrapLikeWord6` | CT_OnOff | ⬜ | ⬜ |
-| `link` | CT_String | ⬜ | ⬜ |
-| `linkStyles` | CT_OnOff | ⬜ | ⬜ |
-| `linkToQuery` | CT_OnOff | ⬜ | ⬜ |
-| `linkedToFile` | CT_OnOff | ⬜ | ⬜ |
-| `listEntry` | CT_String | ⬜ | ⬜ |
-| `listItem` | CT_SdtListItem | ⬜ | ⬜ |
-| `listSeparator` | CT_String | ⬜ | ⬜ |
-| `lnNumType` | CT_LineNumber | ⬜ | ⬜ |
-| `lock` | CT_Lock | ⬜ | ⬜ |
-| `locked` | CT_OnOff | ⬜ | ⬜ |
-| `lsdException` | CT_LsdException | ⬜ | ⬜ |
-| `lvl` | CT_Lvl | ⬜ | ⬜ |
-| `lvlJc` | CT_Jc | ⬜ | ⬜ |
-| `lvlOverride` | CT_NumLvl | ⬜ | ⬜ |
-| `lvlPicBulletId` | CT_DecimalNumber | ⬜ | ⬜ |
-| `lvlRestart` | CT_DecimalNumber | ⬜ | ⬜ |
-| `lvlText` | CT_LevelText | ⬜ | ⬜ |
-| `mailAsAttachment` | CT_OnOff | ⬜ | ⬜ |
-| `mailMerge` | CT_MailMerge | ⬜ | ⬜ |
-| `mailSubject` | CT_String | ⬜ | ⬜ |
-| `mainDocumentType` | CT_MailMergeDocType | ⬜ | ⬜ |
-| `mappedName` | CT_String | ⬜ | ⬜ |
-| `marBottom` | CT_SignedTwipsMeasure | ⬜ | ⬜ |
-| `marH` | CT_PixelsMeasure | ⬜ | ⬜ |
-| `marLeft` | CT_SignedTwipsMeasure | ⬜ | ⬜ |
-| `marRight` | CT_SignedTwipsMeasure | ⬜ | ⬜ |
-| `marTop` | CT_SignedTwipsMeasure | ⬜ | ⬜ |
-| `marW` | CT_PixelsMeasure | ⬜ | ⬜ |
-| `matchSrc` | CT_OnOff | ⬜ | ⬜ |
-| `maxLength` | CT_DecimalNumber | ⬜ | ⬜ |
-| `mirrorIndents` | CT_OnOff | ⬜ | ⬜ |
-| `mirrorMargins` | CT_OnOff | ⬜ | ⬜ |
-| `monthLong` | CT_Empty | ⬜ | ⬜ |
-| `monthShort` | CT_Empty | ⬜ | ⬜ |
-| `moveFrom` | CT_TrackChange | ⬜ | ⬜ |
-| `moveFromRangeEnd` | CT_MarkupRange | ⬜ | ⬜ |
-| `moveFromRangeStart` | CT_MoveBookmark | ⬜ | ⬜ |
-| `moveTo` | CT_TrackChange | ⬜ | ⬜ |
-| `moveToRangeEnd` | CT_MarkupRange | ⬜ | ⬜ |
-| `moveToRangeStart` | CT_MoveBookmark | ⬜ | ⬜ |
-| `movie` | CT_Rel | ⬜ | ⬜ |
-| `multiLevelType` | CT_MultiLevelType | ⬜ | ⬜ |
-| `mwSmallCaps` | CT_OnOff | ⬜ | ⬜ |
-| `name` | CT_FFName | ⬜ | ⬜ |
-| `next` | CT_String | ⬜ | ⬜ |
-| `noBorder` | CT_OnOff | ⬜ | ⬜ |
-| `noBreakHyphen` | CT_Empty | ⬜ | ⬜ |
-| `noColumnBalance` | CT_OnOff | ⬜ | ⬜ |
-| `noEndnote` | CT_OnOff | ⬜ | ⬜ |
-| `noExtraLineSpacing` | CT_OnOff | ⬜ | ⬜ |
-| `noLeading` | CT_OnOff | ⬜ | ⬜ |
-| `noLineBreaksAfter` | CT_Kinsoku | ⬜ | ⬜ |
-| `noLineBreaksBefore` | CT_Kinsoku | ⬜ | ⬜ |
-| `noProof` | CT_OnOff | ⬜ | ⬜ |
-| `noPunctuationKerning` | CT_OnOff | ⬜ | ⬜ |
-| `noResizeAllowed` | CT_OnOff | ⬜ | ⬜ |
-| `noSpaceRaiseLower` | CT_OnOff | ⬜ | ⬜ |
-| `noTabHangInd` | CT_OnOff | ⬜ | ⬜ |
-| `noWrap` | CT_OnOff | ⬜ | ⬜ |
-| `notTrueType` | CT_OnOff | ⬜ | ⬜ |
-| `nsid` | CT_LongHexNumber | ⬜ | ⬜ |
-| `num` | CT_Num | ⬜ | ⬜ |
-| `numFmt` | CT_NumFmt | ⬜ | ⬜ |
-| `numId` | CT_DecimalNumber | ⬜ | ⬜ |
-| `numIdMacAtCleanup` | CT_DecimalNumber | ⬜ | ⬜ |
-| `numPicBullet` | CT_NumPicBullet | ⬜ | ⬜ |
-| `numPr` | CT_NumPr | ⬜ | ⬜ |
-| `numRestart` | CT_NumRestart | ⬜ | ⬜ |
-| `numStart` | CT_DecimalNumber | ⬜ | ⬜ |
-| `numStyleLink` | CT_String | ⬜ | ⬜ |
-| `numbering` | CT_Numbering | ⬜ | ⬜ |
-| `numberingChange` | CT_TrackChangeNumbering | ⬜ | ⬜ |
-| `oMath` | CT_OnOff | ⬜ | ⬜ |
-| `object` | CT_Object | ⬜ | ⬜ |
-| `odso` | CT_Odso | ⬜ | ⬜ |
-| `optimizeForBrowser` | CT_OnOff | ⬜ | ⬜ |
-| `outline` | CT_OnOff | ⬜ | ⬜ |
-| `outlineLvl` | CT_DecimalNumber | ⬜ | ⬜ |
-| `overflowPunct` | CT_OnOff | ⬜ | ⬜ |
-| `p` | CT_P | ✅ | ⬜ |
-| `pBdr` | CT_PBdr | ⬜ | ⬜ |
-| `pPr` | CT_PPrBase | ✅ | ⬜ |
-| `pPrChange` | CT_PPrChange | ⬜ | ⬜ |
-| `pPrDefault` | CT_PPrDefault | ⬜ | ⬜ |
-| `pStyle` | CT_String | ⬜ | ⬜ |
-| `pageBreakBefore` | CT_OnOff | ⬜ | ⬜ |
-| `panose1` | CT_Panose | ⬜ | ⬜ |
-| `paperSrc` | CT_PaperSource | ⬜ | ⬜ |
-| `permEnd` | CT_Perm | ⬜ | ⬜ |
-| `permStart` | CT_PermStart | ⬜ | ⬜ |
-| `personal` | CT_OnOff | ⬜ | ⬜ |
-| `personalCompose` | CT_OnOff | ⬜ | ⬜ |
-| `personalReply` | CT_OnOff | ⬜ | ⬜ |
-| `pgBorders` | CT_PageBorders | ⬜ | ⬜ |
-| `pgMar` | CT_PageMar | ⬜ | ⬜ |
-| `pgNum` | CT_Empty | ⬜ | ⬜ |
-| `pgNumType` | CT_PageNumber | ⬜ | ⬜ |
-| `pgSz` | CT_PageSz | ⬜ | ⬜ |
-| `pict` | CT_Picture | ⬜ | ⬜ |
-| `picture` | CT_Empty | ⬜ | ⬜ |
-| `pitch` | CT_Pitch | ⬜ | ⬜ |
-| `pixelsPerInch` | CT_DecimalNumber | ⬜ | ⬜ |
-| `placeholder` | CT_Placeholder | ⬜ | ⬜ |
-| `pos` | CT_FtnPos | ⬜ | ⬜ |
-| `position` | CT_SignedHpsMeasure | ⬜ | ⬜ |
-| `printBodyTextBeforeHeader` | CT_OnOff | ⬜ | ⬜ |
-| `printColBlack` | CT_OnOff | ⬜ | ⬜ |
-| `printFormsData` | CT_OnOff | ⬜ | ⬜ |
-| `printFractionalCharacterWidth` | CT_OnOff | ⬜ | ⬜ |
-| `printPostScriptOverText` | CT_OnOff | ⬜ | ⬜ |
-| `printTwoOnOne` | CT_OnOff | ⬜ | ⬜ |
-| `printerSettings` | CT_Rel | ⬜ | ⬜ |
-| `proofErr` | CT_ProofErr | ⬜ | ⬜ |
-| `proofState` | CT_Proof | ⬜ | ⬜ |
-| `ptab` | CT_PTab | ⬜ | ⬜ |
-| `qFormat` | CT_OnOff | ⬜ | ⬜ |
-| `query` | CT_String | ⬜ | ⬜ |
-| `r` | CT_R | ✅ | ⬜ |
-| `rFonts` | CT_Fonts | ⬜ | ⬜ |
-| `rPr` | CT_RPrOriginal | ✅ | ⬜ |
-| `rPrChange` | CT_RPrChange | ⬜ | ⬜ |
-| `rPrDefault` | CT_RPrDefault | ⬜ | ⬜ |
-| `rStyle` | CT_String | ⬜ | ⬜ |
-| `readModeInkLockDown` | CT_ReadingModeInkLockDown | ⬜ | ⬜ |
-| `recipientData` | CT_RecipientData | ⬜ | ⬜ |
-| `recipients` | CT_Recipients | ⬜ | ⬜ |
-| `relyOnVML` | CT_OnOff | ⬜ | ⬜ |
-| `removeDateAndTime` | CT_OnOff | ⬜ | ⬜ |
-| `removePersonalInformation` | CT_OnOff | ⬜ | ⬜ |
-| `result` | CT_DecimalNumber | ⬜ | ⬜ |
-| `revisionView` | CT_TrackChangesView | ⬜ | ⬜ |
-| `richText` | CT_Empty | ⬜ | ⬜ |
-| `right` | CT_Border | ⬜ | ⬜ |
-| `rsid` | CT_LongHexNumber | ⬜ | ⬜ |
-| `rsidRoot` | CT_LongHexNumber | ⬜ | ⬜ |
-| `rsids` | CT_DocRsids | ⬜ | ⬜ |
-| `rt` | CT_RubyContent | ⬜ | ⬜ |
-| `rtl` | CT_OnOff | ⬜ | ⬜ |
-| `rtlGutter` | CT_OnOff | ⬜ | ⬜ |
-| `ruby` | CT_Ruby | ⬜ | ⬜ |
-| `rubyAlign` | CT_RubyAlign | ⬜ | ⬜ |
-| `rubyBase` | CT_RubyContent | ⬜ | ⬜ |
-| `rubyPr` | CT_RubyPr | ⬜ | ⬜ |
-| `saveFormsData` | CT_OnOff | ⬜ | ⬜ |
-| `saveInvalidXml` | CT_OnOff | ⬜ | ⬜ |
-| `savePreviewPicture` | CT_OnOff | ⬜ | ⬜ |
-| `saveSmartTagsAsXml` | CT_OnOff | ⬜ | ⬜ |
-| `saveSubsetFonts` | CT_OnOff | ⬜ | ⬜ |
-| `saveThroughXslt` | CT_SaveThroughXslt | ⬜ | ⬜ |
-| `saveXmlDataOnly` | CT_OnOff | ⬜ | ⬜ |
-| `scrollbar` | CT_FrameScrollbar | ⬜ | ⬜ |
-| `sdt` | CT_SdtRun | ⬜ | ⬜ |
-| `sdtContent` | CT_SdtContentBlock | ⬜ | ⬜ |
-| `sdtEndPr` | CT_SdtEndPr | ⬜ | ⬜ |
-| `sdtPr` | CT_SdtPr | ⬜ | ⬜ |
-| `sectPr` | CT_SectPrBase | ⬜ | ⬜ |
-| `sectPrChange` | CT_SectPrChange | ⬜ | ⬜ |
-| `selectFldWithFirstOrLastChar` | CT_OnOff | ⬜ | ⬜ |
-| `semiHidden` | CT_OnOff | ⬜ | ⬜ |
-| `separator` | CT_Empty | ⬜ | ⬜ |
-| `settings` | CT_Settings | ⬜ | ⬜ |
-| `shadow` | CT_OnOff | ⬜ | ⬜ |
-| `shapeDefaults` | CT_ShapeDefaults | ⬜ | ⬜ |
-| `shapeLayoutLikeWW8` | CT_OnOff | ⬜ | ⬜ |
-| `shd` | CT_Shd | ⬜ | ⬜ |
-| `showBreaksInFrames` | CT_OnOff | ⬜ | ⬜ |
-| `showEnvelope` | CT_OnOff | ⬜ | ⬜ |
-| `showXMLTags` | CT_OnOff | ⬜ | ⬜ |
-| `showingPlcHdr` | CT_OnOff | ⬜ | ⬜ |
-| `sig` | CT_FontSig | ⬜ | ⬜ |
-| `size` | CT_HpsMeasure | ⬜ | ⬜ |
-| `sizeAuto` | CT_OnOff | ⬜ | ⬜ |
-| `smallCaps` | CT_OnOff | ⬜ | ⬜ |
-| `smartTag` | CT_SmartTagRun | ⬜ | ⬜ |
-| `smartTagPr` | CT_SmartTagPr | ⬜ | ⬜ |
-| `smartTagType` | CT_SmartTagType | ⬜ | ⬜ |
-| `snapToGrid` | CT_OnOff | ⬜ | ⬜ |
-| `softHyphen` | CT_Empty | ⬜ | ⬜ |
-| `sourceFileName` | CT_Rel | ⬜ | ⬜ |
-| `spaceForUL` | CT_OnOff | ⬜ | ⬜ |
-| `spacing` | CT_Spacing | ⬜ | ⬜ |
-| `spacingInWholePoints` | CT_OnOff | ⬜ | ⬜ |
-| `specVanish` | CT_OnOff | ⬜ | ⬜ |
-| `splitPgBreakAndParaMark` | CT_OnOff | ⬜ | ⬜ |
-| `src` | CT_Rel | ⬜ | ⬜ |
-| `start` | CT_DecimalNumber | ⬜ | ⬜ |
-| `startOverride` | CT_DecimalNumber | ⬜ | ⬜ |
-| `statusText` | CT_FFStatusText | ⬜ | ⬜ |
-| `storeMappedDataAs` | CT_SdtDateMappingType | ⬜ | ⬜ |
-| `strictFirstAndLastChars` | CT_OnOff | ⬜ | ⬜ |
-| `strike` | CT_OnOff | ⬜ | ⬜ |
-| `style` | CT_Style | ⬜ | ⬜ |
-| `styleLink` | CT_String | ⬜ | ⬜ |
-| `styleLockQFSet` | CT_OnOff | ⬜ | ⬜ |
-| `styleLockTheme` | CT_OnOff | ⬜ | ⬜ |
-| `stylePaneFormatFilter` | CT_ShortHexNumber | ⬜ | ⬜ |
-| `stylePaneSortMethod` | CT_ShortHexNumber | ⬜ | ⬜ |
-| `styles` | CT_Styles | ⬜ | ⬜ |
-| `subDoc` | CT_Rel | ⬜ | ⬜ |
-| `subFontBySize` | CT_OnOff | ⬜ | ⬜ |
-| `suff` | CT_LevelSuffix | ⬜ | ⬜ |
-| `summaryLength` | CT_DecimalNumber | ⬜ | ⬜ |
-| `suppressAutoHyphens` | CT_OnOff | ⬜ | ⬜ |
-| `suppressBottomSpacing` | CT_OnOff | ⬜ | ⬜ |
-| `suppressLineNumbers` | CT_OnOff | ⬜ | ⬜ |
-| `suppressOverlap` | CT_OnOff | ⬜ | ⬜ |
-| `suppressSpBfAfterPgBrk` | CT_OnOff | ⬜ | ⬜ |
-| `suppressSpacingAtTopOfPage` | CT_OnOff | ⬜ | ⬜ |
-| `suppressTopSpacing` | CT_OnOff | ⬜ | ⬜ |
-| `suppressTopSpacingWP` | CT_OnOff | ⬜ | ⬜ |
-| `swapBordersFacingPages` | CT_OnOff | ⬜ | ⬜ |
-| `sym` | CT_Sym | ⬜ | ⬜ |
-| `sz` | CT_HpsMeasure | ⬜ | ⬜ |
-| `szCs` | CT_HpsMeasure | ⬜ | ⬜ |
-| `t` | CT_Text | ✅ | ⬜ |
-| `tab` | CT_TabStop | ⬜ | ⬜ |
-| `table` | CT_String | ⬜ | ⬜ |
-| `tabs` | CT_Tabs | ⬜ | ⬜ |
-| `tag` | CT_String | ⬜ | ⬜ |
-| `targetScreenSz` | CT_TargetScreenSz | ⬜ | ⬜ |
-| `tbl` | CT_Tbl | ⬜ | ⬜ |
-| `tblBorders` | CT_TblBorders | ⬜ | ⬜ |
-| `tblCellMar` | CT_TblCellMar | ⬜ | ⬜ |
-| `tblCellSpacing` | CT_TblWidth | ⬜ | ⬜ |
-| `tblGrid` | CT_TblGridBase | ⬜ | ⬜ |
-| `tblGridChange` | CT_TblGridChange | ⬜ | ⬜ |
-| `tblHeader` | CT_OnOff | ⬜ | ⬜ |
-| `tblInd` | CT_TblWidth | ⬜ | ⬜ |
-| `tblLayout` | CT_TblLayoutType | ⬜ | ⬜ |
-| `tblLook` | CT_ShortHexNumber | ⬜ | ⬜ |
-| `tblOverlap` | CT_TblOverlap | ⬜ | ⬜ |
-| `tblPr` | CT_TblPrBase | ⬜ | ⬜ |
-| `tblPrChange` | CT_TblPrChange | ⬜ | ⬜ |
-| `tblPrEx` | CT_TblPrExBase | ⬜ | ⬜ |
-| `tblPrExChange` | CT_TblPrExChange | ⬜ | ⬜ |
-| `tblStyle` | CT_String | ⬜ | ⬜ |
-| `tblStyleColBandSize` | CT_DecimalNumber | ⬜ | ⬜ |
-| `tblStylePr` | CT_TblStylePr | ⬜ | ⬜ |
-| `tblStyleRowBandSize` | CT_DecimalNumber | ⬜ | ⬜ |
-| `tblW` | CT_TblWidth | ⬜ | ⬜ |
-| `tblpPr` | CT_TblPPr | ⬜ | ⬜ |
-| `tc` | CT_Tc | ⬜ | ⬜ |
-| `tcBorders` | CT_TcBorders | ⬜ | ⬜ |
-| `tcFitText` | CT_OnOff | ⬜ | ⬜ |
-| `tcMar` | CT_TcMar | ⬜ | ⬜ |
-| `tcPr` | CT_TcPrInner | ⬜ | ⬜ |
-| `tcPrChange` | CT_TcPrChange | ⬜ | ⬜ |
-| `tcW` | CT_TblWidth | ⬜ | ⬜ |
-| `temporary` | CT_OnOff | ⬜ | ⬜ |
-| `text` | CT_SdtText | ⬜ | ⬜ |
-| `textAlignment` | CT_TextAlignment | ⬜ | ⬜ |
-| `textDirection` | CT_TextDirection | ⬜ | ⬜ |
-| `textInput` | CT_FFTextInput | ⬜ | ⬜ |
-| `textboxTightWrap` | CT_TextboxTightWrap | ⬜ | ⬜ |
-| `themeFontLang` | CT_Language | ⬜ | ⬜ |
-| `titlePg` | CT_OnOff | ⬜ | ⬜ |
-| `tl2br` | CT_Border | ⬜ | ⬜ |
-| `tmpl` | CT_LongHexNumber | ⬜ | ⬜ |
-| `top` | CT_Border | ⬜ | ⬜ |
-| `topLinePunct` | CT_OnOff | ⬜ | ⬜ |
-| `tr` | CT_Row | ⬜ | ⬜ |
-| `tr2bl` | CT_Border | ⬜ | ⬜ |
-| `trHeight` | CT_Height | ⬜ | ⬜ |
-| `trPr` | CT_TrPrBase | ⬜ | ⬜ |
-| `trPrChange` | CT_TrPrChange | ⬜ | ⬜ |
-| `trackRevisions` | CT_OnOff | ⬜ | ⬜ |
-| `truncateFontHeightsLikeWP6` | CT_OnOff | ⬜ | ⬜ |
-| `txbxContent` | CT_TxbxContent | ⬜ | ⬜ |
-| `type` | CT_FFTextType | ⬜ | ⬜ |
-| `types` | CT_DocPartTypes | ⬜ | ⬜ |
-| `u` | CT_Underline | ⬜ | ⬜ |
-| `udl` | CT_String | ⬜ | ⬜ |
-| `uiCompat97To2003` | CT_OnOff | ⬜ | ⬜ |
-| `uiPriority` | CT_DecimalNumber | ⬜ | ⬜ |
-| `ulTrailSpace` | CT_OnOff | ⬜ | ⬜ |
-| `underlineTabInNumList` | CT_OnOff | ⬜ | ⬜ |
-| `unhideWhenUsed` | CT_OnOff | ⬜ | ⬜ |
-| `uniqueTag` | base64Binary | ⬜ | ⬜ |
-| `updateFields` | CT_OnOff | ⬜ | ⬜ |
-| `useAltKinsokuLineBreakRules` | CT_OnOff | ⬜ | ⬜ |
-| `useAnsiKerningPairs` | CT_OnOff | ⬜ | ⬜ |
-| `useFELayout` | CT_OnOff | ⬜ | ⬜ |
-| `useNormalStyleForList` | CT_OnOff | ⬜ | ⬜ |
-| `usePrinterMetrics` | CT_OnOff | ⬜ | ⬜ |
-| `useSingleBorderforContiguousCells` | CT_OnOff | ⬜ | ⬜ |
-| `useWord2002TableStyleRules` | CT_OnOff | ⬜ | ⬜ |
-| `useWord97LineBreakRules` | CT_OnOff | ⬜ | ⬜ |
-| `useXSLTWhenSaving` | CT_OnOff | ⬜ | ⬜ |
-| `vAlign` | CT_VerticalJc | ⬜ | ⬜ |
-| `vMerge` | CT_VMerge | ⬜ | ⬜ |
-| `vanish` | CT_OnOff | ⬜ | ⬜ |
-| `vertAlign` | CT_VerticalAlignRun | ⬜ | ⬜ |
-| `view` | CT_View | ⬜ | ⬜ |
-| `viewMergedData` | CT_OnOff | ⬜ | ⬜ |
-| `w` | CT_TextScale | ⬜ | ⬜ |
-| `wAfter` | CT_TblWidth | ⬜ | ⬜ |
-| `wBefore` | CT_TblWidth | ⬜ | ⬜ |
-| `webHidden` | CT_OnOff | ⬜ | ⬜ |
-| `webSettings` | CT_WebSettings | ⬜ | ⬜ |
-| `widowControl` | CT_OnOff | ⬜ | ⬜ |
-| `wordWrap` | CT_OnOff | ⬜ | ⬜ |
-| `wpJustification` | CT_OnOff | ⬜ | ⬜ |
-| `wpSpaceWidth` | CT_OnOff | ⬜ | ⬜ |
-| `wrapTrailSpaces` | CT_OnOff | ⬜ | ⬜ |
-| `writeProtection` | CT_WriteProtection | ⬜ | ⬜ |
-| `yearLong` | CT_Empty | ⬜ | ⬜ |
-| `yearShort` | CT_Empty | ⬜ | ⬜ |
-| `zoom` | CT_Zoom | ⬜ | ⬜ |
+<!-- BEGIN GENERATED SCHEMA INVENTORY -->
+## ECMA-376 Schema Surface
+
+Generated by `scripts/generate_spec_inventories.py` from the official ECMA-376 5th edition Part 4 Transitional XSDs. The source archives are SHA-256 pinned in the generator.
+
+This `docx` partition contains **613 qualified element names**, **784 named declarations**, **285 named complex types**, and **1 namespace**. Repeated declarations of one QName are combined and retain every declared type.
+
+This appendix is a discovery checklist, not an implementation percentage. One user-facing capability often uses several elements, and one element can participate in unrelated capabilities. Runtime status belongs in the curated tables above and in executable fixtures.
+
+Official standard: <https://ecma-international.org/publications-and-standards/standards/ecma-376/>
+
+### Namespace Legend
+
+| Prefix | Namespace |
+|---|---|
+| `w` | `http://schemas.openxmlformats.org/wordprocessingml/2006/main` |
+
+### Elements
+
+| QName | Declared type(s) | Source XSD |
+|---|---|---|
+| `w:abstractNum` | `CT_AbstractNum` | `wml.xsd` |
+| `w:abstractNumId` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:active` | `CT_OnOff` | `wml.xsd` |
+| `w:activeRecord` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:activeWritingStyle` | `CT_WritingStyle` | `wml.xsd` |
+| `w:addressFieldName` | `CT_String` | `wml.xsd` |
+| `w:adjustLineHeightInTable` | `CT_OnOff` | `wml.xsd` |
+| `w:adjustRightInd` | `CT_OnOff` | `wml.xsd` |
+| `w:alias` | `CT_String` | `wml.xsd` |
+| `w:aliases` | `CT_String` | `wml.xsd` |
+| `w:alignBordersAndEdges` | `CT_OnOff` | `wml.xsd` |
+| `w:alignTablesRowByRow` | `CT_OnOff` | `wml.xsd` |
+| `w:allowPNG` | `CT_OnOff` | `wml.xsd` |
+| `w:allowSpaceOfSameStyleInTable` | `CT_OnOff` | `wml.xsd` |
+| `w:altChunk` | `CT_AltChunk` | `wml.xsd` |
+| `w:altChunkPr` | `CT_AltChunkPr` | `wml.xsd` |
+| `w:altName` | `CT_String` | `wml.xsd` |
+| `w:alwaysMergeEmptyNamespace` | `CT_OnOff` | `wml.xsd` |
+| `w:alwaysShowPlaceholderText` | `CT_OnOff` | `wml.xsd` |
+| `w:annotationRef` | `CT_Empty` | `wml.xsd` |
+| `w:applyBreakingRules` | `CT_OnOff` | `wml.xsd` |
+| `w:attachedSchema` | `CT_String` | `wml.xsd` |
+| `w:attachedTemplate` | `CT_Rel` | `wml.xsd` |
+| `w:attr` | `CT_Attr` | `wml.xsd` |
+| `w:autoCaption` | `CT_AutoCaption` | `wml.xsd` |
+| `w:autoCaptions` | `CT_AutoCaptions` | `wml.xsd` |
+| `w:autofitToFirstFixedWidthCell` | `CT_OnOff` | `wml.xsd` |
+| `w:autoFormatOverride` | `CT_OnOff` | `wml.xsd` |
+| `w:autoHyphenation` | `CT_OnOff` | `wml.xsd` |
+| `w:autoRedefine` | `CT_OnOff` | `wml.xsd` |
+| `w:autoSpaceDE` | `CT_OnOff` | `wml.xsd` |
+| `w:autoSpaceDN` | `CT_OnOff` | `wml.xsd` |
+| `w:autoSpaceLikeWord95` | `CT_OnOff` | `wml.xsd` |
+| `w:b` | `CT_OnOff` | `wml.xsd` |
+| `w:background` | `CT_Background` | `wml.xsd` |
+| `w:balanceSingleByteDoubleByteWidth` | `CT_OnOff` | `wml.xsd` |
+| `w:bar` | `CT_Border` | `wml.xsd` |
+| `w:basedOn` | `CT_String` | `wml.xsd` |
+| `w:bCs` | `CT_OnOff` | `wml.xsd` |
+| `w:bdo` | `CT_BdoContentRun` | `wml.xsd` |
+| `w:bdr` | `CT_Border` | `wml.xsd` |
+| `w:behavior` | `CT_DocPartBehavior` | `wml.xsd` |
+| `w:behaviors` | `CT_DocPartBehaviors` | `wml.xsd` |
+| `w:between` | `CT_Border` | `wml.xsd` |
+| `w:bibliography` | `CT_Empty` | `wml.xsd` |
+| `w:bidi` | `CT_OnOff` | `wml.xsd` |
+| `w:bidiVisual` | `CT_OnOff` | `wml.xsd` |
+| `w:blockQuote` | `CT_OnOff` | `wml.xsd` |
+| `w:body` | `CT_Body` | `wml.xsd` |
+| `w:bodyDiv` | `CT_OnOff` | `wml.xsd` |
+| `w:bookFoldPrinting` | `CT_OnOff` | `wml.xsd` |
+| `w:bookFoldPrintingSheets` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:bookFoldRevPrinting` | `CT_OnOff` | `wml.xsd` |
+| `w:bookmarkEnd` | `CT_MarkupRange` | `wml.xsd` |
+| `w:bookmarkStart` | `CT_Bookmark` | `wml.xsd` |
+| `w:bordersDoNotSurroundFooter` | `CT_OnOff` | `wml.xsd` |
+| `w:bordersDoNotSurroundHeader` | `CT_OnOff` | `wml.xsd` |
+| `w:bottom` | `CT_Border`<br>`CT_BottomPageBorder`<br>`CT_TblWidth` | `wml.xsd` |
+| `w:br` | `CT_Br` | `wml.xsd` |
+| `w:cachedColBalance` | `CT_OnOff` | `wml.xsd` |
+| `w:calcOnExit` | `CT_OnOff` | `wml.xsd` |
+| `w:calendar` | `CT_CalendarType` | `wml.xsd` |
+| `w:cantSplit` | `CT_OnOff` | `wml.xsd` |
+| `w:caps` | `CT_OnOff` | `wml.xsd` |
+| `w:caption` | `CT_Caption` | `wml.xsd` |
+| `w:captions` | `CT_Captions` | `wml.xsd` |
+| `w:category` | `CT_DocPartCategory` | `wml.xsd` |
+| `w:cellDel` | `CT_TrackChange` | `wml.xsd` |
+| `w:cellIns` | `CT_TrackChange` | `wml.xsd` |
+| `w:cellMerge` | `CT_CellMergeTrackChange` | `wml.xsd` |
+| `w:characterSpacingControl` | `CT_CharacterSpacing` | `wml.xsd` |
+| `w:charset` | `CT_Charset` | `wml.xsd` |
+| `w:checkBox` | `CT_FFCheckBox` | `wml.xsd` |
+| `w:checked` | `CT_OnOff` | `wml.xsd` |
+| `w:checkErrors` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:citation` | `CT_Empty` | `wml.xsd` |
+| `w:clickAndTypeStyle` | `CT_String` | `wml.xsd` |
+| `w:clrSchemeMapping` | `CT_ColorSchemeMapping` | `wml.xsd` |
+| `w:cnfStyle` | `CT_Cnf` | `wml.xsd` |
+| `w:col` | `CT_Column` | `wml.xsd` |
+| `w:colDelim` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:color` | `CT_Color` | `wml.xsd` |
+| `w:cols` | `CT_Columns` | `wml.xsd` |
+| `w:column` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:comboBox` | `CT_SdtComboBox` | `wml.xsd` |
+| `w:comment` | `CT_Comment` | `wml.xsd` |
+| `w:commentRangeEnd` | `CT_MarkupRange` | `wml.xsd` |
+| `w:commentRangeStart` | `CT_MarkupRange` | `wml.xsd` |
+| `w:commentReference` | `CT_Markup` | `wml.xsd` |
+| `w:comments` | `CT_Comments` | `wml.xsd` |
+| `w:compat` | `CT_Compat` | `wml.xsd` |
+| `w:compatSetting` | `CT_CompatSetting` | `wml.xsd` |
+| `w:connectString` | `CT_String` | `wml.xsd` |
+| `w:consecutiveHyphenLimit` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:contentPart` | `CT_Rel` | `wml.xsd` |
+| `w:contextualSpacing` | `CT_OnOff` | `wml.xsd` |
+| `w:continuationSeparator` | `CT_Empty` | `wml.xsd` |
+| `w:control` | `CT_Control` | `wml.xsd` |
+| `w:convMailMergeEsc` | `CT_OnOff` | `wml.xsd` |
+| `w:cr` | `CT_Empty` | `wml.xsd` |
+| `w:cs` | `CT_OnOff` | `wml.xsd` |
+| `w:customXml` | `CT_CustomXmlBlock`<br>`CT_CustomXmlCell`<br>`CT_CustomXmlRow`<br>`CT_CustomXmlRun` | `wml.xsd` |
+| `w:customXmlDelRangeEnd` | `CT_Markup` | `wml.xsd` |
+| `w:customXmlDelRangeStart` | `CT_TrackChange` | `wml.xsd` |
+| `w:customXmlInsRangeEnd` | `CT_Markup` | `wml.xsd` |
+| `w:customXmlInsRangeStart` | `CT_TrackChange` | `wml.xsd` |
+| `w:customXmlMoveFromRangeEnd` | `CT_Markup` | `wml.xsd` |
+| `w:customXmlMoveFromRangeStart` | `CT_TrackChange` | `wml.xsd` |
+| `w:customXmlMoveToRangeEnd` | `CT_Markup` | `wml.xsd` |
+| `w:customXmlMoveToRangeStart` | `CT_TrackChange` | `wml.xsd` |
+| `w:customXmlPr` | `CT_CustomXmlPr` | `wml.xsd` |
+| `w:dataBinding` | `CT_DataBinding` | `wml.xsd` |
+| `w:dataSource` | `CT_Rel` | `wml.xsd` |
+| `w:dataType` | `CT_MailMergeDataType` | `wml.xsd` |
+| `w:date` | `CT_SdtDate` | `wml.xsd` |
+| `w:dateFormat` | `CT_String` | `wml.xsd` |
+| `w:dayLong` | `CT_Empty` | `wml.xsd` |
+| `w:dayShort` | `CT_Empty` | `wml.xsd` |
+| `w:ddList` | `CT_FFDDList` | `wml.xsd` |
+| `w:decimalSymbol` | `CT_String` | `wml.xsd` |
+| `w:default` | `CT_DecimalNumber`<br>`CT_OnOff`<br>`CT_String` | `wml.xsd` |
+| `w:defaultTableStyle` | `CT_String` | `wml.xsd` |
+| `w:defaultTabStop` | `CT_TwipsMeasure` | `wml.xsd` |
+| `w:del` | `CT_MathCtrlDel`<br>`CT_RPrChange`<br>`CT_RunTrackChange`<br>`CT_TrackChange` | `wml.xsd` |
+| `w:delInstrText` | `CT_Text` | `wml.xsd` |
+| `w:delText` | `CT_Text` | `wml.xsd` |
+| `w:description` | `CT_String` | `wml.xsd` |
+| `w:destination` | `CT_MailMergeDest` | `wml.xsd` |
+| `w:dir` | `CT_DirContentRun` | `wml.xsd` |
+| `w:dirty` | `CT_OnOff` | `wml.xsd` |
+| `w:displayBackgroundShape` | `CT_OnOff` | `wml.xsd` |
+| `w:displayHangulFixedWidth` | `CT_OnOff` | `wml.xsd` |
+| `w:displayHorizontalDrawingGridEvery` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:displayVerticalDrawingGridEvery` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:div` | `CT_Div` | `wml.xsd` |
+| `w:divBdr` | `CT_DivBdr` | `wml.xsd` |
+| `w:divId` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:divs` | `CT_Divs` | `wml.xsd` |
+| `w:divsChild` | `CT_Divs` | `wml.xsd` |
+| `w:docDefaults` | `CT_DocDefaults` | `wml.xsd` |
+| `w:docGrid` | `CT_DocGrid` | `wml.xsd` |
+| `w:docPart` | `CT_DocPart`<br>`CT_String` | `wml.xsd` |
+| `w:docPartBody` | `CT_Body` | `wml.xsd` |
+| `w:docPartCategory` | `CT_String` | `wml.xsd` |
+| `w:docPartGallery` | `CT_String` | `wml.xsd` |
+| `w:docPartList` | `CT_SdtDocPart` | `wml.xsd` |
+| `w:docPartObj` | `CT_SdtDocPart` | `wml.xsd` |
+| `w:docPartPr` | `CT_DocPartPr` | `wml.xsd` |
+| `w:docParts` | `CT_DocParts` | `wml.xsd` |
+| `w:docPartUnique` | `CT_OnOff` | `wml.xsd` |
+| `w:document` | `CT_Document` | `wml.xsd` |
+| `w:documentProtection` | `CT_DocProtect` | `wml.xsd` |
+| `w:documentType` | `CT_DocType` | `wml.xsd` |
+| `w:docVar` | `CT_DocVar` | `wml.xsd` |
+| `w:docVars` | `CT_DocVars` | `wml.xsd` |
+| `w:doNotAutoCompressPictures` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotAutofitConstrainedTables` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotBreakConstrainedForcedTable` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotBreakWrappedTables` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotDemarcateInvalidXml` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotDisplayPageBoundaries` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotEmbedSmartTags` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotExpandShiftReturn` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotHyphenateCaps` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotIncludeSubdocsInStats` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotLeaveBackslashAlone` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotOrganizeInFolder` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotRelyOnCSS` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotSaveAsSingleFile` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotShadeFormData` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotSnapToGridInCell` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotSuppressBlankLines` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotSuppressIndentation` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotSuppressParagraphBorders` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotTrackFormatting` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotTrackMoves` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotUseEastAsianBreakRules` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotUseHTMLParagraphAutoSpacing` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotUseIndentAsNumberingTabStop` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotUseLongFileNames` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotUseMarginsForDrawingGridOrigin` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotValidateAgainstSchema` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotVertAlignCellWithSp` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotVertAlignInTxbx` | `CT_OnOff` | `wml.xsd` |
+| `w:doNotWrapTextWithPunct` | `CT_OnOff` | `wml.xsd` |
+| `w:drawing` | `CT_Drawing` | `wml.xsd` |
+| `w:drawingGridHorizontalOrigin` | `CT_TwipsMeasure` | `wml.xsd` |
+| `w:drawingGridHorizontalSpacing` | `CT_TwipsMeasure` | `wml.xsd` |
+| `w:drawingGridVerticalOrigin` | `CT_TwipsMeasure` | `wml.xsd` |
+| `w:drawingGridVerticalSpacing` | `CT_TwipsMeasure` | `wml.xsd` |
+| `w:dropDownList` | `CT_SdtDropDownList` | `wml.xsd` |
+| `w:dstrike` | `CT_OnOff` | `wml.xsd` |
+| `w:dynamicAddress` | `CT_OnOff` | `wml.xsd` |
+| `w:eastAsianLayout` | `CT_EastAsianLayout` | `wml.xsd` |
+| `w:effect` | `CT_TextEffect` | `wml.xsd` |
+| `w:em` | `CT_Em` | `wml.xsd` |
+| `w:embedBold` | `CT_FontRel` | `wml.xsd` |
+| `w:embedBoldItalic` | `CT_FontRel` | `wml.xsd` |
+| `w:embedItalic` | `CT_FontRel` | `wml.xsd` |
+| `w:embedRegular` | `CT_FontRel` | `wml.xsd` |
+| `w:embedSystemFonts` | `CT_OnOff` | `wml.xsd` |
+| `w:embedTrueTypeFonts` | `CT_OnOff` | `wml.xsd` |
+| `w:emboss` | `CT_OnOff` | `wml.xsd` |
+| `w:enabled` | `CT_OnOff` | `wml.xsd` |
+| `w:encoding` | `CT_String` | `wml.xsd` |
+| `w:end` | `CT_Border`<br>`CT_TblWidth` | `wml.xsd` |
+| `w:endnote` | `CT_FtnEdn`<br>`CT_FtnEdnSepRef` | `wml.xsd` |
+| `w:endnotePr` | `CT_EdnDocProps`<br>`CT_EdnProps` | `wml.xsd` |
+| `w:endnoteRef` | `CT_Empty` | `wml.xsd` |
+| `w:endnoteReference` | `CT_FtnEdnRef` | `wml.xsd` |
+| `w:endnotes` | `CT_Endnotes` | `wml.xsd` |
+| `w:entryMacro` | `CT_MacroName` | `wml.xsd` |
+| `w:equation` | `CT_Empty` | `wml.xsd` |
+| `w:evenAndOddHeaders` | `CT_OnOff` | `wml.xsd` |
+| `w:exitMacro` | `CT_MacroName` | `wml.xsd` |
+| `w:family` | `CT_FontFamily` | `wml.xsd` |
+| `w:ffData` | `CT_FFData` | `wml.xsd` |
+| `w:fHdr` | `CT_OnOff` | `wml.xsd` |
+| `w:fieldMapData` | `CT_OdsoFieldMapData` | `wml.xsd` |
+| `w:fitText` | `CT_FitText` | `wml.xsd` |
+| `w:flatBorders` | `CT_OnOff` | `wml.xsd` |
+| `w:fldChar` | `CT_FldChar` | `wml.xsd` |
+| `w:fldData` | `CT_Text` | `wml.xsd` |
+| `w:fldSimple` | `CT_SimpleField` | `wml.xsd` |
+| `w:font` | `CT_Font` | `wml.xsd` |
+| `w:fonts` | `CT_FontsList` | `wml.xsd` |
+| `w:footerReference` | `CT_HdrFtrRef` | `wml.xsd` |
+| `w:footnote` | `CT_FtnEdn`<br>`CT_FtnEdnSepRef` | `wml.xsd` |
+| `w:footnoteLayoutLikeWW8` | `CT_OnOff` | `wml.xsd` |
+| `w:footnotePr` | `CT_FtnDocProps`<br>`CT_FtnProps` | `wml.xsd` |
+| `w:footnoteRef` | `CT_Empty` | `wml.xsd` |
+| `w:footnoteReference` | `CT_FtnEdnRef` | `wml.xsd` |
+| `w:footnotes` | `CT_Footnotes` | `wml.xsd` |
+| `w:forceUpgrade` | `CT_Empty` | `wml.xsd` |
+| `w:forgetLastTabAlignment` | `CT_OnOff` | `wml.xsd` |
+| `w:format` | `CT_String` | `wml.xsd` |
+| `w:formProt` | `CT_OnOff` | `wml.xsd` |
+| `w:formsDesign` | `CT_OnOff` | `wml.xsd` |
+| `w:frame` | `CT_Frame` | `wml.xsd` |
+| `w:frameLayout` | `CT_FrameLayout` | `wml.xsd` |
+| `w:framePr` | `CT_FramePr` | `wml.xsd` |
+| `w:frameset` | `CT_Frameset` | `wml.xsd` |
+| `w:framesetSplitbar` | `CT_FramesetSplitbar` | `wml.xsd` |
+| `w:ftr` | `CT_HdrFtr` | `wml.xsd` |
+| `w:gallery` | `CT_DocPartGallery` | `wml.xsd` |
+| `w:glossaryDocument` | `CT_GlossaryDocument` | `wml.xsd` |
+| `w:gridAfter` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:gridBefore` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:gridCol` | `CT_TblGridCol` | `wml.xsd` |
+| `w:gridSpan` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:group` | `CT_Empty` | `wml.xsd` |
+| `w:growAutofit` | `CT_OnOff` | `wml.xsd` |
+| `w:guid` | `CT_Guid` | `wml.xsd` |
+| `w:gutterAtTop` | `CT_OnOff` | `wml.xsd` |
+| `w:hdr` | `CT_HdrFtr` | `wml.xsd` |
+| `w:hdrShapeDefaults` | `CT_ShapeDefaults` | `wml.xsd` |
+| `w:header` | `CT_String` | `wml.xsd` |
+| `w:headerReference` | `CT_HdrFtrRef` | `wml.xsd` |
+| `w:headers` | `CT_Headers` | `wml.xsd` |
+| `w:headerSource` | `CT_Rel` | `wml.xsd` |
+| `w:helpText` | `CT_FFHelpText` | `wml.xsd` |
+| `w:hidden` | `CT_OnOff` | `wml.xsd` |
+| `w:hideGrammaticalErrors` | `CT_OnOff` | `wml.xsd` |
+| `w:hideMark` | `CT_OnOff` | `wml.xsd` |
+| `w:hideSpellingErrors` | `CT_OnOff` | `wml.xsd` |
+| `w:highlight` | `CT_Highlight` | `wml.xsd` |
+| `w:hMerge` | `CT_HMerge` | `wml.xsd` |
+| `w:hps` | `CT_HpsMeasure` | `wml.xsd` |
+| `w:hpsBaseText` | `CT_HpsMeasure` | `wml.xsd` |
+| `w:hpsRaise` | `CT_HpsMeasure` | `wml.xsd` |
+| `w:hyperlink` | `CT_Hyperlink` | `wml.xsd` |
+| `w:hyphenationZone` | `CT_TwipsMeasure` | `wml.xsd` |
+| `w:i` | `CT_OnOff` | `wml.xsd` |
+| `w:iCs` | `CT_OnOff` | `wml.xsd` |
+| `w:id` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:ignoreMixedContent` | `CT_OnOff` | `wml.xsd` |
+| `w:ilvl` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:imprint` | `CT_OnOff` | `wml.xsd` |
+| `w:ind` | `CT_Ind` | `wml.xsd` |
+| `w:ins` | `CT_MathCtrlIns`<br>`CT_RunTrackChange`<br>`CT_TrackChange` | `wml.xsd` |
+| `w:insideH` | `CT_Border` | `wml.xsd` |
+| `w:insideV` | `CT_Border` | `wml.xsd` |
+| `w:instrText` | `CT_Text` | `wml.xsd` |
+| `w:isLgl` | `CT_OnOff` | `wml.xsd` |
+| `w:jc` | `CT_Jc`<br>`CT_JcTable` | `wml.xsd` |
+| `w:keepLines` | `CT_OnOff` | `wml.xsd` |
+| `w:keepNext` | `CT_OnOff` | `wml.xsd` |
+| `w:kern` | `CT_HpsMeasure` | `wml.xsd` |
+| `w:kinsoku` | `CT_OnOff` | `wml.xsd` |
+| `w:label` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:lang` | `CT_Language` | `wml.xsd` |
+| `w:lastRenderedPageBreak` | `CT_Empty` | `wml.xsd` |
+| `w:latentStyles` | `CT_LatentStyles` | `wml.xsd` |
+| `w:layoutRawTableWidth` | `CT_OnOff` | `wml.xsd` |
+| `w:layoutTableRowsApart` | `CT_OnOff` | `wml.xsd` |
+| `w:left` | `CT_Border`<br>`CT_PageBorder`<br>`CT_TblWidth` | `wml.xsd` |
+| `w:legacy` | `CT_LvlLegacy` | `wml.xsd` |
+| `w:lid` | `CT_Lang` | `wml.xsd` |
+| `w:lineWrapLikeWord6` | `CT_OnOff` | `wml.xsd` |
+| `w:link` | `CT_String` | `wml.xsd` |
+| `w:linkedToFile` | `CT_OnOff` | `wml.xsd` |
+| `w:linkStyles` | `CT_OnOff` | `wml.xsd` |
+| `w:linkToQuery` | `CT_OnOff` | `wml.xsd` |
+| `w:listEntry` | `CT_String` | `wml.xsd` |
+| `w:listItem` | `CT_SdtListItem` | `wml.xsd` |
+| `w:listSeparator` | `CT_String` | `wml.xsd` |
+| `w:lnNumType` | `CT_LineNumber` | `wml.xsd` |
+| `w:lock` | `CT_Lock` | `wml.xsd` |
+| `w:locked` | `CT_OnOff` | `wml.xsd` |
+| `w:longDesc` | `CT_Rel` | `wml.xsd` |
+| `w:lsdException` | `CT_LsdException` | `wml.xsd` |
+| `w:lvl` | `CT_Lvl` | `wml.xsd` |
+| `w:lvlJc` | `CT_Jc` | `wml.xsd` |
+| `w:lvlOverride` | `CT_NumLvl` | `wml.xsd` |
+| `w:lvlPicBulletId` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:lvlRestart` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:lvlText` | `CT_LevelText` | `wml.xsd` |
+| `w:mailAsAttachment` | `CT_OnOff` | `wml.xsd` |
+| `w:mailMerge` | `CT_MailMerge` | `wml.xsd` |
+| `w:mailSubject` | `CT_String` | `wml.xsd` |
+| `w:mainDocumentType` | `CT_MailMergeDocType` | `wml.xsd` |
+| `w:mappedName` | `CT_String` | `wml.xsd` |
+| `w:marBottom` | `CT_SignedTwipsMeasure` | `wml.xsd` |
+| `w:marH` | `CT_PixelsMeasure` | `wml.xsd` |
+| `w:marLeft` | `CT_SignedTwipsMeasure` | `wml.xsd` |
+| `w:marRight` | `CT_SignedTwipsMeasure` | `wml.xsd` |
+| `w:marTop` | `CT_SignedTwipsMeasure` | `wml.xsd` |
+| `w:marW` | `CT_PixelsMeasure` | `wml.xsd` |
+| `w:matchSrc` | `CT_OnOff` | `wml.xsd` |
+| `w:maxLength` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:mirrorIndents` | `CT_OnOff` | `wml.xsd` |
+| `w:mirrorMargins` | `CT_OnOff` | `wml.xsd` |
+| `w:monthLong` | `CT_Empty` | `wml.xsd` |
+| `w:monthShort` | `CT_Empty` | `wml.xsd` |
+| `w:moveFrom` | `CT_RunTrackChange`<br>`CT_TrackChange` | `wml.xsd` |
+| `w:moveFromRangeEnd` | `CT_MarkupRange` | `wml.xsd` |
+| `w:moveFromRangeStart` | `CT_MoveBookmark` | `wml.xsd` |
+| `w:moveTo` | `CT_RunTrackChange`<br>`CT_TrackChange` | `wml.xsd` |
+| `w:moveToRangeEnd` | `CT_MarkupRange` | `wml.xsd` |
+| `w:moveToRangeStart` | `CT_MoveBookmark` | `wml.xsd` |
+| `w:movie` | `CT_Rel` | `wml.xsd` |
+| `w:multiLevelType` | `CT_MultiLevelType` | `wml.xsd` |
+| `w:mwSmallCaps` | `CT_OnOff` | `wml.xsd` |
+| `w:name` | `CT_DocPartName`<br>`CT_FFName`<br>`CT_String` | `wml.xsd` |
+| `w:next` | `CT_String` | `wml.xsd` |
+| `w:noBorder` | `CT_OnOff` | `wml.xsd` |
+| `w:noBreakHyphen` | `CT_Empty` | `wml.xsd` |
+| `w:noColumnBalance` | `CT_OnOff` | `wml.xsd` |
+| `w:noEndnote` | `CT_OnOff` | `wml.xsd` |
+| `w:noExtraLineSpacing` | `CT_OnOff` | `wml.xsd` |
+| `w:noLeading` | `CT_OnOff` | `wml.xsd` |
+| `w:noLineBreaksAfter` | `CT_Kinsoku` | `wml.xsd` |
+| `w:noLineBreaksBefore` | `CT_Kinsoku` | `wml.xsd` |
+| `w:noProof` | `CT_OnOff` | `wml.xsd` |
+| `w:noPunctuationKerning` | `CT_OnOff` | `wml.xsd` |
+| `w:noResizeAllowed` | `CT_OnOff` | `wml.xsd` |
+| `w:noSpaceRaiseLower` | `CT_OnOff` | `wml.xsd` |
+| `w:noTabHangInd` | `CT_OnOff` | `wml.xsd` |
+| `w:notTrueType` | `CT_OnOff` | `wml.xsd` |
+| `w:noWrap` | `CT_OnOff` | `wml.xsd` |
+| `w:nsid` | `CT_LongHexNumber` | `wml.xsd` |
+| `w:num` | `CT_Num` | `wml.xsd` |
+| `w:numbering` | `CT_Numbering` | `wml.xsd` |
+| `w:numberingChange` | `CT_TrackChangeNumbering` | `wml.xsd` |
+| `w:numFmt` | `CT_NumFmt` | `wml.xsd` |
+| `w:numId` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:numIdMacAtCleanup` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:numPicBullet` | `CT_NumPicBullet` | `wml.xsd` |
+| `w:numPr` | `CT_NumPr` | `wml.xsd` |
+| `w:numRestart` | `CT_NumRestart` | `wml.xsd` |
+| `w:numStart` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:numStyleLink` | `CT_String` | `wml.xsd` |
+| `w:object` | `CT_Object` | `wml.xsd` |
+| `w:objectEmbed` | `CT_ObjectEmbed` | `wml.xsd` |
+| `w:objectLink` | `CT_ObjectLink` | `wml.xsd` |
+| `w:odso` | `CT_Odso` | `wml.xsd` |
+| `w:oMath` | `CT_OnOff` | `wml.xsd` |
+| `w:optimizeForBrowser` | `CT_OptimizeForBrowser` | `wml.xsd` |
+| `w:outline` | `CT_OnOff` | `wml.xsd` |
+| `w:outlineLvl` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:overflowPunct` | `CT_OnOff` | `wml.xsd` |
+| `w:p` | `CT_P` | `wml.xsd` |
+| `w:pageBreakBefore` | `CT_OnOff` | `wml.xsd` |
+| `w:panose1` | `CT_Panose` | `wml.xsd` |
+| `w:paperSrc` | `CT_PaperSource` | `wml.xsd` |
+| `w:pBdr` | `CT_PBdr` | `wml.xsd` |
+| `w:permEnd` | `CT_Perm` | `wml.xsd` |
+| `w:permStart` | `CT_PermStart` | `wml.xsd` |
+| `w:personal` | `CT_OnOff` | `wml.xsd` |
+| `w:personalCompose` | `CT_OnOff` | `wml.xsd` |
+| `w:personalReply` | `CT_OnOff` | `wml.xsd` |
+| `w:pgBorders` | `CT_PageBorders` | `wml.xsd` |
+| `w:pgMar` | `CT_PageMar` | `wml.xsd` |
+| `w:pgNum` | `CT_Empty` | `wml.xsd` |
+| `w:pgNumType` | `CT_PageNumber` | `wml.xsd` |
+| `w:pgSz` | `CT_PageSz` | `wml.xsd` |
+| `w:pict` | `CT_Picture` | `wml.xsd` |
+| `w:picture` | `CT_Empty` | `wml.xsd` |
+| `w:pitch` | `CT_Pitch` | `wml.xsd` |
+| `w:pixelsPerInch` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:placeholder` | `CT_Placeholder`<br>`CT_String` | `wml.xsd` |
+| `w:pos` | `CT_EdnPos`<br>`CT_FtnPos` | `wml.xsd` |
+| `w:position` | `CT_SignedHpsMeasure` | `wml.xsd` |
+| `w:pPr` | `CT_PPr`<br>`CT_PPrBase`<br>`CT_PPrGeneral` | `wml.xsd` |
+| `w:pPrChange` | `CT_PPrChange` | `wml.xsd` |
+| `w:pPrDefault` | `CT_PPrDefault` | `wml.xsd` |
+| `w:printBodyTextBeforeHeader` | `CT_OnOff` | `wml.xsd` |
+| `w:printColBlack` | `CT_OnOff` | `wml.xsd` |
+| `w:printerSettings` | `CT_Rel` | `wml.xsd` |
+| `w:printFormsData` | `CT_OnOff` | `wml.xsd` |
+| `w:printFractionalCharacterWidth` | `CT_OnOff` | `wml.xsd` |
+| `w:printPostScriptOverText` | `CT_OnOff` | `wml.xsd` |
+| `w:printTwoOnOne` | `CT_OnOff` | `wml.xsd` |
+| `w:proofErr` | `CT_ProofErr` | `wml.xsd` |
+| `w:proofState` | `CT_Proof` | `wml.xsd` |
+| `w:pStyle` | `CT_String` | `wml.xsd` |
+| `w:ptab` | `CT_PTab` | `wml.xsd` |
+| `w:qFormat` | `CT_OnOff` | `wml.xsd` |
+| `w:query` | `CT_String` | `wml.xsd` |
+| `w:r` | `CT_R` | `wml.xsd` |
+| `w:readModeInkLockDown` | `CT_ReadingModeInkLockDown` | `wml.xsd` |
+| `w:recipientData` | `CT_RecipientData`<br>`CT_Rel` | `wml.xsd` |
+| `w:recipients` | `CT_Recipients` | `wml.xsd` |
+| `w:relyOnVML` | `CT_OnOff` | `wml.xsd` |
+| `w:removeDateAndTime` | `CT_OnOff` | `wml.xsd` |
+| `w:removePersonalInformation` | `CT_OnOff` | `wml.xsd` |
+| `w:result` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:revisionView` | `CT_TrackChangesView` | `wml.xsd` |
+| `w:rFonts` | `CT_Fonts` | `wml.xsd` |
+| `w:richText` | `CT_Empty` | `wml.xsd` |
+| `w:right` | `CT_Border`<br>`CT_PageBorder`<br>`CT_TblWidth` | `wml.xsd` |
+| `w:rPr` | `CT_ParaRPr`<br>`CT_ParaRPrOriginal`<br>`CT_RPr`<br>`CT_RPrOriginal` | `wml.xsd` |
+| `w:rPrChange` | `CT_ParaRPrChange`<br>`CT_RPrChange` | `wml.xsd` |
+| `w:rPrDefault` | `CT_RPrDefault` | `wml.xsd` |
+| `w:rsid` | `CT_LongHexNumber` | `wml.xsd` |
+| `w:rsidRoot` | `CT_LongHexNumber` | `wml.xsd` |
+| `w:rsids` | `CT_DocRsids` | `wml.xsd` |
+| `w:rStyle` | `CT_String` | `wml.xsd` |
+| `w:rt` | `CT_RubyContent` | `wml.xsd` |
+| `w:rtl` | `CT_OnOff` | `wml.xsd` |
+| `w:rtlGutter` | `CT_OnOff` | `wml.xsd` |
+| `w:ruby` | `CT_Ruby` | `wml.xsd` |
+| `w:rubyAlign` | `CT_RubyAlign` | `wml.xsd` |
+| `w:rubyBase` | `CT_RubyContent` | `wml.xsd` |
+| `w:rubyPr` | `CT_RubyPr` | `wml.xsd` |
+| `w:saveFormsData` | `CT_OnOff` | `wml.xsd` |
+| `w:saveInvalidXml` | `CT_OnOff` | `wml.xsd` |
+| `w:savePreviewPicture` | `CT_OnOff` | `wml.xsd` |
+| `w:saveSmartTagsAsXml` | `CT_OnOff` | `wml.xsd` |
+| `w:saveSubsetFonts` | `CT_OnOff` | `wml.xsd` |
+| `w:saveThroughXslt` | `CT_SaveThroughXslt` | `wml.xsd` |
+| `w:saveXmlDataOnly` | `CT_OnOff` | `wml.xsd` |
+| `w:scrollbar` | `CT_FrameScrollbar` | `wml.xsd` |
+| `w:sdt` | `CT_SdtBlock`<br>`CT_SdtCell`<br>`CT_SdtRow`<br>`CT_SdtRun` | `wml.xsd` |
+| `w:sdtContent` | `CT_SdtContentBlock`<br>`CT_SdtContentCell`<br>`CT_SdtContentRow`<br>`CT_SdtContentRun` | `wml.xsd` |
+| `w:sdtEndPr` | `CT_SdtEndPr` | `wml.xsd` |
+| `w:sdtPr` | `CT_SdtPr` | `wml.xsd` |
+| `w:sectPr` | `CT_SectPr`<br>`CT_SectPrBase` | `wml.xsd` |
+| `w:sectPrChange` | `CT_SectPrChange` | `wml.xsd` |
+| `w:selectFldWithFirstOrLastChar` | `CT_OnOff` | `wml.xsd` |
+| `w:semiHidden` | `CT_OnOff` | `wml.xsd` |
+| `w:separator` | `CT_Empty` | `wml.xsd` |
+| `w:settings` | `CT_Settings` | `wml.xsd` |
+| `w:shadow` | `CT_OnOff` | `wml.xsd` |
+| `w:shapeDefaults` | `CT_ShapeDefaults` | `wml.xsd` |
+| `w:shapeLayoutLikeWW8` | `CT_OnOff` | `wml.xsd` |
+| `w:shd` | `CT_Shd` | `wml.xsd` |
+| `w:showBreaksInFrames` | `CT_OnOff` | `wml.xsd` |
+| `w:showEnvelope` | `CT_OnOff` | `wml.xsd` |
+| `w:showingPlcHdr` | `CT_OnOff` | `wml.xsd` |
+| `w:showXMLTags` | `CT_OnOff` | `wml.xsd` |
+| `w:sig` | `CT_FontSig` | `wml.xsd` |
+| `w:size` | `CT_HpsMeasure` | `wml.xsd` |
+| `w:sizeAuto` | `CT_OnOff` | `wml.xsd` |
+| `w:smallCaps` | `CT_OnOff` | `wml.xsd` |
+| `w:smartTag` | `CT_SmartTagRun` | `wml.xsd` |
+| `w:smartTagPr` | `CT_SmartTagPr` | `wml.xsd` |
+| `w:smartTagType` | `CT_SmartTagType` | `wml.xsd` |
+| `w:snapToGrid` | `CT_OnOff` | `wml.xsd` |
+| `w:softHyphen` | `CT_Empty` | `wml.xsd` |
+| `w:sourceFileName` | `CT_Rel` | `wml.xsd` |
+| `w:spaceForUL` | `CT_OnOff` | `wml.xsd` |
+| `w:spacing` | `CT_SignedTwipsMeasure`<br>`CT_Spacing` | `wml.xsd` |
+| `w:spacingInWholePoints` | `CT_OnOff` | `wml.xsd` |
+| `w:specVanish` | `CT_OnOff` | `wml.xsd` |
+| `w:splitPgBreakAndParaMark` | `CT_OnOff` | `wml.xsd` |
+| `w:src` | `CT_Rel` | `wml.xsd` |
+| `w:start` | `CT_Border`<br>`CT_DecimalNumber`<br>`CT_TblWidth` | `wml.xsd` |
+| `w:startOverride` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:statusText` | `CT_FFStatusText` | `wml.xsd` |
+| `w:storeMappedDataAs` | `CT_SdtDateMappingType` | `wml.xsd` |
+| `w:strictFirstAndLastChars` | `CT_OnOff` | `wml.xsd` |
+| `w:strike` | `CT_OnOff` | `wml.xsd` |
+| `w:style` | `CT_String`<br>`CT_Style` | `wml.xsd` |
+| `w:styleLink` | `CT_String` | `wml.xsd` |
+| `w:styleLockQFSet` | `CT_OnOff` | `wml.xsd` |
+| `w:styleLockTheme` | `CT_OnOff` | `wml.xsd` |
+| `w:stylePaneFormatFilter` | `CT_StylePaneFilter` | `wml.xsd` |
+| `w:stylePaneSortMethod` | `CT_StyleSort` | `wml.xsd` |
+| `w:styles` | `CT_Styles` | `wml.xsd` |
+| `w:subDoc` | `CT_Rel` | `wml.xsd` |
+| `w:subFontBySize` | `CT_OnOff` | `wml.xsd` |
+| `w:suff` | `CT_LevelSuffix` | `wml.xsd` |
+| `w:summaryLength` | `CT_DecimalNumberOrPrecent` | `wml.xsd` |
+| `w:suppressAutoHyphens` | `CT_OnOff` | `wml.xsd` |
+| `w:suppressBottomSpacing` | `CT_OnOff` | `wml.xsd` |
+| `w:suppressLineNumbers` | `CT_OnOff` | `wml.xsd` |
+| `w:suppressOverlap` | `CT_OnOff` | `wml.xsd` |
+| `w:suppressSpacingAtTopOfPage` | `CT_OnOff` | `wml.xsd` |
+| `w:suppressSpBfAfterPgBrk` | `CT_OnOff` | `wml.xsd` |
+| `w:suppressTopSpacing` | `CT_OnOff` | `wml.xsd` |
+| `w:suppressTopSpacingWP` | `CT_OnOff` | `wml.xsd` |
+| `w:swapBordersFacingPages` | `CT_OnOff` | `wml.xsd` |
+| `w:sym` | `CT_Sym` | `wml.xsd` |
+| `w:sz` | `CT_HpsMeasure`<br>`CT_String` | `wml.xsd` |
+| `w:szCs` | `CT_HpsMeasure` | `wml.xsd` |
+| `w:t` | `CT_Text` | `wml.xsd` |
+| `w:tab` | `CT_Empty`<br>`CT_TabStop` | `wml.xsd` |
+| `w:tabIndex` | `CT_UnsignedDecimalNumber` | `wml.xsd` |
+| `w:table` | `CT_String` | `wml.xsd` |
+| `w:tabs` | `CT_Tabs` | `wml.xsd` |
+| `w:tag` | `CT_String` | `wml.xsd` |
+| `w:targetScreenSz` | `CT_TargetScreenSz` | `wml.xsd` |
+| `w:tbl` | `CT_Tbl` | `wml.xsd` |
+| `w:tblBorders` | `CT_TblBorders` | `wml.xsd` |
+| `w:tblCaption` | `CT_String` | `wml.xsd` |
+| `w:tblCellMar` | `CT_TblCellMar` | `wml.xsd` |
+| `w:tblCellSpacing` | `CT_TblWidth` | `wml.xsd` |
+| `w:tblDescription` | `CT_String` | `wml.xsd` |
+| `w:tblGrid` | `CT_TblGrid`<br>`CT_TblGridBase` | `wml.xsd` |
+| `w:tblGridChange` | `CT_TblGridChange` | `wml.xsd` |
+| `w:tblHeader` | `CT_OnOff` | `wml.xsd` |
+| `w:tblInd` | `CT_TblWidth` | `wml.xsd` |
+| `w:tblLayout` | `CT_TblLayoutType` | `wml.xsd` |
+| `w:tblLook` | `CT_TblLook` | `wml.xsd` |
+| `w:tblOverlap` | `CT_TblOverlap` | `wml.xsd` |
+| `w:tblpPr` | `CT_TblPPr` | `wml.xsd` |
+| `w:tblPr` | `CT_TblPr`<br>`CT_TblPrBase` | `wml.xsd` |
+| `w:tblPrChange` | `CT_TblPrChange` | `wml.xsd` |
+| `w:tblPrEx` | `CT_TblPrEx`<br>`CT_TblPrExBase` | `wml.xsd` |
+| `w:tblPrExChange` | `CT_TblPrExChange` | `wml.xsd` |
+| `w:tblStyle` | `CT_String` | `wml.xsd` |
+| `w:tblStyleColBandSize` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:tblStylePr` | `CT_TblStylePr` | `wml.xsd` |
+| `w:tblStyleRowBandSize` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:tblW` | `CT_TblWidth` | `wml.xsd` |
+| `w:tc` | `CT_Tc` | `wml.xsd` |
+| `w:tcBorders` | `CT_TcBorders` | `wml.xsd` |
+| `w:tcFitText` | `CT_OnOff` | `wml.xsd` |
+| `w:tcMar` | `CT_TcMar` | `wml.xsd` |
+| `w:tcPr` | `CT_TcPr`<br>`CT_TcPrInner` | `wml.xsd` |
+| `w:tcPrChange` | `CT_TcPrChange` | `wml.xsd` |
+| `w:tcW` | `CT_TblWidth` | `wml.xsd` |
+| `w:temporary` | `CT_OnOff` | `wml.xsd` |
+| `w:text` | `CT_SdtText` | `wml.xsd` |
+| `w:textAlignment` | `CT_TextAlignment` | `wml.xsd` |
+| `w:textboxTightWrap` | `CT_TextboxTightWrap` | `wml.xsd` |
+| `w:textDirection` | `CT_TextDirection` | `wml.xsd` |
+| `w:textInput` | `CT_FFTextInput` | `wml.xsd` |
+| `w:themeFontLang` | `CT_Language` | `wml.xsd` |
+| `w:title` | `CT_String` | `wml.xsd` |
+| `w:titlePg` | `CT_OnOff` | `wml.xsd` |
+| `w:tl2br` | `CT_Border` | `wml.xsd` |
+| `w:tmpl` | `CT_LongHexNumber` | `wml.xsd` |
+| `w:top` | `CT_Border`<br>`CT_TblWidth`<br>`CT_TopPageBorder` | `wml.xsd` |
+| `w:topLinePunct` | `CT_OnOff` | `wml.xsd` |
+| `w:tr` | `CT_Row` | `wml.xsd` |
+| `w:tr2bl` | `CT_Border` | `wml.xsd` |
+| `w:trackRevisions` | `CT_OnOff` | `wml.xsd` |
+| `w:trHeight` | `CT_Height` | `wml.xsd` |
+| `w:trPr` | `CT_TrPr`<br>`CT_TrPrBase` | `wml.xsd` |
+| `w:trPrChange` | `CT_TrPrChange` | `wml.xsd` |
+| `w:truncateFontHeightsLikeWP6` | `CT_OnOff` | `wml.xsd` |
+| `w:txbxContent` | `CT_TxbxContent` | `wml.xsd` |
+| `w:type` | `CT_DocPartType`<br>`CT_FFTextType`<br>`CT_MailMergeOdsoFMDFieldType`<br>`CT_MailMergeSourceType`<br>`CT_SectType` | `wml.xsd` |
+| `w:types` | `CT_DocPartTypes` | `wml.xsd` |
+| `w:u` | `CT_Underline` | `wml.xsd` |
+| `w:udl` | `CT_String` | `wml.xsd` |
+| `w:uiPriority` | `CT_DecimalNumber` | `wml.xsd` |
+| `w:ulTrailSpace` | `CT_OnOff` | `wml.xsd` |
+| `w:underlineTabInNumList` | `CT_OnOff` | `wml.xsd` |
+| `w:unhideWhenUsed` | `CT_OnOff` | `wml.xsd` |
+| `w:uniqueTag` | `CT_Base64Binary` | `wml.xsd` |
+| `w:updateFields` | `CT_OnOff` | `wml.xsd` |
+| `w:useAltKinsokuLineBreakRules` | `CT_OnOff` | `wml.xsd` |
+| `w:useAnsiKerningPairs` | `CT_OnOff` | `wml.xsd` |
+| `w:useFELayout` | `CT_OnOff` | `wml.xsd` |
+| `w:useNormalStyleForList` | `CT_OnOff` | `wml.xsd` |
+| `w:usePrinterMetrics` | `CT_OnOff` | `wml.xsd` |
+| `w:useSingleBorderforContiguousCells` | `CT_OnOff` | `wml.xsd` |
+| `w:useWord2002TableStyleRules` | `CT_OnOff` | `wml.xsd` |
+| `w:useWord97LineBreakRules` | `CT_OnOff` | `wml.xsd` |
+| `w:useXSLTWhenSaving` | `CT_OnOff` | `wml.xsd` |
+| `w:vAlign` | `CT_VerticalJc` | `wml.xsd` |
+| `w:vanish` | `CT_OnOff` | `wml.xsd` |
+| `w:vertAlign` | `CT_VerticalAlignRun` | `wml.xsd` |
+| `w:view` | `CT_View` | `wml.xsd` |
+| `w:viewMergedData` | `CT_OnOff` | `wml.xsd` |
+| `w:vMerge` | `CT_VMerge` | `wml.xsd` |
+| `w:w` | `CT_TextScale`<br>`CT_TwipsMeasure` | `wml.xsd` |
+| `w:wAfter` | `CT_TblWidth` | `wml.xsd` |
+| `w:wBefore` | `CT_TblWidth` | `wml.xsd` |
+| `w:webHidden` | `CT_OnOff` | `wml.xsd` |
+| `w:webSettings` | `CT_WebSettings` | `wml.xsd` |
+| `w:widowControl` | `CT_OnOff` | `wml.xsd` |
+| `w:wordWrap` | `CT_OnOff` | `wml.xsd` |
+| `w:wpJustification` | `CT_OnOff` | `wml.xsd` |
+| `w:wpSpaceWidth` | `CT_OnOff` | `wml.xsd` |
+| `w:wrapTrailSpaces` | `CT_OnOff` | `wml.xsd` |
+| `w:writeProtection` | `CT_WriteProtection` | `wml.xsd` |
+| `w:yearLong` | `CT_Empty` | `wml.xsd` |
+| `w:yearShort` | `CT_Empty` | `wml.xsd` |
+| `w:zoom` | `CT_Zoom` | `wml.xsd` |
+<!-- END GENERATED SCHEMA INVENTORY -->

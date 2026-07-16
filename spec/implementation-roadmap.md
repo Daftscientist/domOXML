@@ -1,245 +1,226 @@
-# Bidirectional Implementation Roadmap
+# domOXML Implementation Roadmap
 
-This roadmap turns the architecture in [`architecture.md`](architecture.md) into incremental
-work. PowerPoint is first. Each milestone must leave a working end-to-end pipeline and add
-capability fixtures for every supported behavior.
+This roadmap turns the invariants in [`architecture.md`](architecture.md) into a parity-first
+delivery programme. PowerPoint is the first complete format. Work is ordered so every milestone
+leaves the library usable: native coverage expands behind a layered fallback instead of exposing
+new unsupported visual states.
 
-## Principles
+## Current Baseline
 
-1. Keep HTML/CSS as the public web format and typed IR as the internal contract.
-2. Implement narrow vertical slices in both directions before expanding breadth.
-3. Preserve unsupported constructs explicitly; never silently drop them.
-4. Separate fidelity from editability: pixels can match while native Office structure regresses.
-5. Reuse external projects as references, benchmarks, and attributed donors only when their
-   licenses and runtime boundaries fit the MIT library.
+Snapshot audited on **2026-07-16** against the repository, executable manifests, and tests:
 
-## Current Position
+- HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
+- PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
+- 599 tests are collected.
+- 15 atomic PPTX capability fixtures exist; 12 execute forward and reverse paths.
+- `custom-path`, `effects`, and `svg-vector` remain forward-only fixtures.
+- 9 authored HTML fidelity cases exist.
+- 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and exact
+  chart-fragment capture during ingest.
+- LibreOffice global, regional, and structural scores are merge-blocking for configured cases.
+- Microsoft Graph rendering exists as an opt-in backend, not a normal CI gate.
 
-Phases 0-3 now have working end-to-end baselines. Phase 4 is active: the library has broad
-forward and reverse primitives, 15 capability fixtures, a nine-case authored visual corpus, and
-a four-deck pinned external round-trip corpus. The
-remaining risk is proof depth rather than raw file count:
+The baseline is useful but not yet the product invariant:
 
-- the capability runner now executes both paths for 12 of 15 fixtures; the remaining custom-path,
-  effects, and SVG-vector fixtures stay forward-only until connector structure, renderer-specific
-  effect contracts, and SVG vector re-emission survive the reverse path;
-- the external corpus now covers tables, crop, embedded-font diagnostics, and exact chart
-  preservation, but still needs representative groups, media, masters, and extension lists;
-- several useful families remain partial in one direction, especially themes, placeholders,
-  groups, connectors, curved geometry, strokes, and advanced text behavior;
-- unsupported constructs have preservation models, but external-deck tests must prove there are
-  no silent drops across realistic packages.
+- the IR splits shapes from richer nodes, so interleaved z-order is not canonical;
+- nodes lack stable IDs, source provenance, and attached preservation payloads;
+- forward raster fallback exists, but its granularity and semantic debt are not comprehensively
+  asserted;
+- unknown reverse PPTX visuals are often preserved as detached XML without a rendered layer;
+- detached preserved fragments are not generally re-emitted by `render_html_roundtrip()`;
+- complex/adversarial HTML and real-PPTX corpora remain small;
+- the capability status model still says `partial`, `raster`, `preserved`, or `unsupported` rather
+  than distinguishing decomposed, hybrid, layered, ignored, and verified parity;
+- package relationship checks exist, but full ECMA/Open XML schema validation is not enforced.
 
-Do not count a capability as bidirectional until the runner executes and asserts both directions.
+## Completion Contract
 
-## Phase 0: Make The Contract Executable
+A capability is complete only when all applicable gates pass:
 
-Before broadening conversion coverage:
+1. HTML/CSS imports into the canonical IR.
+2. PPTX imports into the same IR representation.
+3. IR exports to native/decomposed/hybrid/layered PPTX with no visible omission.
+4. IR exports to deterministic browser-renderable HTML/CSS with no visible omission.
+5. Semantic and object editability are measured independently of pixels.
+6. Package structure and target-format semantics are asserted.
+7. Forward and reverse visual floors include global, regional, and structural metrics.
+8. Evidence is inspected directly when the capability changes.
+9. Repeated round trips converge within the declared tolerance.
+10. Unknown, malformed, extension, and adversarial combinations have explicit behavior.
 
-- Finish `RenderResult.save()`.
-- Add `HtmlPresentation`, `HtmlSlide`, asset, and preservation-metadata result types.
-- Replace the single optional HTML string result with per-slide HTML plus shared CSS and assets.
-- Add a `Presentation.from_pptx(...)` entry point and async variant.
-- Define reader, writer, HTML serializer, and backend protocols.
-- Add an executable README smoke test.
-- Convert the PPTX coverage matrix into machine-readable capability fixtures.
+No capability is labelled bidirectional merely because both code paths return successfully.
 
-Each fixture should declare:
+## Milestone 0: Make The Contract Accurate
 
-```toml
-id = "text-rich-runs"
-direction = "both"
-html = "fixtures/text-rich-runs.html"
+**Status: documentation complete; runtime contract pending.**
 
-[expected]
-disposition = "native"
-warnings = []
-ir = "fixtures/text-rich-runs.ir.json"
-html = "fixtures/text-rich-runs.reverse.html"
+- Keep architecture, roadmap, and inventories authoritative and nonduplicated.
+- Generate schema appendices from pinned official ECMA-376 XSDs.
+- Replace element-name coverage percentages with capability-level evidence.
+- Replace `unsupported` as a visual disposition with representation and scope policies.
+- Add representation statuses: native, decomposed, hybrid, layered, element-layer, preserved, and
+  intentionally ignored.
+- Record semantic editability, visual parity, preservation, and verification as separate fields.
+- Make inventory rows point to executable capability IDs as coverage grows.
 
-[[expected.xml]]
-xpath = "//a:txBody/a:p/a:r"
-count = 3
+**Exit gate:** runtime status and documentation cannot claim more coverage than executable evidence.
 
-[visual]
-source_to_pptx_min_similarity = 0.98
-source_to_pptx_min_regional_similarity = 0.96
-source_to_pptx_min_structural_similarity = 0.96
-pptx_to_html_min_similarity = 0.98
-pptx_to_html_min_regional_similarity = 0.96
-pptx_to_html_min_structural_similarity = 0.96
-```
+## Milestone 1: Canonical Canvas IR
 
-## Phase 1: Repair The Shared Canvas IR
+This is the highest-leverage engineering change because all directions currently meet here.
 
-The current canvas IR proves generation but is too small for round trips. Add:
+- Replace parallel `SlideIR.shapes` and `SlideIR.nodes` with one ordered node sequence.
+- Add stable node IDs and source ownership/provenance.
+- Preserve group and stacking relationships rather than flattening by default.
+- Attach source extensions and preservation payloads to their owning node/part.
+- Model native, decomposed, hybrid, and layer relationships explicitly.
+- Separate semantic/style intent from resolved paint/layout data where both are available.
+- Centralize normalization so HTML and PPTX adapters do not invent different canonical forms.
+- Make warnings and capability records describe each lowering decision.
 
-- paragraph and ordered text-run models;
-- explicit node IDs, stacking order, groups, pictures, and raster-fallback nodes;
-- resolved style values plus optional theme/source references;
-- hyperlinks and basic list metadata;
-- preservation metadata for unsupported OOXML fragments;
-- typed coverage records with `native`, `partial`, `raster`, `preserved`, and `unsupported`.
+**Exit gate:** mixed shapes, tables, groups, connectors, media, and fallback layers preserve exact
+z-order through both round-trip sequences.
 
-Keep PPTX canvas IR separate from future DOCX flow IR. Share primitives, not layout assumptions.
+## Milestone 2: Universal Parity Fallback
 
-## Phase 2: Stabilize HTML/CSS -> PPTX
+The fallback closes visual gaps while native mappings are developed.
 
-Refactor the current forward path around the expanded canvas IR:
+- Build a representation planner that selects native, decomposed, hybrid, or layered output.
+- Capture paint bounds including filters, shadows, transformed overflow, masks, and clips.
+- Split semantic content from difficult decoration where that produces a smaller raster layer.
+- Preserve independently movable layers, original stacking, group ownership, and alpha.
+- Define deterministic fallback behavior for SVG, canvas, pseudo-elements, blend modes, filters,
+  complex clipping, browser-specific CSS, and unsupported PowerPoint visuals.
+- Give PPTX reverse ingest a renderer-backed layer path for unknown visual nodes.
+- Re-emit attached source payloads when targeting the source format.
+- Add coverage gates that reject coarser rasterization or increased layer area without an explicit
+  reviewed reason.
 
-- capture nested inline text in document order;
-- capture stacking context and effective z-order;
-- centralize native-versus-raster decisions in resolvers;
-- serialize the new IR to deterministic per-slide HTML/CSS;
-- improve raster crop bounds so blur, shadow, and transformed overflow are not clipped;
-- add XML assertions and regional visual assertions alongside whole-slide fidelity scores.
+**Exit gate:** every corpus visual is present in HTML and PPTX even when semantic/native coverage is
+incomplete; repeated conversion does not repeatedly rasterize or duplicate the same content.
 
-Exit condition: authored HTML can round trip through `HTML -> IR -> HTML`, and current editable
-PPTX behavior remains green.
+## Milestone 3: Finish Shared Primitives Needed By PPTX
 
-## Phase 3: PPTX -> HTML/CSS Baseline
+Work by vertical capability family, implementing both adapters and every active serializer.
 
-Build a native Python reader with the same internal standards as the writer:
+1. **Geometry and ordering**: full preset geometry, SVG paths including arcs and shorthand,
+   formula-driven custom geometry, connection sites, connectors, group authoring, clips, and exact
+   transforms.
+2. **Paint**: complete theme/style-matrix references, every DrawingML color transform, gradient
+   variants, image tile/stretch/crop modes, pattern presets, gradient strokes, compound lines,
+   arrowheads, caps, joins, and per-side rounded borders.
+3. **Effects**: renderer-calibrated outer/inner shadow, glow, blur, soft edge, reflection, preset
+   shadow, fill overlay, effect containers, and effect ordering.
+4. **Text**: inherited run/paragraph properties, bullet fonts/colors/sizes, numbering variants,
+   tabs, baseline/superscript/subscript, language/script fonts, RTL/vertical text, autofit
+   parameters, overflow, columns, text warp/WordArt, and measurement parity.
+5. **Tables and charts**: full cell/table styling and inheritance, borders/merges, chart model,
+   chart data/workbook links, labels, axes, legends, and chart style/color parts.
+6. **Assets and media**: SVG vector re-emission, image effects, linked assets, audio/video authoring,
+   posters, playback metadata, and font portability.
+7. **Packaging and preservation**: deterministic relationship allocation, content types, extension
+   lists, alternate content, strict/transitional handling, and schema validation.
 
-```text
-OPC reader -> relationships -> PresentationML reader
-           -> inheritance resolver -> canvas IR -> HTML/CSS serializer
-```
+**Exit gate:** each shared family has bidirectional capability fixtures, adversarial combinations,
+and at least one representative real-deck case where applicable.
 
-Start with:
+## Milestone 4: Finish PresentationML
 
-- package parts, relationships, slide order, and assets;
-- slide dimensions;
-- slide -> layout -> master -> theme resolution;
-- shapes, transforms, stacking, solid fills, lines, and simple geometry;
-- pictures;
-- text bodies, paragraphs, runs, alignment, and basic inheritance;
-- fallback rendering and preservation records for unsupported nodes.
+- Author and ingest themes without prematurely flattening theme references.
+- Author slide masters, layouts, placeholders, and inheritance chains.
+- Preserve and round-trip slide-level ordering, IDs, sections, and useful deck metadata.
+- Add speaker notes as a first-class slide property and public API argument.
+- Complete transitions and define animation/timing input beyond visual CSS state.
+- Map or layer SmartArt, OLE, embedded objects, and presentation-specific graphic frames.
+- Support audio/video insertion and playback settings.
+- Define accessibility metadata, hyperlinks, slide jumps, and alternative text.
+- Explicitly ignore comments/review history unless product scope changes.
+- Handle Microsoft extensions, alternate content, malformed-but-accepted relationships, and
+  nonstandard producer output.
 
-Exit condition: a generated baseline deck and a representative external deck can complete:
+**Exit gate:** the PPTX inventory has no unclassified visible family; nonvisual families are mapped,
+preserved/re-emitted, or intentionally ignored by policy.
 
-```text
-PPTX -> IR -> HTML/CSS -> Chromium render
-```
+## Milestone 5: Convergence And Release Corpus
 
-with structural assertions and visual scoring.
+- Grow atomic fixtures from 15 to one executable case per meaningful capability family.
+- Add pairwise and adversarial combinations rather than relying on isolated examples.
+- Add complex authored HTML decks with nested stacking, effects, SVG/canvas, web fonts, and
+  nonstandard CSS.
+- Add representative Microsoft-authored PPTX decks covering masters, layouts, placeholders,
+  groups, charts, media, notes, animation, SmartArt, OLE, extensions, and accessibility.
+- Add malformed-but-tolerated and nonstandard-producer decks.
+- Run repeated conversion sequences, not only one round trip.
+- Track native/decomposed/hybrid/layer area and semantic retention as monotonic metrics.
+- Store per-object/region evidence so a high whole-slide score cannot hide a broken table or text
+  block.
+- Require Graph or desktop PowerPoint baselines for renderer-sensitive release cases.
+- Require human/vision review of changed reference pairs in conversion PRs.
 
-## Phase 4: Coverage Expansion
+**PPTX stable-release gate:**
 
-Expand by capability family, not by file:
+- no crashes, unsafe packages, silent visual omissions, or detached preservation loss in the
+  release corpus;
+- every in-scope visual uses native, decomposed, hybrid, or layered output in both directions;
+- repeated round trips meet convergence thresholds;
+- package, relationship, schema, and source-extension assertions pass;
+- configured Chromium, LibreOffice, and PowerPoint evidence passes;
+- no visual, semantic, native-coverage, or fallback-granularity regression from the baseline.
 
-1. Rich text: decorations, spacing, bullets, numbering, hyperlinks, autofit.
-2. Geometry: preset shapes, connectors, custom paths, groups, rotation.
-3. Fills and effects: theme colors, pattern fills, crop modes, shadows, glow, blur.
-4. Tables.
-5. Charts and chart data.
-6. Layouts, placeholders, notes, transitions, and animation metadata.
-7. SmartArt, OLE, media, and unsupported-extension preservation.
+## Milestone 6: DOCX
 
-Every forward feature must specify reverse behavior, and every reverse feature must specify
-what happens when emitted HTML is compiled forward again.
-
-## Coverage Acceleration Program
-
-Speed comes from repeatable vertical slices and shared test infrastructure, not larger pull
-requests. A capability slice is complete only when it includes:
-
-1. Forward proof: HTML/CSS -> typed IR -> PPTX, with coverage disposition and OOXML assertions.
-2. Reverse proof: PPTX -> typed IR -> deterministic HTML/CSS, with structural assertions.
-3. Round-trip proof: the feature survives both `HTML -> PPTX -> HTML` and
-   `PPTX -> HTML -> PPTX`, or has an explicit preserved/raster/unsupported contract.
-4. Visual proof: source, LibreOffice, and regional diff evidence; Graph/PowerPoint evidence for
-   renderer-sensitive behavior and release baselines.
-5. Contract proof: capability manifest, coverage matrix, warnings, and preservation metadata all
-   describe the same behavior.
-6. Regression proof: focused unit tests plus the smallest useful integration fixture.
-
-Keep feature PRs narrow enough to review independently. Shared enablers land first; capability
-families can then progress independently without weakening the common gates.
-
-### Ordered Delivery Lanes
-
-1. **Make bidirectional claims executable (complete)**: the capability schema and runner now cover
-   reverse inputs, HTML assertions, round-trip assertions, and global/regional/structural visual
-   gates.
-2. **Establish a real-deck corpus**: sanitized Microsoft-authored and representative external
-   decks covering masters, themes, placeholders, groups, media, and unsupported extensions.
-3. **Close core editable asymmetries**: forward theme references/placeholders, group authoring,
-   connector arrowheads, gradient strokes, and the highest-use curved preset geometry.
-4. **Deepen text and layout**: autofit parameters, inherited paragraph fields, WordArt fallback,
-   and multi-column edge cases.
-5. **Deepen fills and effects**: remaining pattern presets, renderer-calibrated effects, and
-   explicit native-versus-raster portability rules.
-6. **Prove preservation**: animation, SmartArt, OLE, charts, 3D, and extension lists must survive
-   ingest/re-emission or report a precise unsupported disposition without silent data loss.
-
-### PPTX Readiness Gate
-
-PPTX is ready for a stable release when:
-
-- every core editable family has executable forward and reverse fixtures;
-- the real-deck corpus has no crashes, unsafe output, or silent drops;
-- package/relationship assertions and schema validation pass for generated decks;
-- LibreOffice global, regional, and structural fidelity are merge-blocking;
-- Graph/PowerPoint baselines pass for renderer-sensitive cases before release;
-- partial, raster, preserved, and unsupported behavior is accurately surfaced to callers.
-
-## Phase 5: DOCX Seams
-
-Do not implement DOCX by positioning boxes scraped from Chromium. Add a flow IR and semantic
-HTML adapters:
+Begin only after shared primitives and the representation planner are stable enough to reuse.
 
 ```text
-HTML <-> flow IR <-> WordprocessingML
+semantic HTML <-> Flow IR <-> WordprocessingML
 ```
 
-Reuse OPC, relationships, assets, fonts, themes, shared DrawingML primitives, charts, warnings,
-coverage, fidelity infrastructure, and preservation metadata. Keep paragraphs, tables, sections,
-pagination, headers, footers, fields, and tracked changes in the DOCX-specific model.
+Reuse OPC, relationships, assets, themes, fonts, DrawingML, charts, warnings, preservation,
+normalized HTML, fidelity infrastructure, and the fallback planner. Add DOCX-specific sections,
+styles, lists, tables, headers/footers, fields, footnotes/endnotes, pagination, tracked revisions,
+and compatibility settings.
 
-## Validation Stack
+DOCX is expected to reuse substantial work, but flowing pagination and Word style inheritance are
+independent hard problems and must not be treated as trivial Canvas IR variants.
 
-Use layered validation:
+## Milestone 7: XLSX And Additional Adapters
 
-| Layer | Purpose |
+Use a Grid/data IR for workbook semantics while reusing shared text, style, drawing, chart, media,
+package, and fidelity infrastructure. Evaluate PDF, additional image formats, normalized HTML
+profiles, and other import/export adapters according to demand after PPTX stability.
+
+## Continuous CI Ratchets
+
+Every conversion PR should add or update the smallest representative examples and include direct
+source/target evidence. CI should enforce:
+
+| Gate | Required behavior |
 |---|---|
-| Unit tests | Pure parser, resolver, and XML-snippet behavior |
-| Capability fixtures | Per-feature native/editable/preserved behavior in both directions |
-| Package validation | OPC relationships, required parts, XML structure, Open XML validation |
-| Browser fidelity | Emitted HTML/CSS renders as expected |
-| LibreOffice fidelity | Fast approximate OOXML rendering gate |
-| Graph or desktop PowerPoint | Real PowerPoint spot checks and regression baselines |
-| External benchmark adapters | Compare behavior with independent implementations |
+| Unit | parsers, resolvers, lowerers, and serializers pass |
+| Capability | forward, reverse, structural, semantic, and visual contracts pass |
+| Authored corpus | no score or layer-granularity regression |
+| Real decks | valid relationships, preservation, and renderer floors pass |
+| Convergence | repeated round-trip drift stays within the fixture contract |
+| PR evidence | changed HTML and PPTX examples are embedded and directly reviewable |
 
-Whole-slide similarity remains useful but is not sufficient. Track regional metrics and
-structural assertions so a small editable object cannot regress unnoticed.
-
-## External Projects
-
-External code should be evaluated feature-by-feature:
-
-| Project | License | Use |
-|---|---|---|
-| [`pptx-renderer`](https://github.com/aiden0z/pptx-renderer) | Apache-2.0 | Primary reverse-reader architecture and fidelity-test reference |
-| [`dom-to-pptx`](https://github.com/atharva9167j/dom-to-pptx) | MIT | Forward HTML algorithms and benchmark adapter |
-| [`PptxGenJS`](https://github.com/gitbrent/PptxGenJS) | MIT | OOXML-generation reference and benchmark adapter |
-| [`Presenton`](https://github.com/presenton/presenton) | Apache-2.0 | Product integration reference, HTML/Tailwind corpus, external runtime benchmark |
-| [`presenton-export`](https://github.com/presenton/presenton-export) | release runtime | Benchmark only unless source and compatible licensing are available |
-| [`office-website`](https://github.com/baotlake/office-website) | AGPL-3.0 | Isolated manual QA environment only |
-
-When code is adapted from a compatible project, retain required notices, document the source
-commit and file, mark modifications, and add tests proving the behavior. Do not copy AGPL code
-into the MIT library. Do not treat opaque release binaries as implementation sources.
+Incomplete complex fixtures should remain committed with an explicit baseline and failure
+classification. Improvement moves the baseline forward; CI must never normalize a regression by
+silently lowering the expected score.
 
 ## Immediate Work Queue
 
-1. [x] Add machine-readable capability fixture models and a minimal fixture runner.
-2. [x] Expand text IR to paragraphs and ordered runs; fix nested inline text capture.
-3. [x] Add deterministic `canvas IR -> HtmlPresentation` serialization.
-4. [x] Add shared OPC reading primitives.
-5. [x] Implement `Presentation.from_pptx(...)` for one baseline deck.
-6. [x] Expand relationship, theme, shape, picture, and text readers incrementally.
-7. [x] Make the capability fixture runner execute both declared directions.
-8. [x] Add representative external PPTX round-trip fixtures and preservation assertions.
-9. [ ] Add package/schema validation for generated and re-emitted decks.
-10. [ ] Run external adapters as comparative benchmarks, not runtime dependencies.
+1. [ ] Replace `Disposition.UNSUPPORTED` and the coarse coverage report with the representation
+   contract.
+2. [ ] Unify `SlideIR.shapes` and `SlideIR.nodes` into one ordered node list with IDs/provenance.
+3. [ ] Attach preserved source payloads and prove real re-emission, starting with the chart case.
+4. [ ] Make the three forward-only capability fixtures genuinely bidirectional.
+5. [ ] Add reverse visual layers for unknown PPTX nodes instead of HTML omission plus detached XML.
+6. [ ] Add package/schema validation for generated and re-emitted decks.
+7. [ ] Add groups, media, masters/layouts/placeholders, notes, and extensions to the real-deck
+   corpus.
+8. [ ] Expand effects using PowerPoint/Graph-calibrated evidence, beginning with inner shadow, glow,
+   and spread/offset behavior.
+9. [ ] Add capability-registry fields for semantic editability, representation level, layer area,
+   source preservation, and repeated-round-trip count.
+10. [ ] Add strict OOXML and malformed/nonstandard producer cases after Transitional package
+    preservation is reliable.

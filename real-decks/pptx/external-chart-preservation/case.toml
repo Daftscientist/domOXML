@@ -1,6 +1,6 @@
 id = "external-chart-preservation"
 pptx_file = "source.pptx"
-visual_exclusion = "The editable chart is retained as an exact preserved graphicFrame, but charts and inherited style-matrix fills do not yet have an HTML visual mapping."
+visual_exclusion = "The chart graphicFrame is captured exactly as detached preservation metadata during ingest, but it is not rendered in HTML or re-emitted by the HTML round trip yet."
 
 [provenance]
 source_url = "https://github.com/aiden0z/pptx-renderer/blob/68cb570940fb28d5c4628f31d1365016c4483521/docs/example/1-chart-and-complex/source.pptx"

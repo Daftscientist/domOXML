@@ -326,11 +326,32 @@ def test_table_node_grid_cells_spans_borders() -> None:
 
 def test_slide_carries_extended_nodes_alongside_shapes() -> None:
     shape = ShapeNode(box=_box())
+    shape_after = ShapeNode(box=_box())
     table = TableNode(box=_box(), col_widths_emu=(100,), rows=())
     slide = SlideIR(width=100, height=100, shapes=(shape,), nodes=(table,))
+    assert slide.contents == (shape, table)
     assert slide.shapes == (shape,)
     assert slide.nodes == (table,)
-    # Default is no extended nodes — preserves the historical single-tuple slide.
+    ordered = SlideIR(width=100, height=100, contents=(shape, table, shape_after))
+    assert ordered.shapes == (shape, shape_after)
+    assert ordered.nodes == (table,)
+    assert ordered.model_dump().keys() == {
+        "width",
+        "height",
+        "contents",
+        "transition",
+        "background",
+    }
+    assert SlideIR.model_validate(ordered.model_dump()) == ordered
+    legacy_data = {
+        "width": 100,
+        "height": 100,
+        "shapes": [shape.model_dump()],
+        "nodes": [table.model_dump()],
+    }
+    assert SlideIR.model_validate(legacy_data).contents == (shape, table)
+    with pytest.raises(ValueError, match="contents or legacy"):
+        SlideIR(width=100, height=100, contents=(shape,), shapes=(shape,))
     assert SlideIR(width=100, height=100, shapes=()).nodes == ()
 
 

@@ -507,8 +507,7 @@ def _slide(
     root = ElementTree.fromstring(package.read(slide_part))
     tree = root.find("./p:cSld/p:spTree", _NS)
     inherit_ctx = _build_slide_inherit_ctx(package, slide_part)
-    shapes: list[ShapeNode] = []
-    nodes: list[Node] = []
+    contents: list[Node] = []
     warnings: list[ConversionWarning] = []
     preserved: list[PreservedFragment] = []
 
@@ -547,7 +546,7 @@ def _slide(
                     inherit_ctx=inherit_ctx,
                 )
                 if shape is not None:
-                    shapes.append(shape)
+                    contents.append(shape)
                     warnings.extend(shape_warns)
                     preserved.extend(shape_preserved)
                     if not shape_preserved:
@@ -562,19 +561,19 @@ def _slide(
                     lambda fill: _picture(fill, package, slide_part),
                 )
                 if media is not None:
-                    nodes.append(media)
+                    contents.append(media)
                     continue
                 shape = _picture_shape(element, package, slide_part)
                 if shape is not None:
                     # The crop (a:srcRect) is recovered into the PictureFill and emitted as
                     # background-size/position by the HTML writer, so nothing is preserved.
-                    shapes.append(shape)
+                    contents.append(shape)
                     continue
                 reason = "preserved picture that the reverse adapter could not map"
             elif kind == "cxnSp":
                 connector = read_connector(element, lambda properties: _line(properties, colors))
                 if connector is not None:
-                    nodes.append(connector)
+                    contents.append(connector)
                     continue
                 reason = "preserved connector that the reverse adapter could not map"
             elif kind == "grpSp":
@@ -587,7 +586,7 @@ def _slide(
                     inherit_ctx=inherit_ctx,
                 )
                 if group is not None:
-                    nodes.append(group)
+                    contents.append(group)
                     warnings.extend(group_warns)
                     preserved.extend(group_preserved)
                     continue
@@ -602,7 +601,7 @@ def _slide(
                     default_font_family=inherit_ctx.theme_ctx.minor_latin,
                 )
                 if frame.table is not None:
-                    nodes.append(frame.table)
+                    contents.append(frame.table)
                     continue
                 reason = frame.reason or "preserved unsupported graphicFrame"
             elif kind == "oleObj":
@@ -616,8 +615,7 @@ def _slide(
         SlideIR(
             width=width,
             height=height,
-            shapes=tuple(shapes),
-            nodes=tuple(nodes),
+            contents=tuple(contents),
             transition=transition,
             background=background,
         ),

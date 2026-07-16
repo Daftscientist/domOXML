@@ -744,6 +744,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
             isinstance(node.fill, PictureFill)
             and node.fill.svg_data is not None
             and node.fill.crop is None
+            and node.fill.mode == "stretch"
             and node.geom == "rect"
             and node.custom_geom is None
             and node.line is None

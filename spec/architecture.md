@@ -9,11 +9,11 @@ can follow without making OOXML the centre of the system.
 ```text
 HTML/CSS -------- browser capture -----------+
 PPTX ------------ package/semantic reader ---+--> canonical IR
-future inputs --------------------------------+         |
-                                                       +--> normalized HTML/CSS
-                                                       +--> PPTX
-                                                       +--> PNG/image layers
-                                                       +--> future PDF/DOCX/XLSX outputs
+future inputs -------------------------------+          |
+                                                        +--> normalized HTML/CSS
+                                                        +--> PPTX
+                                                        +--> PNG/image layers
+                                                        +--> future PDF/DOCX/XLSX outputs
 ```
 
 The architecture is defined by the invariants below. Current implementation status and the
@@ -31,7 +31,7 @@ the [`inventory-shared.md`](inventory-shared.md) and format-specific inventory d
    editable, but it must not become visibly absent merely because a native mapping is missing.
 4. **Prefer the most editable parity-preserving representation.** Native primitives come first;
    decomposition, hybrid output, and minimal raster layers close the remaining gap.
-5. **Forward and reverse are one capability.** A feature is not complete until both adapters and
+5. **Forward and reverse are one capability.** A feature is incomplete until both adapters and
    repeated round trips use the same IR contract.
 6. **Repeated conversion converges.** `HTML -> PPTX -> HTML -> PPTX` and the reverse sequence must
    not accumulate visible or structural degradation.

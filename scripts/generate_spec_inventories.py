@@ -49,6 +49,7 @@ _NAMESPACE_ALIASES = {
     "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties": "ep",
     "http://schemas.openxmlformats.org/officeDocument/2006/math": "m",
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships": "r",
+    "http://schemas.openxmlformats.org/officeDocument/2006/sharedTypes": "s",
     "http://schemas.openxmlformats.org/presentationml/2006/main": "p",
     "http://schemas.openxmlformats.org/schemaLibrary/2006/main": "sl",
     "http://schemas.openxmlformats.org/spreadsheetml/2006/main": "x",
@@ -93,7 +94,10 @@ def _load_xsds(path: Path | None) -> dict[str, bytes]:
     if _sha256(outer) != SCHEMA_ARCHIVE_SHA256:
         raise ValueError("ECMA-376 Part 4 archive SHA-256 does not match the pinned source")
     with zipfile.ZipFile(io.BytesIO(outer)) as archive:
-        inner = archive.read(SCHEMA_MEMBER)
+        try:
+            inner = archive.read(SCHEMA_MEMBER)
+        except KeyError as exc:
+            raise KeyError(f"missing expected archive member: {SCHEMA_MEMBER}") from exc
     if _sha256(inner) != XSD_ARCHIVE_SHA256:
         raise ValueError("ECMA-376 Transitional XSD archive SHA-256 does not match the pin")
     with zipfile.ZipFile(io.BytesIO(inner)) as archive:
@@ -115,7 +119,11 @@ def _inventory(kind: str, xsds: dict[str, bytes]) -> SchemaInventory:
     rows: dict[tuple[str, str], tuple[set[str], set[str]]] = defaultdict(lambda: (set(), set()))
     namespaces: set[str] = set()
     for source in _files_for(kind, xsds):
-        root = ElementTree.fromstring(xsds[source])
+        try:
+            xsd_bytes = xsds[source]
+        except KeyError as exc:
+            raise KeyError(f"missing expected XSD part: {source}") from exc
+        root = ElementTree.fromstring(xsd_bytes)
         namespace = root.attrib.get("targetNamespace", "")
         namespaces.add(namespace)
         complex_types += len(root.findall(f".//{_XSD}complexType[@name]"))
@@ -198,8 +206,10 @@ def _generated_markdown(kind: str, inventory: SchemaInventory) -> str:
 
 def _replace_generated(document: str, generated: str) -> str:
     start = document.find(_BEGIN)
-    end = document.find(_END)
-    if start < 0 or end < start:
+    if start < 0:
+        raise ValueError("inventory document is missing generated-section markers")
+    end = document.find(_END, start + len(_BEGIN))
+    if end < 0:
         raise ValueError("inventory document is missing generated-section markers")
     end += len(_END)
     return document[:start] + generated.rstrip() + document[end:]

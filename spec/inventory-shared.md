@@ -113,7 +113,7 @@ Official standard: <https://ecma-international.org/publications-and-standards/st
 | `ep` | `http://schemas.openxmlformats.org/officeDocument/2006/extended-properties` |
 | `m` | `http://schemas.openxmlformats.org/officeDocument/2006/math` |
 | `r` | `http://schemas.openxmlformats.org/officeDocument/2006/relationships` |
-| `(none)` | `http://schemas.openxmlformats.org/officeDocument/2006/sharedTypes` |
+| `s` | `http://schemas.openxmlformats.org/officeDocument/2006/sharedTypes` |
 | `sl` | `http://schemas.openxmlformats.org/schemaLibrary/2006/main` |
 | `xvml` | `urn:schemas-microsoft-com:office:excel` |
 | `o` | `urn:schemas-microsoft-com:office:office` |

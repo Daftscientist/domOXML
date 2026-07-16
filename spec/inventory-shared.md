@@ -67,13 +67,13 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Text warp/WordArt | Gap/layer path not proven | Gap | unit model absent | IR, native DrawingML mapping, layered fallback and round-trip corpus |
 | Fonts and embedding | Partial/native | Partial/native | unit/integration + real deck | licensing states, malformed fonts, Graph limitation, substitutions, script faces |
 | Raster images | Native | Native | integration | effects, linked images, color transforms, metadata/accessibility |
-| SVG vectors | Native SVG extension + PNG fallback | Native read | `cap:svg-vector` (forward) | preserve SVG extension through reverse re-emission; bidirectional fixture |
+| SVG vectors | Native SVG extension + PNG fallback | Native read and exact asset re-emission | `cap:svg-vector` (both) | cropped/effect-bearing SVG pictures, external assets, and adversarial SVG content |
 | Audio and video | Layered/not authored natively | Native read | unit only | native authoring, posters/playback, HTML/PPTX parity and real-deck evidence |
 | Tables | Native subset | Native subset | `cap:table` (both) + real deck | complete styles/inheritance, borders, layout, nested content and adversarial cases |
 | Charts | Attached source re-emission only; authored charts remain a gap | Attached preserve; normalized HTML remains nonvisual | `cap:chart-preservation` (reverse) + real-deck PPTX visual gate | shared chart/data IR, HTML rendering/layer, and native chart authoring |
 | Unknown visual extensions | Element layer on HTML input | Preserve only on PPTX input | unit only | universal renderer-backed reverse layers and attached preservation payloads |
 | Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/structural | CI + tests | reverse coverage records, object-aware segmentation, typography/color metrics, layer/editability ratchets |
-| Repeated round trips | one cycle for 14 bidirectional fixtures | 14 bidirectional fixtures plus reverse-first chart preservation | capability runner | configurable multi-cycle convergence and broader source-format preservation gates |
+| Repeated round trips | one cycle for 15 bidirectional fixtures | 15 bidirectional fixtures plus reverse-first chart preservation | capability runner | configurable multi-cycle convergence and broader source-format preservation gates |
 
 ## Shared Work Remaining For PPTX
 

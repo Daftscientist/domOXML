@@ -740,6 +740,38 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
     """Serialize one slide node. :class:`ShapeNode`, :class:`MediaNode`, and
     :class:`TableNode` have HTML mappings; others warn and emit nothing."""
     if isinstance(node, ShapeNode):
+        if (
+            isinstance(node.fill, PictureFill)
+            and node.fill.svg_data is not None
+            and node.fill.crop is None
+            and node.fill.mode == "stretch"
+            and node.geom == "rect"
+            and node.custom_geom is None
+            and node.line is None
+            and node.side_lines is None
+            and not node.effects
+            and node.corner_radius_emu == 0
+            and node.text is None
+        ):
+            asset = _asset(node.fill)
+            assets.setdefault(asset.path, asset)
+            styles = [
+                "position:absolute",
+                f"left:{_px(node.box.x)}",
+                f"top:{_px(node.box.y)}",
+                f"width:{_px(node.box.width)}",
+                f"height:{_px(node.box.height)}",
+            ]
+            if node.opacity < 1.0:
+                styles.append(f"opacity:{_number(node.opacity)}")
+            transform_css = _transform_css(node.transform)
+            if transform_css is not None:
+                styles.append(f"transform:{transform_css}")
+            return (
+                f'<img class="domoxml-shape"{_identity_attrs(node)} '
+                f'src="../{escape(asset.path, quote=True)}" alt="" '
+                f'style="{escape(";".join(styles), quote=True)}">'
+            )
         # Custom geometry: emit an inline SVG instead of a CSS-bordered div.
         if node.custom_geom is not None:
             cg = node.custom_geom

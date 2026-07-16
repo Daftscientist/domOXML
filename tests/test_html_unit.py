@@ -104,6 +104,35 @@ def test_serialize_canvas_emits_identity_and_provenance_metadata() -> None:
     assert 'data-domoxml-layer-role="title"' in html
 
 
+def test_serialize_canvas_emits_pure_svg_picture_as_an_image() -> None:
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>'
+    node = ShapeNode(
+        node_id="vector",
+        box=Box(x=0, y=0, width=100, height=100),
+        fill=PictureFill(data=b"png", ext="png", svg_data=svg),
+    )
+
+    html = serialize_canvas([SlideIR(width=100, height=100, contents=(node,))])
+
+    assert '<img class="domoxml-shape"' in html.slides[0].html
+    assert 'data-domoxml-node-id="vector"' in html.slides[0].html
+    assert '.svg" alt=""' in html.slides[0].html
+    assert html.assets[0].data == svg
+
+
+def test_serialize_canvas_keeps_tiled_svg_picture_on_background_path() -> None:
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>'
+    node = ShapeNode(
+        box=Box(x=0, y=0, width=100, height=100),
+        fill=PictureFill(data=b"png", ext="png", svg_data=svg, mode="tile"),
+    )
+
+    html = serialize_canvas([SlideIR(width=100, height=100, contents=(node,))])
+
+    assert '<img class="domoxml-shape"' not in html.slides[0].html
+    assert "background-image:url(../assets/" in html.slides[0].html
+
+
 def test_serialize_canvas_embeds_attached_preservation_payload() -> None:
     payload = PreservationPayload(
         kind="graphicFrame",

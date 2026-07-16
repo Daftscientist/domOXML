@@ -343,6 +343,13 @@ def test_slide_carries_extended_nodes_alongside_shapes() -> None:
         "background",
     }
     assert SlideIR.model_validate(ordered.model_dump()) == ordered
+    legacy_data = {
+        "width": 100,
+        "height": 100,
+        "shapes": [shape.model_dump()],
+        "nodes": [table.model_dump()],
+    }
+    assert SlideIR.model_validate(legacy_data).contents == (shape, table)
     with pytest.raises(ValueError, match="contents or legacy"):
         SlideIR(width=100, height=100, contents=(shape,), shapes=(shape,))
     assert SlideIR(width=100, height=100, shapes=()).nodes == ()

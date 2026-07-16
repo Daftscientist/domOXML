@@ -11,7 +11,7 @@ import json
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # --------------------------------------------------------------------------- enums
 
@@ -59,14 +59,35 @@ class Transition(StrEnum):
     MORPH = "morph"
 
 
-class Disposition(StrEnum):
-    """How a source feature was represented across a conversion boundary."""
+class Representation(StrEnum):
+    """How a source visual is represented across a conversion boundary."""
 
     NATIVE = "native"
-    PARTIAL = "partial"
-    RASTER = "raster"
-    PRESERVED = "preserved"
-    UNSUPPORTED = "unsupported"
+    DECOMPOSED = "decomposed"
+    HYBRID = "hybrid"
+    LAYERED = "layered"
+    ELEMENT_LAYER = "element_layer"
+    APPROXIMATED = "approximated"
+    FAILED = "failed"
+
+
+class Editability(StrEnum):
+    """The strongest editing model retained by a represented source visual."""
+
+    SEMANTIC = "semantic"
+    COMPONENTS = "components"
+    LAYERS = "layers"
+    NONE = "none"
+
+
+class SourceRetention(StrEnum):
+    """How source-only data is retained for a later export to its source format."""
+
+    NOT_REQUIRED = "not_required"
+    ATTACHED = "attached"
+    DETACHED = "detached"
+    IGNORED = "ignored"
+    LOST = "lost"
 
 
 # --------------------------------------------------------------------------- input models
@@ -117,17 +138,60 @@ class Slide(BaseModel):
 
 
 class CoverageItem(BaseModel):
-    """How one source element was rendered into the .pptx."""
+    """Representation, editability, and retention for one source visual."""
 
     model_config = ConfigDict(frozen=True)
 
     element: str
-    disposition: Disposition
-    reason: str = ""  # why it rasterised, when applicable
+    representation: Representation
+    editability: Editability
+    source_retention: SourceRetention = SourceRetention.NOT_REQUIRED
+    output_count: int = Field(default=1, ge=0)
+    raster_area_emu2: int = Field(default=0, ge=0)
+    reason: str = ""
+
+    @model_validator(mode="after")
+    def _representation_is_coherent(self) -> CoverageItem:
+        representation = self.representation
+        if representation is Representation.NATIVE:
+            if self.editability is not Editability.SEMANTIC or self.output_count != 1:
+                raise ValueError("native representation requires one semantic output")
+        elif representation is Representation.DECOMPOSED:
+            if self.editability is not Editability.COMPONENTS or self.output_count < 2:
+                raise ValueError("decomposed representation requires at least two components")
+        elif representation is Representation.HYBRID:
+            if self.editability not in (Editability.SEMANTIC, Editability.COMPONENTS):
+                raise ValueError("hybrid representation must retain semantic or component editing")
+            if self.output_count < 2:
+                raise ValueError("hybrid representation requires at least two outputs")
+        elif representation is Representation.LAYERED:
+            if self.editability is not Editability.LAYERS or self.output_count < 2:
+                raise ValueError("layered representation requires at least two editable layers")
+        elif representation is Representation.ELEMENT_LAYER:
+            if self.editability is not Editability.LAYERS or self.output_count != 1:
+                raise ValueError("element-layer representation requires one editable layer")
+        elif representation is Representation.APPROXIMATED:
+            if self.editability is Editability.NONE or self.output_count < 1:
+                raise ValueError("approximated representation requires an editable output")
+        elif representation is Representation.FAILED and (
+            self.editability is not Editability.NONE or self.output_count != 0
+        ):
+            raise ValueError("failed representation cannot claim an editable output")
+
+        uses_raster = representation in (
+            Representation.HYBRID,
+            Representation.LAYERED,
+            Representation.ELEMENT_LAYER,
+        )
+        if uses_raster != (self.raster_area_emu2 > 0):
+            raise ValueError("raster area must be positive exactly when raster layers are used")
+        if representation is not Representation.NATIVE and not self.reason.strip():
+            raise ValueError("non-native representation requires a reason")
+        return self
 
 
 class CoverageReport(BaseModel):
-    """Per-element native-vs-raster breakdown for a render."""
+    """Per-source-visual representation and editability breakdown for a render."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -135,11 +199,46 @@ class CoverageReport(BaseModel):
 
     @property
     def native_ratio(self) -> float:
-        """Fraction of elements that mapped to native OOXML (1.0 if empty)."""
+        """Fraction represented entirely by native primitives, including decompositions."""
         if not self.items:
             return 1.0
-        native = sum(1 for item in self.items if item.disposition is Disposition.NATIVE)
+        native = sum(
+            item.representation in (Representation.NATIVE, Representation.DECOMPOSED)
+            for item in self.items
+        )
         return native / len(self.items)
+
+    @property
+    def editable_ratio(self) -> float:
+        """Fraction retaining semantic or component editing (1.0 if empty)."""
+        if not self.items:
+            return 1.0
+        editable = sum(
+            item.editability in (Editability.SEMANTIC, Editability.COMPONENTS)
+            for item in self.items
+        )
+        return editable / len(self.items)
+
+    @property
+    def layered_ratio(self) -> float:
+        """Fraction using any raster layer representation (0.0 if empty)."""
+        if not self.items:
+            return 0.0
+        layered = sum(
+            item.representation
+            in (Representation.HYBRID, Representation.LAYERED, Representation.ELEMENT_LAYER)
+            for item in self.items
+        )
+        return layered / len(self.items)
+
+    @property
+    def raster_area_emu2(self) -> int:
+        """Total rasterized output area in squared EMUs."""
+        return sum(item.raster_area_emu2 for item in self.items)
+
+    def count(self, representation: Representation) -> int:
+        """Count source visuals using ``representation``."""
+        return sum(item.representation is representation for item in self.items)
 
 
 class ConversionWarning(BaseModel):

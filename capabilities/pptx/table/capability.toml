@@ -3,10 +3,9 @@ direction = "both"
 html_file = "slide.html"
 
 [expected]
-# Table nodes live in slide.nodes, not slide.shapes, so min_native/max_raster
-# do not apply here (they count shapes from extract_slide).
-min_native = 0
-max_raster = 0
+# A native table is one semantic source visual even though it lives in slide.nodes.
+min_representation = { native = 1 }
+max_representation = { approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
 
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"

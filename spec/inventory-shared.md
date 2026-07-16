@@ -23,6 +23,12 @@ Visual parity, semantic editability, preservation, and direction are separate fa
 never permission for visible approximation: unhandled variants should move through the layered
 backend described in [`architecture.md`](architecture.md).
 
+Forward conversion now emits a typed coverage record for every captured visual. Representation is
+`native`, `decomposed`, `hybrid`, `layered`, `element_layer`, `approximated`, or `failed`;
+editability, source retention, output count, and raster area are recorded independently. Capability
+manifests place explicit ceilings on every lossy representation. Applying this same record to PPTX
+ingest and attached preservation is still roadmap work.
+
 ## Current Shared Capability Matrix
 
 Audited on **2026-07-16**. `cap:*` refers to a manifest below `capabilities/pptx/`; “both” means the
@@ -66,7 +72,7 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Tables | Native subset | Native subset | `cap:table` (both) + real deck | complete styles/inheritance, borders, layout, nested content and adversarial cases |
 | Charts | Gap | Preserve only | real deck, visual excluded | shared chart/data IR, HTML rendering, native writer, attached re-emission, visual gates |
 | Unknown visual extensions | Element layer on HTML input | Preserve only on PPTX input | unit only | universal renderer-backed reverse layers and attached preservation payloads |
-| Fidelity metrics | global/regional/structural | same | CI + tests | object-aware segmentation, typography/color metrics, layer/editability ratchets |
+| Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/structural | CI + tests | reverse coverage records, object-aware segmentation, typography/color metrics, layer/editability ratchets |
 | Repeated round trips | one cycle for 12 atomic fixtures | one cycle for 12 atomic fixtures | capability runner | configurable multi-cycle convergence and source-format preservation gates |
 
 ## Shared Work Remaining For PPTX

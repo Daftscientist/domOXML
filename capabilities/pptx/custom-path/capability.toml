@@ -3,8 +3,8 @@ direction = "forward"
 html_file = "slide.html"
 
 [expected]
-min_native = 2
-max_raster = 0
+min_representation = { native = 2 }
+max_representation = { approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
 
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"

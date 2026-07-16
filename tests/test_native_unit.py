@@ -18,7 +18,7 @@ from domoxml.core.render.browser import (
     RenderedSlide,
     _needs_isolated_raster,
 )
-from domoxml.types import Disposition
+from domoxml.types import Editability, Representation, SourceRetention
 
 
 def _png(width: int = 40, height: int = 30) -> bytes:
@@ -102,7 +102,8 @@ def test_gradient_fill_is_native() -> None:
     )
     result = extract_slide(_slide(gradient_node))
     assert isinstance(result.slide.shapes[0].fill, GradientFill)
-    assert result.coverage[0].disposition is Disposition.NATIVE
+    assert result.coverage[0].representation is Representation.NATIVE
+    assert result.coverage[0].editability is Editability.SEMANTIC
 
 
 def test_css_filter_rasterises_and_warns() -> None:
@@ -117,8 +118,60 @@ def test_css_filter_rasterises_and_warns() -> None:
     )
     result = extract_slide(_slide(node))
     assert isinstance(result.slide.shapes[0].fill, PictureFill)  # baked pixels, not dropped
-    assert result.coverage[0].disposition is Disposition.RASTER
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert result.coverage[0].editability is Editability.LAYERS
+    assert result.coverage[0].raster_area_emu2 > 0
     assert result.warnings and "filter" in result.warnings[0].message
+
+
+def test_empty_raster_region_is_recorded_as_failed_not_layered() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=100,
+        y=100,
+        width=10,
+        height=10,
+        index=0,
+        styles={"filter": "blur(4px)", "backgroundColor": "rgb(1,2,3)"},
+    )
+
+    result = extract_slide(_slide(node))
+
+    assert result.slide.shapes == ()
+    assert result.coverage[0].representation is Representation.FAILED
+    assert result.coverage[0].editability is Editability.NONE
+    assert result.coverage[0].source_retention is SourceRetention.LOST
+    assert result.coverage[0].output_count == 0
+
+
+def test_unmappable_custom_svg_fill_uses_element_layer_instead_of_omitting_fill() -> None:
+    svg = RenderedNode(
+        tag="svg",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        src="0 0 10 10",
+        index=0,
+        parent=-1,
+    )
+    path = RenderedNode(
+        tag="path",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        src="M 0 0 L 10 0 L 10 10 Z",
+        index=1,
+        parent=0,
+        styles={"backgroundImage": "conic-gradient(red, blue)"},
+    )
+
+    result = extract_slide(_slide(svg, path))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert "SVG custom geometry fill" in result.coverage[0].reason
 
 
 def test_inset_css_shadow_rasterises_for_portable_fidelity() -> None:
@@ -138,7 +191,8 @@ def test_inset_css_shadow_rasterises_for_portable_fidelity() -> None:
     result = extract_slide(_slide(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
-    assert result.coverage[0].disposition is Disposition.RASTER
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert result.coverage[0].editability is Editability.LAYERS
     assert "inset box-shadow" in (result.coverage[0].reason or "")
 
 

@@ -27,13 +27,14 @@ from domoxml.core.ir.model import (
     Node,
     PathCommand,
     Point,
+    PreservedNode,
     QuadTo,
     ShapeNode,
     SlideIR,
     SourceProvenance,
     Transform,
 )
-from domoxml.core.opc import OpcPackage
+from domoxml.core.opc import OpcPackage, capture_payload
 from domoxml.slides.appearance_read import (
     DEFAULT_THEME_COLORS,
     ThemeColors,
@@ -103,6 +104,7 @@ class _SlideInheritCtx:
     layout_root: Element | None
     master_root: Element | None
     theme_ctx: ThemeContext
+    theme_part: str | None = None
 
 
 @dataclass(frozen=True)
@@ -342,6 +344,20 @@ def _local_name(element: Element) -> str:
     return element.tag.rsplit("}", 1)[-1]
 
 
+def _graphic_frame_box(element: Element) -> Box | None:
+    transform = element.find("p:xfrm", _NS)
+    offset = transform.find("a:off", _NS) if transform is not None else None
+    extent = transform.find("a:ext", _NS) if transform is not None else None
+    if offset is None or extent is None:
+        return None
+    return Box(
+        x=_int_attr(offset, "x"),
+        y=_int_attr(offset, "y"),
+        width=max(1, _int_attr(extent, "cx")),
+        height=max(1, _int_attr(extent, "cy")),
+    )
+
+
 def _preserve(
     slide_part: str, element: Element, reason: str
 ) -> tuple[ConversionWarning, PreservedFragment]:
@@ -435,6 +451,7 @@ def _build_slide_inherit_ctx(package: OpcPackage, slide_part: str) -> _SlideInhe
         layout_root=layout_root,
         master_root=master_root,
         theme_ctx=theme_ctx,
+        theme_part=theme_part,
     )
 
 
@@ -570,6 +587,7 @@ def _slide(
     if tree is not None:
         for element in tree:
             kind = _local_name(element)
+            preserved_owner_id: str | None = None
             if kind in {"nvGrpSpPr", "grpSpPr"}:
                 continue
             if kind == "sp":
@@ -640,11 +658,33 @@ def _slide(
                     contents.append(_with_pptx_identity(frame.table, element, slide_part))
                     continue
                 reason = frame.reason or "preserved unsupported graphicFrame"
+                frame_box = _graphic_frame_box(element)
+                if frame_box is not None:
+                    try:
+                        payload = capture_payload(
+                            package,
+                            slide_part,
+                            element,
+                            kind="graphicFrame",
+                            ambient_theme_part=inherit_ctx.theme_part,
+                        )
+                    except (KeyError, ValueError):
+                        reason += "; dependent OPC graph could not be attached"
+                    else:
+                        preserved_node = _with_pptx_identity(
+                            PreservedNode(box=frame_box, payload=payload),
+                            element,
+                            slide_part,
+                        )
+                        contents.append(preserved_node)
+                        preserved_owner_id = preserved_node.node_id
             elif kind == "oleObj":
                 reason = "p:oleObj (OLE object) has no HTML mapping; preserved as fragment"
             else:
                 reason = f"preserved unsupported reverse slide node: {kind}"
             warning, fragment = _preserve(slide_part, element, reason)
+            if preserved_owner_id is not None:
+                fragment = fragment.model_copy(update={"owner_node_id": preserved_owner_id})
             warnings.append(warning)
             preserved.append(fragment)
     return (

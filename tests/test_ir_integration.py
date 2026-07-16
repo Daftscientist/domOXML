@@ -4,8 +4,16 @@ from __future__ import annotations
 
 import pytest
 
+from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import ExtractResult, extract_slide
-from domoxml.core.ir.model import AutoNumberBullet, SlideIR, SolidFill
+from domoxml.core.ir.model import (
+    AutoNumberBullet,
+    Box,
+    PreservationPayload,
+    PreservedNode,
+    SlideIR,
+    SolidFill,
+)
 from domoxml.core.render import BrowserSession, compose_page
 from domoxml.core.units import pixels
 from domoxml.types import Representation, SlideSize, Theme
@@ -65,6 +73,26 @@ async def test_browser_capture_preserves_canvas_identity_metadata() -> None:
     assert hero.provenance.source_format == "pptx"
     assert hero.provenance.source_id == "12"
     assert hero.provenance.source_part == "ppt/slides/slide1.xml"
+
+
+async def test_browser_capture_restores_attached_preservation_payload() -> None:
+    payload = PreservationPayload(kind="graphicFrame", root_xml="<p:graphicFrame/>")
+    node = PreservedNode(
+        node_id="chart-1",
+        box=Box(x=914_400, y=914_400, width=1_828_800, height=914_400),
+        payload=payload,
+    )
+    html = (
+        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(node,))])
+        .slides[0]
+        .html
+    )
+
+    ir = await _render_and_extract(html)
+
+    [recovered] = [item for item in ir.contents if isinstance(item, PreservedNode)]
+    assert recovered.node_id == "chart-1"
+    assert recovered.payload == payload
 
 
 async def test_extracts_nested_inline_text_as_ordered_editable_runs() -> None:

@@ -41,6 +41,7 @@ from domoxml.core.ir.model import (
     LineSpacing,
     Node,
     PictureFill,
+    PreservedNode,
     Rgba,
     Shadow,
     ShapeNode,
@@ -76,6 +77,7 @@ from domoxml.core.ir.pattern import match_pattern_fill
 from domoxml.core.ir.slide_properties_extract import extract_slide_properties
 from domoxml.core.ir.svg_extract import extract_custom_geometry
 from domoxml.core.ir.table_extract import extract_table
+from domoxml.core.opc import decode_payload
 from domoxml.core.render.browser import (
     RenderedNode,
     RenderedSlide,
@@ -950,6 +952,23 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # becomes the slide background, captured above).
         if slide_root is not None and node.index == slide_root.index:
             consumed.add(node.index)
+            continue
+
+        preserved_payload = node.styles.get("domoxmlPreservedPayload")
+        if preserved_payload:
+            label = _label(node)
+            try:
+                payload = decode_payload(preserved_payload)
+            except (ValueError, TypeError):
+                consumed |= _subtree(node.index, children)
+                reason = "invalid attached preservation payload"
+                coverage.append(_failed_coverage(label, reason))
+                warnings.append(ConversionWarning(message=reason, element=label))
+            else:
+                contents.append(
+                    identities.apply(PreservedNode(box=_box(node), payload=payload), node)
+                )
+                consumed |= _subtree(node.index, children)
             continue
 
         # --- Native table interception ---

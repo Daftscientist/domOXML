@@ -11,12 +11,13 @@ Snapshot audited on **2026-07-16** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 625 tests are collected.
-- 17 atomic PPTX capability fixtures exist; 14 execute forward and reverse paths.
+- 632 tests are collected.
+- 18 atomic PPTX capability fixtures exist; 14 are bidirectional and one is a reverse-first chart
+  preservation fixture.
 - `custom-path`, `effects`, and `svg-vector` remain forward-only fixtures.
 - 9 authored HTML fidelity cases exist.
-- 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and exact
-  chart-fragment capture during ingest.
+- 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and attached
+  chart-graph re-emission with a visual gate.
 - LibreOffice global, regional, and structural scores are merge-blocking for configured cases.
 - Microsoft Graph rendering exists as an opt-in backend, not a normal CI gate.
 
@@ -24,11 +25,13 @@ The baseline is useful but not yet the product invariant:
 
 - Canvas IR uses one canonical ordered node sequence with compatibility views for legacy callers;
 - adopted nodes have slide-scoped stable IDs and active HTML/PPTX adapters retain typed source
-  provenance; exact group reconstruction and attached preservation payloads remain incomplete;
+  provenance; chart payloads are attached and re-emitted, while exact group reconstruction and
+  general preservation ownership remain incomplete;
 - forward raster fallback exists, but its granularity and semantic debt are not comprehensively
   asserted;
 - unknown reverse PPTX visuals are often preserved as detached XML without a rendered layer;
-- detached preserved fragments are not generally re-emitted by `render_html_roundtrip()`;
+- detached preserved fragments are not generally re-emitted by `render_html_roundtrip()`; charts
+  now use an owned node payload and retain their dependency graph and ambient theme;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - forward conversion has a typed representation/editability/retention contract, but reverse ingest
   does not yet emit equivalent per-visual coverage records;
@@ -75,7 +78,8 @@ This is the highest-leverage engineering change because all directions currently
 - Add stable node IDs and source ownership/provenance. (Implemented for adopted nodes and active
   HTML/PPTX visual adapters; group reconstruction remains pending.)
 - Preserve group and stacking relationships rather than flattening by default.
-- Attach source extensions and preservation payloads to their owning node/part.
+- Attach source extensions and preservation payloads to their owning node/part. (Implemented for
+  chart graphic frames and their transitive OPC dependencies; other preserved families remain.)
 - Model native, decomposed, hybrid, and layer relationships explicitly.
 - Separate semantic/style intent from resolved paint/layout data where both are available.
 - Centralize normalization so HTML and PPTX adapters do not invent different canonical forms.
@@ -215,7 +219,8 @@ silently lowering the expected score.
 1. [x] Replace `Disposition.UNSUPPORTED` and the coarse coverage report with the representation
    contract.
 2. [x] Add stable node IDs and provenance; the ordered `SlideIR.contents` sequence is implemented.
-3. [ ] Attach preserved source payloads and prove real re-emission, starting with the chart case.
+3. [x] Attach preserved source payloads and prove real re-emission for the chart case; expand the
+   same contract to remaining preserved visual families under items 5 and 7.
 4. [ ] Make the three forward-only capability fixtures genuinely bidirectional.
 5. [ ] Add reverse visual layers for unknown PPTX nodes instead of HTML omission plus detached XML.
 6. [ ] Add package/schema validation for generated and re-emitted decks.

@@ -22,6 +22,7 @@ from domoxml.types import (
 
 _NS = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "c": "http://schemas.openxmlformats.org/drawingml/2006/chart",
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
     "asvg": "http://schemas.microsoft.com/office/drawing/2016/SVG/main",
@@ -71,6 +72,7 @@ class CapabilityExpected(BaseModel):
         default_factory=_empty_representation_counts
     )
     warnings: tuple[str, ...] = ()
+    required_parts: tuple[str, ...] = ()
     xml: tuple[XmlExpectation, ...] = ()
 
     @model_validator(mode="after")
@@ -122,6 +124,7 @@ class CapabilityFixture(BaseModel):
     expected: CapabilityExpected = Field(default_factory=CapabilityExpected)
     reverse: CapabilityReverseExpected = Field(default_factory=CapabilityReverseExpected)
     visual: CapabilityVisual = Field(default_factory=CapabilityVisual)
+    visual_exclusion: str | None = None
 
     @model_validator(mode="after")
     def _sources_match_direction(self) -> CapabilityFixture:
@@ -132,6 +135,21 @@ class CapabilityFixture(BaseModel):
             raise ValueError(f"{self.direction} fixture requires non-empty HTML")
         if self.direction is CapabilityDirection.REVERSE and self.pptx is None:
             raise ValueError("reverse fixture requires pptx_file")
+        reverse_visual = any(
+            threshold is not None
+            for threshold in (
+                self.visual.pptx_to_html_min_similarity,
+                self.visual.pptx_to_html_min_regional_similarity,
+                self.visual.pptx_to_html_min_structural_similarity,
+            )
+        )
+        if self.direction in (
+            CapabilityDirection.REVERSE,
+            CapabilityDirection.BOTH,
+        ) and reverse_visual == bool(self.visual_exclusion):
+            raise ValueError(
+                "reverse capability requires visual thresholds or one visual_exclusion"
+            )
         return self
 
 
@@ -190,6 +208,9 @@ def _validate_xml(fixture: CapabilityFixture, pptx: bytes | None) -> list[str]:
     errors: list[str] = []
     with zipfile.ZipFile(io.BytesIO(pptx)) as archive:
         names = set(archive.namelist())
+        for part in fixture.expected.required_parts:
+            if part not in names:
+                errors.append(f"missing package part {part}")
         for expected in fixture.expected.xml:
             if expected.part not in names:
                 errors.append(f"missing package part {expected.part}")

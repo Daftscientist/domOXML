@@ -277,6 +277,7 @@ class PreservedFragment(BaseModel):
     part: str
     kind: str
     xml: str
+    owner_node_id: str | None = None
 
 
 class HtmlPresentation(BaseModel):

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from xml.etree import ElementTree
+
 import pytest
 
-from domoxml.core.opc import OpcPackage, Relationship, write_package
+from domoxml.core.opc import OpcPackage, Relationship, capture_payload, write_package
 
 _REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -58,3 +60,47 @@ def test_rejects_external_relationship_resolution() -> None:
 def test_invalid_zip_raises_clear_error() -> None:
     with pytest.raises(ValueError, match="ZIP"):
         OpcPackage.from_bytes(b"not-a-zip")
+
+
+def test_resolves_override_and_default_content_types() -> None:
+    package = OpcPackage.from_bytes(
+        write_package(
+            {
+                "[Content_Types].xml": (
+                    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                    '<Default Extension="xml" ContentType="application/xml"/>'
+                    '<Override PartName="/ppt/charts/chart1.xml" ContentType="chart/type"/>'
+                    "</Types>"
+                ),
+                "ppt/charts/chart1.xml": b"<chart/>",
+                "ppt/other.xml": b"<other/>",
+            }
+        )
+    )
+
+    assert package.content_type("ppt/charts/chart1.xml") == "chart/type"
+    assert package.content_type("ppt/other.xml") == "application/xml"
+
+
+def test_capture_payload_rejects_missing_root_relationship() -> None:
+    package = OpcPackage.from_bytes(
+        write_package(
+            {
+                "[Content_Types].xml": (
+                    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                    '<Default Extension="xml" ContentType="application/xml"/>'
+                    "</Types>"
+                ),
+                "ppt/slides/slide1.xml": b"<slide/>",
+            }
+        )
+    )
+    element = ElementTree.fromstring(
+        "<p:graphicFrame "
+        'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'r:id="rId9"/>'
+    )
+
+    with pytest.raises(KeyError, match=r"missing preserved root relationship.*rId9"):
+        capture_payload(package, "ppt/slides/slide1.xml", element, kind="graphicFrame")

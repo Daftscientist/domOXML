@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from domoxml.core.ir.model import PreservedNode
+from domoxml.core.opc import OpcPackage
 from domoxml.core.real_decks import (
     DeckPackageExpected,
     RealDeckCase,
@@ -17,6 +19,7 @@ from domoxml.core.real_decks import (
     validate_real_deck_roundtrip,
 )
 from domoxml.presentation import Presentation
+from domoxml.slides import build_pptx, read_pptx_result
 
 
 def test_repository_real_decks_have_valid_pins_and_relationships() -> None:
@@ -36,6 +39,38 @@ def test_repository_real_decks_have_valid_pins_and_relationships() -> None:
 def test_repository_real_decks_match_reverse_contracts() -> None:
     for case in load_real_decks(Path("real-decks/pptx")):
         assert validate_real_deck(case, Presentation.from_pptx(case.pptx)) == ()
+
+
+def test_external_chart_payload_is_owned_and_re_emitted_with_dependencies() -> None:
+    case = next(
+        case
+        for case in load_real_decks(Path("real-decks/pptx"))
+        if case.id == "external-chart-preservation"
+    )
+    result = read_pptx_result(case.pptx)
+    [chart] = [
+        node
+        for slide in result.slides
+        for node in slide.contents
+        if isinstance(node, PreservedNode)
+    ]
+
+    assert chart.node_id == "pptx-5"
+    assert {part.name for part in chart.payload.parts} == {
+        "ppt/charts/chart1.xml",
+        "ppt/charts/style1.xml",
+        "ppt/charts/colors1.xml",
+        "ppt/embeddings/Microsoft_Excel_Worksheet.xlsx",
+    }
+    assert chart.payload.ambient_theme is not None
+    assert b'val="E1251B"' in chart.payload.ambient_theme.data
+    [fragment] = result.preserved
+    assert fragment.owner_node_id == chart.node_id
+
+    rebuilt = build_pptx(list(result.slides), faces=[])
+    package = OpcPackage.from_bytes(rebuilt)
+    assert validate_real_deck_roundtrip(case, rebuilt) == ()
+    assert b"graphicFrame" in package.read("ppt/slides/slide2.xml")
 
 
 def test_real_deck_roundtrip_rejects_dropped_slides() -> None:

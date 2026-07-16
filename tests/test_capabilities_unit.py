@@ -67,6 +67,7 @@ def test_every_visual_capability_gate_includes_structural_similarity() -> None:
     )
     assert all(
         fixture.visual.pptx_to_html_min_structural_similarity is not None
+        or fixture.visual_exclusion is not None
         for fixture in fixtures
         if fixture.direction in (CapabilityDirection.REVERSE, CapabilityDirection.BOTH)
     )
@@ -199,6 +200,7 @@ def test_loads_reverse_only_pptx_source(tmp_path: Path) -> None:
     (case / "source.pptx").write_bytes(b"pptx")
     (case / "capability.toml").write_text(
         'id = "reverse"\ndirection = "reverse"\npptx_file = "source.pptx"\n'
+        'visual_exclusion = "structural-only fixture"\n'
     )
 
     [fixture] = load_capabilities(tmp_path)

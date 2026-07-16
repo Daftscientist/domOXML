@@ -580,6 +580,58 @@ class CanvasNode(BaseModel):
     provenance: SourceProvenance | None = None
 
 
+class PreservationRelationship(BaseModel):
+    """One relationship retained inside an opaque source-format payload.
+
+    Internal ``target`` values are normalized package-absolute part names; external targets keep
+    their original URI. Relationship IDs remain local to the owning root or preserved part.
+    """
+
+    model_config = _FROZEN
+
+    id: str = Field(min_length=1, max_length=512)
+    type: str = Field(min_length=1, max_length=2048)
+    target: str = Field(min_length=1, max_length=4096)
+    target_mode: Literal["Internal", "External"] = "Internal"
+
+
+class PreservationPart(BaseModel):
+    """One dependent OPC part plus the relationships it owns."""
+
+    model_config = ConfigDict(frozen=True, ser_json_bytes="base64", val_json_bytes="base64")
+
+    name: str = Field(min_length=1, max_length=1024)
+    content_type: str = Field(min_length=1, max_length=1024)
+    data: bytes
+    relationships: tuple[PreservationRelationship, ...] = ()
+
+
+class PreservationPayload(BaseModel):
+    """Opaque source content attached to its owning canvas node for lossless re-emission."""
+
+    model_config = ConfigDict(frozen=True, ser_json_bytes="base64", val_json_bytes="base64")
+
+    source_format: Literal["pptx"] = "pptx"
+    kind: str = Field(min_length=1, max_length=128)
+    root_xml: str = Field(min_length=1)
+    relationships: tuple[PreservationRelationship, ...] = ()
+    parts: tuple[PreservationPart, ...] = ()
+    ambient_theme: PreservationPart | None = None
+
+
+class PreservedNode(CanvasNode):
+    """A positioned source object awaiting a semantic adapter but retained for source export.
+
+    The node participates in normal stacking and identity. Alternate-format serializers may emit
+    a nonvisual placeholder until they have either a native mapping or a rendered layer.
+    """
+
+    model_config = _FROZEN
+
+    box: Box
+    payload: PreservationPayload
+
+
 class ShapeNode(CanvasNode):
     """One positioned element. Stacking is the order within :attr:`SlideIR.contents`.
 
@@ -703,7 +755,7 @@ class MediaNode(CanvasNode):
 # A top-level slide node. ``ShapeNode`` is the historical default; groups, connectors, and tables
 # are the richer node types. Kept open (not a discriminated union) because ``ShapeNode`` has no
 # ``kind`` tag and the union members are structurally distinct.
-type Node = ShapeNode | GroupNode | Connector | TableNode | MediaNode
+type Node = ShapeNode | GroupNode | Connector | TableNode | MediaNode | PreservedNode
 
 
 def _normalise_node_ids(nodes: tuple[Node, ...]) -> tuple[Node, ...]:

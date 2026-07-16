@@ -77,8 +77,8 @@ constructor arguments and filtered accessors remain compatibility views, but imp
 serializers operate on `contents` so heterogeneous nodes retain interleaved z-order. Every node
 adopted by a slide has a stable slide-scoped ID; active HTML and PPTX adapters also retain typed
 source provenance through normalized HTML metadata and a private OOXML extension. Exact
-stacking/group ownership, attached preservation payloads, and per-node representation status still
-need to be completed in addition to the existing geometry and appearance.
+stacking/group ownership, preservation ownership beyond the implemented chart graph, and per-node
+representation status still need to be completed in addition to the existing geometry and appearance.
 
 Shared primitives include:
 
@@ -186,10 +186,11 @@ public API for every enterprise collaboration feature.
 | Preserve and re-emit | unknown extensions and useful source features awaiting a native adapter |
 | Intentionally ignore | comments/review history or obscure collaboration state explicitly excluded from product scope |
 
-Preservation is not visual support. A preserved chart XML fragment that disappears from HTML is
-still a visual parity gap. Preservation must also be attached to the owning IR node or package
-location so it can actually be re-emitted; storing detached fragments in a result object is only
-an intermediate safeguard.
+Preservation is not visual support. Chart graphic frames now attach their transitive OPC graph and
+ambient theme to an ordered IR node and re-emit to PPTX, but the chart still disappears visually
+from normalized HTML until the reverse layer or semantic chart renderer exists. Other preserved
+families must likewise attach to their owning IR node or package location; storing detached
+fragments in a result object is only an intermediate safeguard.
 
 ## Fidelity And Regression System
 

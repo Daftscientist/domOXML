@@ -1,0 +1,40 @@
+id = "chart-preservation"
+direction = "reverse"
+pptx_file = "../../../real-decks/pptx/external-chart-preservation/source.pptx"
+visual_exclusion = "The preserved chart re-emits to PPTX, but its normalized HTML representation remains nonvisual until the renderer-backed reverse layer is implemented."
+
+[expected]
+required_parts = [
+  "ppt/charts/chart1.xml",
+  "ppt/charts/style1.xml",
+  "ppt/charts/colors1.xml",
+  "ppt/embeddings/Microsoft_Excel_Worksheet.xlsx",
+]
+[[expected.xml]]
+part = "ppt/slides/slide2.xml"
+xpath = ".//p:graphicFrame/a:graphic/a:graphicData/c:chart"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/charts/chart1.xml"
+xpath = ".//c:barChart/c:ser"
+min_count = 3
+
+[[expected.xml]]
+part = "ppt/slides/slide2.xml"
+xpath = ".//dx:node[@id='pptx-5' and @sourceFormat='pptx' and @sourceId='5']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/theme/theme1.xml"
+xpath = ".//a:accent1/a:srgbClr[@val='E1251B']"
+min_count = 1
+
+[reverse]
+expected_slides = 2
+html_contains = [
+  'data-domoxml-node-id="pptx-5"',
+  'data-domoxml-preserved-payload=',
+]
+max_warnings = 1
+max_preserved = 1

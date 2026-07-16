@@ -196,6 +196,7 @@ _SNAPSHOT_JS = """
       domoxmlSourcePart: 'data-domoxml-source-part',
       domoxmlOwnerNodeId: 'data-domoxml-owner-node-id',
       domoxmlLayerRole: 'data-domoxml-layer-role',
+      domoxmlPreservedPayload: 'data-domoxml-preserved-payload',
     };
     for (const [key, attribute] of Object.entries(metadata)) {
       const value = el.getAttribute(attribute);

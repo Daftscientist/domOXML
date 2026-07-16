@@ -1,7 +1,5 @@
 id = "external-chart-preservation"
 pptx_file = "source.pptx"
-visual_exclusion = "The chart graphicFrame is captured exactly as detached preservation metadata during ingest, but it is not rendered in HTML or re-emitted by the HTML round trip yet."
-
 [provenance]
 source_url = "https://github.com/aiden0z/pptx-renderer/blob/68cb570940fb28d5c4628f31d1365016c4483521/docs/example/1-chart-and-complex/source.pptx"
 source_revision = "68cb570940fb28d5c4628f31d1365016c4483521"
@@ -25,9 +23,21 @@ max_warnings = 1
 warning_contains = ["graphicFrame (chart/table/unsupported graphic)"]
 preserved_count = 1
 html_contains = ["OpenTelemetry"]
-roundtrip_xml_contains = ["OpenTelemetry"]
+roundtrip_xml_contains = ["OpenTelemetry", "Series 1", "Category 4", "E1251B"]
+roundtrip_required_parts = [
+  "ppt/charts/chart1.xml",
+  "ppt/charts/style1.xml",
+  "ppt/charts/colors1.xml",
+  "ppt/embeddings/Microsoft_Excel_Worksheet.xlsx",
+]
 
 [[reverse.preserved]]
 part = "ppt/slides/slide2.xml"
 kind = "graphicFrame"
 xml_contains = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+
+[[visual]]
+slide = 1
+min_similarity = 0.99
+min_regional_similarity = 0.95
+min_structural_similarity = 0.96

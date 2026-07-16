@@ -6,6 +6,7 @@ from pathlib import Path
 
 from domoxml.core.capabilities import (
     CapabilityDirection,
+    CapabilityExpected,
     CapabilityFixture,
     load_capabilities,
     validate_capability,
@@ -67,6 +68,7 @@ def test_every_visual_capability_gate_includes_structural_similarity() -> None:
     )
     assert all(
         fixture.visual.pptx_to_html_min_structural_similarity is not None
+        or fixture.visual_exclusion is not None
         for fixture in fixtures
         if fixture.direction in (CapabilityDirection.REVERSE, CapabilityDirection.BOTH)
     )
@@ -166,6 +168,24 @@ def test_roundtrip_validation_still_enforces_loss_ceiling() -> None:
     )
 
 
+def test_required_parts_are_validated_without_xpath_expectations() -> None:
+    fixture = CapabilityFixture(
+        id="required-part-only",
+        direction=CapabilityDirection.FORWARD,
+        html="<p>x</p>",
+        expected=CapabilityExpected(required_parts=("ppt/missing.xml",)),
+    )
+    result = RenderResult(
+        pptx=build_pptx([SlideIR(width=12_192_000, height=6_858_000)], faces=[]),
+        pngs=(),
+        html=None,
+        coverage=CoverageReport(items=()),
+        warnings=(),
+    )
+
+    assert validate_capability(fixture, result) == ("missing package part ppt/missing.xml",)
+
+
 def test_validates_reverse_html_warnings_and_preservation() -> None:
     fixture = _fixture("hyperlink")
     html = HtmlPresentation(
@@ -199,6 +219,7 @@ def test_loads_reverse_only_pptx_source(tmp_path: Path) -> None:
     (case / "source.pptx").write_bytes(b"pptx")
     (case / "capability.toml").write_text(
         'id = "reverse"\ndirection = "reverse"\npptx_file = "source.pptx"\n'
+        'visual_exclusion = "structural-only fixture"\n'
     )
 
     [fixture] = load_capabilities(tmp_path)

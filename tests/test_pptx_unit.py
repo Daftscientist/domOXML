@@ -15,6 +15,9 @@ from domoxml.core.ir.model import (
     Hyperlink,
     LineSpacing,
     PictureFill,
+    PreservationPart,
+    PreservationPayload,
+    PreservedNode,
     Rgba,
     ShapeNode,
     SlideIR,
@@ -184,6 +187,35 @@ def test_build_pptx_rejects_mismatched_slide_sizes() -> None:
     b = SlideIR(width=9_144_000, height=6_858_000, shapes=())  # 4:3 — different width
     with pytest.raises(ValueError, match="share one size"):
         build_pptx([a, b])
+
+
+def test_build_pptx_rejects_conflicting_preserved_ambient_themes() -> None:
+    def slide(theme_data: bytes) -> SlideIR:
+        payload = PreservationPayload(
+            kind="graphicFrame",
+            root_xml=(
+                "<p:graphicFrame "
+                'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>'
+            ),
+            ambient_theme=PreservationPart(
+                name="ppt/theme/theme1.xml",
+                content_type=("application/vnd.openxmlformats-officedocument.theme+xml"),
+                data=theme_data,
+            ),
+        )
+        return SlideIR(
+            width=12_192_000,
+            height=6_858_000,
+            contents=(
+                PreservedNode(
+                    box=Box(x=0, y=0, width=1_000_000, height=1_000_000),
+                    payload=payload,
+                ),
+            ),
+        )
+
+    with pytest.raises(ValueError, match="conflicting preserved ambient themes across slides"):
+        build_pptx([slide(b"<theme-one/>"), slide(b"<theme-two/>")], faces=[])
 
 
 def test_run_underline_and_strike_emit_both_attrs() -> None:

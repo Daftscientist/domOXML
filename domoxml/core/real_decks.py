@@ -57,6 +57,7 @@ class DeckReverseExpected(BaseModel):
     preserved: tuple[PreservedExpected, ...] = ()
     html_contains: tuple[str, ...] = ()
     roundtrip_xml_contains: tuple[str, ...] = ()
+    roundtrip_required_parts: tuple[str, ...] = ()
 
 
 class DeckVisualExpected(BaseModel):
@@ -183,6 +184,9 @@ def validate_real_deck_roundtrip(case: RealDeckCase, pptx: bytes) -> tuple[str, 
     slide_count = sum(bool(_SLIDE_PART.fullmatch(part)) for part in package.parts)
     if slide_count != case.package.slides:
         errors.append(f"roundtrip slide count {slide_count} != expected {case.package.slides}")
+    for part in case.reverse.roundtrip_required_parts:
+        if not package.has_part(part):
+            errors.append(f"roundtrip missing required package part {part}")
     xml = "\n".join(
         package.read(part).decode("utf-8", errors="replace")
         for part in package.parts

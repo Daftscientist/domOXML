@@ -12,6 +12,9 @@ from domoxml.core.ir.model import (
     Hyperlink,
     LineSpacing,
     PictureFill,
+    PreservationPart,
+    PreservationPayload,
+    PreservedNode,
     Rgba,
     ShapeNode,
     SlideIR,
@@ -21,6 +24,7 @@ from domoxml.core.ir.model import (
     TextParagraph,
     TextRun,
 )
+from domoxml.core.opc import decode_payload
 from domoxml.types import ConversionWarning, CoverageReport, PreservedFragment, RenderResult
 
 
@@ -98,6 +102,33 @@ def test_serialize_canvas_emits_identity_and_provenance_metadata() -> None:
     assert 'data-domoxml-source-part="ppt/slides/slide1.xml"' in html
     assert 'data-domoxml-owner-node-id="hero"' in html
     assert 'data-domoxml-layer-role="title"' in html
+
+
+def test_serialize_canvas_embeds_attached_preservation_payload() -> None:
+    payload = PreservationPayload(
+        kind="graphicFrame",
+        root_xml="<p:graphicFrame/>",
+        parts=(
+            PreservationPart(
+                name="ppt/embeddings/data.xlsx",
+                content_type="application/xlsx",
+                data=b"\x00binary\xff",
+            ),
+        ),
+    )
+    node = PreservedNode(
+        node_id="chart-1",
+        box=Box(x=100, y=200, width=300, height=400),
+        payload=payload,
+    )
+
+    html = serialize_canvas([SlideIR(width=1_000, height=1_000, contents=(node,))]).slides[0].html
+    marker = 'data-domoxml-preserved-payload="'
+    encoded = html.split(marker, 1)[1].split('"', 1)[0]
+
+    assert 'class="domoxml-preserved"' in html
+    assert 'data-domoxml-node-id="chart-1"' in html
+    assert decode_payload(encoded) == payload
 
 
 def test_render_result_save_writes_every_artifact(tmp_path: Path) -> None:

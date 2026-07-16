@@ -11,6 +11,7 @@ from defusedxml import ElementTree
 from pydantic import BaseModel, ConfigDict
 
 _PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 
 
 class Relationship(BaseModel):
@@ -102,6 +103,19 @@ class OpcPackage:
                 return self.resolve(source_part, relationship)
         label = source_part or "<package>"
         raise KeyError(f"missing relationship type {relationship_type!r} from {label}")
+
+    def content_type(self, part: str) -> str:
+        """Resolve one part's content type from OPC overrides and extension defaults."""
+        normalized = _normalize_part(part)
+        root = ElementTree.fromstring(self.read("[Content_Types].xml"))
+        for override in root.findall(f"{{{_CT_NS}}}Override"):
+            if override.get("PartName", "").lstrip("/") == normalized:
+                return override.attrib["ContentType"]
+        extension = PurePosixPath(normalized).suffix.lstrip(".")
+        for default in root.findall(f"{{{_CT_NS}}}Default"):
+            if default.get("Extension", "").lower() == extension.lower():
+                return default.attrib["ContentType"]
+        raise KeyError(f"no content type declared for OPC part: {normalized}")
 
 
 def _normalize_part(part: str) -> str:

@@ -17,7 +17,7 @@ Audited on **2026-07-16**.
 | Slide dimensions | Native | Native | integration | mixed-size output policy and repeated-round-trip proof |
 | Slide creation and relationships | Native | Native | integration | full schema validation and deterministic relationship preservation |
 | Slide backgrounds | Native subset | Native subset | `cap:transition-bg` (both) | theme/style-matrix backgrounds, image/pattern variants, inheritance |
-| Themes | Partial generated default | Native/partial read | unit + real decks | author source theme, preserve scheme refs, format scheme and full inheritance |
+| Themes | Partial generated default; restores an attached chart's ambient source theme | Native/partial read | unit + chart real deck | general source-theme authoring, multiple-theme policy, scheme refs, format scheme and full inheritance |
 | Masters and layouts | Fixed generated baseline | Native/partial read | unit/integration | author arbitrary masters/layouts and preserve them through round trips |
 | Placeholders | Gap on authoring | Native/partial read | unit only | public/IR model, create placeholders, inherit text/geometry/style without flattening |
 | Slide inheritance | Gap/flattened output | Partial/native resolution | unit only | complete slide -> layout -> master -> theme cascade and source-reference retention |
@@ -28,7 +28,7 @@ Audited on **2026-07-16**.
 | Pictures and raster fallback markers | Native | Native | capabilities/integration | stable layer ownership/group metadata and accessibility fields |
 | SVG extension (`asvg:svgBlip`) | Native write | Native read | `cap:svg-vector` (forward) | extension survives HTML round trip and capability becomes bidirectional |
 | Native tables in graphic frames | Native subset | Native subset | `cap:table` (both) + real deck | table styles/inheritance and richer graphic-frame ordering |
-| Charts in graphic frames | Gap | Preserve only; omitted visually | real deck, visual excluded | shared chart IR/rendering, native writer, attached fragment re-emission |
+| Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph; omitted visually in normalized HTML | `cap:chart-preservation` (reverse) + real-deck PPTX visual gate | shared chart IR, normalized HTML visual layer/rendering, and native authoring |
 | Groups | Gap on authoring | Native read then flattened | unit only | author/preserve nested groups, child coordinates, interleaved z-order and IDs |
 | Connectors | Partial | Partial | unit + forward-only custom path fixture | attachment/routing/arrows and structure-preserving reverse re-emission |
 | Audio/video | Layered/not native | Native read | unit only | native relationships/parts, playback settings, poster handling and real deck |
@@ -46,6 +46,7 @@ Audited on **2026-07-16**.
 | `body-props` | both | shared text-body properties used by PPTX |
 | `borders` | both | shared stroke/decomposition behavior |
 | `bullets-spacing` | both | shared list/paragraph behavior |
+| `chart-preservation` | reverse | owned chart graph, ambient theme, identity, and exact PPTX re-emission |
 | `custom-path` | forward | custom geometry/connector reverse structure still blocks bidirectional status |
 | `effects` | forward | renderer-sensitive effect contract still blocks bidirectional status |
 | `hyperlink` | both | run hyperlinks and relationships |
@@ -71,7 +72,7 @@ structural assertions live in each `capability.toml` and are the executable auth
 3. Exact slide/group/graphic-frame ordering on the canonical node sequence.
 4. Complete transitions plus an explicit animation/timing authoring contract.
 5. Native media authoring and playback relationships.
-6. Chart, SmartArt, OLE, 3D, and unknown-node visual layers plus exact source re-emission.
+6. Chart visual layers/native authoring plus SmartArt, OLE, 3D, and unknown-node exact re-emission.
 7. Strict, alternate-content, Microsoft-extension, and malformed-but-accepted package coverage.
 8. Larger Microsoft-authored corpus and repeated PowerPoint-rendered convergence gates.
 

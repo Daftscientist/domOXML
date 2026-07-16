@@ -36,10 +36,10 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 
 | Family | Current forward path | Current reverse path | Evidence | Main remaining work |
 |---|---|---|---|---|
-| OPC packages and relationships | Native | Native | unit + 4 real decks | full XSD/Open XML validation, strict packages, alternate content, extension re-emission |
-| Units, page boxes, identity, and fixed layout | Native, canonical ordered scene with slide-scoped IDs/provenance | Native, canonical ordered scene with recovered IDs/provenance | `cap:interleaved-order` + `cap:node-identity` (both) + broad tests | exact group reconstruction and attached preservation ownership |
+| OPC packages and relationships | Native | Native | unit + 4 real decks | full XSD/Open XML validation, strict packages, alternate content, general extension re-emission beyond attached charts |
+| Units, page boxes, identity, and fixed layout | Native, canonical ordered scene with slide-scoped IDs/provenance | Native, canonical ordered scene with recovered IDs/provenance | `cap:interleaved-order` + `cap:node-identity` (both) + broad tests | exact group reconstruction and preservation ownership beyond charts |
 | Solid colors and alpha | Native | Native | fidelity corpus + integration | complete color models/transforms and theme-token preservation on forward output |
-| Theme colors and font schemes | Partial | Partial/native read | unit + real decks | forward scheme references, complete style matrix, script fonts, source-theme retention |
+| Theme colors and font schemes | Partial; attached chart re-emission restores its ambient source theme | Partial/native read | unit + chart real deck | general forward scheme references, complete style matrix, script fonts, deck-level source-theme policy |
 | Rectangles, rounded rectangles, ellipses | Native | Native | integration | adversarial transform/effect combinations |
 | Preset shapes | Partial | Partial | `cap:preset-shapes` (both) | remaining curved/formula presets and adjustment handles |
 | Custom paths | Partial/native one-way | Partial | `cap:custom-path` (forward) | arcs/shorthand/multipath, guide formulas, connector structure, bidirectional fixture |
@@ -70,17 +70,17 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | SVG vectors | Native SVG extension + PNG fallback | Native read | `cap:svg-vector` (forward) | preserve SVG extension through reverse re-emission; bidirectional fixture |
 | Audio and video | Layered/not authored natively | Native read | unit only | native authoring, posters/playback, HTML/PPTX parity and real-deck evidence |
 | Tables | Native subset | Native subset | `cap:table` (both) + real deck | complete styles/inheritance, borders, layout, nested content and adversarial cases |
-| Charts | Gap | Preserve only | real deck, visual excluded | shared chart/data IR, HTML rendering, native writer, attached re-emission, visual gates |
+| Charts | Attached source re-emission only; authored charts remain a gap | Attached preserve; normalized HTML remains nonvisual | `cap:chart-preservation` (reverse) + real-deck PPTX visual gate | shared chart/data IR, HTML rendering/layer, and native chart authoring |
 | Unknown visual extensions | Element layer on HTML input | Preserve only on PPTX input | unit only | universal renderer-backed reverse layers and attached preservation payloads |
 | Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/structural | CI + tests | reverse coverage records, object-aware segmentation, typography/color metrics, layer/editability ratchets |
-| Repeated round trips | one cycle for 14 atomic fixtures | one cycle for 14 atomic fixtures | capability runner | configurable multi-cycle convergence and source-format preservation gates |
+| Repeated round trips | one cycle for 14 bidirectional fixtures | 14 bidirectional fixtures plus reverse-first chart preservation | capability runner | configurable multi-cycle convergence and broader source-format preservation gates |
 
 ## Shared Work Remaining For PPTX
 
 The dependency order is:
 
-1. Complete group ownership/reconstruction and attach preserved payloads to the ordered Canvas IR;
-   slide-scoped IDs and active HTML/PPTX provenance are implemented.
+1. Complete group ownership/reconstruction and extend the chart-owned preservation contract to all
+   preserved visuals; slide-scoped IDs, active provenance, and chart graph ownership are implemented.
 2. Universal native/decomposed/hybrid/layered planner in both directions.
 3. Geometry, group, connector, and z-order completeness.
 4. Theme-aware paint, strokes, effects, and renderer calibration.

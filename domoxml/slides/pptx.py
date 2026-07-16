@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import posixpath
 import warnings
 from xml.sax.saxutils import escape
 
@@ -12,12 +13,20 @@ from domoxml.core.ir.model import (
     Connector,
     Hyperlink,
     PictureFill,
+    PreservationPart,
+    PreservationRelationship,
+    PreservedNode,
     ShapeNode,
     SlideIR,
     TableNode,
     TextBody,
 )
-from domoxml.core.opc import write_package
+from domoxml.core.opc import (
+    relationship_part_name,
+    relationships_xml,
+    rewrite_root_xml,
+    write_package,
+)
 from domoxml.slides import _templates as t
 from domoxml.slides.background import background_xml
 from domoxml.slides.transition import transition_xml
@@ -47,7 +56,12 @@ def _override(part: str, content_type: str) -> str:
 
 
 def _content_types(
-    n_slides: int, *, has_fonts: bool, image_exts: set[str], has_svg: bool = False
+    n_slides: int,
+    *,
+    has_fonts: bool,
+    image_exts: set[str],
+    has_svg: bool = False,
+    preserved_content_types: dict[str, str] | None = None,
 ) -> str:
     overrides = [
         _override("/ppt/presentation.xml", f"{_PML}.presentation.main+xml"),
@@ -57,6 +71,10 @@ def _content_types(
     ]
     overrides += [
         _override(f"/ppt/slides/slide{i}.xml", f"{_PML}.slide+xml") for i in range(1, n_slides + 1)
+    ]
+    overrides += [
+        _override(f"/{part}", content_type)
+        for part, content_type in sorted((preserved_content_types or {}).items())
     ]
     defaults = [
         f'<Default Extension="rels" ContentType="{_RELS_CT}"/>',
@@ -142,7 +160,10 @@ def _hyperlink_target(hyperlink: Hyperlink) -> tuple[str, str]:
 
 
 def _slide_rels(
-    image_rels: list[tuple[str, str]], hyperlink_rels: list[tuple[str, Hyperlink]]
+    slide_part: str,
+    image_rels: list[tuple[str, str]],
+    hyperlink_rels: list[tuple[str, Hyperlink]],
+    preserved_rels: list[tuple[str, PreservationRelationship]],
 ) -> str:
     """Slide relationships: the layout (rId1), one rel per embedded picture, one per hyperlink."""
     images = "".join(
@@ -153,11 +174,23 @@ def _slide_rels(
     for rid, hyperlink in hyperlink_rels:
         rel_type, attrs = _hyperlink_target(hyperlink)
         links += f'<Relationship Id="{rid}" Type="{rel_type}" {attrs}/>'
+    retained = ""
+    for rid, relationship in preserved_rels:
+        target = relationship.target
+        mode = ""
+        if relationship.target_mode == "Internal":
+            target = posixpath.relpath(target, posixpath.dirname(slide_part))
+        else:
+            mode = ' TargetMode="External"'
+        retained += (
+            f'<Relationship Id="{_attr(rid)}" Type="{_attr(relationship.type)}" '
+            f'Target="{_attr(target)}"{mode}/>'
+        )
     return (
         f'{t.XML_DECL}<Relationships xmlns="{_PKG_REL_NS}">'
         f'<Relationship Id="rId1" Type="{_REL_TYPE}/slideLayout" '
         'Target="../slideLayouts/slideLayout1.xml"/>'
-        f"{images}{links}</Relationships>"
+        f"{images}{links}{retained}</Relationships>"
     )
 
 
@@ -200,7 +233,15 @@ def _slide(
     slide: SlideIR,
     media_registry: dict[tuple[str, bytes], str],
     slide_count: int,
-) -> tuple[str, str, dict[str, bytes], bool]:
+    slide_number: int,
+) -> tuple[
+    str,
+    str,
+    dict[str, bytes],
+    bool,
+    dict[str, PreservationPart],
+    PreservationPart | None,
+]:
     """Build one slide.
 
     Media payloads are registered once across the deck, while each slide retains its own
@@ -213,6 +254,7 @@ def _slide(
     has_svg = False
     next_rid = 2  # rId1 is the layout
     media_rids: dict[str, str] = {}
+    slide_part = f"ppt/slides/slide{slide_number}.xml"
 
     def register_media(data: bytes, ext: str) -> str:
         nonlocal next_rid
@@ -233,7 +275,7 @@ def _slide(
 
     # Warn on node types still without a writer. Supported nodes retain their canonical order.
     for node in slide.contents:
-        if not isinstance(node, ShapeNode | Connector | TableNode):
+        if not isinstance(node, ShapeNode | Connector | TableNode | PreservedNode):
             warnings.warn(
                 f"{type(node).__name__} has no PresentationML writer yet; node dropped",
                 stacklevel=2,
@@ -275,6 +317,30 @@ def _slide(
             hyperlink_rels.append((rid, link))
             next_rid += 1
 
+    preserved_rels: list[tuple[str, PreservationRelationship]] = []
+    preserved_rids: dict[int, dict[str, str]] = {}
+    preserved_parts: dict[str, PreservationPart] = {}
+    preserved_theme: PreservationPart | None = None
+    for position, node in enumerate(slide.contents):
+        if not isinstance(node, PreservedNode):
+            continue
+        relationship_ids: dict[str, str] = {}
+        for relationship in node.payload.relationships:
+            rid = f"rId{next_rid}"
+            next_rid += 1
+            relationship_ids[relationship.id] = rid
+            preserved_rels.append((rid, relationship))
+        preserved_rids[position] = relationship_ids
+        if node.payload.ambient_theme is not None:
+            if preserved_theme is not None and preserved_theme != node.payload.ambient_theme:
+                raise ValueError("conflicting preserved ambient themes on one slide")
+            preserved_theme = node.payload.ambient_theme
+        for part in node.payload.parts:
+            existing = preserved_parts.get(part.name)
+            if existing is not None and existing != part:
+                raise ValueError(f"conflicting preserved OPC part: {part.name}")
+            preserved_parts[part.name] = part
+
     def _hyperlink_rid(link: Hyperlink) -> str | None:
         return rid_by_link.get(id(link))
 
@@ -306,6 +372,14 @@ def _slide(
             content_parts.append(_connector_xml(node, shape_id=shape_id))
         elif isinstance(node, TableNode):
             content_parts.append(table_xml(node, shape_id=shape_id))
+        elif isinstance(node, PreservedNode):
+            content_parts.append(
+                rewrite_root_xml(
+                    node,
+                    shape_id=shape_id,
+                    relationship_ids=preserved_rids[position],
+                )
+            )
     contents = "".join(content_parts)
     bg_xml = background_xml(slide.background, bg_blip_rid) if slide.background is not None else ""
     transition = transition_xml(slide.transition)
@@ -315,7 +389,14 @@ def _slide(
         f"{contents}</p:spTree></p:cSld>"
         f"<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>{transition}</p:sld>"
     )
-    return slide_xml, _slide_rels(image_rels, hyperlink_rels), media_parts, has_svg
+    return (
+        slide_xml,
+        _slide_rels(slide_part, image_rels, hyperlink_rels, preserved_rels),
+        media_parts,
+        has_svg,
+        preserved_parts,
+        preserved_theme,
+    )
 
 
 def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) -> bytes:
@@ -347,28 +428,53 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
     ]
 
     slide_parts: dict[str, bytes | str] = {}
+    preserved_parts: dict[str, PreservationPart] = {}
+    preserved_theme: PreservationPart | None = None
     image_exts: set[str] = set()
     has_svg = False
     media_registry: dict[tuple[str, bytes], str] = {}
     for i, slide in enumerate(slides, start=1):
-        slide_xml, slide_rels, media_parts, slide_has_svg = _slide(slide, media_registry, n)
+        (
+            slide_xml,
+            slide_rels,
+            media_parts,
+            slide_has_svg,
+            slide_preserved,
+            slide_theme,
+        ) = _slide(slide, media_registry, n, i)
         has_svg = has_svg or slide_has_svg
         slide_parts[f"ppt/slides/slide{i}.xml"] = slide_xml
         slide_parts[f"ppt/slides/_rels/slide{i}.xml.rels"] = slide_rels
         for part, data in media_parts.items():
             slide_parts[part] = data
             image_exts.add(part.rsplit(".", 1)[-1])
+        for part_name, preserved in slide_preserved.items():
+            existing = preserved_parts.get(part_name)
+            if existing is not None and existing != preserved:
+                raise ValueError(f"conflicting preserved OPC part: {part_name}")
+            preserved_parts[part_name] = preserved
+        if slide_theme is not None:
+            if preserved_theme is not None and preserved_theme != slide_theme:
+                raise ValueError("conflicting preserved ambient themes across slides")
+            preserved_theme = slide_theme
     # The svg extension carries its own content type; never list it among raster _IMAGE_CT.
     image_exts.discard("svg")
 
     parts: dict[str, bytes | str] = {
         "[Content_Types].xml": _content_types(
-            n, has_fonts=bool(font_rels), image_exts=image_exts, has_svg=has_svg
+            n,
+            has_fonts=bool(font_rels),
+            image_exts=image_exts,
+            has_svg=has_svg,
+            preserved_content_types={
+                part_name: preserved.content_type
+                for part_name, preserved in preserved_parts.items()
+            },
         ),
         "_rels/.rels": t.ROOT_RELS,
         "ppt/presentation.xml": _presentation(width, height, n, font_rels),
         "ppt/_rels/presentation.xml.rels": _presentation_rels(n, font_rels),
-        "ppt/theme/theme1.xml": t.THEME,
+        "ppt/theme/theme1.xml": preserved_theme.data if preserved_theme is not None else t.THEME,
         "ppt/slideMasters/slideMaster1.xml": t.SLIDE_MASTER,
         "ppt/slideMasters/_rels/slideMaster1.xml.rels": t.SLIDE_MASTER_RELS,
         "ppt/slideLayouts/slideLayout1.xml": t.SLIDE_LAYOUT,
@@ -377,4 +483,18 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
     for face, part, _rid in font_rels:
         parts[part] = face.data
     parts.update(slide_parts)
+    if preserved_theme is not None and preserved_theme.relationships:
+        theme_rels_part = relationship_part_name("ppt/theme/theme1.xml")
+        parts[theme_rels_part] = relationships_xml(
+            "ppt/theme/theme1.xml", preserved_theme.relationships
+        )
+    for part_name, preserved in preserved_parts.items():
+        if part_name in parts:
+            raise ValueError(f"preserved OPC part collides with generated part: {part_name}")
+        parts[part_name] = preserved.data
+        if preserved.relationships:
+            rels_part = relationship_part_name(part_name)
+            if rels_part in parts:
+                raise ValueError(f"preserved OPC relationships collide: {rels_part}")
+            parts[rels_part] = relationships_xml(part_name, preserved.relationships)
     return write_package(parts)

@@ -44,6 +44,7 @@ from domoxml.core.ir.model import (
 )
 from domoxml.core.ir.parse import autonum_to_css_list_style, bu_char_to_css_list_style
 from domoxml.core.ir.pattern import pattern_to_css
+from domoxml.core.opc import encode_payload
 from domoxml.core.svg_path import commands_to_svg_d
 from domoxml.core.units import emu_to_px
 from domoxml.types import (
@@ -836,9 +837,18 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
         return _media_html(node, assets, warnings)
     if isinstance(node, Connector):
         return _connector_html(node, warnings)
-    # The Node union's remaining member is TableNode. If the union grows, pyright's exhaustiveness
-    # check flags the missing branch here (no-silent-drop is enforced at the type level).
-    return _table_html(node, warnings)
+    if isinstance(node, TableNode):
+        return _table_html(node, warnings)
+    payload = escape(encode_payload(node.payload), quote=True)
+    style = (
+        f"position:absolute;left:{_px(node.box.x)};top:{_px(node.box.y)};"
+        f"width:{_px(node.box.width)};height:{_px(node.box.height)};"
+        "opacity:0;pointer-events:none;overflow:hidden"
+    )
+    return (
+        f'<div class="domoxml-preserved"{_identity_attrs(node)} aria-hidden="true" '
+        f'data-domoxml-preserved-payload="{payload}" style="{style}"></div>'
+    )
 
 
 def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:

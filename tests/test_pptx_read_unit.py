@@ -18,6 +18,7 @@ from domoxml.core.ir.model import (
     CharBullet,
     GradientFill,
     GradientStop,
+    GroupNode,
     Line,
     PictureFill,
     Rgba,
@@ -33,7 +34,7 @@ from domoxml.core.ir.model import (
 from domoxml.core.opc import OpcPackage, write_package
 from domoxml.slides import build_pptx, read_pptx
 from domoxml.slides.appearance_read import rgba
-from domoxml.slides.read import _slide_colors
+from domoxml.slides.read import _slide_colors, _with_pptx_identity
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -164,6 +165,30 @@ def test_third_party_shape_uses_cnvpr_id_as_pptx_provenance() -> None:
     assert shape.provenance == SourceProvenance(
         source_format="pptx",
         source_id="2",
+        source_part="ppt/slides/slide1.xml",
+    )
+
+
+def test_group_identity_does_not_fall_through_to_child_metadata() -> None:
+    group_element = ElementTree.fromstring(
+        f'<p:grpSp xmlns:p="{_P}" xmlns:a="{_A}" xmlns:dx="urn:domoxml:canvas-ir:1">'
+        "<p:nvGrpSpPr><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>"
+        '<p:sp><p:nvSpPr><p:cNvPr id="7" name="child"/><p:cNvSpPr/><p:nvPr><p:extLst>'
+        '<p:ext uri="{A6E4A7B1-9D9C-4E8F-A94B-22CB18A8D72F}">'
+        '<dx:node id="child-id" sourceFormat="html" sourceId="child-source"/>'
+        "</p:ext></p:extLst></p:nvPr></p:nvSpPr></p:sp></p:grpSp>"
+    )
+    group = GroupNode(
+        box=Box(x=0, y=0, width=100, height=100),
+        child_box=Box(x=0, y=0, width=100, height=100),
+    )
+
+    recovered = _with_pptx_identity(group, group_element, "ppt/slides/slide1.xml")
+
+    assert recovered.node_id == "pptx-unknown"
+    assert recovered.provenance == SourceProvenance(
+        source_format="pptx",
+        source_id="unknown",
         source_part="ppt/slides/slide1.xml",
     )
 

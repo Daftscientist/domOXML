@@ -122,9 +122,9 @@ def _int_attr(element: Element, name: str, default: int = 0) -> int:
 
 def _with_pptx_identity[T: CanvasNode](output: T, element: Element, slide_part: str) -> T:
     """Recover domOXML metadata or derive identity from PowerPoint's non-visual ID."""
-    non_visual = element.find(".//p:cNvPr", _NS)
+    non_visual = element.find("./*/p:cNvPr", _NS)
     source_id = non_visual.get("id", "unknown") if non_visual is not None else "unknown"
-    metadata = element.find(".//p:nvPr/p:extLst/p:ext/dx:node", _NS)
+    metadata = element.find("./*/p:nvPr/p:extLst/p:ext/dx:node", _NS)
     node_id = metadata.get("id") if metadata is not None else None
     if not node_id:
         node_id = f"pptx-{source_id}"

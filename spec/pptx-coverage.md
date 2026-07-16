@@ -11,6 +11,10 @@ bidirectional only when the capability runner executes both paths; manifest dire
 itself is not proof. It is *not* a copy of the spec — see ECMA-376 §19 (PresentationML) and §20.1
 (DrawingML) for the authoritative definitions: <https://ecma-international.org/publications-and-standards/standards/ecma-376/>.
 
+The runner currently executes both directions for 12 of 15 isolated fixtures. Custom paths,
+effects, and SVG vectors remain forward-only because their reverse paths do not yet preserve the
+original connector structure, renderer-specific effect contract, or SVG vector extension.
+
 ## Legend
 
 | Mark | Meaning |
@@ -127,9 +131,13 @@ CSS source = what authoring produces it on the forward path.
 
 ## Round-trip methodology
 
-Reverse coverage is validated the same way as forward — by **measured fidelity**
-(`core/fidelity`): `pptx → HTML → re-render → compare to the original pptx render`. Each
-feature should land with a round-trip fixture so the score is tracked, not eyeballed.
+For fixtures with reverse round trips and configured visual floors, reverse coverage is validated
+the same way as forward — by **measured fidelity** (`core/fidelity`):
+`pptx → HTML → re-render → compare to the original pptx render`. Configured global, worst-region,
+and structural edge floors are enforced together, with semantic HTML assertions to prevent a
+visually similar raster fallback from being counted as editable parity. Each feature should land
+with a round-trip fixture and all three floors so the score is tracked and the evidence is also
+reviewed directly.
 
 Representative external decks additionally run `source PPTX → renderer` against
 `source PPTX → HTML → PPTX → the same renderer`, with pinned provenance, OPC relationship

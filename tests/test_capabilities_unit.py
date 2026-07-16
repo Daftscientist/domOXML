@@ -54,6 +54,22 @@ def test_every_bidirectional_fixture_declares_reverse_assertions() -> None:
     assert all(fixture.reverse.roundtrip for fixture in both)
 
 
+def test_every_visual_capability_gate_includes_structural_similarity() -> None:
+    root = Path(__file__).resolve().parent.parent / "capabilities" / "pptx"
+    fixtures = load_capabilities(root)
+
+    assert all(
+        fixture.visual.source_to_pptx_min_structural_similarity is not None
+        for fixture in fixtures
+        if fixture.direction in (CapabilityDirection.FORWARD, CapabilityDirection.BOTH)
+    )
+    assert all(
+        fixture.visual.pptx_to_html_min_structural_similarity is not None
+        for fixture in fixtures
+        if fixture.direction in (CapabilityDirection.REVERSE, CapabilityDirection.BOTH)
+    )
+
+
 def test_validates_native_coverage_and_ooxml_xpath() -> None:
     fixture = _fixture("text-rich-runs")
     body = TextBody(

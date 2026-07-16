@@ -550,7 +550,37 @@ class Transform(BaseModel):
 # --------------------------------------------------------------------------- shapes / nodes
 
 
-class ShapeNode(BaseModel):
+class SourceProvenance(BaseModel):
+    """Where a canvas node came from and how it relates to its source visual.
+
+    ``source_id`` is the source-format-local identifier (a DOM capture/index or PowerPoint
+    ``p:cNvPr/@id``). ``owner_node_id`` links decomposed or flattened children back to the
+    canonical node that owns them; ``role`` identifies the component's job within that owner.
+    """
+
+    model_config = _FROZEN
+
+    source_format: Literal["html", "pptx"]
+    source_id: str = Field(min_length=1, max_length=512)
+    source_part: str | None = Field(default=None, max_length=512)
+    owner_node_id: str | None = Field(default=None, min_length=1, max_length=512)
+    role: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class CanvasNode(BaseModel):
+    """Identity and provenance shared by every positioned Canvas IR node.
+
+    Node IDs are slide-scoped opaque strings. A node constructed independently may omit its ID;
+    :class:`SlideIR` assigns a deterministic ``node-N`` path when it adopts the node.
+    """
+
+    model_config = _FROZEN
+
+    node_id: str | None = Field(default=None, min_length=1, max_length=512)
+    provenance: SourceProvenance | None = None
+
+
+class ShapeNode(CanvasNode):
     """One positioned element. Stacking is the order within :attr:`SlideIR.contents`.
 
     ``geom`` is a preset name; ``custom_geom`` overrides it with a free-form path when set.
@@ -581,7 +611,7 @@ class ShapeNode(BaseModel):
 # --------------------------------------------------------------------------- connectors
 
 
-class Connector(BaseModel):
+class Connector(CanvasNode):
     """A connector shape (``p:cxnSp``): a line from ``start`` to ``end`` with a routing
     ``kind`` (``straight`` = ``line``, ``bent`` = ``bentConnector``, ``curved`` =
     ``curvedConnector``). ``line`` carries the stroke and any arrowheads."""
@@ -597,7 +627,7 @@ class Connector(BaseModel):
 # --------------------------------------------------------------------------- group / table
 
 
-class GroupNode(BaseModel):
+class GroupNode(CanvasNode):
     """A shape group (``p:grpSp``). ``box`` is the group's slide-space position/size; ``child_box``
     is the child coordinate space (``a:grpSpPr/a:xfrm`` ``a:chOff``/``a:chExt``) children are
     positioned within, so a group can scale/offset its contents. ``children`` are stacked in
@@ -635,7 +665,7 @@ class TableRow(BaseModel):
     cells: tuple[TableCell, ...]
 
 
-class TableNode(BaseModel):
+class TableNode(CanvasNode):
     """A table (``a:tbl`` inside a ``p:graphicFrame``). ``box`` is the table's slide-space
     position/size; ``col_widths_emu`` are the grid column widths (``a:gridCol w``); ``rows`` hold
     the cells. The grid is rectangular: every row has ``len(col_widths_emu)`` cell slots, with
@@ -648,7 +678,7 @@ class TableNode(BaseModel):
     rows: tuple[TableRow, ...]
 
 
-class MediaNode(BaseModel):
+class MediaNode(CanvasNode):
     """A video or audio element recovered from a ``p:pic`` with a ``p:videoFile``/``p:audioFile``
     relationship in the reverse (PPTX→HTML) path.
 
@@ -674,6 +704,31 @@ class MediaNode(BaseModel):
 # are the richer node types. Kept open (not a discriminated union) because ``ShapeNode`` has no
 # ``kind`` tag and the union members are structurally distinct.
 type Node = ShapeNode | GroupNode | Connector | TableNode | MediaNode
+
+
+def _normalise_node_ids(nodes: tuple[Node, ...]) -> tuple[Node, ...]:
+    """Assign deterministic slide-scoped IDs and reject explicit collisions."""
+
+    used: set[str] = set()
+
+    def normalise(node: Node, path: str) -> Node:
+        node_id = node.node_id or f"node-{path}"
+        if node_id in used:
+            raise ValueError(f"duplicate canvas node_id: {node_id!r}")
+        used.add(node_id)
+        updates: dict[str, object] = {}
+        if node.node_id is None:
+            updates["node_id"] = node_id
+        if isinstance(node, GroupNode):
+            children = tuple(
+                normalise(child, f"{path}.{index}")
+                for index, child in enumerate(node.children, start=1)
+            )
+            if children != node.children:
+                updates["children"] = children
+        return node.model_copy(update=updates) if updates else node
+
+    return tuple(normalise(node, str(index)) for index, node in enumerate(nodes, start=1))
 
 
 # --------------------------------------------------------------------------- slide-level
@@ -769,6 +824,7 @@ class SlideIR(BaseModel):
             transition=transition,
             background=background,
         )
+        object.__setattr__(self, "contents", _normalise_node_ids(self.contents))
 
     @property
     def shapes(self) -> tuple[ShapeNode, ...]:

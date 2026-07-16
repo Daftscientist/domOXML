@@ -13,7 +13,7 @@ Audited on **2026-07-16**.
 
 | Capability | HTML/CSS -> PPTX | PPTX -> HTML/CSS | Evidence | Main remaining work |
 |---|---|---|---|---|
-| Presentation package and slide order | Native | Native | integration + 4 real decks | stable source IDs, sections/custom shows where useful, strict/nonstandard packages |
+| Presentation package, slide order, and visual IDs | Native with private identity extension | Native with extension or `cNvPr` fallback provenance | `cap:node-identity` (both) + integration + 4 real decks | sections/custom shows where useful, strict/nonstandard packages |
 | Slide dimensions | Native | Native | integration | mixed-size output policy and repeated-round-trip proof |
 | Slide creation and relationships | Native | Native | integration | full schema validation and deterministic relationship preservation |
 | Slide backgrounds | Native subset | Native subset | `cap:transition-bg` (both) | theme/style-matrix backgrounds, image/pattern variants, inheritance |
@@ -49,6 +49,8 @@ Audited on **2026-07-16**.
 | `custom-path` | forward | custom geometry/connector reverse structure still blocks bidirectional status |
 | `effects` | forward | renderer-sensitive effect contract still blocks bidirectional status |
 | `hyperlink` | both | run hyperlinks and relationships |
+| `interleaved-order` | both | canonical mixed-node z-order through both adapters |
+| `node-identity` | both | stable IDs, source provenance, ownership, and private OOXML extension |
 | `pattern-fills` | both | DrawingML pattern mapping |
 | `picture-crop` | both | picture crop and reverse CSS |
 | `preset-shapes` | both | supported preset geometry subset |

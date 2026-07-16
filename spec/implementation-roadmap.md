@@ -11,8 +11,8 @@ Snapshot audited on **2026-07-16** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 616 tests are collected.
-- 16 atomic PPTX capability fixtures exist; 13 execute forward and reverse paths.
+- 625 tests are collected.
+- 17 atomic PPTX capability fixtures exist; 14 execute forward and reverse paths.
 - `custom-path`, `effects`, and `svg-vector` remain forward-only fixtures.
 - 9 authored HTML fidelity cases exist.
 - 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and exact
@@ -23,7 +23,8 @@ Snapshot audited on **2026-07-16** against the repository, executable manifests,
 The baseline is useful but not yet the product invariant:
 
 - Canvas IR uses one canonical ordered node sequence with compatibility views for legacy callers;
-- nodes still lack stable IDs, source provenance, and attached preservation payloads;
+- adopted nodes have slide-scoped stable IDs and active HTML/PPTX adapters retain typed source
+  provenance; exact group reconstruction and attached preservation payloads remain incomplete;
 - forward raster fallback exists, but its granularity and semantic debt are not comprehensively
   asserted;
 - unknown reverse PPTX visuals are often preserved as detached XML without a rendered layer;
@@ -71,7 +72,8 @@ pending.**
 This is the highest-leverage engineering change because all directions currently meet here.
 
 - Keep every top-level visual in the canonical ordered `SlideIR.contents` sequence. (Implemented.)
-- Add stable node IDs and source ownership/provenance.
+- Add stable node IDs and source ownership/provenance. (Implemented for adopted nodes and active
+  HTML/PPTX visual adapters; group reconstruction remains pending.)
 - Preserve group and stacking relationships rather than flattening by default.
 - Attach source extensions and preservation payloads to their owning node/part.
 - Model native, decomposed, hybrid, and layer relationships explicitly.
@@ -212,7 +214,7 @@ silently lowering the expected score.
 
 1. [x] Replace `Disposition.UNSUPPORTED` and the coarse coverage report with the representation
    contract.
-2. [ ] Add stable node IDs and provenance; the ordered `SlideIR.contents` sequence is implemented.
+2. [x] Add stable node IDs and provenance; the ordered `SlideIR.contents` sequence is implemented.
 3. [ ] Attach preserved source payloads and prove real re-emission, starting with the chart case.
 4. [ ] Make the three forward-only capability fixtures genuinely bidirectional.
 5. [ ] Add reverse visual layers for unknown PPTX nodes instead of HTML omission plus detached XML.

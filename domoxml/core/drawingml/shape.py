@@ -7,6 +7,7 @@ import warnings
 from collections.abc import Callable
 from xml.sax.saxutils import escape
 
+from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.ir.model import (
     Arrowhead,
     Blur,
@@ -563,7 +564,7 @@ def shape_xml(
     )
     return (
         f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Shape {shape_id}"/>'
-        "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+        f"<p:cNvSpPr/><p:nvPr>{node_identity_xml(node)}</p:nvPr></p:nvSpPr>"
         f"<p:spPr>{_xfrm_xml(node)}"
         f"{_geometry_xml(node)}{fill}{line_xml(node.line)}{_effects_xml(node)}</p:spPr>"
         f"{_text_body(node.text, hyperlink_rid)}</p:sp>"
@@ -605,7 +606,8 @@ def picture_xml(
     blip_fill = _blip_fill(blip_rid, fill.crop, svg_rid, tag="p:blipFill")
     return (
         f'<p:pic><p:nvPicPr><p:cNvPr id="{shape_id}" name="Picture {shape_id}"{descr}/>'
-        '<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>'
+        '<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>'
+        f"<p:nvPr>{node_identity_xml(node)}</p:nvPr></p:nvPicPr>"
         f"{blip_fill}<p:spPr>{_xfrm_xml(node)}"
         '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>'
     )

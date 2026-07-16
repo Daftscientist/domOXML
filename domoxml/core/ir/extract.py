@@ -30,6 +30,7 @@ from domoxml.core.ir.connector_extract import extract_connector
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
+    CanvasNode,
     CharBullet,
     Fill,
     Geometry,
@@ -45,6 +46,7 @@ from domoxml.core.ir.model import (
     ShapeNode,
     SlideIR,
     SolidFill,
+    SourceProvenance,
     SrcRect,
     TextBody,
     TextParagraph,
@@ -372,6 +374,60 @@ def _label(node: RenderedNode) -> str:
     return f"<{node.tag}>" + (f" “{snippet}”" if snippet else "")
 
 
+class _IdentityAllocator:
+    """Assign collision-free IDs while reserving metadata IDs before extraction starts."""
+
+    def __init__(self, sources: tuple[RenderedNode, ...]) -> None:
+        self._reserved = {
+            value for source in sources if (value := source.styles.get("domoxmlNodeId", "").strip())
+        }
+        self._allocated: set[str] = set()
+        self._automatic_bases: dict[int, str] = {}
+
+    def _base_id(self, source: RenderedNode) -> str:
+        inherited = source.styles.get("domoxmlNodeId", "").strip()
+        if inherited:
+            return inherited
+        existing = self._automatic_bases.get(source.index)
+        if existing is not None:
+            return existing
+        stem = f"html-auto-{source.index}"
+        candidate = stem
+        suffix = 2
+        while candidate in self._reserved or candidate in self._allocated:
+            candidate = f"{stem}-{suffix}"
+            suffix += 1
+        self._automatic_bases[source.index] = candidate
+        return candidate
+
+    def apply[T: CanvasNode](
+        self, output: T, source: RenderedNode, *, role: str | None = None
+    ) -> T:
+        """Attach stable HTML identity/provenance to one emitted canvas node."""
+        owner_id = self._base_id(source)
+        node_id = owner_id if role is None else f"{owner_id}:{role}"
+        if node_id in self._allocated:
+            raise ValueError(f"duplicate HTML canvas node_id: {node_id!r}")
+        self._allocated.add(node_id)
+        source_format_raw = source.styles.get("domoxmlSourceFormat", "html")
+        source_format: Literal["html", "pptx"] = "pptx" if source_format_raw == "pptx" else "html"
+        source_id = (
+            source.styles.get("domoxmlSourceId", "").strip()
+            or source.styles.get("domoxmlElementId", "").strip()
+            or f"dom:{source.index}"
+        )
+        provenance = SourceProvenance(
+            source_format=source_format,
+            source_id=source_id,
+            source_part=source.styles.get("domoxmlSourcePart") or None,
+            owner_node_id=(
+                source.styles.get("domoxmlOwnerNodeId") or (owner_id if role is not None else None)
+            ),
+            role=role or source.styles.get("domoxmlLayerRole") or None,
+        )
+        return output.model_copy(update={"node_id": node_id, "provenance": provenance})
+
+
 def _has_complex_transform(value: str | None) -> bool:
     """True when transform can't be expressed as pure translation, rotation, or flip."""
     return is_complex_transform(value)
@@ -664,7 +720,7 @@ def _decompose_per_side(
     right: Line | None,
     bottom: Line | None,
     left: Line | None,
-) -> list[ShapeNode]:
+) -> list[tuple[str, ShapeNode]]:
     """Emit up to 4 thin solid rects that reproduce CSS per-side borders.
 
     Layout convention (matches CSS border-box painting model):
@@ -672,47 +728,59 @@ def _decompose_per_side(
     - left/right are clipped vertically to the space between top and bottom borders, to
       avoid double-painting corners.
     """
-    rects: list[ShapeNode] = []
+    rects: list[tuple[str, ShapeNode]] = []
     top_w = top.width_emu if top is not None else 0
     bot_w = bottom.width_emu if bottom is not None else 0
     if top is not None:
         rects.append(
-            _make_side_rect(
-                Box(x=base_box.x, y=base_box.y, width=base_box.width, height=top_w),
-                SolidFill(color=top.color),
+            (
+                "border-top",
+                _make_side_rect(
+                    Box(x=base_box.x, y=base_box.y, width=base_box.width, height=top_w),
+                    SolidFill(color=top.color),
+                ),
             )
         )
     if bottom is not None:
         rects.append(
-            _make_side_rect(
-                Box(
-                    x=base_box.x,
-                    y=base_box.y + base_box.height - bot_w,
-                    width=base_box.width,
-                    height=bot_w,
+            (
+                "border-bottom",
+                _make_side_rect(
+                    Box(
+                        x=base_box.x,
+                        y=base_box.y + base_box.height - bot_w,
+                        width=base_box.width,
+                        height=bot_w,
+                    ),
+                    SolidFill(color=bottom.color),
                 ),
-                SolidFill(color=bottom.color),
             )
         )
     interior_y = base_box.y + top_w
     interior_h = base_box.height - top_w - bot_w
     if left is not None and interior_h > 0:
         rects.append(
-            _make_side_rect(
-                Box(x=base_box.x, y=interior_y, width=left.width_emu, height=interior_h),
-                SolidFill(color=left.color),
+            (
+                "border-left",
+                _make_side_rect(
+                    Box(x=base_box.x, y=interior_y, width=left.width_emu, height=interior_h),
+                    SolidFill(color=left.color),
+                ),
             )
         )
     if right is not None and interior_h > 0:
         rects.append(
-            _make_side_rect(
-                Box(
-                    x=base_box.x + base_box.width - right.width_emu,
-                    y=interior_y,
-                    width=right.width_emu,
-                    height=interior_h,
+            (
+                "border-right",
+                _make_side_rect(
+                    Box(
+                        x=base_box.x + base_box.width - right.width_emu,
+                        y=interior_y,
+                        width=right.width_emu,
+                        height=interior_h,
+                    ),
+                    SolidFill(color=right.color),
                 ),
-                SolidFill(color=right.color),
             )
         )
     return rects
@@ -863,6 +931,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     contents: list[Node] = []
     coverage: list[CoverageItem] = []
     warnings: list[ConversionWarning] = []
+    identities = _IdentityAllocator(rendered.nodes)
 
     slide_root, transition, background = extract_slide_properties(
         rendered.nodes, lambda node: _resolve_fill(node, rendered)
@@ -896,7 +965,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 text_for=_text_body,
             )
             if table is not None:
-                contents.append(table)
+                contents.append(identities.apply(table, node))
                 consumed |= _subtree(node.index, children)
                 coverage.append(_native_coverage(_label(node)))
                 continue
@@ -925,7 +994,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             )
                         )
                     else:
-                        contents.append(shape)
+                        contents.append(identities.apply(shape, node))
                         coverage.append(_element_layer_coverage(label, shape, raster_reason))
                         warnings.append(
                             ConversionWarning(
@@ -955,11 +1024,14 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 # Build the ShapeNode with custom_geom
                 box = _box(node)
                 contents.append(
-                    ShapeNode(
-                        box=box,
-                        custom_geom=svg.geometry,
-                        fill=fill,
-                        line=line,
+                    identities.apply(
+                        ShapeNode(
+                            box=box,
+                            custom_geom=svg.geometry,
+                            fill=fill,
+                            line=line,
+                        ),
+                        node,
                     )
                 )
                 consumed |= _subtree(node.index, children)
@@ -998,7 +1070,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                     coverage.append(_failed_coverage(label, raster_reason))
                 else:
-                    contents.append(shape)
+                    contents.append(identities.apply(shape, node))
                     coverage.append(_element_layer_coverage(label, shape, raster_reason))
                     warnings.append(
                         ConversionWarning(message=f"rasterised — {raster_reason}", element=label)
@@ -1036,7 +1108,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 # Record coverage even when rasterization fails
                 coverage.append(_failed_coverage(label, reason))
                 continue
-            contents.append(shape)
+            contents.append(identities.apply(shape, node))
             coverage.append(_element_layer_coverage(label, shape, reason))
             warnings.append(ConversionWarning(message=f"rasterised — {reason}", element=label))
             continue
@@ -1075,9 +1147,12 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             elif corner == 0:
                 # Per-side decomposition: the shape gets no a:ln; four thin solid rects carry
                 # each visible border, positioned flush to their respective edges.
-                side_rect_shapes = _decompose_per_side(
-                    box, side_top, side_right, side_bottom, side_left
-                )
+                side_rect_shapes = [
+                    identities.apply(shape, node, role=role)
+                    for role, shape in _decompose_per_side(
+                        box, side_top, side_right, side_bottom, side_left
+                    )
+                ]
                 line_warning = line_warning or ConversionWarning(
                     message="non-uniform border decomposed into per-side rects"
                 )
@@ -1096,7 +1171,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # Check before emitting a ShapeNode; <hr> and thin unfilled elements become Connectors.
         connector = extract_connector(node, fill, line)
         if connector is not None:
-            contents.append(connector)
+            contents.append(identities.apply(connector, node))
             consumed.add(node.index)
             if warn_msgs:
                 coverage.append(
@@ -1150,16 +1225,19 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # Emit per-side border rects before the main shape so they appear behind its fill.
         contents.extend(side_rect_shapes)
         contents.append(
-            ShapeNode(
-                box=box,
-                geom=geom,
-                fill=fill,
-                line=line,
-                effects=(effect,) if effect is not None else (),
-                corner_radius_emu=corner,
-                opacity=_opacity(node.styles),
-                text=text,
-                transform=_parse_transform(node.styles),
+            identities.apply(
+                ShapeNode(
+                    box=box,
+                    geom=geom,
+                    fill=fill,
+                    line=line,
+                    effects=(effect,) if effect is not None else (),
+                    corner_radius_emu=corner,
+                    opacity=_opacity(node.styles),
+                    text=text,
+                    transform=_parse_transform(node.styles),
+                ),
+                node,
             )
         )
         if node.styles.get("domoxmlConsolidatedText") == "true":

@@ -25,6 +25,7 @@ _NS = {
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
     "asvg": "http://schemas.microsoft.com/office/drawing/2016/SVG/main",
+    "dx": "urn:domoxml:canvas-ir:1",
 }
 
 

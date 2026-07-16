@@ -53,6 +53,20 @@ async def test_extracts_fill_and_text_from_a_real_render() -> None:
     )
 
 
+async def test_browser_capture_preserves_canvas_identity_metadata() -> None:
+    ir = await _render_and_extract(
+        '<div data-domoxml-node-id="hero" data-domoxml-source-format="pptx" '
+        'data-domoxml-source-id="12" data-domoxml-source-part="ppt/slides/slide1.xml" '
+        'style="position:absolute;width:240px;height:100px;background:#174b5f">Hero</div>'
+    )
+
+    [hero] = [shape for shape in ir.shapes if shape.node_id == "hero"]
+    assert hero.provenance is not None
+    assert hero.provenance.source_format == "pptx"
+    assert hero.provenance.source_id == "12"
+    assert hero.provenance.source_part == "ppt/slides/slide1.xml"
+
+
 async def test_extracts_nested_inline_text_as_ordered_editable_runs() -> None:
     ir = await _render_and_extract(
         "<h1 style='font-size:32px'>Coffee that tastes like "

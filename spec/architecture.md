@@ -75,8 +75,10 @@ primitives:
 The Canvas IR contains one canonical ordered `contents` sequence. Legacy `shapes` and `nodes`
 constructor arguments and filtered accessors remain compatibility views, but importers and
 serializers operate on `contents` so heterogeneous nodes retain interleaved z-order. Every node
-still needs a stable ID, source provenance, stacking/group ownership, attached preservation
-payloads, and representation status in addition to its existing geometry and appearance.
+adopted by a slide has a stable slide-scoped ID; active HTML and PPTX adapters also retain typed
+source provenance through normalized HTML metadata and a private OOXML extension. Exact
+stacking/group ownership, attached preservation payloads, and per-node representation status still
+need to be completed in addition to the existing geometry and appearance.
 
 Shared primitives include:
 

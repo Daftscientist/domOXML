@@ -45,7 +45,15 @@ def extract_slide_properties(
 ) -> tuple[RenderedNode | None, SlideTransition | None, SlideBackground | None]:
     """Find the opted-in slide root and extract its transition and native background."""
     root = next(
-        (node for node in nodes if node.parent == 0 and node.styles.get("domoxmlTransition")),
+        (
+            node
+            for node in nodes
+            if node.parent == 0
+            and (
+                node.styles.get("domoxmlTransition")
+                or node.styles.get("domoxmlSlideRoot") == "true"
+            )
+        ),
         None,
     )
     if root is None:

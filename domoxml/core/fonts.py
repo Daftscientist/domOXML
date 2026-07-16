@@ -18,7 +18,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from domoxml.core.fontconvert import face_identity, to_embeddable_ttf
-from domoxml.core.ir.model import SlideIR
+from domoxml.core.ir.model import ShapeNode, SlideIR
 from domoxml.types import ConversionWarning
 
 _GENERIC = {
@@ -118,7 +118,7 @@ def _used_faces(slides: list[SlideIR]) -> list[FaceKey]:
     seen: list[FaceKey] = []
     known: set[FaceKey] = set()
     for slide in slides:
-        for shape in slide.shapes:
+        for shape in (node for node in slide.contents if isinstance(node, ShapeNode)):
             if shape.text is None:
                 continue
             for paragraph in shape.text.paragraphs:

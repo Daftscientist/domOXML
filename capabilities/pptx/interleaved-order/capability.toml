@@ -1,0 +1,23 @@
+id = "interleaved-order"
+direction = "both"
+html_file = "slide.html"
+
+[expected]
+min_representation = { native = 3 }
+max_representation = { approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:spTree/p:graphicFrame[preceding-sibling::p:sp and following-sibling::p:sp]"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.97
+source_to_pptx_min_regional_similarity = 0.94
+source_to_pptx_min_structural_similarity = 0.94
+pptx_to_html_min_similarity = 0.98
+pptx_to_html_min_regional_similarity = 0.95
+pptx_to_html_min_structural_similarity = 0.93
+
+[reverse]
+html_contains = ["before-table", "<table ", "after-table"]

@@ -72,11 +72,11 @@ primitives:
 | Flow IR | semantic HTML, DOCX, future paginated documents | sections, blocks, inline content, pagination constraints |
 | Grid/data IR | XLSX, table/data imports | sheets, cells, formulas, tables, charts |
 
-The Canvas IR should contain one ordered node sequence. Every node needs a stable ID, source
-provenance, geometry, transform, stacking/group ownership, semantic representation, resolved
-appearance, preservation payloads, and representation status. Separate `shapes` and `nodes`
-collections are a temporary implementation detail because they cannot represent interleaved
-z-order reliably.
+The Canvas IR contains one canonical ordered `contents` sequence. Legacy `shapes` and `nodes`
+constructor arguments and filtered accessors remain compatibility views, but importers and
+serializers operate on `contents` so heterogeneous nodes retain interleaved z-order. Every node
+still needs a stable ID, source provenance, stacking/group ownership, attached preservation
+payloads, and representation status in addition to its existing geometry and appearance.
 
 Shared primitives include:
 

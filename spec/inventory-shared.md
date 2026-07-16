@@ -37,7 +37,7 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Family | Current forward path | Current reverse path | Evidence | Main remaining work |
 |---|---|---|---|---|
 | OPC packages and relationships | Native | Native | unit + 4 real decks | full XSD/Open XML validation, strict packages, alternate content, extension re-emission |
-| Units, page boxes, and fixed layout | Native | Native | broad unit/integration coverage | one canonical ordered scene and stable IDs/provenance |
+| Units, page boxes, and fixed layout | Native, canonical ordered scene | Native, canonical ordered scene | `cap:interleaved-order` (both) + broad tests | stable IDs/provenance and group ownership |
 | Solid colors and alpha | Native | Native | fidelity corpus + integration | complete color models/transforms and theme-token preservation on forward output |
 | Theme colors and font schemes | Partial | Partial/native read | unit + real decks | forward scheme references, complete style matrix, script fonts, source-theme retention |
 | Rectangles, rounded rectangles, ellipses | Native | Native | integration | adversarial transform/effect combinations |
@@ -73,7 +73,7 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Charts | Gap | Preserve only | real deck, visual excluded | shared chart/data IR, HTML rendering, native writer, attached re-emission, visual gates |
 | Unknown visual extensions | Element layer on HTML input | Preserve only on PPTX input | unit only | universal renderer-backed reverse layers and attached preservation payloads |
 | Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/structural | CI + tests | reverse coverage records, object-aware segmentation, typography/color metrics, layer/editability ratchets |
-| Repeated round trips | one cycle for 12 atomic fixtures | one cycle for 12 atomic fixtures | capability runner | configurable multi-cycle convergence and source-format preservation gates |
+| Repeated round trips | one cycle for 13 atomic fixtures | one cycle for 13 atomic fixtures | capability runner | configurable multi-cycle convergence and source-format preservation gates |
 
 ## Shared Work Remaining For PPTX
 

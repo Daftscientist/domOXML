@@ -31,7 +31,6 @@ from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
     CharBullet,
-    Connector,
     Fill,
     Geometry,
     Glow,
@@ -39,6 +38,7 @@ from domoxml.core.ir.model import (
     Hyperlink,
     Line,
     LineSpacing,
+    Node,
     PictureFill,
     Rgba,
     Shadow,
@@ -46,7 +46,6 @@ from domoxml.core.ir.model import (
     SlideIR,
     SolidFill,
     SrcRect,
-    TableNode,
     TextBody,
     TextParagraph,
     TextRun,
@@ -861,8 +860,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     """
     children = _children(rendered.nodes)
     consumed: set[int] = set()
-    shapes: list[ShapeNode] = []
-    nodes: list[Connector | TableNode] = []
+    contents: list[Node] = []
     coverage: list[CoverageItem] = []
     warnings: list[ConversionWarning] = []
 
@@ -898,7 +896,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 text_for=_text_body,
             )
             if table is not None:
-                nodes.append(table)
+                contents.append(table)
                 consumed |= _subtree(node.index, children)
                 coverage.append(_native_coverage(_label(node)))
                 continue
@@ -927,7 +925,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             )
                         )
                     else:
-                        shapes.append(shape)
+                        contents.append(shape)
                         coverage.append(_element_layer_coverage(label, shape, raster_reason))
                         warnings.append(
                             ConversionWarning(
@@ -956,7 +954,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
 
                 # Build the ShapeNode with custom_geom
                 box = _box(node)
-                shapes.append(
+                contents.append(
                     ShapeNode(
                         box=box,
                         custom_geom=svg.geometry,
@@ -1000,7 +998,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                     coverage.append(_failed_coverage(label, raster_reason))
                 else:
-                    shapes.append(shape)
+                    contents.append(shape)
                     coverage.append(_element_layer_coverage(label, shape, raster_reason))
                     warnings.append(
                         ConversionWarning(message=f"rasterised — {raster_reason}", element=label)
@@ -1038,7 +1036,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 # Record coverage even when rasterization fails
                 coverage.append(_failed_coverage(label, reason))
                 continue
-            shapes.append(shape)
+            contents.append(shape)
             coverage.append(_element_layer_coverage(label, shape, reason))
             warnings.append(ConversionWarning(message=f"rasterised — {reason}", element=label))
             continue
@@ -1098,7 +1096,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # Check before emitting a ShapeNode; <hr> and thin unfilled elements become Connectors.
         connector = extract_connector(node, fill, line)
         if connector is not None:
-            nodes.append(connector)
+            contents.append(connector)
             consumed.add(node.index)
             if warn_msgs:
                 coverage.append(
@@ -1150,8 +1148,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         shadow = parse_shadow(node.styles.get("boxShadow"))
         effect = _shadow_to_effect(shadow, box, warnings) if shadow is not None else None
         # Emit per-side border rects before the main shape so they appear behind its fill.
-        shapes.extend(side_rect_shapes)
-        shapes.append(
+        contents.extend(side_rect_shapes)
+        contents.append(
             ShapeNode(
                 box=box,
                 geom=geom,
@@ -1196,8 +1194,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     slide = SlideIR(
         width=px_to_emu(rendered.width),
         height=px_to_emu(rendered.height),
-        shapes=tuple(shapes),
-        nodes=tuple(nodes),
+        contents=tuple(contents),
         transition=transition,
         background=background,
     )

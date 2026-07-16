@@ -551,7 +551,7 @@ class Transform(BaseModel):
 
 
 class ShapeNode(BaseModel):
-    """One positioned element. Stacking is the order within :attr:`SlideIR.shapes`.
+    """One positioned element. Stacking is the order within :attr:`SlideIR.contents`.
 
     ``geom`` is a preset name; ``custom_geom`` overrides it with a free-form path when set.
     ``effects`` is the ordered effect list (shadow/glow/blur/…); :attr:`shadow` remains as a
@@ -729,10 +729,10 @@ class SlideBackground(BaseModel):
 class SlideIR(BaseModel):
     """A single slide as a canvas of positioned nodes, sized in EMUs.
 
-    :attr:`shapes` carries the plain positioned shapes (the historical, backward-compatible
-    container — every current producer/consumer uses it). :attr:`nodes` carries the richer
-    heterogeneous node types (groups, connectors, tables) that have no extractor/serializer yet;
-    it is empty by default. Stacking is the order within each tuple, ``shapes`` then ``nodes``.
+    :attr:`contents` is the canonical stacking order for every top-level visual. The historical
+    ``shapes=``/``nodes=`` constructor arguments and matching properties remain compatibility
+    views; new producers and serializers must use :attr:`contents` so heterogeneous nodes can
+    remain interleaved.
 
     :attr:`transition` carries the optional slide transition; ``None`` means no transition.
     :attr:`background` carries the optional native slide background; ``None`` means no
@@ -742,7 +742,40 @@ class SlideIR(BaseModel):
 
     width: int
     height: int
-    shapes: tuple[ShapeNode, ...]
-    nodes: tuple[Node, ...] = ()
+    contents: tuple[Node, ...]
     transition: SlideTransition | None = None
     background: SlideBackground | None = None
+
+    def __init__(
+        self,
+        *,
+        width: int,
+        height: int,
+        contents: tuple[Node, ...] | None = None,
+        shapes: tuple[ShapeNode, ...] | None = None,
+        nodes: tuple[Node, ...] | None = None,
+        transition: SlideTransition | None = None,
+        background: SlideBackground | None = None,
+    ) -> None:
+        if contents is not None and (shapes is not None or nodes is not None):
+            raise ValueError("pass contents or legacy shapes/nodes, not both")
+        ordered: tuple[Node, ...] = (
+            contents if contents is not None else (*(shapes or ()), *(nodes or ()))
+        )
+        super().__init__(
+            width=width,
+            height=height,
+            contents=ordered,
+            transition=transition,
+            background=background,
+        )
+
+    @property
+    def shapes(self) -> tuple[ShapeNode, ...]:
+        """Backward-compatible view of plain shapes in canonical stacking order."""
+        return tuple(node for node in self.contents if isinstance(node, ShapeNode))
+
+    @property
+    def nodes(self) -> tuple[Node, ...]:
+        """Backward-compatible view of non-shape nodes in canonical stacking order."""
+        return tuple(node for node in self.contents if not isinstance(node, ShapeNode))

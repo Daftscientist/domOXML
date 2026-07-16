@@ -18,6 +18,7 @@ from domoxml.core.ir.model import (
     Box,
     Line,
     Rgba,
+    ShapeNode,
     SideLines,
     SlideIR,
     SolidFill,
@@ -125,6 +126,15 @@ def _merge_table() -> TableNode:
 
 def _slide_with_table(table: TableNode) -> SlideIR:
     return SlideIR(width=12_192_000, height=6_858_000, shapes=(), nodes=(table,))
+
+
+def _text_shape(text: str) -> ShapeNode:
+    return ShapeNode(
+        box=Box(x=0, y=0, width=1_000_000, height=500_000),
+        text=TextBody(
+            paragraphs=(TextParagraph(runs=(TextRun(text=text, font_family="Arial", size_pt=12),)),)
+        ),
+    )
 
 
 # --------------------------------------------------------------------------- forward (IR→XML)
@@ -242,6 +252,36 @@ def test_build_pptx_table_is_valid_xml() -> None:
     root = ElementTree.fromstring(xml)
     tbl_els = root.findall(".//{http://schemas.openxmlformats.org/drawingml/2006/main}tbl")
     assert len(tbl_els) == 1
+
+
+def test_interleaved_shape_table_shape_order_survives_all_canvas_paths() -> None:
+    from domoxml.slides.read import read_pptx_result
+
+    before = _text_shape("before-table")
+    table = _simple_table(n_rows=1, n_cols=1)
+    after = _text_shape("after-table")
+    slide = SlideIR(
+        width=12_192_000,
+        height=6_858_000,
+        contents=(before, table, after),
+    )
+
+    pptx = build_pptx([slide], faces=[])
+    root = ElementTree.fromstring(_slide_xml(pptx))
+    tree = root.find(".//{http://schemas.openxmlformats.org/presentationml/2006/main}spTree")
+    assert tree is not None
+    kinds = [element.tag.rsplit("}", 1)[-1] for element in tree][2:]
+    assert kinds == ["sp", "graphicFrame", "sp"]
+
+    [reversed_slide] = read_pptx_result(pptx).slides
+    assert [type(node) for node in reversed_slide.contents] == [
+        ShapeNode,
+        TableNode,
+        ShapeNode,
+    ]
+
+    html = serialize_canvas([reversed_slide]).slides[0].html
+    assert html.index("before-table") < html.index("<table") < html.index("after-table")
 
 
 # --------------------------------------------------------------------------- reverse (XML→IR)

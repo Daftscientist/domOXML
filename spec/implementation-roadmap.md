@@ -11,8 +11,8 @@ Snapshot audited on **2026-07-16** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 615 tests are collected.
-- 15 atomic PPTX capability fixtures exist; 12 execute forward and reverse paths.
+- 616 tests are collected.
+- 16 atomic PPTX capability fixtures exist; 13 execute forward and reverse paths.
 - `custom-path`, `effects`, and `svg-vector` remain forward-only fixtures.
 - 9 authored HTML fidelity cases exist.
 - 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and exact
@@ -22,8 +22,8 @@ Snapshot audited on **2026-07-16** against the repository, executable manifests,
 
 The baseline is useful but not yet the product invariant:
 
-- the IR splits shapes from richer nodes, so interleaved z-order is not canonical;
-- nodes lack stable IDs, source provenance, and attached preservation payloads;
+- Canvas IR uses one canonical ordered node sequence with compatibility views for legacy callers;
+- nodes still lack stable IDs, source provenance, and attached preservation payloads;
 - forward raster fallback exists, but its granularity and semantic debt are not comprehensively
   asserted;
 - unknown reverse PPTX visuals are often preserved as detached XML without a rendered layer;
@@ -70,7 +70,7 @@ pending.**
 
 This is the highest-leverage engineering change because all directions currently meet here.
 
-- Replace parallel `SlideIR.shapes` and `SlideIR.nodes` with one ordered node sequence.
+- Keep every top-level visual in the canonical ordered `SlideIR.contents` sequence. (Implemented.)
 - Add stable node IDs and source ownership/provenance.
 - Preserve group and stacking relationships rather than flattening by default.
 - Attach source extensions and preservation payloads to their owning node/part.
@@ -144,7 +144,7 @@ preserved/re-emitted, or intentionally ignored by policy.
 
 ## Milestone 5: Convergence And Release Corpus
 
-- Grow atomic fixtures from 15 to one executable case per meaningful capability family.
+- Grow atomic fixtures from 16 to one executable case per meaningful capability family.
 - Add pairwise and adversarial combinations rather than relying on isolated examples.
 - Add complex authored HTML decks with nested stacking, effects, SVG/canvas, web fonts, and
   nonstandard CSS.
@@ -212,7 +212,7 @@ silently lowering the expected score.
 
 1. [x] Replace `Disposition.UNSUPPORTED` and the coarse coverage report with the representation
    contract.
-2. [ ] Unify `SlideIR.shapes` and `SlideIR.nodes` into one ordered node list with IDs/provenance.
+2. [ ] Add stable node IDs and provenance; the ordered `SlideIR.contents` sequence is implemented.
 3. [ ] Attach preserved source payloads and prove real re-emission, starting with the chart case.
 4. [ ] Make the three forward-only capability fixtures genuinely bidirectional.
 5. [ ] Add reverse visual layers for unknown PPTX nodes instead of HTML omission plus detached XML.

@@ -11,6 +11,7 @@ from domoxml.core.ir.model import (
     Connector,
     Hyperlink,
     PictureFill,
+    ShapeNode,
     SlideIR,
     TableNode,
     TextBody,
@@ -229,13 +230,9 @@ def _slide(
         next_rid += 1
         return rid
 
-    # Plain shapes occupy shape IDs starting at 2 (1 is the group sp).
-    # Table nodes follow shapes; each gets a unique incrementing shape_id.
-    n_shapes = len(slide.shapes)
-
-    # Warn on any node types still without a writer (Connector and TableNode are handled below).
-    for node in slide.nodes:
-        if not isinstance(node, Connector | TableNode):
+    # Warn on node types still without a writer. Supported nodes retain their canonical order.
+    for node in slide.contents:
+        if not isinstance(node, ShapeNode | Connector | TableNode):
             warnings.warn(
                 f"{type(node).__name__} has no PresentationML writer yet; node dropped",
                 stacklevel=2,
@@ -247,8 +244,8 @@ def _slide(
         pic = slide.background.fill
         bg_blip_rid = register_media(pic.data, pic.ext)
 
-    for position, node in enumerate(slide.shapes):
-        if isinstance(node.fill, PictureFill):
+    for position, node in enumerate(slide.contents):
+        if isinstance(node, ShapeNode) and isinstance(node.fill, PictureFill):
             blip_rids[position] = register_media(node.fill.data, node.fill.ext)
             # SVG source paired with the PNG: a second media part + rel for the svgBlip ext.
             if node.fill.svg_data is not None:
@@ -259,7 +256,9 @@ def _slide(
     # with structurally-equal links still each get their own rel (matching the IR objects).
     hyperlink_rels: list[tuple[str, Hyperlink]] = []
     rid_by_link: dict[int, str] = {}
-    for node in slide.shapes:
+    for node in slide.contents:
+        if not isinstance(node, ShapeNode):
+            continue
         for link in _shape_hyperlinks(node.text):
             if id(link) in rid_by_link:
                 continue
@@ -278,47 +277,41 @@ def _slide(
     def _hyperlink_rid(link: Hyperlink) -> str | None:
         return rid_by_link.get(id(link))
 
-    shape_parts: list[str] = []
-    for position, node in enumerate(slide.shapes):
-        blip_rid = blip_rids.get(position)
-        if can_emit_picture(node) and blip_rid is not None:
-            shape_parts.append(
-                picture_xml(
-                    node,
-                    shape_id=position + 2,
-                    blip_rid=blip_rid,
-                    svg_rid=svg_rids.get(position),
+    content_parts: list[str] = []
+    for position, node in enumerate(slide.contents):
+        shape_id = position + 2
+        if isinstance(node, ShapeNode):
+            blip_rid = blip_rids.get(position)
+            if can_emit_picture(node) and blip_rid is not None:
+                content_parts.append(
+                    picture_xml(
+                        node,
+                        shape_id=shape_id,
+                        blip_rid=blip_rid,
+                        svg_rid=svg_rids.get(position),
+                    )
                 )
-            )
-        else:
-            shape_parts.append(
-                shape_xml(
-                    node,
-                    shape_id=position + 2,
-                    blip_rid=blip_rid,
-                    svg_rid=svg_rids.get(position),
-                    hyperlink_rid=_hyperlink_rid,
+            else:
+                content_parts.append(
+                    shape_xml(
+                        node,
+                        shape_id=shape_id,
+                        blip_rid=blip_rid,
+                        svg_rid=svg_rids.get(position),
+                        hyperlink_rid=_hyperlink_rid,
+                    )
                 )
-            )
-    shapes = "".join(shape_parts)
-    n_shapes = len(slide.shapes)
-    connector_nodes = [node for node in slide.nodes if isinstance(node, Connector)]
-    connectors = "".join(
-        _connector_xml(node, shape_id=n_shapes + 2 + position)
-        for position, node in enumerate(connector_nodes)
-    )
-    # Tables get ids after the shapes and connectors so cNvPr ids stay unique on the slide.
-    table_id_base = n_shapes + 2 + len(connector_nodes)
-    tables = "".join(
-        table_xml(node, shape_id=table_id_base + t_idx)
-        for t_idx, node in enumerate(n for n in slide.nodes if isinstance(n, TableNode))
-    )
+        elif isinstance(node, Connector):
+            content_parts.append(_connector_xml(node, shape_id=shape_id))
+        elif isinstance(node, TableNode):
+            content_parts.append(table_xml(node, shape_id=shape_id))
+    contents = "".join(content_parts)
     bg_xml = background_xml(slide.background, bg_blip_rid) if slide.background is not None else ""
     transition = transition_xml(slide.transition)
     slide_xml = (
         f"{t.XML_DECL}<p:sld {t.NS}><p:cSld>{bg_xml}<p:spTree>"
         '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
-        f"{shapes}{connectors}{tables}</p:spTree></p:cSld>"
+        f"{contents}</p:spTree></p:cSld>"
         f"<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>{transition}</p:sld>"
     )
     return slide_xml, _slide_rels(image_rels, hyperlink_rels), media_parts, has_svg

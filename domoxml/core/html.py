@@ -987,9 +987,7 @@ def serialize_canvas(
     html_slides: list[HtmlSlide] = []
     emitted_warnings: list[ConversionWarning] = list(warnings)
     for slide in slides:
-        shapes = "".join(
-            _node_html(node, assets, emitted_warnings) for node in (*slide.shapes, *slide.nodes)
-        )
+        shapes = "".join(_node_html(node, assets, emitted_warnings) for node in slide.contents)
         width_px = round(emu_to_px(slide.width))
         height_px = round(emu_to_px(slide.height))
         transition_attrs = _slide_transition_attrs(slide.transition)

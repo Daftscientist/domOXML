@@ -1,391 +1,424 @@
-# OOXML element inventory — xlsx
+# XLSX-Specific SpreadsheetML Inventory
 
-Auto-generated from the ECMA-376 XSD schemas (do not hand-edit). 381 distinct elements, 361 complex types. Forward-covered: **5/381**.
+No XLSX adapter exists in the current repository. Previous checkmarks in this file were false
+positives caused by matching local element names across unrelated namespaces. This document is a
+schema discovery inventory, not an implementation claim.
 
-✅ forward-covered · ⬜ not yet. Reverse (OOXML→HTML/CSS) is ⬜ across the board until ingest lands.
+XLSX will require a Grid/data IR for workbooks, sheets, cells, formulas, tables, conditional
+formatting, and SpreadsheetML behavior. It can reuse shared OPC, DrawingML, themes, fonts, assets,
+charts, preservation, and fidelity infrastructure, but it is not a Canvas or Flow IR variant.
 
-Namespaces: `http://schemas.openxmlformats.org/spreadsheetml/2006/main`
+See [`architecture.md`](architecture.md) for ownership and
+[`implementation-roadmap.md`](implementation-roadmap.md) for sequencing.
 
-| Element | Type | Fwd | Rev |
-|---|---|:--:|:--:|
-| `DataBinding` | CT_DataBinding | ⬜ | ⬜ |
-| `Map` | CT_Map | ⬜ | ⬜ |
-| `MapInfo` | CT_MapInfo | ⬜ | ⬜ |
-| `Schema` | CT_Schema | ⬜ | ⬜ |
-| `alignment` | CT_CellAlignment | ⬜ | ⬜ |
-| `author` | ST_Xstring | ⬜ | ⬜ |
-| `authors` | CT_Authors | ⬜ | ⬜ |
-| `autoFilter` | CT_AutoFilter | ⬜ | ⬜ |
-| `autoSortScope` | CT_AutoSortScope | ⬜ | ⬜ |
-| `b` | CT_Boolean | ⬜ | ⬜ |
-| `bgColor` | CT_Color | ⬜ | ⬜ |
-| `bk` | CT_MetadataBlock | ⬜ | ⬜ |
-| `bookViews` | CT_BookViews | ⬜ | ⬜ |
-| `border` | CT_Border | ⬜ | ⬜ |
-| `borders` | CT_Borders | ⬜ | ⬜ |
-| `bottom` | CT_BorderPr | ⬜ | ⬜ |
-| `brk` | CT_Break | ⬜ | ⬜ |
-| `c` | CT_CalcCell | ⬜ | ⬜ |
-| `cacheField` | CT_CacheField | ⬜ | ⬜ |
-| `cacheFields` | CT_CacheFields | ⬜ | ⬜ |
-| `cacheHierarchies` | CT_CacheHierarchies | ⬜ | ⬜ |
-| `cacheHierarchy` | CT_CacheHierarchy | ⬜ | ⬜ |
-| `cacheSource` | CT_CacheSource | ⬜ | ⬜ |
-| `calcChain` | CT_CalcChain | ⬜ | ⬜ |
-| `calcPr` | CT_CalcPr | ⬜ | ⬜ |
-| `calculatedColumnFormula` | CT_TableFormula | ⬜ | ⬜ |
-| `calculatedItem` | CT_CalculatedItem | ⬜ | ⬜ |
-| `calculatedItems` | CT_CalculatedItems | ⬜ | ⬜ |
-| `calculatedMember` | CT_CalculatedMember | ⬜ | ⬜ |
-| `calculatedMembers` | CT_CalculatedMembers | ⬜ | ⬜ |
-| `cell` | CT_ExternalCell | ⬜ | ⬜ |
-| `cellMetadata` | CT_MetadataBlocks | ⬜ | ⬜ |
-| `cellSmartTag` | CT_CellSmartTag | ⬜ | ⬜ |
-| `cellSmartTagPr` | CT_CellSmartTagPr | ⬜ | ⬜ |
-| `cellSmartTags` | CT_CellSmartTags | ⬜ | ⬜ |
-| `cellStyle` | CT_CellStyle | ⬜ | ⬜ |
-| `cellStyleXfs` | CT_CellStyleXfs | ⬜ | ⬜ |
-| `cellStyles` | CT_CellStyles | ⬜ | ⬜ |
-| `cellWatch` | CT_CellWatch | ⬜ | ⬜ |
-| `cellWatches` | CT_CellWatches | ⬜ | ⬜ |
-| `cellXfs` | CT_CellXfs | ⬜ | ⬜ |
-| `cfRule` | CT_CfRule | ⬜ | ⬜ |
-| `cfvo` | CT_Cfvo | ⬜ | ⬜ |
-| `charset` | CT_IntProperty | ⬜ | ⬜ |
-| `chartFormat` | CT_ChartFormat | ⬜ | ⬜ |
-| `chartFormats` | CT_ChartFormats | ⬜ | ⬜ |
-| `chartsheet` | CT_Chartsheet | ⬜ | ⬜ |
-| `col` | CT_Col | ⬜ | ⬜ |
-| `colBreaks` | CT_PageBreak | ⬜ | ⬜ |
-| `colFields` | CT_ColFields | ⬜ | ⬜ |
-| `colHierarchiesUsage` | CT_ColHierarchiesUsage | ⬜ | ⬜ |
-| `colHierarchyUsage` | CT_HierarchyUsage | ⬜ | ⬜ |
-| `colItems` | CT_colItems | ⬜ | ⬜ |
-| `color` | CT_Color | ⬜ | ⬜ |
-| `colorFilter` | CT_ColorFilter | ⬜ | ⬜ |
-| `colorScale` | CT_ColorScale | ⬜ | ⬜ |
-| `colors` | CT_Colors | ⬜ | ⬜ |
-| `cols` | CT_Cols | ⬜ | ⬜ |
-| `comment` | CT_Comment | ⬜ | ⬜ |
-| `commentList` | CT_CommentList | ⬜ | ⬜ |
-| `comments` | CT_Comments | ⬜ | ⬜ |
-| `condense` | CT_BooleanProperty | ⬜ | ⬜ |
-| `conditionalFormat` | CT_ConditionalFormat | ⬜ | ⬜ |
-| `conditionalFormats` | CT_ConditionalFormats | ⬜ | ⬜ |
-| `conditionalFormatting` | CT_ConditionalFormatting | ⬜ | ⬜ |
-| `connection` | CT_Connection | ⬜ | ⬜ |
-| `connections` | CT_Connections | ⬜ | ⬜ |
-| `consolidation` | CT_Consolidation | ⬜ | ⬜ |
-| `control` | CT_Control | ⬜ | ⬜ |
-| `controls` | CT_Controls | ⬜ | ⬜ |
-| `customFilter` | CT_CustomFilter | ⬜ | ⬜ |
-| `customFilters` | CT_CustomFilters | ⬜ | ⬜ |
-| `customPr` | CT_CustomProperty | ⬜ | ⬜ |
-| `customProperties` | CT_CustomProperties | ⬜ | ⬜ |
-| `customSheetView` | CT_CustomSheetView | ⬜ | ⬜ |
-| `customSheetViews` | CT_CustomSheetViews | ⬜ | ⬜ |
-| `customWorkbookView` | CT_CustomWorkbookView | ⬜ | ⬜ |
-| `customWorkbookViews` | CT_CustomWorkbookViews | ⬜ | ⬜ |
-| `d` | CT_DateTime | ⬜ | ⬜ |
-| `dataBar` | CT_DataBar | ⬜ | ⬜ |
-| `dataConsolidate` | CT_DataConsolidate | ⬜ | ⬜ |
-| `dataField` | CT_DataField | ⬜ | ⬜ |
-| `dataFields` | CT_DataFields | ⬜ | ⬜ |
-| `dataRef` | CT_DataRef | ⬜ | ⬜ |
-| `dataRefs` | CT_DataRefs | ⬜ | ⬜ |
-| `dataValidation` | CT_DataValidation | ⬜ | ⬜ |
-| `dataValidations` | CT_DataValidations | ⬜ | ⬜ |
-| `dateGroupItem` | CT_DateGroupItem | ⬜ | ⬜ |
-| `dbPr` | CT_DbPr | ⬜ | ⬜ |
-| `ddeItem` | CT_DdeItem | ⬜ | ⬜ |
-| `ddeItems` | CT_DdeItems | ⬜ | ⬜ |
-| `ddeLink` | CT_DdeLink | ⬜ | ⬜ |
-| `definedName` | CT_ExternalDefinedName | ⬜ | ⬜ |
-| `definedNames` | CT_ExternalDefinedNames | ⬜ | ⬜ |
-| `deletedField` | CT_DeletedField | ⬜ | ⬜ |
-| `diagonal` | CT_BorderPr | ⬜ | ⬜ |
-| `dialogsheet` | CT_Dialogsheet | ⬜ | ⬜ |
-| `dimension` | CT_PivotDimension | ⬜ | ⬜ |
-| `dimensions` | CT_Dimensions | ⬜ | ⬜ |
-| `discretePr` | CT_DiscretePr | ⬜ | ⬜ |
-| `drawing` | CT_Drawing | ⬜ | ⬜ |
-| `dxf` | CT_Dxf | ⬜ | ⬜ |
-| `dxfs` | CT_Dxfs | ⬜ | ⬜ |
-| `dynamicFilter` | CT_DynamicFilter | ⬜ | ⬜ |
-| `e` | CT_Error | ⬜ | ⬜ |
-| `entries` | CT_PCDSDTCEntries | ⬜ | ⬜ |
-| `evenFooter` | ST_Xstring | ⬜ | ⬜ |
-| `evenHeader` | ST_Xstring | ⬜ | ⬜ |
-| `ext` | CT_Extension | ✅ | ⬜ |
-| `extLst` | CT_ExtensionList | ⬜ | ⬜ |
-| `extend` | CT_BooleanProperty | ⬜ | ⬜ |
-| `externalBook` | CT_ExternalBook | ⬜ | ⬜ |
-| `externalLink` | CT_ExternalLink | ⬜ | ⬜ |
-| `externalReference` | CT_ExternalReference | ⬜ | ⬜ |
-| `externalReferences` | CT_ExternalReferences | ⬜ | ⬜ |
-| `f` | CT_CellFormula | ⬜ | ⬜ |
-| `family` | CT_IntProperty | ⬜ | ⬜ |
-| `fgColor` | CT_Color | ⬜ | ⬜ |
-| `field` | CT_Field | ⬜ | ⬜ |
-| `fieldGroup` | CT_FieldGroup | ⬜ | ⬜ |
-| `fieldUsage` | CT_FieldUsage | ⬜ | ⬜ |
-| `fieldsUsage` | CT_FieldsUsage | ⬜ | ⬜ |
-| `fileRecoveryPr` | CT_FileRecoveryPr | ⬜ | ⬜ |
-| `fileSharing` | CT_FileSharing | ⬜ | ⬜ |
-| `fileVersion` | CT_FileVersion | ⬜ | ⬜ |
-| `fill` | CT_Fill | ⬜ | ⬜ |
-| `fills` | CT_Fills | ⬜ | ⬜ |
-| `filter` | CT_Filter | ⬜ | ⬜ |
-| `filterColumn` | CT_FilterColumn | ⬜ | ⬜ |
-| `filters` | CT_Filters | ⬜ | ⬜ |
-| `firstFooter` | ST_Xstring | ⬜ | ⬜ |
-| `firstHeader` | ST_Xstring | ⬜ | ⬜ |
-| `font` | CT_Font | ⬜ | ⬜ |
-| `fonts` | CT_Fonts | ⬜ | ⬜ |
-| `format` | CT_Format | ⬜ | ⬜ |
-| `formats` | CT_Formats | ⬜ | ⬜ |
-| `formula` | ST_Formula | ⬜ | ⬜ |
-| `formula1` | ST_Formula | ⬜ | ⬜ |
-| `formula2` | ST_Formula | ⬜ | ⬜ |
-| `functionGroup` | CT_FunctionGroup | ⬜ | ⬜ |
-| `functionGroups` | CT_FunctionGroups | ⬜ | ⬜ |
-| `futureMetadata` | CT_FutureMetadata | ⬜ | ⬜ |
-| `gradientFill` | CT_GradientFill | ⬜ | ⬜ |
-| `group` | CT_LevelGroup | ⬜ | ⬜ |
-| `groupItems` | CT_GroupItems | ⬜ | ⬜ |
-| `groupLevel` | CT_GroupLevel | ⬜ | ⬜ |
-| `groupLevels` | CT_GroupLevels | ⬜ | ⬜ |
-| `groupMember` | CT_GroupMember | ⬜ | ⬜ |
-| `groupMembers` | CT_GroupMembers | ⬜ | ⬜ |
-| `groups` | CT_Groups | ⬜ | ⬜ |
-| `header` | CT_RevisionHeader | ⬜ | ⬜ |
-| `headerFooter` | CT_HeaderFooter | ⬜ | ⬜ |
-| `headers` | CT_RevisionHeaders | ⬜ | ⬜ |
-| `horizontal` | CT_BorderPr | ⬜ | ⬜ |
-| `hyperlink` | CT_Hyperlink | ⬜ | ⬜ |
-| `hyperlinks` | CT_Hyperlinks | ⬜ | ⬜ |
-| `i` | CT_I | ⬜ | ⬜ |
-| `iconFilter` | CT_IconFilter | ⬜ | ⬜ |
-| `iconSet` | CT_IconSet | ⬜ | ⬜ |
-| `ignoredError` | CT_IgnoredError | ⬜ | ⬜ |
-| `ignoredErrors` | CT_IgnoredErrors | ⬜ | ⬜ |
-| `indexedColors` | CT_IndexedColors | ⬜ | ⬜ |
-| `inputCells` | CT_InputCells | ⬜ | ⬜ |
-| `is` | CT_Rst | ⬜ | ⬜ |
-| `item` | CT_Item | ⬜ | ⬜ |
-| `items` | CT_Items | ⬜ | ⬜ |
-| `k` | CT_MdxKPI | ⬜ | ⬜ |
-| `kpi` | CT_PCDKPI | ⬜ | ⬜ |
-| `kpis` | CT_PCDKPIs | ⬜ | ⬜ |
-| `left` | CT_BorderPr | ⬜ | ⬜ |
-| `legacyDrawing` | CT_LegacyDrawing | ⬜ | ⬜ |
-| `legacyDrawingHF` | CT_LegacyDrawing | ⬜ | ⬜ |
-| `location` | CT_Location | ⬜ | ⬜ |
-| `m` | CT_TableMissing | ⬜ | ⬜ |
-| `main` | CT_VolMain | ⬜ | ⬜ |
-| `map` | CT_MeasureDimensionMap | ⬜ | ⬜ |
-| `maps` | CT_MeasureDimensionMaps | ⬜ | ⬜ |
-| `mdx` | CT_Mdx | ⬜ | ⬜ |
-| `mdxMetadata` | CT_MdxMetadata | ⬜ | ⬜ |
-| `measureGroup` | CT_MeasureGroup | ⬜ | ⬜ |
-| `measureGroups` | CT_MeasureGroups | ⬜ | ⬜ |
-| `member` | CT_Member | ⬜ | ⬜ |
-| `members` | CT_Members | ⬜ | ⬜ |
-| `mergeCell` | CT_MergeCell | ⬜ | ⬜ |
-| `mergeCells` | CT_MergeCells | ⬜ | ⬜ |
-| `metadata` | CT_Metadata | ⬜ | ⬜ |
-| `metadataStrings` | CT_MetadataStrings | ⬜ | ⬜ |
-| `metadataType` | CT_MetadataType | ⬜ | ⬜ |
-| `metadataTypes` | CT_MetadataTypes | ⬜ | ⬜ |
-| `mp` | CT_MemberProperty | ⬜ | ⬜ |
-| `mpMap` | CT_X | ⬜ | ⬜ |
-| `mps` | CT_MemberProperties | ⬜ | ⬜ |
-| `mruColors` | CT_MRUColors | ⬜ | ⬜ |
-| `ms` | CT_MdxSet | ⬜ | ⬜ |
-| `n` | CT_Number | ⬜ | ⬜ |
-| `name` | CT_FontName | ⬜ | ⬜ |
-| `nc` | CT_Cell | ⬜ | ⬜ |
-| `ndxf` | CT_Dxf | ⬜ | ⬜ |
-| `numFmt` | CT_NumFmt | ⬜ | ⬜ |
-| `numFmts` | CT_NumFmts | ⬜ | ⬜ |
-| `oc` | CT_Cell | ⬜ | ⬜ |
-| `oddFooter` | ST_Xstring | ⬜ | ⬜ |
-| `oddHeader` | ST_Xstring | ⬜ | ⬜ |
-| `odxf` | CT_Dxf | ⬜ | ⬜ |
-| `olapPr` | CT_OlapPr | ⬜ | ⬜ |
-| `oldFormula` | ST_Formula | ⬜ | ⬜ |
-| `oleItem` | CT_OleItem | ⬜ | ⬜ |
-| `oleItems` | CT_OleItems | ⬜ | ⬜ |
-| `oleLink` | CT_OleLink | ⬜ | ⬜ |
-| `oleObject` | CT_OleObject | ⬜ | ⬜ |
-| `oleObjects` | CT_OleObjects | ⬜ | ⬜ |
-| `oleSize` | CT_OleSize | ⬜ | ⬜ |
-| `outline` | CT_BooleanProperty | ⬜ | ⬜ |
-| `outlinePr` | CT_OutlinePr | ⬜ | ⬜ |
-| `p` | CT_MdxMemeberProp | ✅ | ⬜ |
-| `page` | CT_PCDSCPage | ⬜ | ⬜ |
-| `pageField` | CT_PageField | ⬜ | ⬜ |
-| `pageFields` | CT_PageFields | ⬜ | ⬜ |
-| `pageItem` | CT_PageItem | ⬜ | ⬜ |
-| `pageMargins` | CT_PageMargins | ⬜ | ⬜ |
-| `pageSetUpPr` | CT_PageSetUpPr | ⬜ | ⬜ |
-| `pageSetup` | CT_PageSetup | ⬜ | ⬜ |
-| `pages` | CT_Pages | ⬜ | ⬜ |
-| `pane` | CT_Pane | ⬜ | ⬜ |
-| `parameter` | CT_Parameter | ⬜ | ⬜ |
-| `parameters` | CT_Parameters | ⬜ | ⬜ |
-| `patternFill` | CT_PatternFill | ⬜ | ⬜ |
-| `phoneticPr` | CT_PhoneticPr | ⬜ | ⬜ |
-| `picture` | CT_SheetBackgroundPicture | ⬜ | ⬜ |
-| `pivotArea` | CT_PivotArea | ⬜ | ⬜ |
-| `pivotAreas` | CT_PivotAreas | ⬜ | ⬜ |
-| `pivotCache` | CT_PivotCache | ⬜ | ⬜ |
-| `pivotCacheDefinition` | CT_PivotCacheDefinition | ⬜ | ⬜ |
-| `pivotCacheRecords` | CT_PivotCacheRecords | ⬜ | ⬜ |
-| `pivotCaches` | CT_PivotCaches | ⬜ | ⬜ |
-| `pivotField` | CT_PivotField | ⬜ | ⬜ |
-| `pivotFields` | CT_PivotFields | ⬜ | ⬜ |
-| `pivotHierarchies` | CT_PivotHierarchies | ⬜ | ⬜ |
-| `pivotHierarchy` | CT_PivotHierarchy | ⬜ | ⬜ |
-| `pivotSelection` | CT_PivotSelection | ⬜ | ⬜ |
-| `pivotTableDefinition` | CT_pivotTableDefinition | ⬜ | ⬜ |
-| `pivotTableStyleInfo` | CT_PivotTableStyle | ⬜ | ⬜ |
-| `printOptions` | CT_PrintOptions | ⬜ | ⬜ |
-| `protectedRange` | CT_ProtectedRange | ⬜ | ⬜ |
-| `protectedRanges` | CT_ProtectedRanges | ⬜ | ⬜ |
-| `protection` | CT_CellProtection | ⬜ | ⬜ |
-| `query` | CT_Query | ⬜ | ⬜ |
-| `queryCache` | CT_QueryCache | ⬜ | ⬜ |
-| `queryTable` | CT_QueryTable | ⬜ | ⬜ |
-| `queryTableDeletedFields` | CT_QueryTableDeletedFields | ⬜ | ⬜ |
-| `queryTableField` | CT_QueryTableField | ⬜ | ⬜ |
-| `queryTableFields` | CT_QueryTableFields | ⬜ | ⬜ |
-| `queryTableRefresh` | CT_QueryTableRefresh | ⬜ | ⬜ |
-| `r` | CT_Record | ✅ | ⬜ |
-| `rFont` | CT_FontName | ⬜ | ⬜ |
-| `rPh` | CT_PhoneticRun | ⬜ | ⬜ |
-| `rPr` | CT_RPrElt | ✅ | ⬜ |
-| `raf` | CT_RevisionAutoFormatting | ⬜ | ⬜ |
-| `rangePr` | CT_RangePr | ⬜ | ⬜ |
-| `rangeSet` | CT_RangeSet | ⬜ | ⬜ |
-| `rangeSets` | CT_RangeSets | ⬜ | ⬜ |
-| `rc` | CT_MetadataRecord | ⬜ | ⬜ |
-| `rcc` | CT_RevisionCellChange | ⬜ | ⬜ |
-| `rcft` | CT_RevisionConflict | ⬜ | ⬜ |
-| `rcmt` | CT_RevisionComment | ⬜ | ⬜ |
-| `rcv` | CT_RevisionCustomView | ⬜ | ⬜ |
-| `rdn` | CT_RevisionDefinedName | ⬜ | ⬜ |
-| `reference` | CT_PivotAreaReference | ⬜ | ⬜ |
-| `references` | CT_PivotAreaReferences | ⬜ | ⬜ |
-| `reviewed` | CT_Reviewed | ⬜ | ⬜ |
-| `reviewedList` | CT_ReviewedRevisions | ⬜ | ⬜ |
-| `revisions` | CT_Revisions | ⬜ | ⬜ |
-| `rfmt` | CT_RevisionFormatting | ⬜ | ⬜ |
-| `rgbColor` | CT_RgbColor | ⬜ | ⬜ |
-| `right` | CT_BorderPr | ⬜ | ⬜ |
-| `ris` | CT_RevisionInsertSheet | ⬜ | ⬜ |
-| `rm` | CT_RevisionMove | ⬜ | ⬜ |
-| `row` | CT_Row | ⬜ | ⬜ |
-| `rowBreaks` | CT_PageBreak | ⬜ | ⬜ |
-| `rowFields` | CT_RowFields | ⬜ | ⬜ |
-| `rowHierarchiesUsage` | CT_RowHierarchiesUsage | ⬜ | ⬜ |
-| `rowHierarchyUsage` | CT_HierarchyUsage | ⬜ | ⬜ |
-| `rowItems` | CT_rowItems | ⬜ | ⬜ |
-| `rqt` | CT_RevisionQueryTableField | ⬜ | ⬜ |
-| `rrc` | CT_RevisionRowColumn | ⬜ | ⬜ |
-| `rsnm` | CT_RevisionSheetRename | ⬜ | ⬜ |
-| `s` | CT_XStringElement | ⬜ | ⬜ |
-| `scenario` | CT_Scenario | ⬜ | ⬜ |
-| `scenarios` | CT_Scenarios | ⬜ | ⬜ |
-| `scheme` | CT_FontScheme | ⬜ | ⬜ |
-| `selection` | CT_Selection | ⬜ | ⬜ |
-| `serverFormat` | CT_ServerFormat | ⬜ | ⬜ |
-| `serverFormats` | CT_ServerFormats | ⬜ | ⬜ |
-| `set` | CT_Set | ⬜ | ⬜ |
-| `sets` | CT_Sets | ⬜ | ⬜ |
-| `shadow` | CT_BooleanProperty | ⬜ | ⬜ |
-| `sharedItems` | CT_SharedItems | ⬜ | ⬜ |
-| `sheet` | CT_Sheet | ⬜ | ⬜ |
-| `sheetCalcPr` | CT_SheetCalcPr | ⬜ | ⬜ |
-| `sheetData` | CT_SheetData | ⬜ | ⬜ |
-| `sheetDataSet` | CT_ExternalSheetDataSet | ⬜ | ⬜ |
-| `sheetFormatPr` | CT_SheetFormatPr | ⬜ | ⬜ |
-| `sheetId` | CT_SheetId | ⬜ | ⬜ |
-| `sheetIdMap` | CT_SheetIdMap | ⬜ | ⬜ |
-| `sheetName` | CT_ExternalSheetName | ⬜ | ⬜ |
-| `sheetNames` | CT_ExternalSheetNames | ⬜ | ⬜ |
-| `sheetPr` | CT_SheetPr | ⬜ | ⬜ |
-| `sheetProtection` | CT_SheetProtection | ⬜ | ⬜ |
-| `sheetView` | CT_SheetView | ⬜ | ⬜ |
-| `sheetViews` | CT_SheetViews | ⬜ | ⬜ |
-| `sheets` | CT_Sheets | ⬜ | ⬜ |
-| `si` | CT_Rst | ⬜ | ⬜ |
-| `singleXmlCell` | CT_SingleXmlCell | ⬜ | ⬜ |
-| `singleXmlCells` | CT_SingleXmlCells | ⬜ | ⬜ |
-| `smartTagPr` | CT_SmartTagPr | ⬜ | ⬜ |
-| `smartTagType` | CT_SmartTagType | ⬜ | ⬜ |
-| `smartTagTypes` | CT_SmartTagTypes | ⬜ | ⬜ |
-| `smartTags` | CT_SmartTags | ⬜ | ⬜ |
-| `sortByTuple` | CT_Tuples | ⬜ | ⬜ |
-| `sortCondition` | CT_SortCondition | ⬜ | ⬜ |
-| `sortState` | CT_SortState | ⬜ | ⬜ |
-| `sst` | CT_Sst | ⬜ | ⬜ |
-| `stop` | CT_GradientStop | ⬜ | ⬜ |
-| `stp` | ST_Xstring | ⬜ | ⬜ |
-| `strike` | CT_BooleanProperty | ⬜ | ⬜ |
-| `styleSheet` | CT_Stylesheet | ⬜ | ⬜ |
-| `sz` | CT_FontSize | ⬜ | ⬜ |
-| `t` | ST_Xstring | ✅ | ⬜ |
-| `tabColor` | CT_Color | ⬜ | ⬜ |
-| `table` | CT_Table | ⬜ | ⬜ |
-| `tableColumn` | CT_TableColumn | ⬜ | ⬜ |
-| `tableColumns` | CT_TableColumns | ⬜ | ⬜ |
-| `tablePart` | CT_TablePart | ⬜ | ⬜ |
-| `tableParts` | CT_TableParts | ⬜ | ⬜ |
-| `tableStyle` | CT_TableStyle | ⬜ | ⬜ |
-| `tableStyleElement` | CT_TableStyleElement | ⬜ | ⬜ |
-| `tableStyleInfo` | CT_TableStyleInfo | ⬜ | ⬜ |
-| `tableStyles` | CT_TableStyles | ⬜ | ⬜ |
-| `tables` | CT_Tables | ⬜ | ⬜ |
-| `text` | CT_Rst | ⬜ | ⬜ |
-| `textField` | CT_TextField | ⬜ | ⬜ |
-| `textFields` | CT_TextFields | ⬜ | ⬜ |
-| `textPr` | CT_TextPr | ⬜ | ⬜ |
-| `top` | CT_BorderPr | ⬜ | ⬜ |
-| `top10` | CT_Top10 | ⬜ | ⬜ |
-| `totalsRowFormula` | CT_TableFormula | ⬜ | ⬜ |
-| `tp` | CT_VolTopic | ⬜ | ⬜ |
-| `tpl` | CT_Tuple | ⬜ | ⬜ |
-| `tpls` | CT_Tuples | ⬜ | ⬜ |
-| `tr` | CT_VolTopicRef | ⬜ | ⬜ |
-| `tupleCache` | CT_TupleCache | ⬜ | ⬜ |
-| `u` | CT_UnderlineProperty | ⬜ | ⬜ |
-| `undo` | CT_UndoInfo | ⬜ | ⬜ |
-| `userInfo` | CT_SharedUser | ⬜ | ⬜ |
-| `users` | CT_Users | ⬜ | ⬜ |
-| `v` | ST_Xstring | ⬜ | ⬜ |
-| `val` | ST_Xstring | ⬜ | ⬜ |
-| `value` | CT_DdeValue | ⬜ | ⬜ |
-| `valueMetadata` | CT_MetadataBlocks | ⬜ | ⬜ |
-| `values` | CT_DdeValues | ⬜ | ⬜ |
-| `vertAlign` | CT_VerticalAlignFontProperty | ⬜ | ⬜ |
-| `vertical` | CT_BorderPr | ⬜ | ⬜ |
-| `volType` | CT_VolType | ⬜ | ⬜ |
-| `volTypes` | CT_VolTypes | ⬜ | ⬜ |
-| `webPr` | CT_WebPr | ⬜ | ⬜ |
-| `webPublishItem` | CT_WebPublishItem | ⬜ | ⬜ |
-| `webPublishItems` | CT_WebPublishItems | ⬜ | ⬜ |
-| `webPublishObject` | CT_WebPublishObject | ⬜ | ⬜ |
-| `webPublishObjects` | CT_WebPublishObjects | ⬜ | ⬜ |
-| `webPublishing` | CT_WebPublishing | ⬜ | ⬜ |
-| `workbook` | CT_Workbook | ⬜ | ⬜ |
-| `workbookPr` | CT_WorkbookPr | ⬜ | ⬜ |
-| `workbookProtection` | CT_WorkbookProtection | ⬜ | ⬜ |
-| `workbookView` | CT_BookView | ⬜ | ⬜ |
-| `worksheet` | CT_Worksheet | ⬜ | ⬜ |
-| `worksheetSource` | CT_WorksheetSource | ⬜ | ⬜ |
-| `x` | CT_Index | ⬜ | ⬜ |
-| `xf` | CT_Xf | ⬜ | ⬜ |
-| `xmlCellPr` | CT_XmlCellPr | ⬜ | ⬜ |
-| `xmlColumnPr` | CT_XmlColumnPr | ⬜ | ⬜ |
-| `xmlPr` | CT_XmlPr | ⬜ | ⬜ |
+<!-- BEGIN GENERATED SCHEMA INVENTORY -->
+## ECMA-376 Schema Surface
+
+Generated by `scripts/generate_spec_inventories.py` from the official ECMA-376 5th edition Part 4 Transitional XSDs. The source archives are SHA-256 pinned in the generator.
+
+This `xlsx` partition contains **389 qualified element names**, **628 named declarations**, **367 named complex types**, and **1 namespace**. Repeated declarations of one QName are combined and retain every declared type.
+
+This appendix is a discovery checklist, not an implementation percentage. One user-facing capability often uses several elements, and one element can participate in unrelated capabilities. Runtime status belongs in the curated tables above and in executable fixtures.
+
+Official standard: <https://ecma-international.org/publications-and-standards/standards/ecma-376/>
+
+### Namespace Legend
+
+| Prefix | Namespace |
+|---|---|
+| `x` | `http://schemas.openxmlformats.org/spreadsheetml/2006/main` |
+
+### Elements
+
+| QName | Declared type(s) | Source XSD |
+|---|---|---|
+| `x:alignment` | `CT_CellAlignment` | `sml.xsd` |
+| `x:anchor` | `CT_ObjectAnchor` | `sml.xsd` |
+| `x:author` | `s:ST_Xstring` | `sml.xsd` |
+| `x:authors` | `CT_Authors` | `sml.xsd` |
+| `x:autoFilter` | `CT_AutoFilter` | `sml.xsd` |
+| `x:autoSortScope` | `CT_AutoSortScope` | `sml.xsd` |
+| `x:b` | `CT_Boolean`<br>`CT_BooleanProperty` | `sml.xsd` |
+| `x:bgColor` | `CT_Color` | `sml.xsd` |
+| `x:bk` | `CT_FutureMetadataBlock`<br>`CT_MetadataBlock` | `sml.xsd` |
+| `x:bookViews` | `CT_BookViews` | `sml.xsd` |
+| `x:border` | `CT_Border` | `sml.xsd` |
+| `x:borders` | `CT_Borders` | `sml.xsd` |
+| `x:bottom` | `CT_BorderPr` | `sml.xsd` |
+| `x:brk` | `CT_Break` | `sml.xsd` |
+| `x:c` | `CT_CalcCell`<br>`CT_Cell` | `sml.xsd` |
+| `x:cacheField` | `CT_CacheField` | `sml.xsd` |
+| `x:cacheFields` | `CT_CacheFields` | `sml.xsd` |
+| `x:cacheHierarchies` | `CT_CacheHierarchies` | `sml.xsd` |
+| `x:cacheHierarchy` | `CT_CacheHierarchy` | `sml.xsd` |
+| `x:cacheSource` | `CT_CacheSource` | `sml.xsd` |
+| `x:calcChain` | `CT_CalcChain` | `sml.xsd` |
+| `x:calcPr` | `CT_CalcPr` | `sml.xsd` |
+| `x:calculatedColumnFormula` | `CT_TableFormula` | `sml.xsd` |
+| `x:calculatedItem` | `CT_CalculatedItem` | `sml.xsd` |
+| `x:calculatedItems` | `CT_CalculatedItems` | `sml.xsd` |
+| `x:calculatedMember` | `CT_CalculatedMember` | `sml.xsd` |
+| `x:calculatedMembers` | `CT_CalculatedMembers` | `sml.xsd` |
+| `x:cell` | `CT_ExternalCell` | `sml.xsd` |
+| `x:cellMetadata` | `CT_MetadataBlocks` | `sml.xsd` |
+| `x:cellSmartTag` | `CT_CellSmartTag` | `sml.xsd` |
+| `x:cellSmartTagPr` | `CT_CellSmartTagPr` | `sml.xsd` |
+| `x:cellSmartTags` | `CT_CellSmartTags` | `sml.xsd` |
+| `x:cellStyle` | `CT_CellStyle` | `sml.xsd` |
+| `x:cellStyles` | `CT_CellStyles` | `sml.xsd` |
+| `x:cellStyleXfs` | `CT_CellStyleXfs` | `sml.xsd` |
+| `x:cellWatch` | `CT_CellWatch` | `sml.xsd` |
+| `x:cellWatches` | `CT_CellWatches` | `sml.xsd` |
+| `x:cellXfs` | `CT_CellXfs` | `sml.xsd` |
+| `x:cfRule` | `CT_CfRule` | `sml.xsd` |
+| `x:cfvo` | `CT_Cfvo` | `sml.xsd` |
+| `x:charset` | `CT_IntProperty` | `sml.xsd` |
+| `x:chartFormat` | `CT_ChartFormat` | `sml.xsd` |
+| `x:chartFormats` | `CT_ChartFormats` | `sml.xsd` |
+| `x:chartsheet` | `CT_Chartsheet` | `sml.xsd` |
+| `x:col` | `CT_Col` | `sml.xsd` |
+| `x:colBreaks` | `CT_PageBreak` | `sml.xsd` |
+| `x:colFields` | `CT_ColFields` | `sml.xsd` |
+| `x:colHierarchiesUsage` | `CT_ColHierarchiesUsage` | `sml.xsd` |
+| `x:colHierarchyUsage` | `CT_HierarchyUsage` | `sml.xsd` |
+| `x:colItems` | `CT_colItems` | `sml.xsd` |
+| `x:color` | `CT_Color` | `sml.xsd` |
+| `x:colorFilter` | `CT_ColorFilter` | `sml.xsd` |
+| `x:colors` | `CT_Colors` | `sml.xsd` |
+| `x:colorScale` | `CT_ColorScale` | `sml.xsd` |
+| `x:cols` | `CT_Cols` | `sml.xsd` |
+| `x:comment` | `CT_Comment` | `sml.xsd` |
+| `x:commentList` | `CT_CommentList` | `sml.xsd` |
+| `x:commentPr` | `CT_CommentPr` | `sml.xsd` |
+| `x:comments` | `CT_Comments` | `sml.xsd` |
+| `x:condense` | `CT_BooleanProperty` | `sml.xsd` |
+| `x:conditionalFormat` | `CT_ConditionalFormat` | `sml.xsd` |
+| `x:conditionalFormats` | `CT_ConditionalFormats` | `sml.xsd` |
+| `x:conditionalFormatting` | `CT_ConditionalFormatting` | `sml.xsd` |
+| `x:connection` | `CT_Connection` | `sml.xsd` |
+| `x:connections` | `CT_Connections` | `sml.xsd` |
+| `x:consolidation` | `CT_Consolidation` | `sml.xsd` |
+| `x:control` | `CT_Control` | `sml.xsd` |
+| `x:controlPr` | `CT_ControlPr` | `sml.xsd` |
+| `x:controls` | `CT_Controls` | `sml.xsd` |
+| `x:customFilter` | `CT_CustomFilter` | `sml.xsd` |
+| `x:customFilters` | `CT_CustomFilters` | `sml.xsd` |
+| `x:customPr` | `CT_CustomProperty` | `sml.xsd` |
+| `x:customProperties` | `CT_CustomProperties` | `sml.xsd` |
+| `x:customSheetView` | `CT_CustomChartsheetView`<br>`CT_CustomSheetView` | `sml.xsd` |
+| `x:customSheetViews` | `CT_CustomChartsheetViews`<br>`CT_CustomSheetViews` | `sml.xsd` |
+| `x:customWorkbookView` | `CT_CustomWorkbookView` | `sml.xsd` |
+| `x:customWorkbookViews` | `CT_CustomWorkbookViews` | `sml.xsd` |
+| `x:d` | `CT_DateTime` | `sml.xsd` |
+| `x:dataBar` | `CT_DataBar` | `sml.xsd` |
+| `x:DataBinding` | `CT_DataBinding` | `sml.xsd` |
+| `x:dataConsolidate` | `CT_DataConsolidate` | `sml.xsd` |
+| `x:dataField` | `CT_DataField` | `sml.xsd` |
+| `x:dataFields` | `CT_DataFields` | `sml.xsd` |
+| `x:dataRef` | `CT_DataRef` | `sml.xsd` |
+| `x:dataRefs` | `CT_DataRefs` | `sml.xsd` |
+| `x:dataValidation` | `CT_DataValidation` | `sml.xsd` |
+| `x:dataValidations` | `CT_DataValidations` | `sml.xsd` |
+| `x:dateGroupItem` | `CT_DateGroupItem` | `sml.xsd` |
+| `x:dbPr` | `CT_DbPr` | `sml.xsd` |
+| `x:ddeItem` | `CT_DdeItem` | `sml.xsd` |
+| `x:ddeItems` | `CT_DdeItems` | `sml.xsd` |
+| `x:ddeLink` | `CT_DdeLink` | `sml.xsd` |
+| `x:definedName` | `CT_DefinedName`<br>`CT_ExternalDefinedName` | `sml.xsd` |
+| `x:definedNames` | `CT_DefinedNames`<br>`CT_ExternalDefinedNames` | `sml.xsd` |
+| `x:deletedField` | `CT_DeletedField` | `sml.xsd` |
+| `x:diagonal` | `CT_BorderPr` | `sml.xsd` |
+| `x:dialogsheet` | `CT_Dialogsheet` | `sml.xsd` |
+| `x:dimension` | `CT_PivotDimension`<br>`CT_SheetDimension` | `sml.xsd` |
+| `x:dimensions` | `CT_Dimensions` | `sml.xsd` |
+| `x:discretePr` | `CT_DiscretePr` | `sml.xsd` |
+| `x:drawing` | `CT_Drawing` | `sml.xsd` |
+| `x:drawingHF` | `CT_DrawingHF` | `sml.xsd` |
+| `x:dxf` | `CT_Dxf` | `sml.xsd` |
+| `x:dxfs` | `CT_Dxfs` | `sml.xsd` |
+| `x:dynamicFilter` | `CT_DynamicFilter` | `sml.xsd` |
+| `x:e` | `CT_Error` | `sml.xsd` |
+| `x:end` | `CT_BorderPr` | `sml.xsd` |
+| `x:entries` | `CT_PCDSDTCEntries` | `sml.xsd` |
+| `x:evenFooter` | `s:ST_Xstring` | `sml.xsd` |
+| `x:evenHeader` | `s:ST_Xstring` | `sml.xsd` |
+| `x:ext` | `CT_Extension` | `sml.xsd` |
+| `x:extend` | `CT_BooleanProperty` | `sml.xsd` |
+| `x:externalBook` | `CT_ExternalBook` | `sml.xsd` |
+| `x:externalLink` | `CT_ExternalLink` | `sml.xsd` |
+| `x:externalReference` | `CT_ExternalReference` | `sml.xsd` |
+| `x:externalReferences` | `CT_ExternalReferences` | `sml.xsd` |
+| `x:extLst` | `CT_ExtensionList` | `sml.xsd` |
+| `x:f` | `CT_CellFormula` | `sml.xsd` |
+| `x:family` | `CT_FontFamily`<br>`CT_IntProperty` | `sml.xsd` |
+| `x:fgColor` | `CT_Color` | `sml.xsd` |
+| `x:field` | `CT_Field` | `sml.xsd` |
+| `x:fieldGroup` | `CT_FieldGroup` | `sml.xsd` |
+| `x:fieldsUsage` | `CT_FieldsUsage` | `sml.xsd` |
+| `x:fieldUsage` | `CT_FieldUsage` | `sml.xsd` |
+| `x:fileRecoveryPr` | `CT_FileRecoveryPr` | `sml.xsd` |
+| `x:fileSharing` | `CT_FileSharing` | `sml.xsd` |
+| `x:fileVersion` | `CT_FileVersion` | `sml.xsd` |
+| `x:fill` | `CT_Fill` | `sml.xsd` |
+| `x:fills` | `CT_Fills` | `sml.xsd` |
+| `x:filter` | `CT_Filter`<br>`CT_PivotFilter` | `sml.xsd` |
+| `x:filterColumn` | `CT_FilterColumn` | `sml.xsd` |
+| `x:filters` | `CT_Filters`<br>`CT_PivotFilters` | `sml.xsd` |
+| `x:firstFooter` | `s:ST_Xstring` | `sml.xsd` |
+| `x:firstHeader` | `s:ST_Xstring` | `sml.xsd` |
+| `x:font` | `CT_Font` | `sml.xsd` |
+| `x:fonts` | `CT_Fonts` | `sml.xsd` |
+| `x:format` | `CT_Format` | `sml.xsd` |
+| `x:formats` | `CT_Formats` | `sml.xsd` |
+| `x:formula` | `ST_Formula` | `sml.xsd` |
+| `x:formula1` | `ST_Formula` | `sml.xsd` |
+| `x:formula2` | `ST_Formula` | `sml.xsd` |
+| `x:functionGroup` | `CT_FunctionGroup` | `sml.xsd` |
+| `x:functionGroups` | `CT_FunctionGroups` | `sml.xsd` |
+| `x:futureMetadata` | `CT_FutureMetadata` | `sml.xsd` |
+| `x:gradientFill` | `CT_GradientFill` | `sml.xsd` |
+| `x:group` | `CT_LevelGroup` | `sml.xsd` |
+| `x:groupItems` | `CT_GroupItems` | `sml.xsd` |
+| `x:groupLevel` | `CT_GroupLevel` | `sml.xsd` |
+| `x:groupLevels` | `CT_GroupLevels` | `sml.xsd` |
+| `x:groupMember` | `CT_GroupMember` | `sml.xsd` |
+| `x:groupMembers` | `CT_GroupMembers` | `sml.xsd` |
+| `x:groups` | `CT_Groups` | `sml.xsd` |
+| `x:header` | `CT_RevisionHeader` | `sml.xsd` |
+| `x:headerFooter` | `CT_HeaderFooter` | `sml.xsd` |
+| `x:headers` | `CT_RevisionHeaders` | `sml.xsd` |
+| `x:horizontal` | `CT_BorderPr` | `sml.xsd` |
+| `x:hyperlink` | `CT_Hyperlink` | `sml.xsd` |
+| `x:hyperlinks` | `CT_Hyperlinks` | `sml.xsd` |
+| `x:i` | `CT_BooleanProperty`<br>`CT_I` | `sml.xsd` |
+| `x:iconFilter` | `CT_IconFilter` | `sml.xsd` |
+| `x:iconSet` | `CT_IconSet` | `sml.xsd` |
+| `x:ignoredError` | `CT_IgnoredError` | `sml.xsd` |
+| `x:ignoredErrors` | `CT_IgnoredErrors` | `sml.xsd` |
+| `x:indexedColors` | `CT_IndexedColors` | `sml.xsd` |
+| `x:inputCells` | `CT_InputCells` | `sml.xsd` |
+| `x:is` | `CT_Rst` | `sml.xsd` |
+| `x:item` | `CT_Item` | `sml.xsd` |
+| `x:items` | `CT_Items` | `sml.xsd` |
+| `x:k` | `CT_MdxKPI` | `sml.xsd` |
+| `x:kpi` | `CT_PCDKPI` | `sml.xsd` |
+| `x:kpis` | `CT_PCDKPIs` | `sml.xsd` |
+| `x:left` | `CT_BorderPr` | `sml.xsd` |
+| `x:legacyDrawing` | `CT_LegacyDrawing` | `sml.xsd` |
+| `x:legacyDrawingHF` | `CT_LegacyDrawing` | `sml.xsd` |
+| `x:location` | `CT_Location` | `sml.xsd` |
+| `x:m` | `CT_Missing`<br>`CT_TableMissing` | `sml.xsd` |
+| `x:main` | `CT_VolMain` | `sml.xsd` |
+| `x:Map` | `CT_Map` | `sml.xsd` |
+| `x:map` | `CT_MeasureDimensionMap` | `sml.xsd` |
+| `x:MapInfo` | `CT_MapInfo` | `sml.xsd` |
+| `x:maps` | `CT_MeasureDimensionMaps` | `sml.xsd` |
+| `x:mdx` | `CT_Mdx` | `sml.xsd` |
+| `x:mdxMetadata` | `CT_MdxMetadata` | `sml.xsd` |
+| `x:measureGroup` | `CT_MeasureGroup` | `sml.xsd` |
+| `x:measureGroups` | `CT_MeasureGroups` | `sml.xsd` |
+| `x:member` | `CT_Member` | `sml.xsd` |
+| `x:members` | `CT_Members` | `sml.xsd` |
+| `x:mergeCell` | `CT_MergeCell` | `sml.xsd` |
+| `x:mergeCells` | `CT_MergeCells` | `sml.xsd` |
+| `x:metadata` | `CT_Metadata` | `sml.xsd` |
+| `x:metadataStrings` | `CT_MetadataStrings` | `sml.xsd` |
+| `x:metadataType` | `CT_MetadataType` | `sml.xsd` |
+| `x:metadataTypes` | `CT_MetadataTypes` | `sml.xsd` |
+| `x:mp` | `CT_MemberProperty` | `sml.xsd` |
+| `x:mpMap` | `CT_X` | `sml.xsd` |
+| `x:mps` | `CT_MemberProperties` | `sml.xsd` |
+| `x:mruColors` | `CT_MRUColors` | `sml.xsd` |
+| `x:ms` | `CT_MdxSet` | `sml.xsd` |
+| `x:n` | `CT_MetadataStringIndex`<br>`CT_Number` | `sml.xsd` |
+| `x:name` | `CT_FontName` | `sml.xsd` |
+| `x:nc` | `CT_Cell` | `sml.xsd` |
+| `x:ndxf` | `CT_Dxf` | `sml.xsd` |
+| `x:numFmt` | `CT_NumFmt` | `sml.xsd` |
+| `x:numFmts` | `CT_NumFmts` | `sml.xsd` |
+| `x:objectPr` | `CT_ObjectPr` | `sml.xsd` |
+| `x:oc` | `CT_Cell` | `sml.xsd` |
+| `x:oddFooter` | `s:ST_Xstring` | `sml.xsd` |
+| `x:oddHeader` | `s:ST_Xstring` | `sml.xsd` |
+| `x:odxf` | `CT_Dxf` | `sml.xsd` |
+| `x:olapPr` | `CT_OlapPr` | `sml.xsd` |
+| `x:oldFormula` | `ST_Formula` | `sml.xsd` |
+| `x:oleItem` | `CT_OleItem` | `sml.xsd` |
+| `x:oleItems` | `CT_OleItems` | `sml.xsd` |
+| `x:oleLink` | `CT_OleLink` | `sml.xsd` |
+| `x:oleObject` | `CT_OleObject` | `sml.xsd` |
+| `x:oleObjects` | `CT_OleObjects` | `sml.xsd` |
+| `x:oleSize` | `CT_OleSize` | `sml.xsd` |
+| `x:outline` | `CT_BooleanProperty` | `sml.xsd` |
+| `x:outlinePr` | `CT_OutlinePr` | `sml.xsd` |
+| `x:p` | `CT_MdxMemeberProp` | `sml.xsd` |
+| `x:page` | `CT_PCDSCPage` | `sml.xsd` |
+| `x:pageField` | `CT_PageField` | `sml.xsd` |
+| `x:pageFields` | `CT_PageFields` | `sml.xsd` |
+| `x:pageItem` | `CT_PageItem` | `sml.xsd` |
+| `x:pageMargins` | `CT_PageMargins` | `sml.xsd` |
+| `x:pages` | `CT_Pages` | `sml.xsd` |
+| `x:pageSetup` | `CT_CsPageSetup`<br>`CT_PageSetup` | `sml.xsd` |
+| `x:pageSetUpPr` | `CT_PageSetUpPr` | `sml.xsd` |
+| `x:pane` | `CT_Pane` | `sml.xsd` |
+| `x:parameter` | `CT_Parameter` | `sml.xsd` |
+| `x:parameters` | `CT_Parameters` | `sml.xsd` |
+| `x:patternFill` | `CT_PatternFill` | `sml.xsd` |
+| `x:phoneticPr` | `CT_PhoneticPr` | `sml.xsd` |
+| `x:picture` | `CT_SheetBackgroundPicture` | `sml.xsd` |
+| `x:pivotArea` | `CT_PivotArea` | `sml.xsd` |
+| `x:pivotAreas` | `CT_PivotAreas` | `sml.xsd` |
+| `x:pivotCache` | `CT_PivotCache` | `sml.xsd` |
+| `x:pivotCacheDefinition` | `CT_PivotCacheDefinition` | `sml.xsd` |
+| `x:pivotCacheRecords` | `CT_PivotCacheRecords` | `sml.xsd` |
+| `x:pivotCaches` | `CT_PivotCaches` | `sml.xsd` |
+| `x:pivotField` | `CT_PivotField` | `sml.xsd` |
+| `x:pivotFields` | `CT_PivotFields` | `sml.xsd` |
+| `x:pivotHierarchies` | `CT_PivotHierarchies` | `sml.xsd` |
+| `x:pivotHierarchy` | `CT_PivotHierarchy` | `sml.xsd` |
+| `x:pivotSelection` | `CT_PivotSelection` | `sml.xsd` |
+| `x:pivotTableDefinition` | `CT_pivotTableDefinition` | `sml.xsd` |
+| `x:pivotTableStyleInfo` | `CT_PivotTableStyle` | `sml.xsd` |
+| `x:printOptions` | `CT_PrintOptions` | `sml.xsd` |
+| `x:protectedRange` | `CT_ProtectedRange` | `sml.xsd` |
+| `x:protectedRanges` | `CT_ProtectedRanges` | `sml.xsd` |
+| `x:protection` | `CT_CellProtection` | `sml.xsd` |
+| `x:query` | `CT_Query` | `sml.xsd` |
+| `x:queryCache` | `CT_QueryCache` | `sml.xsd` |
+| `x:queryTable` | `CT_QueryTable` | `sml.xsd` |
+| `x:queryTableDeletedFields` | `CT_QueryTableDeletedFields` | `sml.xsd` |
+| `x:queryTableField` | `CT_QueryTableField` | `sml.xsd` |
+| `x:queryTableFields` | `CT_QueryTableFields` | `sml.xsd` |
+| `x:queryTableRefresh` | `CT_QueryTableRefresh` | `sml.xsd` |
+| `x:r` | `CT_RElt`<br>`CT_Record` | `sml.xsd` |
+| `x:raf` | `CT_RevisionAutoFormatting` | `sml.xsd` |
+| `x:rangePr` | `CT_RangePr` | `sml.xsd` |
+| `x:rangeSet` | `CT_RangeSet` | `sml.xsd` |
+| `x:rangeSets` | `CT_RangeSets` | `sml.xsd` |
+| `x:rc` | `CT_MetadataRecord` | `sml.xsd` |
+| `x:rcc` | `CT_RevisionCellChange` | `sml.xsd` |
+| `x:rcft` | `CT_RevisionConflict` | `sml.xsd` |
+| `x:rcmt` | `CT_RevisionComment` | `sml.xsd` |
+| `x:rcv` | `CT_RevisionCustomView` | `sml.xsd` |
+| `x:rdn` | `CT_RevisionDefinedName` | `sml.xsd` |
+| `x:reference` | `CT_PivotAreaReference` | `sml.xsd` |
+| `x:references` | `CT_PivotAreaReferences` | `sml.xsd` |
+| `x:reviewed` | `CT_Reviewed` | `sml.xsd` |
+| `x:reviewedList` | `CT_ReviewedRevisions` | `sml.xsd` |
+| `x:revisions` | `CT_Revisions` | `sml.xsd` |
+| `x:rfmt` | `CT_RevisionFormatting` | `sml.xsd` |
+| `x:rFont` | `CT_FontName` | `sml.xsd` |
+| `x:rgbColor` | `CT_RgbColor` | `sml.xsd` |
+| `x:right` | `CT_BorderPr` | `sml.xsd` |
+| `x:ris` | `CT_RevisionInsertSheet` | `sml.xsd` |
+| `x:rm` | `CT_RevisionMove` | `sml.xsd` |
+| `x:row` | `CT_ExternalRow`<br>`CT_Row` | `sml.xsd` |
+| `x:rowBreaks` | `CT_PageBreak` | `sml.xsd` |
+| `x:rowFields` | `CT_RowFields` | `sml.xsd` |
+| `x:rowHierarchiesUsage` | `CT_RowHierarchiesUsage` | `sml.xsd` |
+| `x:rowHierarchyUsage` | `CT_HierarchyUsage` | `sml.xsd` |
+| `x:rowItems` | `CT_rowItems` | `sml.xsd` |
+| `x:rPh` | `CT_PhoneticRun` | `sml.xsd` |
+| `x:rPr` | `CT_RPrElt` | `sml.xsd` |
+| `x:rqt` | `CT_RevisionQueryTableField` | `sml.xsd` |
+| `x:rrc` | `CT_RevisionRowColumn` | `sml.xsd` |
+| `x:rsnm` | `CT_RevisionSheetRename` | `sml.xsd` |
+| `x:s` | `CT_String`<br>`CT_XStringElement` | `sml.xsd` |
+| `x:scenario` | `CT_Scenario` | `sml.xsd` |
+| `x:scenarios` | `CT_Scenarios` | `sml.xsd` |
+| `x:Schema` | `CT_Schema` | `sml.xsd` |
+| `x:scheme` | `CT_FontScheme` | `sml.xsd` |
+| `x:securityDescriptor` | `xsd:string` | `sml.xsd` |
+| `x:selection` | `CT_Selection` | `sml.xsd` |
+| `x:serverFormat` | `CT_ServerFormat` | `sml.xsd` |
+| `x:serverFormats` | `CT_ServerFormats` | `sml.xsd` |
+| `x:set` | `CT_Set` | `sml.xsd` |
+| `x:sets` | `CT_Sets` | `sml.xsd` |
+| `x:shadow` | `CT_BooleanProperty` | `sml.xsd` |
+| `x:sharedItems` | `CT_SharedItems` | `sml.xsd` |
+| `x:sheet` | `CT_Sheet` | `sml.xsd` |
+| `x:sheetCalcPr` | `CT_SheetCalcPr` | `sml.xsd` |
+| `x:sheetData` | `CT_ExternalSheetData`<br>`CT_SheetData` | `sml.xsd` |
+| `x:sheetDataSet` | `CT_ExternalSheetDataSet` | `sml.xsd` |
+| `x:sheetFormatPr` | `CT_SheetFormatPr` | `sml.xsd` |
+| `x:sheetId` | `CT_SheetId` | `sml.xsd` |
+| `x:sheetIdMap` | `CT_SheetIdMap` | `sml.xsd` |
+| `x:sheetName` | `CT_ExternalSheetName` | `sml.xsd` |
+| `x:sheetNames` | `CT_ExternalSheetNames` | `sml.xsd` |
+| `x:sheetPr` | `CT_ChartsheetPr`<br>`CT_SheetPr` | `sml.xsd` |
+| `x:sheetProtection` | `CT_ChartsheetProtection`<br>`CT_SheetProtection` | `sml.xsd` |
+| `x:sheets` | `CT_Sheets` | `sml.xsd` |
+| `x:sheetView` | `CT_ChartsheetView`<br>`CT_SheetView` | `sml.xsd` |
+| `x:sheetViews` | `CT_ChartsheetViews`<br>`CT_SheetViews` | `sml.xsd` |
+| `x:si` | `CT_Rst` | `sml.xsd` |
+| `x:singleXmlCell` | `CT_SingleXmlCell` | `sml.xsd` |
+| `x:singleXmlCells` | `CT_SingleXmlCells` | `sml.xsd` |
+| `x:smartTagPr` | `CT_SmartTagPr` | `sml.xsd` |
+| `x:smartTags` | `CT_SmartTags` | `sml.xsd` |
+| `x:smartTagType` | `CT_SmartTagType` | `sml.xsd` |
+| `x:smartTagTypes` | `CT_SmartTagTypes` | `sml.xsd` |
+| `x:sortByTuple` | `CT_Tuples` | `sml.xsd` |
+| `x:sortCondition` | `CT_SortCondition` | `sml.xsd` |
+| `x:sortState` | `CT_SortState` | `sml.xsd` |
+| `x:sst` | `CT_Sst` | `sml.xsd` |
+| `x:start` | `CT_BorderPr` | `sml.xsd` |
+| `x:stop` | `CT_GradientStop` | `sml.xsd` |
+| `x:stp` | `s:ST_Xstring` | `sml.xsd` |
+| `x:strike` | `CT_BooleanProperty` | `sml.xsd` |
+| `x:styleSheet` | `CT_Stylesheet` | `sml.xsd` |
+| `x:sz` | `CT_FontSize` | `sml.xsd` |
+| `x:t` | `CT_MdxTuple`<br>`s:ST_Xstring` | `sml.xsd` |
+| `x:tabColor` | `CT_Color` | `sml.xsd` |
+| `x:table` | `CT_Table` | `sml.xsd` |
+| `x:tableColumn` | `CT_TableColumn` | `sml.xsd` |
+| `x:tableColumns` | `CT_TableColumns` | `sml.xsd` |
+| `x:tablePart` | `CT_TablePart` | `sml.xsd` |
+| `x:tableParts` | `CT_TableParts` | `sml.xsd` |
+| `x:tables` | `CT_Tables` | `sml.xsd` |
+| `x:tableStyle` | `CT_TableStyle` | `sml.xsd` |
+| `x:tableStyleElement` | `CT_TableStyleElement` | `sml.xsd` |
+| `x:tableStyleInfo` | `CT_TableStyleInfo` | `sml.xsd` |
+| `x:tableStyles` | `CT_TableStyles` | `sml.xsd` |
+| `x:text` | `CT_Rst` | `sml.xsd` |
+| `x:textField` | `CT_TextField` | `sml.xsd` |
+| `x:textFields` | `CT_TextFields` | `sml.xsd` |
+| `x:textPr` | `CT_TextPr` | `sml.xsd` |
+| `x:top` | `CT_BorderPr` | `sml.xsd` |
+| `x:top10` | `CT_Top10` | `sml.xsd` |
+| `x:totalsRowFormula` | `CT_TableFormula` | `sml.xsd` |
+| `x:tp` | `CT_VolTopic` | `sml.xsd` |
+| `x:tpl` | `CT_Tuple` | `sml.xsd` |
+| `x:tpls` | `CT_Tuples` | `sml.xsd` |
+| `x:tr` | `CT_VolTopicRef` | `sml.xsd` |
+| `x:tupleCache` | `CT_TupleCache` | `sml.xsd` |
+| `x:u` | `CT_UnderlineProperty` | `sml.xsd` |
+| `x:undo` | `CT_UndoInfo` | `sml.xsd` |
+| `x:userInfo` | `CT_SharedUser` | `sml.xsd` |
+| `x:users` | `CT_Users` | `sml.xsd` |
+| `x:v` | `s:ST_Xstring` | `sml.xsd` |
+| `x:val` | `s:ST_Xstring` | `sml.xsd` |
+| `x:value` | `CT_DdeValue` | `sml.xsd` |
+| `x:valueMetadata` | `CT_MetadataBlocks` | `sml.xsd` |
+| `x:values` | `CT_DdeValues` | `sml.xsd` |
+| `x:vertAlign` | `CT_VerticalAlignFontProperty` | `sml.xsd` |
+| `x:vertical` | `CT_BorderPr` | `sml.xsd` |
+| `x:volType` | `CT_VolType` | `sml.xsd` |
+| `x:volTypes` | `CT_VolTypes` | `sml.xsd` |
+| `x:webPr` | `CT_WebPr` | `sml.xsd` |
+| `x:webPublishing` | `CT_WebPublishing` | `sml.xsd` |
+| `x:webPublishItem` | `CT_WebPublishItem` | `sml.xsd` |
+| `x:webPublishItems` | `CT_WebPublishItems` | `sml.xsd` |
+| `x:webPublishObject` | `CT_WebPublishObject` | `sml.xsd` |
+| `x:webPublishObjects` | `CT_WebPublishObjects` | `sml.xsd` |
+| `x:workbook` | `CT_Workbook` | `sml.xsd` |
+| `x:workbookPr` | `CT_WorkbookPr` | `sml.xsd` |
+| `x:workbookProtection` | `CT_WorkbookProtection` | `sml.xsd` |
+| `x:workbookView` | `CT_BookView` | `sml.xsd` |
+| `x:worksheet` | `CT_Worksheet` | `sml.xsd` |
+| `x:worksheetSource` | `CT_WorksheetSource` | `sml.xsd` |
+| `x:x` | `CT_Index`<br>`CT_X` | `sml.xsd` |
+| `x:xf` | `CT_Xf` | `sml.xsd` |
+| `x:xmlCellPr` | `CT_XmlCellPr` | `sml.xsd` |
+| `x:xmlColumnPr` | `CT_XmlColumnPr` | `sml.xsd` |
+| `x:xmlPr` | `CT_XmlPr` | `sml.xsd` |
+<!-- END GENERATED SCHEMA INVENTORY -->

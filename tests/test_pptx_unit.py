@@ -14,10 +14,12 @@ from domoxml.core.ir.model import (
     CharBullet,
     Hyperlink,
     LineSpacing,
+    PictureFill,
     Rgba,
     ShapeNode,
     SlideIR,
     SolidFill,
+    SrcRect,
     TextBody,
     TextParagraph,
     TextRun,
@@ -112,6 +114,47 @@ def test_build_pptx_opens_and_keeps_text_editable() -> None:
         if shape.has_text_frame:
             texts.append(shape.text_frame.text)  # pyright: ignore  (python-pptx stubs)
     assert "Driftwood" in texts  # real editable text run, not a rasterised image
+
+
+def test_pure_picture_fill_emits_native_picture_with_crop() -> None:
+    slide = SlideIR(
+        width=12_192_000,
+        height=6_858_000,
+        shapes=(
+            ShapeNode(
+                box=Box(x=100, y=200, width=300, height=400),
+                fill=PictureFill(data=b"png", crop=SrcRect(left=1 / 3, right=1 / 3)),
+            ),
+        ),
+    )
+
+    xml = _slide_xml(build_pptx([slide], faces=[]))
+
+    assert "<p:pic>" in xml
+    assert "<p:blipFill>" in xml
+    assert '<a:srcRect l="33333" r="33333"/>' in xml
+
+
+def test_repeated_bitmap_reuses_one_media_relationship() -> None:
+    picture = PictureFill(data=b"same-png")
+    slide = SlideIR(
+        width=12_192_000,
+        height=6_858_000,
+        shapes=(
+            ShapeNode(box=Box(x=0, y=0, width=100, height=100), fill=picture),
+            ShapeNode(box=Box(x=100, y=0, width=100, height=100), fill=picture),
+        ),
+    )
+
+    pptx = build_pptx([slide], faces=[])
+    xml = _slide_xml(pptx)
+    rels = _slide_rels(pptx)
+    with zipfile.ZipFile(io.BytesIO(pptx)) as archive:
+        media = [name for name in archive.namelist() if name.startswith("ppt/media/")]
+
+    assert xml.count('r:embed="rId2"') == 2
+    assert rels.count("/relationships/image") == 1
+    assert media == ["ppt/media/image1.png"]
 
 
 def test_build_pptx_requires_a_slide() -> None:

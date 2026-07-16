@@ -42,6 +42,15 @@ def test_aligned_candidate_artifact_uses_reference_dimensions() -> None:
     assert aligned.size == (100, 80)
 
 
+def test_aligned_candidate_preserves_bytes_when_canvas_matches() -> None:
+    reference = _png((255, 255, 255), (100, 80))
+    buffer = io.BytesIO()
+    Image.new("RGB", (100, 80), (10, 20, 30)).save(buffer, format="PNG", dpi=(96, 96))
+    candidate = buffer.getvalue()
+
+    assert align_candidate_png(reference, candidate) == candidate
+
+
 def test_half_different_scores_in_between() -> None:
     black = Image.new("RGB", (64, 64), (0, 0, 0))
     half = Image.new("RGB", (64, 64), (0, 0, 0))

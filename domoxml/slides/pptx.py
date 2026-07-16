@@ -5,7 +5,7 @@ from __future__ import annotations
 import warnings
 from xml.sax.saxutils import escape
 
-from domoxml.core.drawingml import line_xml, shape_xml, table_xml
+from domoxml.core.drawingml import can_emit_picture, line_xml, picture_xml, shape_xml, table_xml
 from domoxml.core.fonts import FontFace, load_faces
 from domoxml.core.ir.model import (
     Connector,
@@ -209,6 +209,22 @@ def _slide(
     has_svg = False
     media_index = media_start
     next_rid = 2  # rId1 is the layout
+    media_rids: dict[tuple[str, bytes], str] = {}
+
+    def register_media(data: bytes, ext: str) -> str:
+        nonlocal media_index, next_rid
+        key = (ext, data)
+        existing = media_rids.get(key)
+        if existing is not None:
+            return existing
+        name = f"image{media_index}.{ext}"
+        media_parts[f"ppt/media/{name}"] = data
+        rid = f"rId{next_rid}"
+        image_rels.append((rid, name))
+        media_rids[key] = rid
+        media_index += 1
+        next_rid += 1
+        return rid
 
     # Plain shapes occupy shape IDs starting at 2 (1 is the group sp).
     # Table nodes follow shapes; each gets a unique incrementing shape_id.
@@ -226,32 +242,15 @@ def _slide(
     bg_blip_rid: str | None = None
     if slide.background is not None and isinstance(slide.background.fill, PictureFill):
         pic = slide.background.fill
-        name = f"image{media_index}.{pic.ext}"
-        media_parts[f"ppt/media/{name}"] = pic.data
-        bg_blip_rid = f"rId{next_rid}"
-        image_rels.append((bg_blip_rid, name))
-        media_index += 1
-        next_rid += 1
+        bg_blip_rid = register_media(pic.data, pic.ext)
 
     for position, node in enumerate(slide.shapes):
         if isinstance(node.fill, PictureFill):
-            name = f"image{media_index}.{node.fill.ext}"
-            media_parts[f"ppt/media/{name}"] = node.fill.data
-            rid = f"rId{next_rid}"
-            image_rels.append((rid, name))
-            blip_rids[position] = rid
-            media_index += 1
-            next_rid += 1
+            blip_rids[position] = register_media(node.fill.data, node.fill.ext)
             # SVG source paired with the PNG: a second media part + rel for the svgBlip ext.
             if node.fill.svg_data is not None:
-                svg_name = f"image{media_index}.svg"
-                media_parts[f"ppt/media/{svg_name}"] = node.fill.svg_data
-                svg_rid = f"rId{next_rid}"
-                image_rels.append((svg_rid, svg_name))
-                svg_rids[position] = svg_rid
+                svg_rids[position] = register_media(node.fill.svg_data, "svg")
                 has_svg = True
-                media_index += 1
-                next_rid += 1
 
     # One slide relationship per run hyperlink, in document order. Identity-keyed so two runs
     # with structurally-equal links still each get their own rel (matching the IR objects).
@@ -276,16 +275,29 @@ def _slide(
     def _hyperlink_rid(link: Hyperlink) -> str | None:
         return rid_by_link.get(id(link))
 
-    shapes = "".join(
-        shape_xml(
-            node,
-            shape_id=position + 2,
-            blip_rid=blip_rids.get(position),
-            svg_rid=svg_rids.get(position),
-            hyperlink_rid=_hyperlink_rid,
-        )
-        for position, node in enumerate(slide.shapes)
-    )
+    shape_parts: list[str] = []
+    for position, node in enumerate(slide.shapes):
+        blip_rid = blip_rids.get(position)
+        if can_emit_picture(node) and blip_rid is not None:
+            shape_parts.append(
+                picture_xml(
+                    node,
+                    shape_id=position + 2,
+                    blip_rid=blip_rid,
+                    svg_rid=svg_rids.get(position),
+                )
+            )
+        else:
+            shape_parts.append(
+                shape_xml(
+                    node,
+                    shape_id=position + 2,
+                    blip_rid=blip_rid,
+                    svg_rid=svg_rids.get(position),
+                    hyperlink_rid=_hyperlink_rid,
+                )
+            )
+    shapes = "".join(shape_parts)
     n_shapes = len(slide.shapes)
     connector_nodes = [node for node in slide.nodes if isinstance(node, Connector)]
     connectors = "".join(

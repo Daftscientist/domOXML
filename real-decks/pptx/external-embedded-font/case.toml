@@ -25,7 +25,12 @@ warning_contains = [
 ]
 preserved_count = 0
 html_contains = ["Be Vietnam Pro", "background-position"]
-roundtrip_xml_contains = ["Embedded font from the PPTX"]
+roundtrip_xml_contains = [
+  "Embedded font from the PPTX",
+  '<a:srcRect r="66667"/>',
+  '<a:srcRect l="33333" r="33333"/>',
+  '<a:srcRect l="66667"/>',
+]
 
 [[visual]]
 slide = 0

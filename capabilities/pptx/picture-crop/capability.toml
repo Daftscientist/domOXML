@@ -8,8 +8,8 @@ max_raster = 0
 
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"
-# domOXML emits images as a shape blip fill (p:sp/a:blipFill), not p:pic.
-xpath = ".//a:blipFill"
+# Pure bitmap nodes use interoperable native pictures (p:pic/p:blipFill).
+xpath = ".//p:pic/p:blipFill"
 min_count = 1
 
 [[expected.xml]]

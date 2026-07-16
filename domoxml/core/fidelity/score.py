@@ -42,6 +42,9 @@ def _aligned_images(reference: bytes, candidate: bytes) -> tuple[Image.Image, Im
 
 def align_candidate_png(reference: bytes, candidate: bytes) -> bytes:
     """Return the candidate PNG resized to the reference canvas for review artifacts."""
+    with Image.open(io.BytesIO(reference)) as ref, Image.open(io.BytesIO(candidate)) as cand:
+        if cand.size == ref.size:
+            return candidate
     _, cand = _aligned_images(reference, candidate)
     buffer = io.BytesIO()
     cand.save(buffer, format="PNG")

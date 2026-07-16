@@ -598,6 +598,7 @@ def _slide(
                     fill_for=lambda properties: _fill(properties, package, slide_part, colors),
                     line_for=lambda line: _line_element(line, colors),
                     text_run_for=lambda run: read_text_run(run, colors, hyperlink_for),
+                    theme_colors=colors,
                 )
                 if frame.table is not None:
                     nodes.append(frame.table)

@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import mimetypes
 import sys
 from pathlib import Path
 
@@ -23,8 +21,9 @@ from domoxml.core.fidelity import (
     has_poppler,
     render_pptx_to_pngs,
 )
+from domoxml.core.roundtrip import render_html_roundtrip
 from domoxml.presentation import Presentation, Slide
-from domoxml.types import CustomSize, HtmlPresentation, OutputFormat, RenderResult
+from domoxml.types import HtmlPresentation, OutputFormat, RenderResult
 
 _TRANSIENT_RENDER_ERRORS = (
     "Unable to capture screenshot",
@@ -43,47 +42,8 @@ def _render_forward(fixture: CapabilityFixture) -> RenderResult:
     )
 
 
-def _inline_assets(html: HtmlPresentation) -> HtmlPresentation:
-    """Replace reverse-output asset URLs with data URLs for an in-memory browser round trip."""
-    css = html.css
-    slides: list[str] = [slide.html for slide in html.slides]
-    for asset in html.assets:
-        mime = mimetypes.guess_type(asset.path)[0] or "application/octet-stream"
-        encoded = base64.b64encode(asset.data).decode("ascii")
-        data_url = f"data:{mime};base64,{encoded}"
-        for reference in (f"../{asset.path}", asset.path):
-            css = css.replace(reference, data_url)
-            updated_slides: list[str] = []
-            for source in slides:
-                updated_slides.append(source.replace(reference, data_url))
-            slides = updated_slides
-    return html.model_copy(
-        update={
-            "css": css,
-            "slides": tuple(
-                slide.model_copy(update={"html": source})
-                for slide, source in zip(html.slides, slides, strict=True)
-            ),
-            "assets": (),
-        }
-    )
-
-
 def _render_reverse_html(html: HtmlPresentation) -> RenderResult:
-    html = _inline_assets(html)
-    first = html.slides[0]
-    deck = Presentation(
-        css=html.css,
-        size=CustomSize(width_in=first.width_px / 96, height_in=first.height_px / 96),
-    )
-    for slide in html.slides:
-        deck.add(
-            Slide(
-                html=slide.html,
-                size=CustomSize(width_in=slide.width_px / 96, height_in=slide.height_px / 96),
-            )
-        )
-    return deck.render({OutputFormat.PNG, OutputFormat.PPTX})
+    return render_html_roundtrip(html)
 
 
 def _validate_forward_visual(

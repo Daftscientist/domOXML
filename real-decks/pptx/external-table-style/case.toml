@@ -1,0 +1,33 @@
+id = "external-table-style"
+pptx_file = "source.pptx"
+
+[provenance]
+source_url = "https://github.com/aiden0z/pptx-renderer/blob/68cb570940fb28d5c4628f31d1365016c4483521/docs/example/table-stale-frame/source.pptx"
+source_revision = "68cb570940fb28d5c4628f31d1365016c4483521"
+license = "Apache-2.0"
+sha256 = "507b882433dd7aa7951e9a37e5b1eef657457f2db96412f58109e56553ad54e5"
+
+[package]
+slides = 1
+required_parts = [
+  "ppt/slides/slide1.xml",
+  "ppt/tableStyles.xml",
+  "ppt/theme/theme1.xml",
+]
+
+[reverse]
+min_assets = 0
+max_warnings = 0
+preserved_count = 0
+html_contains = [
+  "<table",
+  "Wide table cell remains visible",
+  "rgba(79,129,189,1)",
+  "rgba(208,216,232,1)",
+]
+roundtrip_xml_contains = ["Wide table cell remains visible", "B1", "A2", "B2"]
+
+[[visual]]
+slide = 0
+min_similarity = 0.99
+min_regional_similarity = 0.965

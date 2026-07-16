@@ -73,6 +73,22 @@ def extract_table(
                 found.extend(descendants_with_tag(child_index, tag))
         return found
 
+    def cell_text(cell: RenderedNode) -> TextBody | None:
+        direct = text_for(cell)
+        if direct is not None:
+            return direct
+        stack = list(reversed(children.get(cell.index, [])))
+        while stack:
+            child_index = stack.pop()
+            child = by_index.get(child_index)
+            if child is None:
+                continue
+            nested = text_for(child)
+            if nested is not None:
+                return nested
+            stack.extend(reversed(children.get(child_index, [])))
+        return None
+
     row_indices = descendants_with_tag(node.index, "tr")
     if not row_indices:
         return None
@@ -96,7 +112,7 @@ def extract_table(
             )
             cells.append(
                 TableCell(
-                    text=text_for(cell_node),
+                    text=cell_text(cell_node),
                     fill=effective_cell_fill(cell_node, row_node),
                     borders=borders,
                     margins=_margins(cell_node.styles),

@@ -9,10 +9,14 @@ on:
       - "domoxml/core/render/**"
       - "domoxml/core/fidelity/**"
       - "domoxml/core/capabilities.py"
+      - "domoxml/core/real_decks.py"
+      - "domoxml/core/roundtrip.py"
       - "capabilities/pptx/**"
       - "fidelity/corpus/**"
+      - "real-decks/pptx/**"
       - "scripts/capability_check.py"
       - "scripts/fidelity_check.py"
+      - "scripts/real_deck_check.py"
       - ".github/workflows/fidelity.yml"
   workflow_dispatch:
 
@@ -54,6 +58,13 @@ jobs:
           uv run python scripts/capability_check.py
           --require-backend
           --out out/capabilities
+      - name: Run representative external PPTX round trips
+        if: always()
+        id: real_decks
+        run: >-
+          uv run python scripts/real_deck_check.py
+          --require-backend
+          --out out/real-decks
       - name: Upload fidelity artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -62,6 +73,7 @@ jobs:
           path: |
             out/fidelity/**
             out/capabilities/**
+            out/real-decks/**
       - name: Build fidelity summary
         if: always()
         id: summary
@@ -69,6 +81,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           FIDELITY_OUTCOME: ${{ steps.fidelity.outcome }}
           CAPABILITY_OUTCOME: ${{ steps.capabilities.outcome }}
+          REAL_DECK_OUTCOME: ${{ steps.real_decks.outcome }}
         run: |
           python - <<'PY'
           import os
@@ -78,6 +91,7 @@ jobs:
           text = report.read_text() if report.exists() else "# Fidelity report\n\nNo report was produced.\n"
           text += f"\n- Fidelity outcome: {os.environ['FIDELITY_OUTCOME']}\n"
           text += f"- Capability outcome: {os.environ['CAPABILITY_OUTCOME']}\n"
+          text += f"- Real-deck outcome: {os.environ['REAL_DECK_OUTCOME']}\n"
           text += f"- Artifacts and logs: {os.environ['RUN_URL']}\n"
           Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(text)
           with Path(os.environ["GITHUB_OUTPUT"]).open("a") as fh:

@@ -16,6 +16,7 @@ from domoxml.slides.graphic_frame import (
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+_DEFAULT_TABLE_STYLE = "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"
 
 
 def _table_frame() -> Element:
@@ -80,6 +81,67 @@ def test_parse_table_delegates_styles_and_builds_grid() -> None:
     assert cell.text.paragraphs[0].runs[0].text == "Value"
     assert len(fills) == 1
     assert [line.tag for line in lines] == [f"{{{_A}}}lnL"]
+
+
+def test_parse_table_uses_grid_when_frame_extent_is_stale() -> None:
+    frame = _table_frame()
+    extent = frame.find(f"{{{_P}}}xfrm/{{{_A}}}ext")
+    assert extent is not None
+    extent.set("cx", "50")
+    extent.set("cy", "40")
+
+    table = parse_table(
+        frame,
+        fill_for=lambda _element: None,
+        line_for=lambda _element: None,
+        text_run_for=lambda _element: TextRun(text="Value", font_family="sans-serif", size_pt=12),
+    )
+
+    assert table is not None
+    assert table.box.width == 300
+    assert table.box.height == 80
+
+
+def test_parse_table_resolves_default_powerpoint_style() -> None:
+    frame = fromstring(
+        f'<p:graphicFrame xmlns:p="{_P}" xmlns:a="{_A}">'
+        '<p:xfrm><a:off x="10" y="20"/><a:ext cx="200" cy="160"/></p:xfrm>'
+        f'<a:graphic><a:graphicData uri="{TABLE_URI}"><a:tbl>'
+        f'<a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>{_DEFAULT_TABLE_STYLE}'
+        "</a:tableStyleId></a:tblPr>"
+        '<a:tblGrid><a:gridCol w="100"/><a:gridCol w="100"/></a:tblGrid>'
+        '<a:tr h="80"><a:tc><a:txBody><a:p><a:r><a:t>Header</a:t></a:r></a:p>'
+        "</a:txBody><a:tcPr/></a:tc></a:tr>"
+        '<a:tr h="80"><a:tc><a:txBody><a:p><a:r><a:t>Body</a:t></a:r></a:p>'
+        "</a:txBody><a:tcPr/></a:tc></a:tr>"
+        "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
+    )
+
+    table = parse_table(
+        frame,
+        fill_for=lambda _element: None,
+        line_for=lambda _element: None,
+        text_run_for=lambda element: TextRun(
+            text=element.findtext(f"{{{_A}}}t", default=""),
+            font_family="sans-serif",
+            size_pt=12,
+        ),
+        theme_colors={"accent1": "4F81BD", "lt1": "FFFFFF"},
+    )
+
+    assert table is not None
+    header, body = (row.cells[0] for row in table.rows)
+    assert isinstance(header.fill, SolidFill)
+    assert header.fill.color.hex == "4F81BD"
+    assert header.text is not None
+    assert header.text.paragraphs[0].runs[0].color.hex == "FFFFFF"
+    assert header.text.paragraphs[0].runs[0].bold is True
+    assert isinstance(body.fill, SolidFill)
+    assert body.fill.color.hex == "D0D8E8"
+    assert header.borders is not None
+    assert header.borders.left is not None
+    assert header.borders.left.color.hex == "FFFFFF"
+    assert header.margins == (91_440, 45_720, 91_440, 45_720)
 
 
 def test_graphic_frame_reader_classifies_non_table_frames() -> None:

@@ -16,13 +16,14 @@ capability fixtures for every supported behavior.
 ## Current Position
 
 Phases 0-3 now have working end-to-end baselines. Phase 4 is active: the library has broad
-forward and reverse primitives, 15 capability fixtures, and a nine-case visual corpus. The
+forward and reverse primitives, 15 capability fixtures, a nine-case authored visual corpus, and
+a four-deck pinned external round-trip corpus. The
 remaining risk is proof depth rather than raw file count:
 
 - the capability runner now executes both paths for six fixtures, but the remaining nine fixtures
   must gain reverse contracts before their behavior is bidirectional;
-- the visual corpus is authored from isolated HTML examples rather than representative external
-  PowerPoint decks;
+- the external corpus now covers tables, crop, embedded-font diagnostics, and exact chart
+  preservation, but still needs representative groups, media, masters, and extension lists;
 - several useful families remain partial in one direction, especially themes, placeholders,
   groups, connectors, curved geometry, strokes, and advanced text behavior;
 - unsupported constructs have preservation models, but external-deck tests must prove there are
@@ -235,6 +236,6 @@ into the MIT library. Do not treat opaque release binaries as implementation sou
 5. [x] Implement `Presentation.from_pptx(...)` for one baseline deck.
 6. [x] Expand relationship, theme, shape, picture, and text readers incrementally.
 7. [x] Make the capability fixture runner execute both declared directions.
-8. [ ] Add representative external PPTX round-trip fixtures and preservation assertions.
+8. [x] Add representative external PPTX round-trip fixtures and preservation assertions.
 9. [ ] Add package/schema validation for generated and re-emitted decks.
 10. [ ] Run external adapters as comparative benchmarks, not runtime dependencies.

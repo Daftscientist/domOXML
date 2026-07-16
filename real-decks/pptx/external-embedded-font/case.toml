@@ -1,0 +1,33 @@
+id = "external-embedded-font"
+pptx_file = "source.pptx"
+
+[provenance]
+source_url = "https://github.com/aiden0z/pptx-renderer/blob/68cb570940fb28d5c4628f31d1365016c4483521/docs/example/embedded-font/source.pptx"
+source_revision = "68cb570940fb28d5c4628f31d1365016c4483521"
+license = "Apache-2.0"
+sha256 = "2b8668b0bc07da26008daf1804b3343413176b9fd42d1f7bfbef01ca4772c3de"
+
+[package]
+slides = 1
+required_parts = [
+  "ppt/slides/slide1.xml",
+  "ppt/fonts/BeVietnamPro-regular.fntdata",
+  "ppt/fonts/BeVietnamPro-bold.fntdata",
+  "ppt/media/image1.png",
+]
+
+[reverse]
+min_assets = 1
+max_warnings = 2
+warning_contains = [
+  "Be Vietnam Pro' (regular): invalid magic bytes",
+  "Be Vietnam Pro' (bold): invalid magic bytes",
+]
+preserved_count = 0
+html_contains = ["Be Vietnam Pro", "background-position"]
+roundtrip_xml_contains = ["Embedded font from the PPTX"]
+
+[[visual]]
+slide = 0
+min_similarity = 0.975
+min_regional_similarity = 0.92

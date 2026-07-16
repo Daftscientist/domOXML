@@ -119,7 +119,7 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Table | `a:tbl` (graphicFrame) | `<table>` | ✅ | ✅ | native rows/cells/merges; col/row spans; cell fill, borders, margins; text bodies |
+| Table | `a:tbl` (graphicFrame) | `<table>` | ✅ | ✅ | native rows/cells/merges; col/row spans; cell fill, borders, margins; text bodies; PowerPoint's default built-in Medium Style 2 Accent 1 GUID and stale frame extents are resolved from theme/grid data |
 | Chart | `c:chartSpace` | `<table data-chart>` / spec | ⛔ | ⛔ | data spec, not pixels |
 | Transitions | `p:transition` (~17) | `data-transition` | ✅ | ✅ | compile-time |
 | Animations | `p:timing` | `@keyframes` / spec | ⛔ | 🗃️ | rev preserved as fragment + warning |
@@ -130,6 +130,10 @@ CSS source = what authoring produces it on the forward path.
 Reverse coverage is validated the same way as forward — by **measured fidelity**
 (`core/fidelity`): `pptx → HTML → re-render → compare to the original pptx render`. Each
 feature should land with a round-trip fixture so the score is tracked, not eyeballed.
+
+Representative external decks additionally run `source PPTX → renderer` against
+`source PPTX → HTML → PPTX → the same renderer`, with pinned provenance, OPC relationship
+validation, exact preservation assertions, and explicit reasons for any ungated visual slides.
 
 HTML/CSS is the public web format, not a claim that CSS can losslessly encode every PowerPoint
 feature. See [`architecture.md`](architecture.md) for the preservation and fallback rules.

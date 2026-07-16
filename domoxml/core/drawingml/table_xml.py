@@ -22,6 +22,7 @@ every cell slot covered by a multi-span origin cell.
 
 from __future__ import annotations
 
+from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.drawingml.shape import (
     _CAP_TO_OOXML,  # pyright: ignore[reportPrivateUsage]
     _DASH_TO_OOXML,  # pyright: ignore[reportPrivateUsage]
@@ -183,7 +184,7 @@ def table_xml(node: TableNode, *, shape_id: int) -> str:
         f"<p:nvGraphicFramePr>"
         f'<p:cNvPr id="{shape_id}" name="Table {shape_id}"/>'
         f'<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr>'
-        f"<p:nvPr/>"
+        f"<p:nvPr>{node_identity_xml(node)}</p:nvPr>"
         f"</p:nvGraphicFramePr>"
     )
 

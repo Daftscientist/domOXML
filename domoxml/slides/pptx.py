@@ -6,6 +6,7 @@ import warnings
 from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml import can_emit_picture, line_xml, picture_xml, shape_xml, table_xml
+from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.fonts import FontFace, load_faces
 from domoxml.core.ir.model import (
     Connector,
@@ -184,7 +185,7 @@ def _connector_xml(conn: Connector, *, shape_id: int) -> str:
         f"<p:nvCxnSpPr>"
         f'<p:cNvPr id="{shape_id}" name="Connector {shape_id}"/>'
         f"<p:cNvCxnSpPr/>"
-        f"<p:nvPr/>"
+        f"<p:nvPr>{node_identity_xml(conn)}</p:nvPr>"
         f"</p:nvCxnSpPr>"
         f"<p:spPr>"
         f'<a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'

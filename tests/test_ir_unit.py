@@ -112,6 +112,107 @@ def test_extract_builds_table_node_from_html_table() -> None:
     assert ir.shapes == ()
 
 
+def test_extract_recovers_normalized_html_identity_and_provenance() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=10,
+        y=20,
+        width=200,
+        height=80,
+        index=1,
+        styles={
+            "backgroundColor": "rgb(10, 20, 30)",
+            "domoxmlNodeId": "hero-title",
+            "domoxmlSourceFormat": "pptx",
+            "domoxmlSourceId": "7",
+            "domoxmlSourcePart": "ppt/slides/slide1.xml",
+        },
+    )
+
+    [shape] = extract_slide(
+        RenderedSlide(png=b"x", width=1280, height=720, nodes=(node,))
+    ).slide.contents
+
+    assert shape.node_id == "hero-title"
+    assert shape.provenance is not None
+    assert shape.provenance.source_format == "pptx"
+    assert shape.provenance.source_id == "7"
+    assert shape.provenance.source_part == "ppt/slides/slide1.xml"
+
+
+def test_extract_decomposed_borders_keep_source_owner_and_roles() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=10,
+        y=20,
+        width=200,
+        height=80,
+        index=3,
+        styles={
+            "backgroundColor": "rgb(255, 255, 255)",
+            "borderTopWidth": "2px",
+            "borderTopStyle": "solid",
+            "borderTopColor": "rgb(255, 0, 0)",
+            "borderRightWidth": "3px",
+            "borderRightStyle": "solid",
+            "borderRightColor": "rgb(0, 255, 0)",
+            "borderBottomWidth": "4px",
+            "borderBottomStyle": "solid",
+            "borderBottomColor": "rgb(0, 0, 255)",
+            "borderLeftWidth": "5px",
+            "borderLeftStyle": "solid",
+            "borderLeftColor": "rgb(0, 0, 0)",
+        },
+    )
+
+    contents = extract_slide(
+        RenderedSlide(png=b"x", width=1280, height=720, nodes=(node,))
+    ).slide.contents
+
+    layers = [item for item in contents if item.provenance and item.provenance.role]
+    assert {item.provenance.role for item in layers if item.provenance is not None} == {
+        "border-top",
+        "border-right",
+        "border-bottom",
+        "border-left",
+    }
+    assert all(
+        item.provenance is not None and item.provenance.owner_node_id == "html-auto-3"
+        for item in layers
+    )
+    assert contents[-1].node_id == "html-auto-3"
+
+
+def test_extract_reserves_explicit_ids_before_allocating_automatic_ids() -> None:
+    automatic = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=100,
+        height=50,
+        index=9,
+        styles={"backgroundColor": "rgb(1, 2, 3)"},
+    )
+    explicit = RenderedNode(
+        tag="div",
+        x=120,
+        y=0,
+        width=100,
+        height=50,
+        index=10,
+        styles={
+            "backgroundColor": "rgb(4, 5, 6)",
+            "domoxmlNodeId": "html-auto-9",
+        },
+    )
+
+    contents = extract_slide(
+        RenderedSlide(png=b"x", width=300, height=100, nodes=(automatic, explicit))
+    ).slide.contents
+
+    assert [node.node_id for node in contents] == ["html-auto-9-2", "html-auto-9"]
+
+
 def test_extract_normalizes_logical_text_align() -> None:
     node = RenderedNode(
         tag="p", x=0, y=0, width=10, height=10, text="x", styles={"textAlign": "start"}

@@ -13,6 +13,7 @@ from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_c
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Blur,
+    CanvasNode,
     CharBullet,
     ColorSpec,
     Connector,
@@ -78,6 +79,28 @@ def _number(value: float) -> str:
 
 def _px(value: int) -> str:
     return f"{_number(emu_to_px(value))}px"
+
+
+def _identity_attrs(node: CanvasNode) -> str:
+    """HTML data attributes that carry stable IR identity without affecting rendering."""
+    attrs: list[tuple[str, str]] = []
+    if node.node_id is not None:
+        attrs.append(("data-domoxml-node-id", node.node_id))
+    provenance = node.provenance
+    if provenance is not None:
+        attrs.extend(
+            (
+                ("data-domoxml-source-format", provenance.source_format),
+                ("data-domoxml-source-id", provenance.source_id),
+            )
+        )
+        if provenance.source_part is not None:
+            attrs.append(("data-domoxml-source-part", provenance.source_part))
+        if provenance.owner_node_id is not None:
+            attrs.append(("data-domoxml-owner-node-id", provenance.owner_node_id))
+        if provenance.role is not None:
+            attrs.append(("data-domoxml-layer-role", provenance.role))
+    return "".join(f' {name}="{escape(value, quote=True)}"' for name, value in attrs)
 
 
 def _rgba(color: Rgba, *, opacity: float = 1.0) -> str:
@@ -577,6 +600,18 @@ def _group_html(
             remapped_child = child.model_copy(
                 update={"box": _Box(x=mapped_x, y=mapped_y, width=mapped_w, height=mapped_h)}
             )
+            if (
+                group.node_id is not None
+                and remapped_child.provenance is not None
+                and remapped_child.provenance.owner_node_id is None
+            ):
+                remapped_child = remapped_child.model_copy(
+                    update={
+                        "provenance": remapped_child.provenance.model_copy(
+                            update={"owner_node_id": group.node_id}
+                        )
+                    }
+                )
             parts.append(_node_html(remapped_child, assets, warnings))
     return "".join(parts)
 
@@ -693,7 +728,7 @@ def _table_html(
         rows_html += f'<tr style="height:{_px(row.height_emu)}">{cells_html}</tr>'
 
     return (
-        f'<table style="{escape(table_style, quote=True)}">'
+        f'<table{_identity_attrs(node)} style="{escape(table_style, quote=True)}">'
         f"{colgroup}"
         f"<tbody>{rows_html}</tbody>"
         f"</table>"
@@ -737,7 +772,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                     f' stroke-width="{stroke_w_px}"'
                 )
             inner = (
-                f'<svg xmlns="http://www.w3.org/2000/svg"'
+                f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}'
                 f' viewBox="0 0 {vb_w} {vb_h}"'
                 f' style="{escape(pos_style, quote=True)}">'
                 f'<path d="{escape(d, quote=True)}" {fill_attr}{stroke_attrs}/>'
@@ -759,7 +794,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
             raster_attr = f' data-domoxml-raster="{escape(node.fill.raster_role, quote=True)}"'
         style = escape(combined_style, quote=True)
         inner = (
-            f'<div class="domoxml-shape" style="{style}"'
+            f'<div class="domoxml-shape"{_identity_attrs(node)} style="{style}"'
             f"{autofit_attr}{text_body_attr}{raster_attr}>"
             f"{_text_html(node.text, warnings)}</div>"
         )
@@ -789,7 +824,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
             left = _px(node.box.x)
             top = _px(node.box.y)
             return (
-                f'<div class="domoxml-shape" '
+                f'<div class="domoxml-shape"{_identity_attrs(node)} '
                 f'style="left:{left};top:{top};width:{w};height:{h};'
                 f'{reflect_style}">'
                 f"{_text_html(node.text, warnings)}</div>"
@@ -898,7 +933,7 @@ def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:
         shape_el = f'<path d="{escape(d, quote=True)}" {stroke_attrs} fill="none"/>'
 
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg"'
+        f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}'
         f' style="{escape(pos_style, quote=True)}">'
         f"{defs}{shape_el}</svg>"
     )
@@ -934,13 +969,19 @@ def _media_html(
             )
         )
     if node.kind == "audio":
-        return f'<audio controls style="{escape(pos, quote=True)}"{src_attr}></audio>'
+        return (
+            f'<audio controls{_identity_attrs(node)} style="{escape(pos, quote=True)}"'
+            f"{src_attr}></audio>"
+        )
     poster_attr = ""
     if node.poster_fill is not None:
         poster = _asset(node.poster_fill)
         assets.setdefault(poster.path, poster)
         poster_attr = f' poster="{escape(poster.path, quote=True)}"'
-    return f'<video controls style="{escape(pos, quote=True)}"{src_attr}{poster_attr}></video>'
+    return (
+        f'<video controls{_identity_attrs(node)} style="{escape(pos, quote=True)}"'
+        f"{src_attr}{poster_attr}></video>"
+    )
 
 
 def _slide_transition_attrs(transition: SlideTransition | None) -> str:

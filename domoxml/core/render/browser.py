@@ -159,6 +159,7 @@ _SNAPSHOT_JS = """
     }
     const consolidateText = consolidatesText(el);
     if (consolidateText) styles.domoxmlConsolidatedText = 'true';
+    if (el.classList.contains('domoxml-slide')) styles.domoxmlSlideRoot = 'true';
     // For <li> elements record the list nesting depth and list type.
     if (tag === 'li') {
       const ctx = listContext(el);
@@ -186,6 +187,21 @@ _SNAPSHOT_JS = """
       if (trDur) styles.domoxmlTransitionDuration = trDur;
       if (trDir) styles.domoxmlTransitionDirection = trDir;
     }
+    // Stable Canvas IR identity/provenance emitted by normalized HTML. Keep it separate from
+    // computed CSS so a PPTX -> HTML -> PPTX cycle can recover source ownership exactly.
+    const metadata = {
+      domoxmlNodeId: 'data-domoxml-node-id',
+      domoxmlSourceFormat: 'data-domoxml-source-format',
+      domoxmlSourceId: 'data-domoxml-source-id',
+      domoxmlSourcePart: 'data-domoxml-source-part',
+      domoxmlOwnerNodeId: 'data-domoxml-owner-node-id',
+      domoxmlLayerRole: 'data-domoxml-layer-role',
+    };
+    for (const [key, attribute] of Object.entries(metadata)) {
+      const value = el.getAttribute(attribute);
+      if (value) styles[key] = value;
+    }
+    if (el.id) styles.domoxmlElementId = el.id;
     out.push({
       tag,
       x: r.x, y: r.y, width: r.width, height: r.height,

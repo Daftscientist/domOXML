@@ -36,6 +36,7 @@ from domoxml.core.ir.model import (
     SlideIR,
     SoftEdge,
     SolidFill,
+    SourceProvenance,
     SrcRect,
     TableCell,
     TableNode,
@@ -329,12 +330,12 @@ def test_slide_carries_extended_nodes_alongside_shapes() -> None:
     shape_after = ShapeNode(box=_box())
     table = TableNode(box=_box(), col_widths_emu=(100,), rows=())
     slide = SlideIR(width=100, height=100, shapes=(shape,), nodes=(table,))
-    assert slide.contents == (shape, table)
-    assert slide.shapes == (shape,)
-    assert slide.nodes == (table,)
+    assert [node.node_id for node in slide.contents] == ["node-1", "node-2"]
+    assert slide.shapes == (slide.contents[0],)
+    assert slide.nodes == (slide.contents[1],)
     ordered = SlideIR(width=100, height=100, contents=(shape, table, shape_after))
-    assert ordered.shapes == (shape, shape_after)
-    assert ordered.nodes == (table,)
+    assert ordered.shapes == (ordered.contents[0], ordered.contents[2])
+    assert ordered.nodes == (ordered.contents[1],)
     assert ordered.model_dump().keys() == {
         "width",
         "height",
@@ -349,10 +350,44 @@ def test_slide_carries_extended_nodes_alongside_shapes() -> None:
         "shapes": [shape.model_dump()],
         "nodes": [table.model_dump()],
     }
-    assert SlideIR.model_validate(legacy_data).contents == (shape, table)
+    assert [node.node_id for node in SlideIR.model_validate(legacy_data).contents] == [
+        "node-1",
+        "node-2",
+    ]
     with pytest.raises(ValueError, match="contents or legacy"):
         SlideIR(width=100, height=100, contents=(shape,), shapes=(shape,))
     assert SlideIR(width=100, height=100, shapes=()).nodes == ()
+
+
+def test_slide_preserves_explicit_ids_and_assigns_nested_group_paths() -> None:
+    child = ShapeNode(box=_box())
+    group = GroupNode(box=_box(), child_box=_box(), children=(child,))
+    explicit = ShapeNode(
+        node_id="hero",
+        provenance=SourceProvenance(source_format="html", source_id="hero-element"),
+        box=_box(),
+    )
+
+    slide = SlideIR(width=100, height=100, contents=(explicit, group))
+
+    assert slide.contents[0].node_id == "hero"
+    adopted_group = slide.contents[1]
+    assert isinstance(adopted_group, GroupNode)
+    assert adopted_group.node_id == "node-2"
+    assert adopted_group.children[0].node_id == "node-2.1"
+    assert SlideIR.model_validate(slide.model_dump()) == slide
+
+
+def test_slide_rejects_duplicate_node_ids_including_group_children() -> None:
+    duplicate = ShapeNode(node_id="same", box=_box())
+    group = GroupNode(
+        node_id="group",
+        box=_box(),
+        child_box=_box(),
+        children=(duplicate,),
+    )
+    with pytest.raises(ValueError, match="duplicate canvas node_id"):
+        SlideIR(width=100, height=100, contents=(duplicate, group))
 
 
 def test_models_are_frozen() -> None:

@@ -1,0 +1,34 @@
+id = "node-identity"
+direction = "both"
+html_file = "slide.html"
+
+[expected]
+min_representation = { native = 2 }
+max_representation = { approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//dx:node[@id='hero-card' and @sourceFormat='html' and @sourceId='hero-source']"
+min_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//dx:node[@id='detail-card' and @ownerId='hero-card' and @role='detail']"
+min_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.98
+source_to_pptx_min_regional_similarity = 0.95
+source_to_pptx_min_structural_similarity = 0.95
+pptx_to_html_min_similarity = 0.98
+pptx_to_html_min_regional_similarity = 0.95
+pptx_to_html_min_structural_similarity = 0.95
+
+[reverse]
+html_contains = [
+  'data-domoxml-node-id="hero-card"',
+  'data-domoxml-source-id="hero-source"',
+  'data-domoxml-node-id="detail-card"',
+  'data-domoxml-owner-node-id="hero-card"',
+  'data-domoxml-layer-role="detail"',
+]

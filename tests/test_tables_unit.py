@@ -22,6 +22,7 @@ from domoxml.core.ir.model import (
     SideLines,
     SlideIR,
     SolidFill,
+    SourceProvenance,
     TableCell,
     TableNode,
     TableRow,
@@ -257,9 +258,16 @@ def test_build_pptx_table_is_valid_xml() -> None:
 def test_interleaved_shape_table_shape_order_survives_all_canvas_paths() -> None:
     from domoxml.slides.read import read_pptx_result
 
-    before = _text_shape("before-table")
-    table = _simple_table(n_rows=1, n_cols=1)
-    after = _text_shape("after-table")
+    provenance = SourceProvenance(source_format="html", source_id="interleaved")
+    before = _text_shape("before-table").model_copy(
+        update={"node_id": "before", "provenance": provenance}
+    )
+    table = _simple_table(n_rows=1, n_cols=1).model_copy(
+        update={"node_id": "table", "provenance": provenance}
+    )
+    after = _text_shape("after-table").model_copy(
+        update={"node_id": "after", "provenance": provenance}
+    )
     slide = SlideIR(
         width=12_192_000,
         height=6_858_000,
@@ -279,9 +287,11 @@ def test_interleaved_shape_table_shape_order_survives_all_canvas_paths() -> None
         TableNode,
         ShapeNode,
     ]
+    assert [node.node_id for node in reversed_slide.contents] == ["before", "table", "after"]
 
     html = serialize_canvas([reversed_slide]).slides[0].html
     assert html.index("before-table") < html.index("<table") < html.index("after-table")
+    assert 'data-domoxml-node-id="table"' in html
 
 
 # --------------------------------------------------------------------------- reverse (XML→IR)

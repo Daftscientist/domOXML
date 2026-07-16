@@ -16,6 +16,7 @@ from domoxml.core.ir.model import (
     ShapeNode,
     SlideIR,
     SolidFill,
+    SourceProvenance,
     TextBody,
     TextParagraph,
     TextRun,
@@ -74,6 +75,29 @@ def test_serialize_canvas_emits_stable_slide_html_css_and_assets() -> None:
     assert html.assets[0].path.startswith("assets/")
     assert f"url(../{html.assets[0].path})" in slide.html
     assert slide.html.count("opacity:0.5") == 1
+
+
+def test_serialize_canvas_emits_identity_and_provenance_metadata() -> None:
+    node = ShapeNode(
+        node_id="hero-title",
+        provenance=SourceProvenance(
+            source_format="pptx",
+            source_id="7",
+            source_part="ppt/slides/slide1.xml",
+            owner_node_id="hero",
+            role="title",
+        ),
+        box=Box(x=0, y=0, width=100, height=100),
+    )
+
+    html = serialize_canvas([SlideIR(width=100, height=100, contents=(node,))]).slides[0].html
+
+    assert 'data-domoxml-node-id="hero-title"' in html
+    assert 'data-domoxml-source-format="pptx"' in html
+    assert 'data-domoxml-source-id="7"' in html
+    assert 'data-domoxml-source-part="ppt/slides/slide1.xml"' in html
+    assert 'data-domoxml-owner-node-id="hero"' in html
+    assert 'data-domoxml-layer-role="title"' in html
 
 
 def test_render_result_save_writes_every_artifact(tmp_path: Path) -> None:

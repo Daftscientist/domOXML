@@ -18,6 +18,7 @@ from domoxml.core.ir.model import (
     CharBullet,
     GradientFill,
     GradientStop,
+    GroupNode,
     Line,
     PictureFill,
     Rgba,
@@ -25,6 +26,7 @@ from domoxml.core.ir.model import (
     ShapeNode,
     SlideIR,
     SolidFill,
+    SourceProvenance,
     TextBody,
     TextParagraph,
     TextRun,
@@ -32,7 +34,7 @@ from domoxml.core.ir.model import (
 from domoxml.core.opc import OpcPackage, write_package
 from domoxml.slides import build_pptx, read_pptx
 from domoxml.slides.appearance_read import rgba
-from domoxml.slides.read import _slide_colors
+from domoxml.slides.read import _slide_colors, _with_pptx_identity
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -122,6 +124,73 @@ def test_exposes_generated_pptx_as_html() -> None:
     assert "Coffee " in html.slides[0].html and "calm" in html.slides[0].html
     assert len(html.assets) == 1
     assert Presentation.from_pptx(pptx) == html
+
+
+def test_node_identity_and_provenance_round_trip_through_private_extension() -> None:
+    node = ShapeNode(
+        node_id="hero-title",
+        provenance=SourceProvenance(
+            source_format="html",
+            source_id="title",
+            owner_node_id="hero",
+            role="title",
+        ),
+        box=Box(x=10, y=20, width=300, height=100),
+        fill=SolidFill(color=Rgba(r=10, g=20, b=30)),
+    )
+    pptx = build_pptx([SlideIR(width=1_000, height=1_000, contents=(node,))], faces=[])
+
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+    assert 'dx:node xmlns:dx="urn:domoxml:canvas-ir:1" id="hero-title"' in slide_xml
+    [recovered] = read_pptx(pptx)[0].contents
+
+    assert recovered.node_id == "hero-title"
+    assert recovered.provenance == node.provenance
+
+
+def test_third_party_shape_uses_cnvpr_id_as_pptx_provenance() -> None:
+    pptx = build_pptx([_sample_ir()], faces=[])
+    # Remove domOXML's extension to exercise an ordinary producer's cNvPr fallback.
+    package = OpcPackage.from_bytes(pptx)
+    root = ElementTree.fromstring(package.read("ppt/slides/slide1.xml"))
+    for nv_pr in root.findall(".//p:nvPr", {"p": _P}):
+        ext_lst = nv_pr.find("p:extLst", {"p": _P})
+        if ext_lst is not None:
+            nv_pr.remove(ext_lst)
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    parts["ppt/slides/slide1.xml"] = ElementTree.tostring(root)
+    [shape] = read_pptx(write_package(parts))[0].contents[:1]
+
+    assert shape.node_id == "pptx-2"
+    assert shape.provenance == SourceProvenance(
+        source_format="pptx",
+        source_id="2",
+        source_part="ppt/slides/slide1.xml",
+    )
+
+
+def test_group_identity_does_not_fall_through_to_child_metadata() -> None:
+    group_element = ElementTree.fromstring(
+        f'<p:grpSp xmlns:p="{_P}" xmlns:a="{_A}" xmlns:dx="urn:domoxml:canvas-ir:1">'
+        "<p:nvGrpSpPr><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>"
+        '<p:sp><p:nvSpPr><p:cNvPr id="7" name="child"/><p:cNvSpPr/><p:nvPr><p:extLst>'
+        '<p:ext uri="{A6E4A7B1-9D9C-4E8F-A94B-22CB18A8D72F}">'
+        '<dx:node id="child-id" sourceFormat="html" sourceId="child-source"/>'
+        "</p:ext></p:extLst></p:nvPr></p:nvSpPr></p:sp></p:grpSp>"
+    )
+    group = GroupNode(
+        box=Box(x=0, y=0, width=100, height=100),
+        child_box=Box(x=0, y=0, width=100, height=100),
+    )
+
+    recovered = _with_pptx_identity(group, group_element, "ppt/slides/slide1.xml")
+
+    assert recovered.node_id == "pptx-unknown"
+    assert recovered.provenance == SourceProvenance(
+        source_format="pptx",
+        source_id="unknown",
+        source_part="ppt/slides/slide1.xml",
+    )
 
 
 def test_resolves_theme_system_and_preset_colors() -> None:

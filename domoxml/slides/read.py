@@ -5,13 +5,16 @@ from __future__ import annotations
 import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Literal
 from xml.etree.ElementTree import Element
 
 from defusedxml import ElementTree
 
+from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.ir.model import (
     Box,
+    CanvasNode,
     ClosePath,
     CubicTo,
     CustomGeometry,
@@ -27,6 +30,7 @@ from domoxml.core.ir.model import (
     QuadTo,
     ShapeNode,
     SlideIR,
+    SourceProvenance,
     Transform,
 )
 from domoxml.core.opc import OpcPackage
@@ -72,7 +76,7 @@ from domoxml.types import ConversionWarning, PreservedFragment
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-_NS = {"a": _A, "p": _P, "r": _R}
+_NS = {"a": _A, "p": _P, "r": _R, "dx": IDENTITY_NAMESPACE}
 _RID = f"{{{_R}}}id"
 _LINK = f"{{{_R}}}link"
 _RASTER_MARKER_PREFIX = "domoxml-raster:"
@@ -114,6 +118,26 @@ class PptxReadResult:
 def _int_attr(element: Element, name: str, default: int = 0) -> int:
     value = element.get(name)
     return int(value) if value is not None else default
+
+
+def _with_pptx_identity[T: CanvasNode](output: T, element: Element, slide_part: str) -> T:
+    """Recover domOXML metadata or derive identity from PowerPoint's non-visual ID."""
+    non_visual = element.find("./*/p:cNvPr", _NS)
+    source_id = non_visual.get("id", "unknown") if non_visual is not None else "unknown"
+    metadata = element.find("./*/p:nvPr/p:extLst/p:ext/dx:node", _NS)
+    node_id = metadata.get("id") if metadata is not None else None
+    if not node_id:
+        node_id = f"pptx-{source_id}"
+    source_format_raw = metadata.get("sourceFormat") if metadata is not None else None
+    source_format: Literal["html", "pptx"] = "html" if source_format_raw == "html" else "pptx"
+    provenance = SourceProvenance(
+        source_format=source_format,
+        source_id=(metadata.get("sourceId") if metadata is not None else None) or source_id,
+        source_part=metadata.get("sourcePart") if metadata is not None else slide_part,
+        owner_node_id=metadata.get("ownerId") if metadata is not None else None,
+        role=metadata.get("role") if metadata is not None else None,
+    )
+    return output.model_copy(update={"node_id": node_id, "provenance": provenance})
 
 
 def _related_part_by_type(
@@ -253,22 +277,26 @@ def _shape(
     custgeom_el = properties.find(f"{{{_A}}}custGeom")
     custom_geom = _custGeom(custgeom_el) if custgeom_el is not None else None
     return (
-        ShapeNode(
-            box=box,
-            geom=geom,
-            custom_geom=custom_geom,
-            fill=_fill(properties, package, slide_part, colors),
-            line=_line(properties, colors),
-            effects=shape_effects,
-            corner_radius_emu=corner,
-            transform=_xfrm_transform(xfrm),
-            text=read_text_body(
-                element,
-                colors,
-                hyperlink_for,
-                ph_ctx=ph_ctx,
-                theme_ctx=inherit_ctx.theme_ctx if inherit_ctx is not None else None,
+        _with_pptx_identity(
+            ShapeNode(
+                box=box,
+                geom=geom,
+                custom_geom=custom_geom,
+                fill=_fill(properties, package, slide_part, colors),
+                line=_line(properties, colors),
+                effects=shape_effects,
+                corner_radius_emu=corner,
+                transform=_xfrm_transform(xfrm),
+                text=read_text_body(
+                    element,
+                    colors,
+                    hyperlink_for,
+                    ph_ctx=ph_ctx,
+                    theme_ctx=inherit_ctx.theme_ctx if inherit_ctx is not None else None,
+                ),
             ),
+            element,
+            slide_part,
         ),
         effect_warns,
         effect_preserved,
@@ -295,14 +323,18 @@ def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> Sh
     picture = _picture(fill, package, slide_part, raster_role=_raster_role(element))
     if picture is None:
         return None
-    return ShapeNode(
-        box=Box(
-            x=_int_attr(offset, "x"),
-            y=_int_attr(offset, "y"),
-            width=_int_attr(extent, "cx"),
-            height=_int_attr(extent, "cy"),
+    return _with_pptx_identity(
+        ShapeNode(
+            box=Box(
+                x=_int_attr(offset, "x"),
+                y=_int_attr(offset, "y"),
+                width=_int_attr(extent, "cx"),
+                height=_int_attr(extent, "cy"),
+            ),
+            fill=picture,
         ),
-        fill=picture,
+        element,
+        slide_part,
     )
 
 
@@ -483,11 +515,15 @@ def _group_node(
             all_preserved.append(frag)
 
     return (
-        GroupNode(
-            box=box,
-            child_box=child_box,
-            children=tuple(children),
-            transform=_xfrm_transform(xfrm),
+        _with_pptx_identity(
+            GroupNode(
+                box=box,
+                child_box=child_box,
+                children=tuple(children),
+                transform=_xfrm_transform(xfrm),
+            ),
+            element,
+            slide_part,
         ),
         tuple(all_warns),
         tuple(all_preserved),
@@ -561,7 +597,7 @@ def _slide(
                     lambda fill: _picture(fill, package, slide_part),
                 )
                 if media is not None:
-                    contents.append(media)
+                    contents.append(_with_pptx_identity(media, element, slide_part))
                     continue
                 shape = _picture_shape(element, package, slide_part)
                 if shape is not None:
@@ -573,7 +609,7 @@ def _slide(
             elif kind == "cxnSp":
                 connector = read_connector(element, lambda properties: _line(properties, colors))
                 if connector is not None:
-                    contents.append(connector)
+                    contents.append(_with_pptx_identity(connector, element, slide_part))
                     continue
                 reason = "preserved connector that the reverse adapter could not map"
             elif kind == "grpSp":
@@ -601,7 +637,7 @@ def _slide(
                     default_font_family=inherit_ctx.theme_ctx.minor_latin,
                 )
                 if frame.table is not None:
-                    contents.append(frame.table)
+                    contents.append(_with_pptx_identity(frame.table, element, slide_part))
                     continue
                 reason = frame.reason or "preserved unsupported graphicFrame"
             elif kind == "oleObj":

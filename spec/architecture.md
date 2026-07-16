@@ -104,6 +104,12 @@ Every visible source subtree is lowered using the first level that meets the fid
 | Layered | the smallest practical independent raster layers reproduce the source | layers independently movable and replaceable |
 | Element layer | one rasterized source subtree when finer separation is not reliable | element movable as one object |
 
+The runtime coverage record keeps representation separate from editability and preservation. Each
+source visual records its representation level, strongest retained editing model, source-retention
+state, emitted object count, raster area, and a reason for every non-native choice. `Approximated`
+and `Failed` are explicit diagnostic outcomes rather than planner levels: approximation requires a
+reviewed reason, while failure records a visible-output defect and cannot count as editable output.
+
 Approximation is not the default escape hatch. It is allowed only as a deliberate, documented
 portability mode or when the user selects it. If a native PowerPoint gradient, shadow, glow, path,
 or text capability can match the source, implementation should keep improving that native mapping

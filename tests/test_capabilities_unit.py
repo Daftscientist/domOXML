@@ -10,6 +10,7 @@ from domoxml.core.capabilities import (
     load_capabilities,
     validate_capability,
     validate_reverse_capability,
+    validate_roundtrip_capability,
 )
 from domoxml.core.ir.model import (
     Box,
@@ -23,10 +24,11 @@ from domoxml.slides import build_pptx
 from domoxml.types import (
     CoverageItem,
     CoverageReport,
-    Disposition,
+    Editability,
     HtmlPresentation,
     HtmlSlide,
     RenderResult,
+    Representation,
 )
 
 
@@ -70,6 +72,24 @@ def test_every_visual_capability_gate_includes_structural_similarity() -> None:
     )
 
 
+def test_every_forward_fixture_caps_lossy_representations() -> None:
+    root = Path(__file__).resolve().parent.parent / "capabilities" / "pptx"
+    fixtures = load_capabilities(root)
+    lossy = {
+        Representation.APPROXIMATED,
+        Representation.HYBRID,
+        Representation.LAYERED,
+        Representation.ELEMENT_LAYER,
+        Representation.FAILED,
+    }
+
+    assert all(
+        lossy <= fixture.expected.max_representation.keys()
+        for fixture in fixtures
+        if fixture.direction in (CapabilityDirection.FORWARD, CapabilityDirection.BOTH)
+    )
+
+
 def test_validates_native_coverage_and_ooxml_xpath() -> None:
     fixture = _fixture("text-rich-runs")
     body = TextBody(
@@ -98,13 +118,52 @@ def test_validates_native_coverage_and_ooxml_xpath() -> None:
         html=None,
         coverage=CoverageReport(
             items=tuple(
-                CoverageItem(element=f"node-{index}", disposition=Disposition.NATIVE)
+                CoverageItem(
+                    element=f"node-{index}",
+                    representation=Representation.NATIVE,
+                    editability=Editability.SEMANTIC,
+                )
                 for index in range(3)
             )
         ),
         warnings=(),
     )
     assert validate_capability(fixture, result) == ()
+
+    below_source_minimum = result.model_copy(
+        update={"coverage": CoverageReport(items=result.coverage.items[:1])}
+    )
+    assert validate_capability(fixture, below_source_minimum) == (
+        "native count 1 < expected minimum 3",
+    )
+    assert validate_roundtrip_capability(fixture, below_source_minimum) == ()
+
+
+def test_roundtrip_validation_still_enforces_loss_ceiling() -> None:
+    fixture = _fixture("text-rich-runs")
+    fixture = fixture.model_copy(
+        update={"expected": fixture.expected.model_copy(update={"xml": ()})}
+    )
+    result = RenderResult(
+        pptx=None,
+        pngs=(),
+        html=None,
+        coverage=CoverageReport(
+            items=(
+                CoverageItem(
+                    element="approximation",
+                    representation=Representation.APPROXIMATED,
+                    editability=Editability.SEMANTIC,
+                    reason="test approximation",
+                ),
+            )
+        ),
+        warnings=(),
+    )
+
+    assert validate_roundtrip_capability(fixture, result) == (
+        "approximated count 1 > expected maximum 0",
+    )
 
 
 def test_validates_reverse_html_warnings_and_preservation() -> None:

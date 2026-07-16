@@ -83,7 +83,13 @@ from domoxml.core.render.browser import (
     parse_native_transform,
 )
 from domoxml.core.units import px_to_emu, px_to_pt
-from domoxml.types import ConversionWarning, CoverageItem, Disposition
+from domoxml.types import (
+    ConversionWarning,
+    CoverageItem,
+    Editability,
+    Representation,
+    SourceRetention,
+)
 
 _DEFAULT_TEXT_COLOR = Rgba(r=0, g=0, b=0)
 _RASTER_TAGS = {"svg", "canvas", "video", "iframe"}
@@ -783,6 +789,35 @@ def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | No
     return ShapeNode(box=_box(node), fill=PictureFill(data=crop, ext="png"))
 
 
+def _native_coverage(element: str) -> CoverageItem:
+    return CoverageItem(
+        element=element,
+        representation=Representation.NATIVE,
+        editability=Editability.SEMANTIC,
+    )
+
+
+def _element_layer_coverage(element: str, shape: ShapeNode, reason: str) -> CoverageItem:
+    return CoverageItem(
+        element=element,
+        representation=Representation.ELEMENT_LAYER,
+        editability=Editability.LAYERS,
+        raster_area_emu2=shape.box.width * shape.box.height,
+        reason=reason,
+    )
+
+
+def _failed_coverage(element: str, reason: str) -> CoverageItem:
+    return CoverageItem(
+        element=element,
+        representation=Representation.FAILED,
+        editability=Editability.NONE,
+        source_retention=SourceRetention.LOST,
+        output_count=0,
+        reason=f"{reason}; rasterization returned an empty region",
+    )
+
+
 def _children(nodes: tuple[RenderedNode, ...]) -> dict[int, list[int]]:
     adjacency: dict[int, list[int]] = {}
     for node in nodes:
@@ -865,7 +900,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             if table is not None:
                 nodes.append(table)
                 consumed |= _subtree(node.index, children)
-                coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
+                coverage.append(_native_coverage(_label(node)))
                 continue
 
         # --- SVG custom-geometry interception ---
@@ -878,8 +913,30 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             if svg.geometry is not None:
                 fill_node = svg.style_node
                 fill, fill_reason = _resolve_fill(fill_node, rendered)
-                (side_top, side_right, side_bottom, side_left), _warns = _resolve_border_sides(
-                    fill_node.styles
+                if fill_reason is not None:
+                    label = _label(node)
+                    shape = _raster_shape(node, rendered)
+                    consumed |= _subtree(node.index, children)
+                    raster_reason = f"SVG custom geometry fill cannot map natively: {fill_reason}"
+                    if shape is None:
+                        coverage.append(_failed_coverage(label, raster_reason))
+                        warnings.append(
+                            ConversionWarning(
+                                message=f"dropped — empty raster region ({raster_reason})",
+                                element=label,
+                            )
+                        )
+                    else:
+                        shapes.append(shape)
+                        coverage.append(_element_layer_coverage(label, shape, raster_reason))
+                        warnings.append(
+                            ConversionWarning(
+                                message=f"rasterised — {raster_reason}", element=label
+                            )
+                        )
+                    continue
+                (side_top, side_right, side_bottom, side_left), border_warnings = (
+                    _resolve_border_sides(fill_node.styles)
                 )
                 present_sides = [
                     s for s in (side_top, side_right, side_bottom, side_left) if s is not None
@@ -893,6 +950,9 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         line = present_sides[0]
                     else:
                         line = max(present_sides, key=lambda s: s.width_emu)
+                        border_warnings.append(
+                            "non-uniform SVG border approximated by the heaviest outline"
+                        )
 
                 # Build the ShapeNode with custom_geom
                 box = _box(node)
@@ -900,12 +960,30 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     ShapeNode(
                         box=box,
                         custom_geom=svg.geometry,
-                        fill=fill if fill_reason is None else None,
+                        fill=fill,
                         line=line,
                     )
                 )
                 consumed |= _subtree(node.index, children)
-                coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
+                approximation_reasons = list(border_warnings)
+                if approximation_reasons:
+                    approximation_reason = "; ".join(dict.fromkeys(approximation_reasons))
+                    coverage.append(
+                        CoverageItem(
+                            element=_label(node),
+                            representation=Representation.APPROXIMATED,
+                            editability=Editability.SEMANTIC,
+                            reason=approximation_reason,
+                        )
+                    )
+                    warnings.append(
+                        ConversionWarning(
+                            message=approximation_reason,
+                            element=_label(node),
+                        )
+                    )
+                else:
+                    coverage.append(_native_coverage(_label(node)))
                 continue
             else:
                 # SVG custom-geometry failed: fall through to raster
@@ -920,18 +998,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             element=label,
                         )
                     )
-                    coverage.append(
-                        CoverageItem(
-                            element=label, disposition=Disposition.RASTER, reason=raster_reason
-                        )
-                    )
+                    coverage.append(_failed_coverage(label, raster_reason))
                 else:
                     shapes.append(shape)
-                    coverage.append(
-                        CoverageItem(
-                            element=label, disposition=Disposition.RASTER, reason=raster_reason
-                        )
-                    )
+                    coverage.append(_element_layer_coverage(label, shape, raster_reason))
                     warnings.append(
                         ConversionWarning(message=f"rasterised — {raster_reason}", element=label)
                     )
@@ -966,14 +1036,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                 )
                 # Record coverage even when rasterization fails
-                coverage.append(
-                    CoverageItem(element=label, disposition=Disposition.RASTER, reason=reason)
-                )
+                coverage.append(_failed_coverage(label, reason))
                 continue
             shapes.append(shape)
-            coverage.append(
-                CoverageItem(element=label, disposition=Disposition.RASTER, reason=reason)
-            )
+            coverage.append(_element_layer_coverage(label, shape, reason))
             warnings.append(ConversionWarning(message=f"rasterised — {reason}", element=label))
             continue
 
@@ -1021,6 +1087,9 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 # border-radius + non-uniform: native decomposition is not possible —
                 # rounded borders can't be reproduced with flat rects.
                 line = max(present_sides, key=lambda s: s.width_emu)
+                warn_msgs.append(
+                    "non-uniform border with border-radius approximated by one outline"
+                )
                 line_warning = line_warning or ConversionWarning(
                     message="non-uniform border with border-radius approximated by one outline"
                 )
@@ -1031,18 +1100,34 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if connector is not None:
             nodes.append(connector)
             consumed.add(node.index)
-            coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
+            if warn_msgs:
+                coverage.append(
+                    CoverageItem(
+                        element=_label(node),
+                        representation=Representation.APPROXIMATED,
+                        editability=Editability.SEMANTIC,
+                        reason="; ".join(dict.fromkeys(warn_msgs)),
+                    )
+                )
+                if line_warning is not None:
+                    warnings.append(line_warning.model_copy(update={"element": _label(node)}))
+            else:
+                coverage.append(_native_coverage(_label(node)))
             continue
 
         if _is_plain_inline(node, fill, line):
-            coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
+            coverage.append(_native_coverage(_label(node)))
             continue
         text = _text_body(node)
+        approximation_reasons = list(warn_msgs)
         if (
             text is not None
             and text.columns > 1
             and (node.styles.get("columnFill") or "balance") != "auto"
         ):
+            approximation_reasons.append(
+                "balanced CSS columns approximated as sequential PowerPoint columns"
+            )
             warnings.append(
                 ConversionWarning(
                     message=("balanced CSS columns approximated as sequential PowerPoint columns"),
@@ -1081,7 +1166,30 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         )
         if node.styles.get("domoxmlConsolidatedText") == "true":
             consumed |= _subtree(node.index, children) - {node.index}
-        coverage.append(CoverageItem(element=_label(node), disposition=Disposition.NATIVE))
+        if side_rect_shapes and not approximation_reasons:
+            coverage.append(
+                CoverageItem(
+                    element=_label(node),
+                    representation=Representation.DECOMPOSED,
+                    editability=Editability.COMPONENTS,
+                    output_count=1 + len(side_rect_shapes),
+                    reason="non-uniform border decomposed into editable per-side rectangles",
+                )
+            )
+        elif approximation_reasons:
+            coverage.append(
+                CoverageItem(
+                    element=_label(node),
+                    representation=Representation.APPROXIMATED,
+                    editability=(
+                        Editability.COMPONENTS if side_rect_shapes else Editability.SEMANTIC
+                    ),
+                    output_count=1 + len(side_rect_shapes),
+                    reason="; ".join(dict.fromkeys(approximation_reasons)),
+                )
+            )
+        else:
+            coverage.append(_native_coverage(_label(node)))
         if line_warning is not None:
             warnings.append(line_warning.model_copy(update={"element": _label(node)}))
 

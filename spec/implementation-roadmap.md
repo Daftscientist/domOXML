@@ -11,7 +11,7 @@ Snapshot audited on **2026-07-16** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 599 tests are collected.
+- 615 tests are collected.
 - 15 atomic PPTX capability fixtures exist; 12 execute forward and reverse paths.
 - `custom-path`, `effects`, and `svg-vector` remain forward-only fixtures.
 - 9 authored HTML fidelity cases exist.
@@ -29,8 +29,8 @@ The baseline is useful but not yet the product invariant:
 - unknown reverse PPTX visuals are often preserved as detached XML without a rendered layer;
 - detached preserved fragments are not generally re-emitted by `render_html_roundtrip()`;
 - complex/adversarial HTML and real-PPTX corpora remain small;
-- the capability status model still says `partial`, `raster`, `preserved`, or `unsupported` rather
-  than distinguishing decomposed, hybrid, layered, ignored, and verified parity;
+- forward conversion has a typed representation/editability/retention contract, but reverse ingest
+  does not yet emit equivalent per-visual coverage records;
 - package relationship checks exist, but full ECMA/Open XML schema validation is not enforced.
 
 ## Completion Contract
@@ -52,7 +52,8 @@ No capability is labelled bidirectional merely because both code paths return su
 
 ## Milestone 0: Make The Contract Accurate
 
-**Status: documentation complete; runtime contract pending.**
+**Status: documentation complete; forward runtime contract implemented, reverse integration
+pending.**
 
 - Keep architecture, roadmap, and inventories authoritative and nonduplicated.
 - Generate schema appendices from pinned official ECMA-376 XSDs.
@@ -209,7 +210,7 @@ silently lowering the expected score.
 
 ## Immediate Work Queue
 
-1. [ ] Replace `Disposition.UNSUPPORTED` and the coarse coverage report with the representation
+1. [x] Replace `Disposition.UNSUPPORTED` and the coarse coverage report with the representation
    contract.
 2. [ ] Unify `SlideIR.shapes` and `SlideIR.nodes` into one ordered node list with IDs/provenance.
 3. [ ] Attach preserved source payloads and prove real re-emission, starting with the chart case.

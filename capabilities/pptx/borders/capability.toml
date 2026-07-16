@@ -3,14 +3,9 @@ direction = "both"
 html_file = "slide.html"
 
 [expected]
-# 4 logical elements:
-#   1. uniform-border box (1 shape with a:ln)
-#   2. left-accent bar — border-left only → 1 border rect + 1 main shape = 2 shapes
-#   3. dashed box (1 shape with prstDash)
-#   4. dotted box (1 shape with prstDash)
-# Total native shapes ≥ 5 (accent bar decomposes into 1 border rect + 1 body shape)
-min_native = 5
-max_raster = 0
+# The left-accent card is one source visual represented by two editable components.
+min_representation = { native = 4, decomposed = 1 }
+max_representation = { approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
 
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"

@@ -28,6 +28,7 @@ from domoxml.core.ir.model import (
 from domoxml.core.ir.parse import parse_border_side
 from domoxml.core.render.browser import RenderedNode, RenderedSlide
 from domoxml.slides.appearance_read import line as _line
+from domoxml.types import Editability, Representation
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
@@ -152,6 +153,9 @@ def test_per_side_decomposition_exact_geometry_top_bottom() -> None:
     result = extract_slide(_rendered_slide(node))
     # Should have 3 shapes: top rect, bottom rect, main body
     assert len(result.slide.shapes) == 3
+    assert result.coverage[0].representation is Representation.DECOMPOSED
+    assert result.coverage[0].editability is Editability.COMPONENTS
+    assert result.coverage[0].output_count == 3
     top_rect, bottom_rect, _main = result.slide.shapes
 
     top_w_emu = px_to_emu(4)
@@ -188,6 +192,8 @@ def test_per_side_decomposition_left_right_clipped_to_interior() -> None:
     result = extract_slide(_rendered_slide(node))
     # 5 shapes: top, bottom, left, right, main
     assert len(result.slide.shapes) == 5
+    assert result.coverage[0].representation is Representation.DECOMPOSED
+    assert result.coverage[0].output_count == 5
     top_r, bottom_r, left_r, right_r, _main = result.slide.shapes
     _ = top_r, bottom_r  # verified via assert len above
 
@@ -229,6 +235,7 @@ def test_radius_plus_per_side_falls_back_to_heaviest_and_warns() -> None:
     # radius+non-uniform: single shape with line (heaviest) + warning
     assert len(result.slide.shapes) == 1
     assert result.slide.shapes[0].line is not None
+    assert result.coverage[0].representation is Representation.APPROXIMATED
     messages = [w.message for w in result.warnings]
     assert any("approximated" in m for m in messages)
 

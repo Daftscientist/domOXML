@@ -13,6 +13,7 @@ from domoxml.core.capabilities import (
     load_capabilities,
     validate_capability,
     validate_reverse_capability,
+    validate_roundtrip_capability,
 )
 from domoxml.core.fidelity import (
     align_candidate_png,
@@ -195,7 +196,7 @@ def _validate_fixture(
         if fixture.reverse.roundtrip:
             roundtrip = _render_reverse_html(reverse)
             errors.extend(
-                f"roundtrip: {error}" for error in validate_capability(fixture, roundtrip)
+                f"roundtrip: {error}" for error in validate_roundtrip_capability(fixture, roundtrip)
             )
             has_reverse_threshold = (
                 fixture.visual.pptx_to_html_min_similarity is not None

@@ -8,7 +8,7 @@ from domoxml.core.ir import ExtractResult, extract_slide
 from domoxml.core.ir.model import AutoNumberBullet, SlideIR, SolidFill
 from domoxml.core.render import BrowserSession, compose_page
 from domoxml.core.units import pixels
-from domoxml.types import SlideSize, Theme
+from domoxml.types import Representation, SlideSize, Theme
 
 pytestmark = pytest.mark.integration
 
@@ -169,6 +169,10 @@ async def test_balanced_columns_warn_about_powerpoint_sequential_fill() -> None:
     )
 
     assert any("balanced CSS columns" in warning.message for warning in result.warnings)
+    assert any(
+        item.representation is Representation.APPROXIMATED and "balanced CSS columns" in item.reason
+        for item in result.coverage
+    )
 
 
 @pytest.mark.integration

@@ -3,8 +3,8 @@ direction = "forward"
 html_file = "slide.html"
 
 [expected]
-min_native = 2
-max_raster = 1
+min_representation = { native = 2, element_layer = 1 }
+max_representation = { approximated = 0, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
 warnings = ["LibreOffice ignores a:innerShdw"]
 
 # Shadowed card: box-shadow with offset+blur+spread → outerShdw with sx/sy grow attrs

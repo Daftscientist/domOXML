@@ -15,9 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from domoxml.types import (
     ConversionWarning,
     CoverageReport,
-    Disposition,
     HtmlPresentation,
     RenderResult,
+    Representation,
 )
 
 _NS = {
@@ -54,15 +54,34 @@ class XmlExpectation(BaseModel):
     min_count: int = Field(default=1, ge=0)
 
 
+def _empty_representation_counts() -> dict[Representation, int]:
+    return {}
+
+
 class CapabilityExpected(BaseModel):
     """Structural behavior expected from a capability fixture."""
 
     model_config = ConfigDict(frozen=True)
 
-    min_native: int = Field(default=0, ge=0)
-    max_raster: int = Field(default=0, ge=0)
+    min_representation: dict[Representation, int] = Field(
+        default_factory=_empty_representation_counts
+    )
+    max_representation: dict[Representation, int] = Field(
+        default_factory=_empty_representation_counts
+    )
     warnings: tuple[str, ...] = ()
     xml: tuple[XmlExpectation, ...] = ()
+
+    @model_validator(mode="after")
+    def _representation_bounds_are_coherent(self) -> CapabilityExpected:
+        for bounds in (self.min_representation, self.max_representation):
+            if any(count < 0 for count in bounds.values()):
+                raise ValueError("representation counts cannot be negative")
+        for representation, minimum in self.min_representation.items():
+            maximum = self.max_representation.get(representation)
+            if maximum is not None and minimum > maximum:
+                raise ValueError(f"minimum {representation.value} count cannot exceed its maximum")
+        return self
 
 
 class CapabilityVisual(BaseModel):
@@ -141,14 +160,24 @@ def _warning_matches(expected: str, warnings: tuple[ConversionWarning, ...]) -> 
     return any(expected in warning.message for warning in warnings)
 
 
-def _validate_coverage(fixture: CapabilityFixture, report: CoverageReport) -> list[str]:
-    native = sum(item.disposition is Disposition.NATIVE for item in report.items)
-    raster = sum(item.disposition is Disposition.RASTER for item in report.items)
+def _validate_coverage(
+    fixture: CapabilityFixture,
+    report: CoverageReport,
+    *,
+    include_minimums: bool,
+) -> list[str]:
     errors: list[str] = []
-    if native < fixture.expected.min_native:
-        errors.append(f"native count {native} < expected {fixture.expected.min_native}")
-    if raster > fixture.expected.max_raster:
-        errors.append(f"raster count {raster} > expected {fixture.expected.max_raster}")
+    if include_minimums:
+        for representation, expected in fixture.expected.min_representation.items():
+            actual = report.count(representation)
+            if actual < expected:
+                errors.append(
+                    f"{representation.value} count {actual} < expected minimum {expected}"
+                )
+    for representation, expected in fixture.expected.max_representation.items():
+        actual = report.count(representation)
+        if actual > expected:
+            errors.append(f"{representation.value} count {actual} > expected maximum {expected}")
     return errors
 
 
@@ -175,10 +204,19 @@ def _validate_xml(fixture: CapabilityFixture, pptx: bytes | None) -> list[str]:
 
 def validate_capability(fixture: CapabilityFixture, result: RenderResult) -> tuple[str, ...]:
     """Return structural mismatches for one rendered forward capability fixture."""
-    errors = _validate_coverage(fixture, result.coverage)
+    errors = _validate_coverage(fixture, result.coverage, include_minimums=True)
     for expected in fixture.expected.warnings:
         if not _warning_matches(expected, result.warnings):
             errors.append(f"missing warning containing {expected!r}")
+    errors.extend(_validate_xml(fixture, result.pptx))
+    return tuple(errors)
+
+
+def validate_roundtrip_capability(
+    fixture: CapabilityFixture, result: RenderResult
+) -> tuple[str, ...]:
+    """Validate regenerated output without applying source-tree-specific minima."""
+    errors = _validate_coverage(fixture, result.coverage, include_minimums=False)
     errors.extend(_validate_xml(fixture, result.pptx))
     return tuple(errors)
 

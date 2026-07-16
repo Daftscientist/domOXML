@@ -19,8 +19,8 @@ Phases 0-3 now have working end-to-end baselines. Phase 4 is active: the library
 forward and reverse primitives, 15 capability fixtures, and a nine-case visual corpus. The
 remaining risk is proof depth rather than raw file count:
 
-- the capability runner currently executes only the forward path, even for the six fixtures
-  declaring `direction = "both"`;
+- the capability runner now executes both paths for six fixtures, but the remaining nine fixtures
+  must gain reverse contracts before their behavior is bidirectional;
 - the visual corpus is authored from isolated HTML examples rather than representative external
   PowerPoint decks;
 - several useful families remain partial in one direction, especially themes, placeholders,
@@ -61,7 +61,9 @@ count = 3
 
 [visual]
 source_to_pptx_min_similarity = 0.98
+source_to_pptx_min_regional_similarity = 0.96
 pptx_to_html_min_similarity = 0.98
+pptx_to_html_min_regional_similarity = 0.96
 ```
 
 ## Phase 1: Repair The Shared Canvas IR
@@ -153,8 +155,8 @@ families can then progress independently without weakening the common gates.
 
 ### Ordered Delivery Lanes
 
-1. **Make bidirectional claims executable**: extend the capability schema and runner with reverse
-   inputs, IR/HTML assertions, round-trip assertions, and explicit failures for untested `both`.
+1. **Make bidirectional claims executable (complete)**: the capability schema and runner now cover
+   reverse inputs, HTML assertions, round-trip assertions, and global/regional visual gates.
 2. **Establish a real-deck corpus**: sanitized Microsoft-authored and representative external
    decks covering masters, themes, placeholders, groups, media, and unsupported extensions.
 3. **Close core editable asymmetries**: forward theme references/placeholders, group authoring,
@@ -232,7 +234,7 @@ into the MIT library. Do not treat opaque release binaries as implementation sou
 4. [x] Add shared OPC reading primitives.
 5. [x] Implement `Presentation.from_pptx(...)` for one baseline deck.
 6. [x] Expand relationship, theme, shape, picture, and text readers incrementally.
-7. [ ] Make the capability fixture runner execute both declared directions.
+7. [x] Make the capability fixture runner execute both declared directions.
 8. [ ] Add representative external PPTX round-trip fixtures and preservation assertions.
 9. [ ] Add package/schema validation for generated and re-emitted decks.
 10. [ ] Run external adapters as comparative benchmarks, not runtime dependencies.

@@ -1,3 +1,4 @@
 title = "Solid background + centred heading"
 size = "16:9"
 min_similarity = 0.9
+min_regional_similarity = 0.95

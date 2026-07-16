@@ -1,3 +1,4 @@
 title = "Data table with header row and alternating row fill"
 size = "16:9"
 min_similarity = 0.93
+min_regional_similarity = 0.965

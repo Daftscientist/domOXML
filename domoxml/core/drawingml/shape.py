@@ -489,13 +489,19 @@ def _text_body(body: TextBody | None, hyperlink_rid: HyperlinkRid) -> str:
         if body.column_gap_emu > 0:
             col_attrs += f' spcCol="{body.column_gap_emu}"'
 
-    # Autofit element: normAutofit for "normal" or "none", spAutoFit for "shape".
-    autofit_el = "<a:spAutoFit/>" if body.autofit == "shape" else "<a:normAutofit/>"
+    left, top, right, bottom = body.margins
+
+    if body.autofit == "shape":
+        autofit_el = "<a:spAutoFit/>"
+    elif body.autofit == "normal":
+        autofit_el = "<a:normAutofit/>"
+    else:
+        autofit_el = "<a:noAutofit/>"
 
     paragraphs = "".join(_paragraph(paragraph, hyperlink_rid) for paragraph in body.paragraphs)
     return (
-        f'<p:txBody><a:bodyPr wrap="square" anchor="{anchor}" lIns="0" rIns="0" tIns="0"'
-        f' bIns="0"{col_attrs}>'
+        f'<p:txBody><a:bodyPr wrap="square" anchor="{anchor}" lIns="{left}" rIns="{right}"'
+        f' tIns="{top}" bIns="{bottom}"{col_attrs}>'
         f"{autofit_el}</a:bodyPr><a:lstStyle/>{paragraphs}</p:txBody>"
     )
 

@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict
 _PERCEPTIBLE = 24
 _REGION_COLUMNS = 16
 _REGION_ROWS = 9
-_WORST_REGION_FRACTION = 0.25
+_WORST_REGION_FRACTION = 0.10
 _REGION_BLUR_RADIUS_AT_2560 = 3.0
 
 
@@ -23,20 +23,34 @@ class FidelityReport(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     similarity: float  # 1.0 = identical; 1 - (mean absolute diff / 255)
-    regional_similarity: float  # same scale, over the worst quarter of slide regions
+    regional_similarity: float  # same scale, over the worst decile of slide regions
     perceptible_ratio: float  # fraction of pixels that differ visibly (> threshold)
     mean_diff: float  # mean absolute per-channel difference, 0..255
     diff_png: bytes | None = None  # amplified difference heatmap, when requested
 
 
-def compare(reference: bytes, candidate: bytes, *, heatmap: bool = False) -> FidelityReport:
-    """Compare two PNG renders. The candidate is resized to the reference if sizes differ."""
+def _aligned_images(reference: bytes, candidate: bytes) -> tuple[Image.Image, Image.Image]:
+    """Decode two PNGs and resize the candidate to the reference canvas."""
     ref = Image.open(io.BytesIO(reference)).convert("RGB")
     cand = Image.open(io.BytesIO(candidate)).convert("RGB")
     if cand.size != ref.size:
         cand = cand.resize(  # pyright: ignore[reportUnknownMemberType]  (Pillow stubs)
             ref.size, resample=Image.Resampling.LANCZOS
         )
+    return ref, cand
+
+
+def align_candidate_png(reference: bytes, candidate: bytes) -> bytes:
+    """Return the candidate PNG resized to the reference canvas for review artifacts."""
+    _, cand = _aligned_images(reference, candidate)
+    buffer = io.BytesIO()
+    cand.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def compare(reference: bytes, candidate: bytes, *, heatmap: bool = False) -> FidelityReport:
+    """Compare two PNG renders. The candidate is resized to the reference if sizes differ."""
+    ref, cand = _aligned_images(reference, candidate)
 
     diff = ImageChops.difference(ref, cand)
     mean_diff = sum(ImageStat.Stat(diff).mean) / 3

@@ -52,7 +52,7 @@ CSS source = what authoring produces it on the forward path.
 | No fill | `a:noFill` | transparent bg | ✅ | ✅ | |
 | Gradient (linear/radial) | `a:gradFill` | `linear/radial-gradient` | ✅ | ✅ | shape gradients use aspect-corrected angles and subdivided sRGB stops to match PowerPoint's linear-light interpolation |
 | Picture fill | `a:blipFill` | `background-image:url()`, `<img>` | ✅ | ✅ | shape fill and native `p:pic`; **shape blipFill crop done** — `background-size:cover` → `a:srcRect` (fwd), `a:srcRect` → `background-size`/`-position` % (rev). `contain`/explicit sizes stretch (no crop) |
-| Pattern fill | `a:pattFill` | `repeating-linear-gradient` | 🟡 | 🟡 | **Fwd**: 2-colour hard-stop `repeating-linear-gradient` at 0/45/90/135deg → 6 presets (`horz`,`vert`,`ltUpDiag`,`wdUpDiag`,`ltDnDiag`,`dkUpDiag`; thin ≤4px→`lt*`, wide→`wd*`/`dk*`). 3+ colours / soft stops / off-axis fall back to raster. **Rev**: those 6 presets round-trip **exactly** to `repeating-linear-gradient`; all other ~48 ECMA presets → inline 8×8 SVG-tile `background-image` approximation + ConversionWarning |
+| Pattern fill | `a:pattFill` | `repeating-linear-gradient` | 🟡 | 🟡 | **Fwd**: calibrated 2-colour hard-stop stripes at 0/45/90/135deg map to 6 native presets; noncanonical density, 3+ colours, soft stops, and off-axis patterns rasterise. **Rev**: those presets emit canonical CSS; other ECMA presets use an SVG-tile approximation + warning. Hatch density varies between PowerPoint and LibreOffice, so this family is portability-sensitive. |
 | Theme colour ref | `a:schemeClr` | (theme tokens) | ⬜ | ✅ | clrScheme lookup + clrMap remap + lumMod/lumOff/shade/tint/alpha/satMod transforms |
 
 ## Line / stroke
@@ -87,10 +87,10 @@ CSS source = what authoring produces it on the forward path.
 | Run: caps / letter-spacing | `cap`, `spc` | `text-transform`, `letter-spacing` | ✅ | ✅ | raw text + cap attr (not pre-cased); spc in 1/100 pt |
 | Run: hyperlink | `a:hlinkClick` (+ rel) | `<a href>` | ✅ | ✅ | external rel; `#slide-N` → in-deck slide jump |
 | Paragraph align | `a:pPr algn` | `text-align` | ✅ | ✅ | start/end normalised |
-| Vertical anchor | `a:bodyPr anchor` | (block flow) | ✅ | ✅ | fwd: flex column containers — justify-content/align-items center→anchor="ctr", flex-end→"b", default→"t"; rev: anchor t/ctr/b → display:flex;flex-direction:column;justify-content flex-start/center/flex-end (only emitted when not "t") |
+| Vertical anchor + text insets | `a:bodyPr anchor`, `lIns`/`tIns`/`rIns`/`bIns` | block flow + padding | ✅ | ✅ | fwd: flex column containers map vertical alignment to t/ctr/b and container padding to text-body insets; rev restores flex alignment and padding |
 | Line spacing / indent | `a:lnSpc`, `marL` | `line-height`, indent | ✅ | ✅ | percent (spcPct) and points (spcPts); marL/indent in EMU |
 | Bullets / numbering | `a:buChar`/`a:buAutoNum` | `<ul>`/`<ol>` | ✅ | ✅ | char bullets (disc/circle/square) + autonumber (arabic/alpha/roman); nested levels; fwd+rev |
-| Multi-column | `a:bodyPr numCol` | `column-count` | ✅ | ✅ | column-count → numCol; column-gap (px→EMU) → spcCol; rev: numCol/spcCol → column-count + column-gap CSS |
+| Multi-column | `a:bodyPr numCol` | `column-count` + `column-fill:auto` | ✅ | ✅ | PowerPoint fills columns sequentially; fwd maps column-count/column-gap and warns when balanced CSS columns are approximated; rev emits sequential-fill CSS |
 | Autofit | `a:normAutofit`/`a:spAutoFit` | (overflow) | 🟡 | 🟡 | fwd: overflow:hidden + fixed height → normAutofit; white-space:nowrap → spAutoFit; default → normAutofit. rev: spAutoFit/noAutofit carried in IR; autofit != "normal" → data-domoxml-autofit metadata attribute; normAutofit fontScale/lnSpcReduction: not mapped to CSS (no fontScale in IR), emitted as metadata only when present on reverse path |
 | Text warp (WordArt) | `a:prstTxWarp` | — | ⬜ | ⬜ | |
 | **Font embedding** | `p:embeddedFontLst` | `@font-face`/`<link>` | ✅ | ✅ | Fwd: web+system; woff2/OTF→TTF; warns if unembeddable. Rev: ODTTF deobfuscation; OS/2 fsType restricted-license check; `@font-face` + `HtmlAsset` per slot. NB: Office-online PDF service (Graph) 406s on any custom embed — desktop/LibreOffice honour it |
@@ -109,9 +109,9 @@ CSS source = what authoring produces it on the forward path.
 
 | Feature | OOXML | CSS source | Fwd | Rev | Notes |
 |---|---|---|:--:|:--:|---|
-| Rotation | `a:xfrm rot` | `transform:rotate(Ndeg)` | ✅ | ✅ | CSS degrees = OOXML 60000ths-of-degree (both clockwise-positive — no sign flip). **Constraint**: `transform-origin` must be center (the OOXML default); non-center origins fall back to raster+warn. Pure rotation is NOT rasterised. |
-| Horizontal flip | `a:xfrm flipH="1"` | `transform:scaleX(-1)` | ✅ | ✅ | Combined rotate+flip allowed. |
-| Vertical flip | `a:xfrm flipV="1"` | `transform:scaleY(-1)` | ✅ | ✅ | |
+| Rotation | `a:xfrm rot` | `transform:rotate(Ndeg)` | ✅ | ✅ | CSS degrees = OOXML 60000ths-of-degree (both clockwise-positive). Pre-transform layout dimensions are recovered before emitting rotation. Non-center origins rasterise with a warning. |
+| Horizontal flip | `a:xfrm flipH="1"` | `transform:scaleX(-1)` | 🟡 | 🟡 | Native for shapes without text; CSS flips text while PowerPoint keeps shape text readable, so forward text-bearing flips rasterise rather than silently changing semantics. |
+| Vertical flip | `a:xfrm flipV="1"` | `transform:scaleY(-1)` | 🟡 | 🟡 | Same text-portability constraint as horizontal flips. |
 | Complex transforms (shear, perspective) | — | `skewX/Y`, `perspective`, `matrix` with shear | 🖼️ | — | Still rasterised with ConversionWarning; not expressible via `a:xfrm`. |
 | Group shapes | `p:grpSp` | (flat div layout) | ⬜ | ✅ | **Fwd**: children emitted as flat siblings (no `p:grpSp` authored). **Rev**: child coordinates remapped from group-child-space to absolute slide EMUs (`child_slide_x = grp_off_x + (child_x − grp_chOff_x) × scale_x`); flattened to flat positioned divs. Group transform (rot/flip on the group itself) preserved via `Transform` IR node. |
 

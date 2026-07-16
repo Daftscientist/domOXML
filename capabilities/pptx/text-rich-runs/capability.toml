@@ -12,4 +12,14 @@ xpath = ".//a:r"
 min_count = 3
 
 [visual]
-source_to_pptx_min_similarity = 0.90
+source_to_pptx_min_similarity = 0.98
+source_to_pptx_min_regional_similarity = 0.96
+pptx_to_html_min_similarity = 0.99
+pptx_to_html_min_regional_similarity = 0.97
+
+[reverse]
+html_contains = [
+  "Coffee that tastes like",
+  "font-style:italic",
+  "color:rgba(79,70,229,1)",
+]

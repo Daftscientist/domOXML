@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from domoxml.core.fidelity import (
+    align_candidate_png,
     compare,
     has_graph_auth,
     has_libreoffice,
@@ -105,7 +106,9 @@ def _score_backend(
     for index, (source, candidate) in enumerate(zip(source_pngs, candidates, strict=False)):
         report = compare(source, candidate, heatmap=heatmap)
         (out_dir / f"{case.name}-slide{index}-source.png").write_bytes(source)
-        (out_dir / f"{case.name}-slide{index}-{backend}.png").write_bytes(candidate)
+        (out_dir / f"{case.name}-slide{index}-{backend}.png").write_bytes(
+            align_candidate_png(source, candidate)
+        )
         if heatmap and report.diff_png is not None:
             (out_dir / f"{case.name}-slide{index}-{backend}-diff.png").write_bytes(report.diff_png)
         scores.append(

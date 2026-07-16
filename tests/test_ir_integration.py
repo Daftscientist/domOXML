@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from domoxml.core.ir import extract_slide
+from domoxml.core.ir import ExtractResult, extract_slide
 from domoxml.core.ir.model import AutoNumberBullet, SlideIR, SolidFill
 from domoxml.core.render import BrowserSession, compose_page
 from domoxml.core.units import pixels
@@ -19,6 +19,14 @@ async def _render_and_extract(slide_html: str) -> SlideIR:
     async with BrowserSession() as session:
         rendered = await session.render(page, width=width, height=height)
     return extract_slide(rendered).slide
+
+
+async def _render_and_extract_result(slide_html: str) -> ExtractResult:
+    width, height = pixels(SlideSize.WIDE_16_9)
+    page = compose_page(slide_html, css=None, theme=Theme(), width_px=width, height_px=height)
+    async with BrowserSession() as session:
+        rendered = await session.render(page, width=width, height=height)
+    return extract_slide(rendered)
 
 
 async def test_extracts_fill_and_text_from_a_real_render() -> None:
@@ -120,3 +128,62 @@ async def test_simple_flex_text_children_consolidate_into_anchored_parent() -> N
         ["Heading"],
         ["Supporting text"],
     ]
+
+
+@pytest.mark.integration
+async def test_serialized_plain_text_body_preserves_anchor_and_columns() -> None:
+    html = """
+    <div data-domoxml-text-body="true"
+         style="position:absolute;left:20px;top:20px;width:300px;height:180px;
+                display:flex;flex-direction:column;justify-content:center;
+                column-count:2;column-gap:24px;column-fill:auto;
+                padding:16px;background:#4472c4">
+      <div class="domoxml-text"><span>Heading</span></div>
+      <div class="domoxml-text"><span>Supporting text</span></div>
+    </div>
+    """
+
+    ir = await _render_and_extract(html)
+    [text_shape] = [shape for shape in ir.shapes if shape.text is not None]
+
+    assert text_shape.text is not None
+    assert text_shape.text.anchor == "middle"
+    assert text_shape.text.columns == 2
+    assert text_shape.text.column_gap_emu > 0
+    assert text_shape.text.margins == (152_400, 152_400, 152_400, 152_400)
+    assert [[run.text for run in paragraph.runs] for paragraph in text_shape.text.paragraphs] == [
+        ["Heading"],
+        ["Supporting text"],
+    ]
+
+
+@pytest.mark.integration
+async def test_balanced_columns_warn_about_powerpoint_sequential_fill() -> None:
+    result = await _render_and_extract_result(
+        """
+        <div style="position:absolute;left:20px;top:20px;width:300px;height:180px;
+                    column-count:2;column-gap:24px">
+          Balanced browser columns cannot map exactly to native PowerPoint columns.
+        </div>
+        """
+    )
+
+    assert any("balanced CSS columns" in warning.message for warning in result.warnings)
+
+
+@pytest.mark.integration
+async def test_transition_root_background_does_not_emit_body_cover_shape() -> None:
+    result = await _render_and_extract_result(
+        """
+        <div data-transition="fade"
+             style="position:relative;width:1280px;height:720px;
+                    background:linear-gradient(135deg,#667eea,#764ba2)">
+          <div style="position:absolute;left:240px;top:220px;width:800px;height:280px;
+                      background:rgba(255,255,255,.15)">Title</div>
+        </div>
+        """
+    )
+
+    assert result.slide.background is not None
+    assert len(result.slide.shapes) == 1
+    assert all(item.element != "<body>" for item in result.coverage)

@@ -8,7 +8,10 @@ on:
       - "domoxml/slides/**"
       - "domoxml/core/render/**"
       - "domoxml/core/fidelity/**"
+      - "domoxml/core/capabilities.py"
+      - "capabilities/pptx/**"
       - "fidelity/corpus/**"
+      - "scripts/capability_check.py"
       - "scripts/fidelity_check.py"
       - ".github/workflows/fidelity.yml"
   workflow_dispatch:
@@ -44,18 +47,28 @@ jobs:
           --backend libreoffice
           --require-backend
           --heatmap
+      - name: Run forward and reverse capability fixtures
+        if: always()
+        id: capabilities
+        run: >-
+          uv run python scripts/capability_check.py
+          --require-backend
+          --out out/capabilities
       - name: Upload fidelity artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: fidelity-report-${{ github.run_id }}
-          path: out/fidelity/**
+          path: |
+            out/fidelity/**
+            out/capabilities/**
       - name: Build fidelity summary
         if: always()
         id: summary
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           FIDELITY_OUTCOME: ${{ steps.fidelity.outcome }}
+          CAPABILITY_OUTCOME: ${{ steps.capabilities.outcome }}
         run: |
           python - <<'PY'
           import os
@@ -63,7 +76,8 @@ jobs:
 
           report = Path("out/fidelity/summary.md")
           text = report.read_text() if report.exists() else "# Fidelity report\n\nNo report was produced.\n"
-          text += f"\n- Check outcome: {os.environ['FIDELITY_OUTCOME']}\n"
+          text += f"\n- Fidelity outcome: {os.environ['FIDELITY_OUTCOME']}\n"
+          text += f"- Capability outcome: {os.environ['CAPABILITY_OUTCOME']}\n"
           text += f"- Artifacts and logs: {os.environ['RUN_URL']}\n"
           Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(text)
           with Path(os.environ["GITHUB_OUTPUT"]).open("a") as fh:

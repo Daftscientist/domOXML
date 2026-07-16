@@ -28,10 +28,11 @@ from domoxml.core.ir.model import (
 from domoxml.core.ir.pattern import match_pattern_fill, pattern_to_css
 
 
-def _rlg(angle: int, fg: str, bg: str, width: int) -> str:
+def _rlg(angle: int, fg: str, bg: str, foreground: int, gap: int) -> str:
+    period = foreground + gap
     return (
-        f"repeating-linear-gradient({angle}deg,{fg} 0px,{fg} {width}px,"
-        f"{bg} {width}px,{bg} {width * 2}px)"
+        f"repeating-linear-gradient({angle}deg,{fg} 0px,{fg} {foreground}px,"
+        f"{bg} {foreground}px,{bg} {period}px)"
     )
 
 
@@ -39,29 +40,31 @@ def _rlg(angle: int, fg: str, bg: str, width: int) -> str:
 
 
 @pytest.mark.parametrize(
-    ("angle", "width", "preset"),
+    ("angle", "foreground", "gap", "preset"),
     [
-        (0, 12, "horz"),
-        (180, 12, "horz"),
-        (90, 12, "vert"),
-        (270, 12, "vert"),
-        (45, 3, "ltUpDiag"),
-        (45, 10, "wdUpDiag"),
-        (135, 3, "ltDnDiag"),
-        (135, 10, "dkUpDiag"),
+        (0, 1, 3, "horz"),
+        (180, 1, 3, "horz"),
+        (90, 1, 3, "vert"),
+        (270, 1, 3, "vert"),
+        (45, 1, 3, "ltUpDiag"),
+        (45, 8, 8, "wdUpDiag"),
+        (135, 1, 3, "ltDnDiag"),
+        (135, 8, 8, "wdDnDiag"),
     ],
 )
-def test_match_pattern_positive_by_angle_and_width(angle: int, width: int, preset: str) -> None:
-    fill = match_pattern_fill(_rlg(angle, "rgb(10,10,10)", "rgb(240,240,240)", width))
+def test_match_pattern_positive_by_angle_and_width(
+    angle: int, foreground: int, gap: int, preset: str
+) -> None:
+    fill = match_pattern_fill(_rlg(angle, "rgb(10,10,10)", "rgb(240,240,240)", foreground, gap))
     assert fill is not None
     assert fill.preset == preset
     assert fill.fg == Rgba(r=10, g=10, b=10)
     assert fill.bg == Rgba(r=240, g=240, b=240)
 
 
-def test_thin_threshold_is_four_px() -> None:
-    assert match_pattern_fill(_rlg(45, "rgb(0,0,0)", "rgb(1,1,1)", 4)).preset == "ltUpDiag"  # type: ignore[union-attr]
-    assert match_pattern_fill(_rlg(45, "rgb(0,0,0)", "rgb(1,1,1)", 5)).preset == "wdUpDiag"  # type: ignore[union-attr]
+def test_noncanonical_stripe_density_is_not_native() -> None:
+    assert match_pattern_fill(_rlg(45, "rgb(0,0,0)", "rgb(1,1,1)", 3, 3)) is None
+    assert match_pattern_fill(_rlg(0, "rgb(0,0,0)", "rgb(1,1,1)", 12, 12)) is None
 
 
 def test_match_pattern_negative_three_colors() -> None:
@@ -78,10 +81,10 @@ def test_match_pattern_negative_soft_stops() -> None:
 
 
 def test_match_pattern_negative_off_axis_angle() -> None:
-    assert match_pattern_fill(_rlg(30, "rgb(1,1,1)", "rgb(2,2,2)", 3)) is None
+    assert match_pattern_fill(_rlg(30, "rgb(1,1,1)", "rgb(2,2,2)", 1, 3)) is None
 
 
-def test_match_pattern_negative_unequal_bands() -> None:
+def test_match_pattern_negative_noncanonical_bands() -> None:
     css = (
         "repeating-linear-gradient(0deg,rgb(1,1,1) 0px,rgb(1,1,1) 3px,"
         "rgb(2,2,2) 3px,rgb(2,2,2) 10px)"
@@ -126,7 +129,7 @@ def test_pattern_fill_does_not_warn() -> None:
 # ------------------------------------------------------------------------- reverse pattFill -> CSS
 
 
-@pytest.mark.parametrize("preset", ["horz", "vert", "ltUpDiag", "wdUpDiag", "ltDnDiag", "dkUpDiag"])
+@pytest.mark.parametrize("preset", ["horz", "vert", "ltUpDiag", "wdUpDiag", "ltDnDiag", "wdDnDiag"])
 def test_reverse_pattern_six_presets_round_trip(preset: str) -> None:
     prop, value, approximated = pattern_to_css("1E3A8A", "DBEAFE", preset)
     assert prop == "background"

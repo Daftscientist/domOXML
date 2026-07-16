@@ -25,6 +25,7 @@ def _simple_body(
     autofit: str = "normal",
     columns: int = 1,
     column_gap_emu: int = 0,
+    margins: tuple[int, int, int, int] = (0, 0, 0, 0),
 ) -> TextBody:
     return TextBody(
         paragraphs=(
@@ -36,6 +37,7 @@ def _simple_body(
         autofit=autofit,  # type: ignore[arg-type]
         columns=columns,
         column_gap_emu=column_gap_emu,
+        margins=margins,
     )
 
 
@@ -160,9 +162,10 @@ def test_bodypr_shape_autofit_emits_spAutoFit() -> None:
     assert "<a:normAutofit/>" not in xml
 
 
-def test_bodypr_none_autofit_emits_normAutofit() -> None:
+def test_bodypr_none_autofit_emits_noAutofit() -> None:
     xml = _xml(_simple_body(autofit="none"))
-    assert "<a:normAutofit/>" in xml
+    assert "<a:noAutofit/>" in xml
+    assert "<a:normAutofit/>" not in xml
 
 
 def test_bodypr_single_column_has_no_numCol() -> None:
@@ -185,6 +188,14 @@ def test_bodypr_two_columns_no_gap_no_spcCol() -> None:
     xml = _xml(_simple_body(columns=2, column_gap_emu=0))
     assert 'numCol="2"' in xml
     assert "spcCol" not in xml
+
+
+def test_bodypr_emits_text_insets() -> None:
+    xml = _xml(_simple_body(margins=(100, 200, 300, 400)))
+    assert 'lIns="100"' in xml
+    assert 'tIns="200"' in xml
+    assert 'rIns="300"' in xml
+    assert 'bIns="400"' in xml
 
 
 # --------------------------------------------------------------------------- round trip: fwd → rev
@@ -226,6 +237,11 @@ def test_roundtrip_columns_one() -> None:
     assert body.columns == 1
 
 
+def test_roundtrip_text_insets() -> None:
+    body = _roundtrip_body(_simple_body(margins=(100, 200, 300, 400)))
+    assert body.margins == (100, 200, 300, 400)
+
+
 # ---------------------------------------------------------- reverse: bodyPr XML → HTML
 
 
@@ -253,12 +269,23 @@ def test_html_anchor_bottom_emits_flex_end() -> None:
 def test_html_columns_emits_column_count() -> None:
     html = _html_for(_simple_body(columns=2, column_gap_emu=228_600))
     assert "column-count:2" in html
+    assert "column-fill:auto" in html
     assert "column-gap:" in html
+
+
+def test_html_columns_emits_explicit_zero_gap() -> None:
+    html = _html_for(_simple_body(columns=2, column_gap_emu=0))
+    assert "column-gap:0" in html
 
 
 def test_html_single_column_no_column_css() -> None:
     html = _html_for(_simple_body(columns=1))
     assert "column-count" not in html
+
+
+def test_html_text_insets_emit_padding() -> None:
+    html = _html_for(_simple_body(margins=(96_000, 192_000, 288_000, 384_000)))
+    assert "padding:20.1575px 30.2362px 40.315px 10.0787px" in html
 
 
 def test_html_autofit_none_emits_metadata() -> None:

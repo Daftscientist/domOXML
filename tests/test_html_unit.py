@@ -150,6 +150,7 @@ def _decorated_slide() -> SlideIR:
 
 def test_serialize_canvas_emits_run_decorations() -> None:
     html = serialize_canvas([_decorated_slide()]).slides[0].html
+    assert 'data-domoxml-text-body="true"' in html
     assert "text-decoration-line:underline line-through" in html
     assert "text-transform:uppercase" in html
     assert "font-variant-caps:small-caps" in html
@@ -229,6 +230,24 @@ def test_html_char_bullets_emit_ul_and_li() -> None:
     assert "<li" in html
     assert "Apple" in html and "Banana" in html
     assert "</ul>" in html
+    assert "data-domoxml-text-body" not in html
+
+
+def test_html_bullet_gutter_is_on_list_container() -> None:
+    slide = _list_slide(
+        TextParagraph(
+            runs=(_run("Indented"),),
+            bullet=CharBullet(char="•"),
+            indent_pt=-12.75,
+            left_margin_pt=13.5,
+        )
+    )
+
+    html = serialize_canvas([slide]).slides[0].html
+
+    assert '<ul style="list-style-type:disc;padding-left:13.5pt">' in html
+    assert "text-indent" not in html
+    assert html.count("padding-left") == 1
 
 
 def test_html_autonum_bullets_emit_ol_and_li() -> None:

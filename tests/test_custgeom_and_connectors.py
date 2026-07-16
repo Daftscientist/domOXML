@@ -6,10 +6,13 @@ from __future__ import annotations
 from xml.etree import ElementTree as ET
 
 from domoxml.core.ir.model import (
+    Arrowhead,
     ClosePath,
+    Connector,
     CubicTo,
     CustomGeometry,
     Fill,
+    Line,
     LineTo,
     MoveTo,
     PathCommand,
@@ -491,6 +494,18 @@ def test_hr_small_width_still_becomes_connector() -> None:
     assert conn is not None
 
 
+def test_hr_uses_its_visible_border_as_connector_line() -> None:
+    from domoxml.core.ir.connector_extract import extract_connector
+
+    node = RenderedNode(tag="hr", x=0.0, y=0.0, width=100.0, height=2.0)
+    line = Line(color=Rgba(r=102, g=102, b=102), width_emu=19050)
+
+    conn = extract_connector(node, None, line)
+
+    assert conn is not None
+    assert conn.line == line
+
+
 def test_thin_unfilled_div_becomes_horizontal_connector() -> None:
     from domoxml.core.ir.connector_extract import extract_connector
 
@@ -526,3 +541,50 @@ def test_thin_vertical_div_becomes_vertical_connector() -> None:
     # Vertical: start/end should differ in y, not x
     assert conn.start.x == conn.end.x
     assert conn.start.y != conn.end.y
+
+
+def test_normalized_connector_payload_rehydrates_exact_ir() -> None:
+    from domoxml.core.html import _connector_html
+    from domoxml.core.ir.connector_extract import extract_connector
+
+    connector = Connector(
+        start=Point(x=12345, y=67890),
+        end=Point(x=456789, y=98765),
+        kind="curved",
+        line=Line(
+            color=Rgba(r=12, g=34, b=56, a=0.75),
+            width_emu=19050,
+            dash="dash",
+            cap="round",
+            join="bevel",
+            head=Arrowhead(type="triangle", width="lg", length="sm"),
+        ),
+    )
+    html = _connector_html(connector, [])
+    payload = ET.fromstring(html).get("data-domoxml-connector")
+    assert payload is not None
+    rendered = RenderedNode(
+        tag="svg",
+        x=0,
+        y=0,
+        width=100,
+        height=20,
+        styles={"domoxmlConnector": payload},
+    )
+
+    assert extract_connector(rendered, None, None) == connector
+
+
+def test_invalid_normalized_connector_payload_is_not_trusted() -> None:
+    from domoxml.core.ir.connector_extract import extract_connector
+
+    rendered = RenderedNode(
+        tag="svg",
+        x=0,
+        y=0,
+        width=100,
+        height=20,
+        styles={"domoxmlConnector": "not-json"},
+    )
+
+    assert extract_connector(rendered, None, None) is None

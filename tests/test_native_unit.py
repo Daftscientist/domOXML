@@ -10,7 +10,7 @@ import io
 from PIL import Image
 
 from domoxml.core.ir import extract_slide
-from domoxml.core.ir.model import Box, GradientFill, PictureFill, SolidFill
+from domoxml.core.ir.model import Box, Connector, GradientFill, PictureFill, SolidFill
 from domoxml.core.ir.parse import parse_border_side, parse_gradient, parse_shadow
 from domoxml.core.render.browser import (
     RenderedNode,
@@ -144,7 +144,7 @@ def test_empty_raster_region_is_recorded_as_failed_not_layered() -> None:
     assert result.coverage[0].output_count == 0
 
 
-def test_unmappable_custom_svg_fill_uses_element_layer_instead_of_omitting_fill() -> None:
+def test_unmappable_custom_svg_paint_uses_element_layer_instead_of_omitting_it() -> None:
     svg = RenderedNode(
         tag="svg",
         x=0,
@@ -164,14 +164,80 @@ def test_unmappable_custom_svg_fill_uses_element_layer_instead_of_omitting_fill(
         src="M 0 0 L 10 0 L 10 10 Z",
         index=1,
         parent=0,
-        styles={"backgroundImage": "conic-gradient(red, blue)"},
+        styles={"fill": "url(#gradient)"},
     )
 
     result = extract_slide(_slide(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
-    assert "SVG custom geometry fill" in result.coverage[0].reason
+    assert "SVG custom geometry paint" in result.coverage[0].reason
+
+
+def test_custom_svg_solid_fill_and_stroke_map_to_native_shape_paint() -> None:
+    svg = RenderedNode(
+        tag="svg",
+        x=0,
+        y=0,
+        width=100,
+        height=50,
+        src="0 0 100 50",
+        index=0,
+        parent=-1,
+    )
+    path = RenderedNode(
+        tag="path",
+        x=0,
+        y=0,
+        width=100,
+        height=50,
+        src="M 0 0 L 100 0 L 100 50 Z",
+        index=1,
+        parent=0,
+        styles={
+            "fill": "rgb(68, 114, 196)",
+            "stroke": "rgb(31, 78, 121)",
+            "strokeWidth": "4px",
+            "strokeDasharray": "none",
+            "strokeLinecap": "round",
+            "strokeLinejoin": "bevel",
+        },
+    )
+
+    result = extract_slide(_slide(svg, path))
+
+    shape = result.slide.shapes[0]
+    assert isinstance(shape.fill, SolidFill)
+    assert shape.fill.color.hex == "4472C4"
+    assert shape.line is not None
+    assert shape.line.color.hex == "1F4E79"
+    assert shape.line.width_emu == 38100
+    assert shape.line.cap == "round"
+    assert shape.line.join == "bevel"
+    assert result.coverage[0].representation is Representation.NATIVE
+
+
+def test_hr_one_sided_border_becomes_connector_stroke() -> None:
+    hr = RenderedNode(
+        tag="hr",
+        x=50,
+        y=280,
+        width=600,
+        height=2,
+        index=0,
+        styles={
+            "borderTopWidth": "2px",
+            "borderTopStyle": "solid",
+            "borderTopColor": "rgb(102, 102, 102)",
+        },
+    )
+
+    result = extract_slide(_slide(hr))
+
+    connector = result.slide.contents[0]
+    assert isinstance(connector, Connector)
+    assert connector.line.width_emu == 19050
+    assert connector.line.color.hex == "666666"
 
 
 def test_inset_css_shadow_rasterises_for_portable_fidelity() -> None:

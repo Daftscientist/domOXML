@@ -42,8 +42,8 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Theme colors and font schemes | Partial; attached chart re-emission restores its ambient source theme | Partial/native read | unit + chart real deck | general forward scheme references, complete style matrix, script fonts, deck-level source-theme policy |
 | Rectangles, rounded rectangles, ellipses | Native | Native | integration | adversarial transform/effect combinations |
 | Preset shapes | Partial | Partial | `cap:preset-shapes` (both) | remaining curved/formula presets and adjustment handles |
-| Custom paths | Partial/native one-way | Partial | `cap:custom-path` (forward) | arcs/shorthand/multipath, guide formulas, connector structure, bidirectional fixture |
-| Connectors | Partial | Partial | unit only | routing, attachment sites, arrows, bent/curved parity, forward/reverse re-emission |
+| Custom paths | Partial/native | Partial/native | `cap:custom-path` (both) | arcs/shorthand/multipath, guide formulas, multi-path fill/stroke semantics |
+| Connectors | Partial | Partial | `cap:custom-path` (both) + unit | routing, attachment sites, authored arrows, and bent/curved visual parity |
 | Groups and stacking | Gap for authored groups; flat output | Native read then flattened | unit only | canonical interleaved z-order, group authoring, nested transforms, stable grouping |
 | Solid and no fill | Native | Native | integration | explicit atomic bidirectional fixture |
 | Linear/radial gradients | Native subset | Native subset | fidelity corpus | every gradient form, transforms/stops, renderer calibration, theme-aware stops |

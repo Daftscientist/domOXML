@@ -803,6 +803,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                     f' stroke="rgba({line.color.r},{line.color.g},{line.color.b},'
                     f'{_number(line.color.a)})"'
                     f' stroke-width="{stroke_w_px}"'
+                    ' vector-effect="non-scaling-stroke"'
                 )
             inner = (
                 f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}'
@@ -920,6 +921,7 @@ def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:
         f"position:absolute;left:{_number(min_x)}px;top:{_number(min_y)}px;"
         f"width:{_number(svg_w)}px;height:{_number(svg_h)}px;overflow:visible"
     )
+    connector_payload = escape(node.model_dump_json(exclude={"node_id", "provenance"}), quote=True)
 
     # Build arrowhead markers.
     defs = ""
@@ -976,6 +978,7 @@ def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}'
+        f' data-domoxml-connector="{connector_payload}"'
         f' style="{escape(pos_style, quote=True)}">'
         f"{defs}{shape_el}</svg>"
     )

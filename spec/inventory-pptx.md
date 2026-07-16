@@ -47,7 +47,7 @@ Audited on **2026-07-16**.
 | `borders` | both | shared stroke/decomposition behavior |
 | `bullets-spacing` | both | shared list/paragraph behavior |
 | `chart-preservation` | reverse | owned chart graph, ambient theme, identity, and exact PPTX re-emission |
-| `custom-path` | forward | custom geometry/connector reverse structure still blocks bidirectional status |
+| `custom-path` | both | native custom geometry and connector structure survive normalized HTML and PPTX re-emission |
 | `effects` | forward | renderer-sensitive effect contract still blocks bidirectional status |
 | `hyperlink` | both | run hyperlinks and relationships |
 | `interleaved-order` | both | canonical mixed-node z-order through both adapters |

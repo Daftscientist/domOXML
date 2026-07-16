@@ -9,9 +9,14 @@ from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
     CharBullet,
+    ClosePath,
+    CubicTo,
+    CustomGeometry,
     Hyperlink,
+    Line,
     LineSpacing,
     PictureFill,
+    Point,
     PreservationPart,
     PreservationPayload,
     PreservedNode,
@@ -131,6 +136,31 @@ def test_serialize_canvas_keeps_tiled_svg_picture_on_background_path() -> None:
 
     assert '<img class="domoxml-shape"' not in html.slides[0].html
     assert "background-image:url(../assets/" in html.slides[0].html
+
+
+def test_custom_geometry_stroke_keeps_physical_width_in_svg_viewbox() -> None:
+    geometry = CustomGeometry(
+        width_emu=1_905_000,
+        height_emu=952_500,
+        path=(
+            CubicTo(
+                c1=Point(x=0, y=0),
+                c2=Point(x=1_905_000, y=0),
+                to=Point(x=1_905_000, y=952_500),
+            ),
+            ClosePath(),
+        ),
+    )
+    node = ShapeNode(
+        box=Box(x=0, y=0, width=1_905_000, height=952_500),
+        custom_geom=geometry,
+        line=Line(color=Rgba(r=31, g=78, b=121), width_emu=38_100),
+    )
+
+    html = serialize_canvas([SlideIR(width=1_905_000, height=952_500, contents=(node,))])
+
+    assert 'stroke-width="4"' in html.slides[0].html
+    assert 'vector-effect="non-scaling-stroke"' in html.slides[0].html
 
 
 def test_serialize_canvas_embeds_attached_preservation_payload() -> None:

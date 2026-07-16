@@ -26,7 +26,7 @@ Audited on **2026-07-16**.
 | Speaker notes | Gap; no public argument | Gap | none | `Slide` notes argument, notes parts/relationships, normalized HTML metadata, round trip |
 | Embedded fonts | Partial/native | Partial/native | unit/integration + real deck | complete face slots, substitutions/licensing, malformed data and renderer baselines |
 | Pictures and raster fallback markers | Native | Native | capabilities/integration | stable layer ownership/group metadata and accessibility fields |
-| SVG extension (`asvg:svgBlip`) | Native write | Native read | `cap:svg-vector` (forward) | extension survives HTML round trip and capability becomes bidirectional |
+| SVG extension (`asvg:svgBlip`) | Native write | Native read and exact re-emission for pure pictures | `cap:svg-vector` (both) | cropped/effect-bearing SVG pictures, external assets, and adversarial SVG content |
 | Native tables in graphic frames | Native subset | Native subset | `cap:table` (both) + real deck | table styles/inheritance and richer graphic-frame ordering |
 | Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph; omitted visually in normalized HTML | `cap:chart-preservation` (reverse) + real-deck PPTX visual gate | shared chart IR, normalized HTML visual layer/rendering, and native authoring |
 | Groups | Gap on authoring | Native read then flattened | unit only | author/preserve nested groups, child coordinates, interleaved z-order and IDs |
@@ -55,7 +55,7 @@ Audited on **2026-07-16**.
 | `pattern-fills` | both | DrawingML pattern mapping |
 | `picture-crop` | both | picture crop and reverse CSS |
 | `preset-shapes` | both | supported preset geometry subset |
-| `svg-vector` | forward | SVG extension is lost/rasterized on re-emission |
+| `svg-vector` | both | original SVG asset, identity, native picture, and extension survive re-emission |
 | `table` | both | native DrawingML table subset |
 | `text-decorations` | both | text decoration subset |
 | `text-rich-runs` | both | ordered rich runs |

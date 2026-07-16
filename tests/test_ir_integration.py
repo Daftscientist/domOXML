@@ -9,12 +9,15 @@ from domoxml.core.ir import ExtractResult, extract_slide
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
+    PictureFill,
     PreservationPayload,
     PreservedNode,
+    ShapeNode,
     SlideIR,
     SolidFill,
 )
 from domoxml.core.render import BrowserSession, compose_page
+from domoxml.core.roundtrip import inline_assets
 from domoxml.core.units import pixels
 from domoxml.types import Representation, SlideSize, Theme
 
@@ -93,6 +96,24 @@ async def test_browser_capture_restores_attached_preservation_payload() -> None:
     [recovered] = [item for item in ir.contents if isinstance(item, PreservedNode)]
     assert recovered.node_id == "chart-1"
     assert recovered.payload == payload
+
+
+async def test_browser_capture_retains_serialized_svg_picture_bytes() -> None:
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>'
+    node = ShapeNode(
+        node_id="vector",
+        box=Box(x=914_400, y=914_400, width=1_828_800, height=914_400),
+        fill=PictureFill(data=b"png", ext="png", svg_data=svg),
+    )
+    serialized = serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(node,))])
+    html = inline_assets(serialized).slides[0].html
+
+    result = await _render_and_extract_result(html)
+
+    [recovered] = [shape for shape in result.slide.shapes if shape.node_id == "vector"]
+    assert isinstance(recovered.fill, PictureFill)
+    assert recovered.fill.svg_data == svg
+    assert [item.representation for item in result.coverage] == [Representation.NATIVE]
 
 
 async def test_extracts_nested_inline_text_as_ordered_editable_runs() -> None:

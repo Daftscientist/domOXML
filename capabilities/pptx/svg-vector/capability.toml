@@ -1,5 +1,5 @@
 id = "svg-vector"
-direction = "forward"
+direction = "both"
 html_file = "slide.html"
 
 [expected]
@@ -22,3 +22,12 @@ min_count = 1
 source_to_pptx_min_similarity = 0.99
 source_to_pptx_min_regional_similarity = 0.98
 source_to_pptx_min_structural_similarity = 0.97
+pptx_to_html_min_similarity = 0.99
+pptx_to_html_min_regional_similarity = 0.98
+pptx_to_html_min_structural_similarity = 0.97
+
+[reverse]
+expected_slides = 1
+html_contains = [".svg", "data-domoxml-source-format=\"html\""]
+max_warnings = 0
+max_preserved = 0

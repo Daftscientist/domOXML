@@ -198,7 +198,7 @@ def test_custom_svg_solid_fill_and_stroke_map_to_native_shape_paint() -> None:
             "fill": "rgb(68, 114, 196)",
             "stroke": "rgb(31, 78, 121)",
             "strokeWidth": "4px",
-            "strokeDasharray": "none",
+            "strokeDasharray": "16px, 12px, 4px, 12px",
             "strokeLinecap": "round",
             "strokeLinejoin": "bevel",
         },
@@ -212,6 +212,7 @@ def test_custom_svg_solid_fill_and_stroke_map_to_native_shape_paint() -> None:
     assert shape.line is not None
     assert shape.line.color.hex == "1F4E79"
     assert shape.line.width_emu == 38100
+    assert shape.line.dash == "dashDot"
     assert shape.line.cap == "round"
     assert shape.line.join == "bevel"
     assert result.coverage[0].representation is Representation.NATIVE

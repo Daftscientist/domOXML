@@ -154,12 +154,21 @@ def test_custom_geometry_stroke_keeps_physical_width_in_svg_viewbox() -> None:
     node = ShapeNode(
         box=Box(x=0, y=0, width=1_905_000, height=952_500),
         custom_geom=geometry,
-        line=Line(color=Rgba(r=31, g=78, b=121), width_emu=38_100),
+        line=Line(
+            color=Rgba(r=31, g=78, b=121),
+            width_emu=38_100,
+            dash="dashDot",
+            cap="square",
+            join="miter",
+        ),
     )
 
     html = serialize_canvas([SlideIR(width=1_905_000, height=952_500, contents=(node,))])
 
     assert 'stroke-width="4"' in html.slides[0].html
+    assert 'stroke-dasharray="16 12 4 12"' in html.slides[0].html
+    assert 'stroke-linecap="square"' in html.slides[0].html
+    assert 'stroke-linejoin="miter"' in html.slides[0].html
     assert 'vector-effect="non-scaling-stroke"' in html.slides[0].html
 
 

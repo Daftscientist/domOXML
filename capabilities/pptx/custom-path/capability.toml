@@ -45,6 +45,7 @@ html_contains = [
   "<path d=",
   "fill=\"rgba(68,114,196,1)\"",
   "stroke=\"rgba(31,78,121,1)\"",
+  "vector-effect=\"non-scaling-stroke\"",
   "data-domoxml-connector=",
 ]
 max_warnings = 0

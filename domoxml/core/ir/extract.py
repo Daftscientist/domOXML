@@ -85,6 +85,7 @@ from domoxml.core.render.browser import (
     is_complex_transform,
     parse_native_transform,
 )
+from domoxml.core.svg_stroke import parse_svg_dasharray
 from domoxml.core.units import px_to_emu, px_to_pt
 from domoxml.types import (
     ConversionWarning,
@@ -710,8 +711,12 @@ def _resolve_svg_line(styles: dict[str, str]) -> tuple[Line | None, str | None]:
     if color.a <= 0 or width_px <= 0:
         return None, None
     dasharray = styles.get("strokeDasharray", "none").strip().lower()
+    dash = "solid"
     if dasharray not in {"", "none"}:
-        return None, "SVG custom dash array has no native mapping"
+        parsed_dash = parse_svg_dasharray(dasharray, width_px)
+        if parsed_dash is None:
+            return None, "SVG custom dash array has no native mapping"
+        dash = parsed_dash
     cap_token = styles.get("strokeLinecap", "butt")
     cap: Literal["flat", "round", "square"] = (
         "round" if cap_token == "round" else "square" if cap_token == "square" else "flat"
@@ -720,7 +725,13 @@ def _resolve_svg_line(styles: dict[str, str]) -> tuple[Line | None, str | None]:
     join: Literal["round", "bevel", "miter"] = (
         "bevel" if join_token == "bevel" else "miter" if join_token == "miter" else "round"
     )
-    return Line(color=color, width_emu=px_to_emu(width_px), cap=cap, join=join), None
+    return Line(
+        color=color,
+        width_emu=px_to_emu(width_px),
+        dash=dash,
+        cap=cap,
+        join=join,
+    ), None
 
 
 def _resolve_border_sides(

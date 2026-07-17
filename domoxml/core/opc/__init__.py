@@ -12,6 +12,7 @@ from domoxml.core.opc.preservation import (
     rewrite_root_xml,
 )
 from domoxml.core.opc.reader import OpcPackage, Relationship
+from domoxml.core.opc.validation import validate_opc_package
 from domoxml.core.opc.writer import write_package
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "relationship_part_name",
     "relationships_xml",
     "rewrite_root_xml",
+    "validate_opc_package",
     "write_package",
 ]

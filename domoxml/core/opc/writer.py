@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import io
 import zipfile
+from collections.abc import Mapping
 
 
-def write_package(parts: dict[str, bytes | str]) -> bytes:
+def write_package(parts: Mapping[str, bytes | str]) -> bytes:
     """Write ``{part_path: content}`` to an OPC ZIP and return the bytes.
 
     ``part_path`` is the in-package path (e.g. ``"[Content_Types].xml"``,

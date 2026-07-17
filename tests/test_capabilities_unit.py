@@ -186,6 +186,25 @@ def test_required_parts_are_validated_without_xpath_expectations() -> None:
     assert validate_capability(fixture, result) == ("missing package part ppt/missing.xml",)
 
 
+def test_forward_and_roundtrip_capabilities_reject_invalid_packages() -> None:
+    fixture = CapabilityFixture(
+        id="package-validation",
+        direction=CapabilityDirection.FORWARD,
+        html="<p>x</p>",
+    )
+    result = RenderResult(
+        pptx=b"not a package",
+        pngs=(),
+        html=None,
+        coverage=CoverageReport(items=()),
+        warnings=(),
+    )
+
+    expected = ("package: invalid OPC package: expected a ZIP archive",)
+    assert validate_capability(fixture, result) == expected
+    assert validate_roundtrip_capability(fixture, result) == expected
+
+
 def test_validates_reverse_html_warnings_and_preservation() -> None:
     fixture = _fixture("hyperlink")
     html = HtmlPresentation(

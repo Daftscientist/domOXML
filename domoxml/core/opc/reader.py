@@ -40,7 +40,7 @@ class OpcPackage:
                 for info in archive.infolist():
                     if info.is_dir():
                         continue
-                    name = _normalize_part(info.filename)
+                    name = normalize_part(info.filename)
                     if name in parts:
                         raise ValueError(f"duplicate OPC part: {name}")
                     parts[name] = archive.read(info)
@@ -55,11 +55,11 @@ class OpcPackage:
 
     def has_part(self, part: str) -> bool:
         """Whether ``part`` exists in the package."""
-        return _normalize_part(part) in self._parts
+        return normalize_part(part) in self._parts
 
     def read(self, part: str) -> bytes:
         """Read one required part or raise a clear error."""
-        normalized = _normalize_part(part)
+        normalized = normalize_part(part)
         try:
             return self._parts[normalized]
         except KeyError as exc:
@@ -85,8 +85,8 @@ class OpcPackage:
         """Resolve an internal relationship target to a normalized package part path."""
         if relationship.target_mode != "Internal":
             raise ValueError(f"cannot resolve external relationship: {relationship.target}")
-        base = "" if source_part is None else posixpath.dirname(_normalize_part(source_part))
-        return _normalize_part(posixpath.join(base, relationship.target))
+        base = "" if source_part is None else posixpath.dirname(normalize_part(source_part))
+        return normalize_part(posixpath.join(base, relationship.target))
 
     def related_part(self, source_part: str | None, relationship_id: str) -> str:
         """Resolve one relationship ID from ``source_part`` to an internal package part."""
@@ -106,7 +106,7 @@ class OpcPackage:
 
     def content_type(self, part: str) -> str:
         """Resolve one part's content type from OPC overrides and extension defaults."""
-        normalized = _normalize_part(part)
+        normalized = normalize_part(part)
         root = ElementTree.fromstring(self.read("[Content_Types].xml"))
         for override in root.findall(f"{{{_CT_NS}}}Override"):
             if override.get("PartName", "").lstrip("/") == normalized:
@@ -118,7 +118,7 @@ class OpcPackage:
         raise KeyError(f"no content type declared for OPC part: {normalized}")
 
 
-def _normalize_part(part: str) -> str:
+def normalize_part(part: str) -> str:
     """Normalize and validate a ZIP-relative OPC part path."""
     normalized = posixpath.normpath(part.replace("\\", "/")).lstrip("/")
     if normalized in {"", "."} or normalized == ".." or normalized.startswith("../"):
@@ -129,5 +129,5 @@ def _normalize_part(part: str) -> str:
 def _rels_part(source_part: str | None) -> str:
     if source_part is None:
         return "_rels/.rels"
-    source = PurePosixPath(_normalize_part(source_part))
+    source = PurePosixPath(normalize_part(source_part))
     return str(source.parent / "_rels" / f"{source.name}.rels")

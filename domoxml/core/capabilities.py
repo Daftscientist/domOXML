@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from domoxml.slides.validation import validate_pptx_package
 from domoxml.types import (
     ConversionWarning,
     CoverageReport,
@@ -252,6 +253,8 @@ def validate_capability(fixture: CapabilityFixture, result: RenderResult) -> tup
     for expected in fixture.expected.warnings:
         if not _warning_matches(expected, result.warnings):
             errors.append(f"missing warning containing {expected!r}")
+    if result.pptx is not None:
+        errors.extend(f"package: {error}" for error in validate_pptx_package(result.pptx))
     errors.extend(_validate_xml(fixture, result.pptx))
     return tuple(errors)
 
@@ -261,6 +264,8 @@ def validate_roundtrip_capability(
 ) -> tuple[str, ...]:
     """Validate regenerated output without applying source-tree-specific minima."""
     errors = _validate_coverage(fixture, result.coverage, include_minimums=False)
+    if result.pptx is not None:
+        errors.extend(f"package: {error}" for error in validate_pptx_package(result.pptx))
     errors.extend(_validate_xml(fixture, result.pptx))
     return tuple(errors)
 

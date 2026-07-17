@@ -30,6 +30,7 @@ from domoxml.core.opc import (
 from domoxml.slides import _templates as t
 from domoxml.slides.background import background_xml
 from domoxml.slides.transition import transition_xml
+from domoxml.slides.validation import validate_pptx_package
 
 _PML = "application/vnd.openxmlformats-officedocument.presentationml"
 _THEME_CT = "application/vnd.openxmlformats-officedocument.theme+xml"
@@ -497,4 +498,9 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
             if rels_part in parts:
                 raise ValueError(f"preserved OPC relationships collide: {rels_part}")
             parts[rels_part] = relationships_xml(part_name, preserved.relationships)
-    return write_package(parts)
+    pptx = write_package(parts)
+    validation_errors = validate_pptx_package(pptx)
+    if validation_errors:
+        details = "\n".join(f"- {error}" for error in validation_errors)
+        raise ValueError(f"generated invalid PPTX package:\n{details}")
+    return pptx

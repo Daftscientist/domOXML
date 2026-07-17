@@ -38,7 +38,7 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 
 | Family | Current forward path | Current reverse path | Evidence | Main remaining work |
 |---|---|---|---|---|
-| OPC packages and relationships | Native | Native | unit + 4 real decks | full XSD/Open XML validation, strict packages, alternate content, general extension re-emission beyond attached charts |
+| OPC packages and relationships | Native; generated/re-emitted output is blocked on content-type, relationship graph/reference, XML, and core-format validation | Native; source packages receive shared OPC validation | 14 focused package tests + capability package assertion + 18 capabilities + 4 real decks | full XSD/Open XML validation, strict packages, alternate content, extension schemas, general extension re-emission beyond attached charts |
 | Units, page boxes, identity, and fixed layout | Native, canonical ordered scene with slide-scoped IDs/provenance | Native, canonical ordered scene with recovered IDs/provenance | `cap:interleaved-order` + `cap:node-identity` (both) + broad tests | exact group reconstruction and preservation ownership beyond charts |
 | Solid colors and alpha | Native | Native | fidelity corpus + integration | complete color models/transforms and theme-token preservation on forward output |
 | Theme colors and font schemes | Partial; attached chart re-emission restores its ambient source theme | Partial/native read | unit + chart real deck | general forward scheme references, complete style matrix, script fonts, deck-level source-theme policy |

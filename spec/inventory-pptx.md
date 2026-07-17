@@ -13,9 +13,9 @@ Audited on **2026-07-17**.
 
 | Capability | HTML/CSS -> PPTX | PPTX -> HTML/CSS | Evidence | Main remaining work |
 |---|---|---|---|---|
-| Presentation package, slide order, and visual IDs | Native with private identity extension | Native with extension or `cNvPr` fallback provenance | `cap:node-identity` (both) + integration + 4 real decks | sections/custom shows where useful, strict/nonstandard packages |
+| Presentation package, slide order, and visual IDs | Native with private identity extension and mandatory core package validation | Native with extension or `cNvPr` fallback provenance | package-validator unit suite + `cap:node-identity` (both) + 4 real decks | sections/custom shows where useful, strict/nonstandard packages and full XSD validation |
 | Slide dimensions | Native | Native | integration | mixed-size output policy and repeated-round-trip proof |
-| Slide creation and relationships | Native | Native | integration | full schema validation and deterministic relationship preservation |
+| Slide creation and relationships | Native; builder rejects missing/duplicate/dangling package graphs and invalid core structure | Native | package-validator unit suite + all capability/re-emission gates | full ECMA XSD validation and deterministic source relationship preservation |
 | Slide backgrounds | Native subset | Native subset | `cap:transition-bg` (both) | theme/style-matrix backgrounds, image/pattern variants, inheritance |
 | Themes | Partial generated default; restores an attached chart's ambient source theme | Native/partial read | unit + chart real deck | general source-theme authoring, multiple-theme policy, scheme refs, format scheme and full inheritance |
 | Masters and layouts | Fixed generated baseline | Native/partial read, including placeholder body-property inheritance | unit/integration + chart real deck | author arbitrary masters/layouts and preserve them through round trips |

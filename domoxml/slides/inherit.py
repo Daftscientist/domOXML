@@ -36,6 +36,22 @@ _BODY_TYPES = frozenset({"body", "subTitle"})
 # lstStyle level attribute → XPath tag name (a:lvl1pPr … a:lvl9pPr).
 _LVL_TAG = {i: f"{{{_A}}}lvl{i}pPr" for i in range(1, 10)}
 
+_PPR_CHOICE_GROUPS = (
+    frozenset(f"{{{_A}}}{name}" for name in ("buClrTx", "buClr")),
+    frozenset(f"{{{_A}}}{name}" for name in ("buSzTx", "buSzPct", "buSzPts")),
+    frozenset(f"{{{_A}}}{name}" for name in ("buFontTx", "buFont")),
+    frozenset(f"{{{_A}}}{name}" for name in ("buNone", "buAutoNum", "buChar", "buBlip")),
+)
+_RPR_CHOICE_GROUPS = (
+    frozenset(
+        f"{{{_A}}}{name}"
+        for name in ("noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill")
+    ),
+    frozenset(f"{{{_A}}}{name}" for name in ("effectLst", "effectDag")),
+    frozenset(f"{{{_A}}}{name}" for name in ("uLnTx", "uLn")),
+    frozenset(f"{{{_A}}}{name}" for name in ("uFillTx", "uFill")),
+)
+
 # Theme font scheme: typeface values that redirect to the theme major/minor font.
 _MAJOR_SENTINEL = "+mj-lt"
 _MINOR_SENTINEL = "+mn-lt"
@@ -250,7 +266,11 @@ def resolve_ppr(
 
     result = copy.deepcopy(chain[0])
 
-    def inherit_missing(target: Element, fallback: Element) -> None:
+    def inherit_missing(
+        target: Element,
+        fallback: Element,
+        choice_groups: tuple[frozenset[str], ...],
+    ) -> None:
         for name, value in fallback.attrib.items():
             target.attrib.setdefault(name, value)
         for fallback_child in fallback:
@@ -258,13 +278,17 @@ def resolve_ppr(
                 (child for child in target if child.tag == fallback_child.tag),
                 None,
             )
-            if target_child is None:
+            has_choice = any(
+                fallback_child.tag in group and any(child.tag in group for child in target)
+                for group in choice_groups
+            )
+            if target_child is None and not has_choice:
                 target.append(copy.deepcopy(fallback_child))
-            else:
-                inherit_missing(target_child, fallback_child)
+            elif target_child is not None and target_child.tag == f"{{{_A}}}defRPr":
+                inherit_missing(target_child, fallback_child, _RPR_CHOICE_GROUPS)
 
     for fallback in chain[1:]:
-        inherit_missing(result, fallback)
+        inherit_missing(result, fallback, _PPR_CHOICE_GROUPS)
     return result
 
 

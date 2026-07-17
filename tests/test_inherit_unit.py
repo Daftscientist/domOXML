@@ -12,7 +12,7 @@ from xml.etree.ElementTree import fromstring
 
 from domoxml.core.opc import write_package
 from domoxml.slides import read_pptx
-from domoxml.slides.inherit import apply_color_transforms
+from domoxml.slides.inherit import PlaceholderContext, apply_color_transforms, resolve_ppr
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -219,6 +219,46 @@ def test_body_level2_paragraph_inherits_bodystyle_lvl2() -> None:
     run = ir.shapes[0].text.paragraphs[0].runs[0]  # type: ignore[union-attr]
     assert run.size_pt == 20.0  # lvl2, not lvl1's 28
     assert run.font_family == "Minor Serif"  # +mn-lt → theme minorFont
+
+
+def test_paragraph_inheritance_preserves_mutually_exclusive_direct_choices() -> None:
+    direct = fromstring(
+        f'<a:pPr xmlns:a="{_A}"><a:lnSpc><a:spcPts val="1800"/></a:lnSpc>'
+        '<a:buChar char="*"/><a:defRPr b="1"><a:solidFill>'
+        '<a:srgbClr val="4472C4"/></a:solidFill></a:defRPr></a:pPr>'
+    )
+    tx_styles = fromstring(
+        f'<p:txStyles xmlns:p="{_P}" xmlns:a="{_A}"><p:titleStyle/>'
+        '<p:bodyStyle><a:lvl1pPr algn="ctr"><a:lnSpc><a:spcPct val="150000"/>'
+        '</a:lnSpc><a:buAutoNum type="arabicPeriod"/><a:defRPr sz="2400" i="1">'
+        "<a:gradFill/></a:defRPr></a:lvl1pPr></p:bodyStyle><p:otherStyle/>"
+        "</p:txStyles>"
+    )
+    ctx = PlaceholderContext(
+        ph_type="body",
+        ph_idx=1,
+        layout_ph_sppr=None,
+        layout_ph_body_pr=None,
+        layout_ph_lstStyle=None,
+        master_ph_sppr=None,
+        master_ph_body_pr=None,
+        master_ph_lstStyle=None,
+        master_tx_styles=tx_styles,
+    )
+
+    resolved = resolve_ppr(direct, 0, ctx)
+
+    assert resolved is not None
+    assert resolved.get("algn") == "ctr"
+    assert resolved.find("a:lnSpc/a:spcPts", {"a": _A}) is not None
+    assert resolved.find("a:lnSpc/a:spcPct", {"a": _A}) is None
+    assert resolved.find("a:buChar", {"a": _A}) is not None
+    assert resolved.find("a:buAutoNum", {"a": _A}) is None
+    default_run = resolved.find("a:defRPr", {"a": _A})
+    assert default_run is not None
+    assert default_run.attrib == {"b": "1", "sz": "2400", "i": "1"}
+    assert default_run.find("a:solidFill", {"a": _A}) is not None
+    assert default_run.find("a:gradFill", {"a": _A}) is None
 
 
 def test_slide_level_run_overrides_inherited_style() -> None:

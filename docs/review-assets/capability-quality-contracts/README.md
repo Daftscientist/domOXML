@@ -13,7 +13,8 @@ render. They retain the existing renderer-specific font-metric differences rathe
 ## Repeated-ingestion evidence
 
 `cycle1`/`cycle2` and `cycle2`/`cycle3` compare browser renders after rebuilding and re-ingesting
-the previous cycle's PPTX. A black convergence diff contains no visible changed pixels.
+the previous cycle's PPTX. The bullet and table diffs are exact black zero-diff renders. The chart
+render is non-identical at `0.999`, with only the faint residue visible in its attached diff.
 
 - bullets: cycle 2 global/regional/structural `1.000 / 1.000 / 1.000`, with 14 outputs in both
   cycles;

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from domoxml.core.capabilities import (
     CapabilityDirection,
     CapabilityExpected,
@@ -39,6 +42,15 @@ def _fixture(fixture_id: str) -> CapabilityFixture:
     root = Path(__file__).resolve().parent.parent / "capabilities" / "pptx"
     [fixture] = [item for item in load_capabilities(root) if item.id == fixture_id]
     return fixture
+
+
+def test_convergence_thresholds_require_multiple_roundtrip_cycles() -> None:
+    with pytest.raises(
+        ValidationError, match="round-trip convergence thresholds require at least two cycles"
+    ):
+        CapabilityRoundtripExpected(min_convergence_similarity=0.99)
+
+    assert CapabilityRoundtripExpected(cycles=1).cycles == 1
 
 
 def test_loads_seed_capability_fixture() -> None:

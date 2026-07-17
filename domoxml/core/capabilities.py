@@ -142,6 +142,13 @@ class CapabilityRoundtripExpected(CapabilityCoverageBounds):
 
     @model_validator(mode="after")
     def _slide_indices_are_valid(self) -> CapabilityRoundtripExpected:
+        convergence_thresholds = (
+            self.min_convergence_similarity,
+            self.min_convergence_regional_similarity,
+            self.min_convergence_structural_similarity,
+        )
+        if any(threshold is not None for threshold in convergence_thresholds) and self.cycles < 2:
+            raise ValueError("round-trip convergence thresholds require at least two cycles")
         if any(index < 0 for index in self.slide_indices):
             raise ValueError("round-trip convergence slide indices cannot be negative")
         if len(set(self.slide_indices)) != len(self.slide_indices):

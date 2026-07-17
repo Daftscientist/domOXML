@@ -1,7 +1,16 @@
 id = "chart-preservation"
 direction = "reverse"
 pptx_file = "../../../real-decks/pptx/external-chart-preservation/source.pptx"
-visual_exclusion = "The preserved chart re-emits to PPTX, but its normalized HTML representation remains nonvisual until the renderer-backed reverse layer is implemented."
+reverse_render_files = [
+  "../../../docs/review-assets/reverse-visual-fallback/source-slide1-libreoffice.png",
+  "../../../docs/review-assets/reverse-visual-fallback/source-pptx-libreoffice.png",
+]
+
+[visual]
+pptx_to_html_slide_indices = [1]
+pptx_to_html_min_similarity = 0.995
+pptx_to_html_min_regional_similarity = 0.97
+pptx_to_html_min_structural_similarity = 0.94
 
 [expected]
 required_parts = [
@@ -32,9 +41,11 @@ min_count = 1
 
 [reverse]
 expected_slides = 2
+min_assets = 3
 html_contains = [
   'data-domoxml-node-id="pptx-5"',
   'data-domoxml-preserved-payload=',
+  'data-domoxml-representation="element-layer"',
 ]
 max_warnings = 1
 max_preserved = 1

@@ -15,11 +15,13 @@ from domoxml.core.ir.model import (
     ShapeNode,
     SlideIR,
     SolidFill,
+    TextBody,
+    TextParagraph,
 )
 from domoxml.core.render import BrowserSession, compose_page
 from domoxml.core.roundtrip import inline_assets
 from domoxml.core.units import pixels
-from domoxml.types import Representation, SlideSize, Theme
+from domoxml.types import Representation, SlideSize, SourceRetention, Theme
 
 pytestmark = pytest.mark.integration
 
@@ -96,6 +98,49 @@ async def test_browser_capture_restores_attached_preservation_payload() -> None:
     [recovered] = [item for item in ir.contents if isinstance(item, PreservedNode)]
     assert recovered.node_id == "chart-1"
     assert recovered.payload == payload
+
+
+async def test_browser_capture_restores_preserved_visual_fallback_and_coverage() -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    image = BytesIO()
+    Image.new("RGB", (240, 100), "#2A7F62").save(image, "PNG")
+    payload = PreservationPayload(kind="graphicFrame", root_xml="<p:graphicFrame/>")
+    node = PreservedNode(
+        node_id="chart-1",
+        box=Box(x=914_400, y=914_400, width=1_828_800, height=914_400),
+        payload=payload,
+        fallback=PictureFill(data=image.getvalue(), ext="png"),
+    )
+    serialized = serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(node,))])
+
+    result = await _render_and_extract_result(inline_assets(serialized).slides[0].html)
+
+    [recovered] = [item for item in result.slide.contents if isinstance(item, PreservedNode)]
+    assert recovered.fallback is not None
+    assert recovered.payload == payload
+    assert recovered.fallback.data == image.getvalue()
+    [coverage] = result.coverage
+    assert coverage.representation is Representation.ELEMENT_LAYER
+    assert coverage.source_retention is SourceRetention.ATTACHED
+
+
+async def test_serialized_text_payload_keeps_the_exact_source_box() -> None:
+    body = TextBody(paragraphs=(TextParagraph(runs=()),))
+    node = ShapeNode(
+        node_id="title",
+        box=Box(x=762_000, y=438_150, width=10_668_000, height=419_100),
+        text=body,
+    )
+    serialized = serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(node,))])
+
+    inlined = inline_assets(serialized)
+    recovered = await _render_and_extract(f"<style>{inlined.css}</style>{inlined.slides[0].html}")
+
+    [title] = [shape for shape in recovered.shapes if shape.node_id == "title"]
+    assert title.box == node.box
 
 
 async def test_browser_capture_retains_serialized_svg_picture_bytes() -> None:

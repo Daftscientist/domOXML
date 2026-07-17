@@ -903,15 +903,22 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
     if isinstance(node, TableNode):
         return _table_html(node, warnings)
     payload = escape(encode_payload(node.payload), quote=True)
-    style = (
+    base = (
         f"position:absolute;left:{_px(node.box.x)};top:{_px(node.box.y)};"
         f"width:{_px(node.box.width)};height:{_px(node.box.height)};"
-        "opacity:0;pointer-events:none;overflow:hidden"
     )
-    return (
-        f'<div class="domoxml-preserved"{_identity_attrs(node)} aria-hidden="true" '
-        f'data-domoxml-preserved-payload="{payload}" style="{style}"></div>'
+    metadata = (
+        f'class="domoxml-preserved"{_identity_attrs(node)} aria-hidden="true" '
+        f'data-domoxml-preserved-payload="{payload}"'
     )
+    if node.fallback is not None:
+        asset = _asset(node.fallback)
+        assets.setdefault(asset.path, asset)
+        return (
+            f'<img {metadata} data-domoxml-representation="element-layer" '
+            f'src="../{asset.path}" alt="" style="{base}object-fit:fill"/>'
+        )
+    return f'<div {metadata} style="{base}opacity:0;pointer-events:none;overflow:hidden"></div>'
 
 
 def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:

@@ -128,6 +128,7 @@ def read_text_run(
 
 def read_text_body_properties(
     body: Element,
+    ph_ctx: PlaceholderContext | None = None,
 ) -> tuple[
     Literal["top", "middle", "bottom"],
     Literal["none", "normal", "shape"],
@@ -136,25 +137,38 @@ def read_text_body_properties(
     tuple[int, int, int, int],
 ]:
     """Return vertical anchor, autofit, columns, gap, and text-body insets."""
-    properties = body.find("a:bodyPr", _NS)
-    if properties is None:
-        return "top", "normal", 1, 0, (91_440, 45_720, 91_440, 45_720)
-    anchor = _ANCHOR_FROM_OOXML.get(properties.get("anchor", "t"), "top")
+    chain = [body.find("a:bodyPr", _NS)]
+    if ph_ctx is not None:
+        chain.extend((ph_ctx.layout_ph_body_pr, ph_ctx.master_ph_body_pr))
+    properties = [item for item in chain if item is not None]
+
+    def attribute(name: str, default: str) -> str:
+        return next(
+            (value for item in properties if (value := item.get(name)) is not None),
+            default,
+        )
+
+    anchor = _ANCHOR_FROM_OOXML.get(attribute("anchor", "t"), "top")
     autofit: Literal["none", "normal", "shape"] = "normal"
-    if properties.find("a:spAutoFit", _NS) is not None:
-        autofit = "shape"
-    elif properties.find("a:noAutofit", _NS) is not None:
-        autofit = "none"
+    for item in properties:
+        if item.find("a:spAutoFit", _NS) is not None:
+            autofit = "shape"
+            break
+        if item.find("a:noAutofit", _NS) is not None:
+            autofit = "none"
+            break
+        if item.find("a:normAutofit", _NS) is not None:
+            break
     return (
         anchor,
         autofit,
-        max(1, _int_attr(properties, "numCol", 1)),
-        max(0, _int_attr(properties, "spcCol")),
+        max(1, int(attribute("numCol", "1"))),
+        max(0, int(attribute("spcCol", "0"))),
         (
-            max(0, _int_attr(properties, "lIns", 91_440)),
-            max(0, _int_attr(properties, "tIns", 45_720)),
-            max(0, _int_attr(properties, "rIns", 91_440)),
-            max(0, _int_attr(properties, "bIns", 45_720)),
+            max(0, int(attribute("lIns", "91440"))),
+            max(0, int(attribute("tIns", "45720"))),
+            max(0, int(attribute("rIns", "91440"))),
+            max(0, int(attribute("bIns", "45720"))),
         ),
     )
 
@@ -171,7 +185,7 @@ def read_text_body(
     body = shape.find("p:txBody", _NS)
     if body is None:
         return None
-    anchor, autofit, columns, column_gap_emu, margins = read_text_body_properties(body)
+    anchor, autofit, columns, column_gap_emu, margins = read_text_body_properties(body, ph_ctx)
     paragraphs: list[TextParagraph] = []
     for paragraph in body.findall("a:p", _NS):
         properties = paragraph.find("a:pPr", _NS)

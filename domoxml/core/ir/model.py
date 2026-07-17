@@ -623,13 +623,16 @@ class PreservedNode(CanvasNode):
     """A positioned source object awaiting a semantic adapter but retained for source export.
 
     The node participates in normal stacking and identity. Alternate-format serializers may emit
-    a nonvisual placeholder until they have either a native mapping or a rendered layer.
+    ``fallback`` as a renderer-derived element layer while metadata-aware source export continues
+    to re-emit :attr:`payload`. The fallback is therefore a visual representation, not a
+    replacement for the retained source object.
     """
 
     model_config = _FROZEN
 
     box: Box
     payload: PreservationPayload
+    fallback: PictureFill | None = None
 
 
 class ShapeNode(CanvasNode):

@@ -115,8 +115,15 @@ def _validate_reverse_visual(
     if len(source_pngs) != len(reverse.pngs):
         return (f"reverse visual page count {len(reverse.pngs)} != source {len(source_pngs)}",)
 
+    indices = fixture.visual.pptx_to_html_slide_indices or tuple(range(len(source_pngs)))
+    invalid = tuple(index for index in indices if index >= len(source_pngs))
+    if invalid:
+        return (f"reverse visual slide indices out of range: {invalid}",)
+
     errors: list[str] = []
-    for index, (reference, candidate) in enumerate(zip(source_pngs, reverse.pngs, strict=True)):
+    for index in indices:
+        reference = source_pngs[index]
+        candidate = reverse.pngs[index]
         report = compare(reference, candidate, heatmap=out_dir is not None)
         if out_dir is not None:
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -159,6 +166,7 @@ def _validate_fixture(
     errors: list[str] = []
     source_pptx = fixture.pptx
     forward: RenderResult | None = None
+    source_pptx_pngs: tuple[bytes, ...] = fixture.reverse_render_pngs
 
     if fixture.direction in (CapabilityDirection.FORWARD, CapabilityDirection.BOTH):
         forward = _render_forward(fixture)
@@ -174,6 +182,7 @@ def _validate_fixture(
                 errors.append("forward visual: fixture produced no PPTX source")
             else:
                 candidates = render_pptx_to_pngs(source_pptx)
+                source_pptx_pngs = tuple(candidates)
                 errors.extend(
                     f"visual: {error}"
                     for error in _validate_forward_visual(
@@ -189,7 +198,17 @@ def _validate_fixture(
         if source_pptx is None:
             errors.append("reverse: fixture produced no PPTX source")
             return tuple(errors)
-        reverse = Presentation.from_pptx(source_pptx)
+        has_reverse_threshold = (
+            fixture.visual.pptx_to_html_min_similarity is not None
+            or fixture.visual.pptx_to_html_min_regional_similarity is not None
+            or fixture.visual.pptx_to_html_min_structural_similarity is not None
+        )
+        if has_reverse_threshold and forward_visual_available:
+            source_pptx_pngs = tuple(render_pptx_to_pngs(source_pptx))
+        reverse = Presentation.from_pptx(
+            source_pptx,
+            fallback_pngs=source_pptx_pngs or None,
+        )
         errors.extend(
             f"reverse: {error}" for error in validate_reverse_capability(fixture, reverse)
         )
@@ -198,14 +217,9 @@ def _validate_fixture(
             errors.extend(
                 f"roundtrip: {error}" for error in validate_roundtrip_capability(fixture, roundtrip)
             )
-            has_reverse_threshold = (
-                fixture.visual.pptx_to_html_min_similarity is not None
-                or fixture.visual.pptx_to_html_min_regional_similarity is not None
-                or fixture.visual.pptx_to_html_min_structural_similarity is not None
-            )
             source_pngs: tuple[bytes, ...] = forward.pngs if forward is not None else ()
-            if not source_pngs and has_reverse_threshold and forward_visual_available:
-                source_pngs = tuple(render_pptx_to_pngs(source_pptx))
+            if not source_pngs and has_reverse_threshold:
+                source_pngs = source_pptx_pngs
             if source_pngs:
                 errors.extend(
                     f"visual: {error}"

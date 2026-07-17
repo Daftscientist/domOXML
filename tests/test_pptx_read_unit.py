@@ -21,6 +21,7 @@ from domoxml.core.ir.model import (
     GroupNode,
     Line,
     PictureFill,
+    PreservedNode,
     Rgba,
     Shadow,
     ShapeNode,
@@ -32,7 +33,7 @@ from domoxml.core.ir.model import (
     TextRun,
 )
 from domoxml.core.opc import OpcPackage, write_package
-from domoxml.slides import build_pptx, read_pptx
+from domoxml.slides import build_pptx, read_pptx, read_pptx_result
 from domoxml.slides.appearance_read import rgba
 from domoxml.slides.read import _slide_colors, _with_pptx_identity
 
@@ -277,6 +278,85 @@ def test_preserves_unsupported_slide_nodes_with_warning() -> None:
     assert "graphicFrame" in html.preserved[0].xml
     assert len(html.warnings) == 1
     assert "graphicFrame" in html.warnings[0].message
+
+
+def test_attaches_element_crop_to_positioned_unsupported_node() -> None:
+    package = OpcPackage.from_bytes(build_pptx([_sample_ir()], faces=[]))
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    slide_part = "ppt/slides/slide1.xml"
+    slide_xml = parts[slide_part]
+    assert isinstance(slide_xml, bytes)
+    frame = (
+        f'<p:graphicFrame xmlns:p="{_P}" xmlns:a="{_A}">'
+        '<p:nvGraphicFramePr><p:cNvPr id="20" name="unsupported"/>'
+        "<p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>"
+        '<p:xfrm><a:off x="3048000" y="952500"/>'
+        '<a:ext cx="1905000" cy="1428750"/></p:xfrm>'
+        '<a:graphic><a:graphicData uri="urn:example:unsupported"/></a:graphic>'
+        "</p:graphicFrame>"
+    ).encode()
+    parts[slide_part] = slide_xml.replace(b"</p:spTree>", frame + b"</p:spTree>")
+    rendered = BytesIO()
+    Image.new("RGB", (1280, 720), "#2A7F62").save(rendered, "PNG")
+
+    result = read_pptx_result(write_package(parts), fallback_pngs=(rendered.getvalue(),))
+
+    [preserved] = [node for node in result.slides[0].contents if isinstance(node, PreservedNode)]
+    assert preserved.node_id == "pptx-20"
+    assert preserved.fallback is not None
+    with Image.open(BytesIO(preserved.fallback.data)) as crop:
+        assert crop.size == (200, 150)
+        pixel = crop.convert("RGB").getpixel((100, 75))
+        assert isinstance(pixel, tuple)
+        assert pixel == (42, 127, 98)
+    [fragment] = [fragment for fragment in result.preserved if fragment.kind == "graphicFrame"]
+    assert fragment.owner_node_id == preserved.node_id
+
+
+def test_rejects_mismatched_reverse_fallback_page_count() -> None:
+    pptx = build_pptx([_sample_ir()], faces=[])
+
+    try:
+        read_pptx_result(pptx, fallback_pngs=())
+    except ValueError as error:
+        assert str(error) == "fallback PNG count 0 does not match slide count 1"
+    else:  # pragma: no cover - assertion helper without a pytest dependency
+        raise AssertionError("expected mismatched fallback count to fail")
+
+
+def test_malformed_preserved_graph_still_gets_a_visual_layer() -> None:
+    package = OpcPackage.from_bytes(build_pptx([_sample_ir()], faces=[]))
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    slide_part = "ppt/slides/slide1.xml"
+    slide_xml = parts[slide_part]
+    assert isinstance(slide_xml, bytes)
+    frame = (
+        f'<p:graphicFrame xmlns:p="{_P}" xmlns:a="{_A}" xmlns:r="{_R}">'
+        '<p:nvGraphicFramePr><p:cNvPr id="20" name="malformed"/>'
+        "<p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>"
+        '<p:xfrm><a:off x="3048000" y="952500"/>'
+        '<a:ext cx="1905000" cy="1428750"/></p:xfrm>'
+        '<a:graphic><a:graphicData uri="urn:example:unsupported">'
+        '<a:ext r:id="rIdMissing"/></a:graphicData></a:graphic>'
+        "</p:graphicFrame>"
+    ).encode()
+    parts[slide_part] = slide_xml.replace(b"</p:spTree>", frame + b"</p:spTree>")
+    rendered = BytesIO()
+    Image.new("RGB", (1280, 720), "#2A7F62").save(rendered, "PNG")
+
+    result = read_pptx_result(write_package(parts), fallback_pngs=(rendered.getvalue(),))
+
+    [layer] = [
+        node
+        for node in result.slides[0].contents
+        if isinstance(node, ShapeNode)
+        and isinstance(node.fill, PictureFill)
+        and node.fill.raster_role == "pptx-source-fallback"
+    ]
+    assert layer.node_id == "pptx-20"
+    [fragment] = [fragment for fragment in result.preserved if fragment.kind == "graphicFrame"]
+    assert fragment.owner_node_id == layer.node_id
+    assert "visual retained as an element layer" in result.warnings[-1].message
 
 
 def test_reads_native_powerpoint_picture() -> None:

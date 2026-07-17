@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 from xml.etree.ElementTree import Element
@@ -12,6 +12,7 @@ from defusedxml import ElementTree
 
 from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
+from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.model import (
     Box,
     CanvasNode,
@@ -26,6 +27,7 @@ from domoxml.core.ir.model import (
     MoveTo,
     Node,
     PathCommand,
+    PictureFill,
     Point,
     PreservedNode,
     QuadTo,
@@ -344,8 +346,16 @@ def _local_name(element: Element) -> str:
     return element.tag.rsplit("}", 1)[-1]
 
 
-def _graphic_frame_box(element: Element) -> Box | None:
-    transform = element.find("p:xfrm", _NS)
+def _positioned_box(element: Element) -> Box | None:
+    """Return the viewport box for a direct slide-tree visual when it has one."""
+    kind = _local_name(element)
+    transform = (
+        element.find("p:xfrm", _NS)
+        if kind in {"graphicFrame", "oleObj"}
+        else element.find("p:grpSpPr/a:xfrm", _NS)
+        if kind == "grpSp"
+        else element.find("p:spPr/a:xfrm", _NS)
+    )
     offset = transform.find("a:off", _NS) if transform is not None else None
     extent = transform.find("a:ext", _NS) if transform is not None else None
     if offset is None or extent is None:
@@ -356,6 +366,27 @@ def _graphic_frame_box(element: Element) -> Box | None:
         width=max(1, _int_attr(extent, "cx")),
         height=max(1, _int_attr(extent, "cy")),
     )
+
+
+def _fallback_picture(
+    rendered_png: bytes | None,
+    box: Box,
+    *,
+    slide_width: int,
+    slide_height: int,
+) -> PictureFill | None:
+    if rendered_png is None:
+        return None
+    crop = crop_slide_region(
+        rendered_png,
+        slide_width=slide_width,
+        slide_height=slide_height,
+        left=box.x,
+        top=box.y,
+        width=box.width,
+        height=box.height,
+    )
+    return PictureFill(data=crop, ext="png") if crop is not None else None
 
 
 def _preserve(
@@ -554,6 +585,7 @@ def _slide(
     width: int,
     height: int,
     slide_index_by_part: dict[str, int],
+    fallback_png: bytes | None = None,
 ) -> tuple[SlideIR, tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
     colors = _slide_colors(package, slide_part)
     hyperlink_for = _hyperlink_resolver(package, slide_part, slide_index_by_part)
@@ -588,6 +620,7 @@ def _slide(
         for element in tree:
             kind = _local_name(element)
             preserved_owner_id: str | None = None
+            preserve_whole_node = True
             if kind in {"nvGrpSpPr", "grpSpPr"}:
                 continue
             if kind == "sp":
@@ -605,6 +638,7 @@ def _slide(
                     preserved.extend(shape_preserved)
                     if not shape_preserved:
                         continue
+                    preserve_whole_node = False
                 reason = "preserved shape that the reverse adapter could not map"
             elif kind == "pic":
                 # Video/audio pics carry a media relationship — recover as a MediaNode.
@@ -658,30 +692,55 @@ def _slide(
                     contents.append(_with_pptx_identity(frame.table, element, slide_part))
                     continue
                 reason = frame.reason or "preserved unsupported graphicFrame"
-                frame_box = _graphic_frame_box(element)
-                if frame_box is not None:
+            elif kind == "oleObj":
+                reason = "p:oleObj (OLE object) has no HTML mapping; preserved as fragment"
+            else:
+                reason = f"preserved unsupported reverse slide node: {kind}"
+            if preserve_whole_node:
+                box = _positioned_box(element)
+                if box is not None:
+                    fallback = _fallback_picture(
+                        fallback_png,
+                        box,
+                        slide_width=width,
+                        slide_height=height,
+                    )
                     try:
                         payload = capture_payload(
                             package,
                             slide_part,
                             element,
-                            kind="graphicFrame",
+                            kind=kind,
                             ambient_theme_part=inherit_ctx.theme_part,
                         )
                     except (KeyError, ValueError):
                         reason += "; dependent OPC graph could not be attached"
+                        if fallback is not None:
+                            fallback_node = _with_pptx_identity(
+                                ShapeNode(
+                                    box=box,
+                                    fill=fallback.model_copy(
+                                        update={"raster_role": "pptx-source-fallback"}
+                                    ),
+                                ),
+                                element,
+                                slide_part,
+                            )
+                            contents.append(fallback_node)
+                            preserved_owner_id = fallback_node.node_id
+                            reason += "; visual retained as an element layer"
                     else:
                         preserved_node = _with_pptx_identity(
-                            PreservedNode(box=frame_box, payload=payload),
+                            PreservedNode(
+                                box=box,
+                                payload=payload,
+                                fallback=fallback,
+                            ),
                             element,
                             slide_part,
                         )
                         contents.append(preserved_node)
                         preserved_owner_id = preserved_node.node_id
-            elif kind == "oleObj":
-                reason = "p:oleObj (OLE object) has no HTML mapping; preserved as fragment"
-            else:
-                reason = f"preserved unsupported reverse slide node: {kind}"
             warning, fragment = _preserve(slide_part, element, reason)
             if preserved_owner_id is not None:
                 fragment = fragment.model_copy(update={"owner_node_id": preserved_owner_id})
@@ -743,8 +802,15 @@ def _slide_colors(package: OpcPackage, slide_part: str) -> ThemeColors:
     return {**colors, **{key: colors.get(value, value) for key, value in mapping.items()}}
 
 
-def read_pptx_result(pptx: bytes) -> PptxReadResult:
-    """Read a PPTX package into ordered canvas slides plus reverse diagnostics."""
+def read_pptx_result(
+    pptx: bytes, *, fallback_pngs: Sequence[bytes] | None = None
+) -> PptxReadResult:
+    """Read a PPTX package into ordered canvas slides plus reverse diagnostics.
+
+    ``fallback_pngs`` may supply one authoritative full-slide render per source slide. Positioned
+    source objects without a native reverse adapter receive a minimal element crop while retaining
+    their exact source payload for PPTX re-emission.
+    """
     package = OpcPackage.from_bytes(pptx)
     presentation_part = package.related_part_by_type(None, _OFFICE_DOCUMENT_REL)
     root = ElementTree.fromstring(package.read(presentation_part))
@@ -756,8 +822,15 @@ def read_pptx_result(pptx: bytes) -> PptxReadResult:
     slide_parts = [
         package.related_part(presentation_part, slide_id.attrib[_RID]) for slide_id in slide_ids
     ]
+    if fallback_pngs is not None and len(fallback_pngs) != len(slide_parts):
+        raise ValueError(
+            f"fallback PNG count {len(fallback_pngs)} does not match slide count {len(slide_parts)}"
+        )
     # Deck-order index per slide part, so a slide-jump rel can recover its zero-based target.
     slide_index_by_part = {part: index for index, part in enumerate(slide_parts)}
+    resolved_fallbacks: Sequence[bytes | None] = (
+        fallback_pngs if fallback_pngs is not None else (None,) * len(slide_parts)
+    )
     results = [
         _slide(
             package,
@@ -765,8 +838,9 @@ def read_pptx_result(pptx: bytes) -> PptxReadResult:
             width=width,
             height=height,
             slide_index_by_part=slide_index_by_part,
+            fallback_png=fallback_png,
         )
-        for slide_part in slide_parts
+        for slide_part, fallback_png in zip(slide_parts, resolved_fallbacks, strict=True)
     ]
     font_faces, font_warnings = read_embedded_fonts(package, root, presentation_part)
     all_warnings = tuple(warning for result in results for warning in result[1]) + tuple(
@@ -780,6 +854,6 @@ def read_pptx_result(pptx: bytes) -> PptxReadResult:
     )
 
 
-def read_pptx(pptx: bytes) -> list[SlideIR]:
+def read_pptx(pptx: bytes, *, fallback_pngs: Sequence[bytes] | None = None) -> list[SlideIR]:
     """Read a PPTX package into ordered canvas slides."""
-    return list(read_pptx_result(pptx).slides)
+    return list(read_pptx_result(pptx, fallback_pngs=fallback_pngs).slides)

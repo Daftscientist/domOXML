@@ -211,6 +211,23 @@ def test_serialize_canvas_embeds_attached_preservation_payload() -> None:
     assert decode_payload(encoded) == payload
 
 
+def test_serialize_canvas_makes_preserved_fallback_visible_as_an_asset() -> None:
+    payload = PreservationPayload(kind="graphicFrame", root_xml="<p:graphicFrame/>")
+    node = PreservedNode(
+        node_id="chart-1",
+        box=Box(x=100, y=200, width=300, height=400),
+        payload=payload,
+        fallback=PictureFill(data=b"fallback-png", ext="png"),
+    )
+
+    result = serialize_canvas([SlideIR(width=1_000, height=1_000, contents=(node,))])
+
+    assert '<img class="domoxml-preserved"' in result.slides[0].html
+    assert 'data-domoxml-representation="element-layer"' in result.slides[0].html
+    assert "opacity:0" not in result.slides[0].html
+    assert result.assets[0].data == b"fallback-png"
+
+
 def test_render_result_save_writes_every_artifact(tmp_path: Path) -> None:
     html = serialize_canvas([_slide()])
     result = RenderResult(

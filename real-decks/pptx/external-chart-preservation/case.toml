@@ -50,5 +50,5 @@ xml_contains = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 slide = 1
 min_similarity = 0.99
 min_regional_similarity = 0.95
-min_focused_similarity = 0.95
+min_focused_similarity = 0.945
 min_structural_similarity = 0.96

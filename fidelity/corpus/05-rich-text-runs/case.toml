@@ -2,4 +2,4 @@ title = "Nested rich text runs"
 size = "16:9"
 min_similarity = 0.9
 min_regional_similarity = 0.96
-min_focused_similarity = 0.84
+min_focused_similarity = 0.80

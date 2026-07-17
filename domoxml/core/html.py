@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from domoxml.core.drawingml.presets import preset_defaults, preset_vertices
 from domoxml.core.fillcrop import srcrect_to_background
 from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_css
+from domoxml.core.ir.effect_payload import encode_effects
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Blur,
@@ -44,6 +45,7 @@ from domoxml.core.ir.model import (
 )
 from domoxml.core.ir.parse import autonum_to_css_list_style, bu_char_to_css_list_style
 from domoxml.core.ir.pattern import pattern_to_css
+from domoxml.core.ir.text_payload import encode_text_body
 from domoxml.core.opc import encode_payload
 from domoxml.core.svg_path import commands_to_svg_d
 from domoxml.core.svg_stroke import svg_dash_lengths
@@ -103,6 +105,22 @@ def _identity_attrs(node: CanvasNode) -> str:
         if provenance.role is not None:
             attrs.append(("data-domoxml-layer-role", provenance.role))
     return "".join(f' {name}="{escape(value, quote=True)}"' for name, value in attrs)
+
+
+def _effect_attrs(node: ShapeNode) -> str:
+    """Typed effect metadata carried beside renderer-facing CSS."""
+    if not node.effects:
+        return ""
+    payload = escape(encode_effects(node.effects), quote=True)
+    return f' data-domoxml-effects="{payload}"'
+
+
+def _text_payload_attrs(node: ShapeNode) -> str:
+    """Typed text semantics carried beside renderer-facing HTML spans."""
+    if node.text is None:
+        return ""
+    payload = escape(encode_text_body(node.text), quote=True)
+    return f' data-domoxml-text-payload="{payload}"'
 
 
 def _rgba(color: Rgba, *, opacity: float = 1.0) -> str:
@@ -817,7 +835,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                     ' vector-effect="non-scaling-stroke"'
                 )
             inner = (
-                f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}'
+                f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}{_effect_attrs(node)}'
                 f' viewBox="0 0 {vb_w} {vb_h}"'
                 f' style="{escape(pos_style, quote=True)}">'
                 f'<path d="{escape(d, quote=True)}" {fill_attr}{stroke_attrs}/>'
@@ -838,8 +856,9 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
         if isinstance(node.fill, PictureFill) and node.fill.raster_role is not None:
             raster_attr = f' data-domoxml-raster="{escape(node.fill.raster_role, quote=True)}"'
         style = escape(combined_style, quote=True)
+        metadata_attrs = _identity_attrs(node) + _effect_attrs(node) + _text_payload_attrs(node)
         inner = (
-            f'<div class="domoxml-shape"{_identity_attrs(node)} style="{style}"'
+            f'<div class="domoxml-shape"{metadata_attrs} style="{style}"'
             f"{autofit_attr}{text_body_attr}{raster_attr}>"
             f"{_text_html(node.text, warnings)}</div>"
         )
@@ -869,7 +888,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
             left = _px(node.box.x)
             top = _px(node.box.y)
             return (
-                f'<div class="domoxml-shape"{_identity_attrs(node)} '
+                f'<div class="domoxml-shape"{metadata_attrs} '
                 f'style="left:{left};top:{top};width:{w};height:{h};'
                 f'{reflect_style}">'
                 f"{_text_html(node.text, warnings)}</div>"

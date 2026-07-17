@@ -274,7 +274,7 @@ def _shape(
         except (TypeError, ValueError):
             corner = 0
     shape_effects, effect_warns, effect_preserved = read_effects(
-        properties, lambda element: _rgba(element, colors)
+        properties, lambda element: _rgba(element, colors), box=box
     )
     custgeom_el = properties.find(f"{{{_A}}}custGeom")
     custom_geom = _custGeom(custgeom_el) if custgeom_el is not None else None

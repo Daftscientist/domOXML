@@ -9,7 +9,7 @@ evidence covers both conversion directions and the round-trip path.
 
 ## Current PresentationML Capability Matrix
 
-Audited on **2026-07-16**.
+Audited on **2026-07-17**.
 
 | Capability | HTML/CSS -> PPTX | PPTX -> HTML/CSS | Evidence | Main remaining work |
 |---|---|---|---|---|
@@ -48,7 +48,7 @@ Audited on **2026-07-16**.
 | `bullets-spacing` | both | shared list/paragraph behavior |
 | `chart-preservation` | reverse | owned chart graph, ambient theme, identity, and exact PPTX re-emission |
 | `custom-path` | both | native custom geometry and connector structure survive normalized HTML and PPTX re-emission |
-| `effects` | forward | renderer-sensitive effect contract still blocks bidirectional status |
+| `effects` | both | native outer shadow/glow plus portable inset layer; broader effect-list family remains |
 | `hyperlink` | both | run hyperlinks and relationships |
 | `interleaved-order` | both | canonical mixed-node z-order through both adapters |
 | `node-identity` | both | stable IDs, source provenance, ownership, and private OOXML extension |

@@ -31,7 +31,7 @@ ingest and attached preservation is still roadmap work.
 
 ## Current Shared Capability Matrix
 
-Audited on **2026-07-16**. `cap:*` refers to a manifest below `capabilities/pptx/`; “both” means the
+Audited on **2026-07-17**. `cap:*` refers to a manifest below `capabilities/pptx/`; “both” means the
 runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structural floors.
 
 | Family | Current forward path | Current reverse path | Evidence | Main remaining work |
@@ -53,9 +53,9 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Per-side borders | Decomposed | Native as component shapes | `cap:borders` (both) | rounded nonuniform borders without approximation; grouping/source relation |
 | Dash, cap, and join | Partial/native | Partial/native | unit + `cap:borders` | complete preset semantics and renderer parity |
 | Arrowheads and gradient strokes | Gap/partial | Partial | unit only | visible HTML arrows, forward authoring, round-trip fixture |
-| Outer shadow | Partial/native | Native | `cap:effects` (forward) | exact blur/spread/scale/color behavior and reverse gate |
-| Inner shadow | Element layer | Native read | `cap:effects` (forward) | portable native/hybrid policy and PowerPoint-calibrated proof |
-| Glow | Partial/native | Partial CSS | `cap:effects` (forward) | halo calibration, compound effects, reverse gate |
+| Outer shadow | Partial/native | Native with exact typed HTML payload | `cap:effects` (both) | adversarial negative spread, multiple shadows, and broader color models |
+| Inner shadow | Portable element layer | Native read; browser-visible CSS | `cap:effects` (both) | owned source payload on the layer and renderer-selectable native policy |
+| Glow | Partial/native | CSS plus exact typed HTML payload | `cap:effects` (both) | compound effects, non-rect geometry, and broader halo calibration |
 | Blur, soft edge, reflection | Layered forward | Partial CSS/preserve | unit only | minimal hybrid layers, exact bounds, stable round trips |
 | Other effect-list constructs | Layered/gap | Preserve only | unit only | effect containers/order, preset shadow, fill overlay, visual fallback and re-emission |
 | Basic text runs | Native | Native | `cap:text-rich-runs` (both) | language/script coverage and font portability |
@@ -73,7 +73,7 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Charts | Attached source re-emission only; authored charts remain a gap | Attached preserve; normalized HTML remains nonvisual | `cap:chart-preservation` (reverse) + real-deck PPTX visual gate | shared chart/data IR, HTML rendering/layer, and native chart authoring |
 | Unknown visual extensions | Element layer on HTML input | Preserve only on PPTX input | unit only | universal renderer-backed reverse layers and attached preservation payloads |
 | Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/structural | CI + tests | reverse coverage records, object-aware segmentation, typography/color metrics, layer/editability ratchets |
-| Repeated round trips | one cycle for 15 bidirectional fixtures | 15 bidirectional fixtures plus reverse-first chart preservation | capability runner | configurable multi-cycle convergence and broader source-format preservation gates |
+| Repeated round trips | one cycle for 17 bidirectional fixtures | 17 bidirectional fixtures plus reverse-first chart preservation | capability runner | configurable multi-cycle convergence and broader source-format preservation gates |
 
 ## Shared Work Remaining For PPTX
 

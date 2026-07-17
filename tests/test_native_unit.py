@@ -10,8 +10,22 @@ import io
 from PIL import Image
 
 from domoxml.core.ir import extract_slide
-from domoxml.core.ir.model import Box, Connector, GradientFill, PictureFill, SolidFill
+from domoxml.core.ir.effect_payload import encode_effects
+from domoxml.core.ir.model import (
+    Box,
+    Connector,
+    Glow,
+    GradientFill,
+    PictureFill,
+    Rgba,
+    Shadow,
+    SolidFill,
+    TextBody,
+    TextParagraph,
+    TextRun,
+)
 from domoxml.core.ir.parse import parse_border_side, parse_gradient, parse_shadow
+from domoxml.core.ir.text_payload import encode_text_body
 from domoxml.core.render.browser import (
     RenderedNode,
     RenderedRaster,
@@ -85,6 +99,65 @@ def test_parse_shadow_offsets_and_inset() -> None:
     inset = parse_shadow("rgb(0,0,0) 2px 2px 4px inset")
     assert inset is not None and inset.inset is True
     assert parse_shadow("none") is None
+
+
+def test_normalized_effect_payload_wins_over_renderer_css_inference() -> None:
+    effects = (
+        Shadow(
+            color=Rgba(r=1, g=2, b=3, a=0.4),
+            blur_emu=50_000,
+            distance_emu=25_000,
+            direction_deg=33,
+            spread_emu=7_500,
+        ),
+        Glow(color=Rgba(r=4, g=5, b=6, a=0.5), radius_emu=60_000),
+    )
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "backgroundColor": "rgb(255, 255, 255)",
+            "boxShadow": "rgb(255, 0, 0) 1px 1px 1px 0px",
+            "domoxmlEffects": encode_effects(effects),
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    assert result.slide.shapes[0].effects == effects
+
+
+def test_normalized_text_payload_wins_over_renderer_alignment_inference() -> None:
+    text = TextBody(
+        paragraphs=(
+            TextParagraph(
+                runs=(TextRun(text="Centered", font_family="Arial", size_pt=18),),
+                align="center",
+            ),
+        )
+    )
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=100,
+        height=50,
+        text="Centered",
+        index=0,
+        styles={
+            "backgroundColor": "rgb(255, 255, 255)",
+            "textAlign": "left",
+            "domoxmlTextPayload": encode_text_body(text),
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    assert result.slide.shapes[0].text == text
 
 
 # --------------------------------------------------------------------------- native-vs-raster

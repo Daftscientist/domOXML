@@ -1,5 +1,5 @@
 id = "effects"
-direction = "forward"
+direction = "both"
 html_file = "slide.html"
 
 [expected]
@@ -7,10 +7,10 @@ min_representation = { native = 2, element_layer = 1 }
 max_representation = { approximated = 0, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
 warnings = ["LibreOffice ignores a:innerShdw"]
 
-# Shadowed card: box-shadow with offset+blur+spread → outerShdw with sx/sy grow attrs
+# Shadowed card: calibrated blur plus exact sx/sy grow attrs derived from the shape dimensions.
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"
-xpath = ".//a:outerShdw[@sx]"
+xpath = ".//a:outerShdw[@blurRad='171450' and @sx='103750' and @sy='106000']"
 min_count = 1
 
 # Inset shadow card: raster fallback because LibreOffice ignores a:innerShdw
@@ -19,13 +19,26 @@ part = "ppt/slides/slide1.xml"
 xpath = ".//p:pic/p:blipFill"
 min_count = 1
 
-# Glow halo card: zero-offset box-shadow → a:glow (preferred) or outerShdw
+# Glow halo card: zero-offset CSS shadow maps to the calibrated native glow radius.
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"
-xpath = ".//a:glow | .//a:outerShdw[@dist='0']"
+xpath = ".//a:glow[@rad='323850']"
 min_count = 1
 
 [visual]
-source_to_pptx_min_similarity = 0.98
-source_to_pptx_min_regional_similarity = 0.975
-source_to_pptx_min_structural_similarity = 0.97
+source_to_pptx_min_similarity = 0.99
+source_to_pptx_min_regional_similarity = 0.98
+source_to_pptx_min_structural_similarity = 0.98
+pptx_to_html_min_similarity = 0.995
+pptx_to_html_min_regional_similarity = 0.985
+pptx_to_html_min_structural_similarity = 0.99
+
+[reverse]
+expected_slides = 1
+html_contains = [
+  "data-domoxml-effects=",
+  "box-shadow:",
+  "background-image:url(../assets/",
+]
+max_warnings = 0
+max_preserved = 0

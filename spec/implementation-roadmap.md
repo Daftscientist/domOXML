@@ -7,14 +7,13 @@ new unsupported visual states.
 
 ## Current Baseline
 
-Snapshot audited on **2026-07-16** against the repository, executable manifests, and tests:
+Snapshot audited on **2026-07-17** against the repository, executable manifests, and tests:
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 642 tests are collected.
-- 18 atomic PPTX capability fixtures exist; 16 are bidirectional and one is a reverse-first chart
+- 647 tests are collected.
+- 18 atomic PPTX capability fixtures exist; 17 are bidirectional and one is a reverse-first chart
   preservation fixture.
-- `effects` remains the only forward-only fixture.
 - 9 authored HTML fidelity cases exist.
 - 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and attached
   chart-graph re-emission with a visual gate.
@@ -221,16 +220,17 @@ silently lowering the expected score.
 2. [x] Add stable node IDs and provenance; the ordered `SlideIR.contents` sequence is implemented.
 3. [x] Attach preserved source payloads and prove real re-emission for the chart case; expand the
    same contract to remaining preserved visual families under items 5 and 7.
-4. [ ] Make the remaining forward-only capability fixture genuinely bidirectional. SVG vector
+4. [x] Make every forward-authored atomic capability fixture genuinely bidirectional. SVG vector
    pictures retain their original asset and `asvg:svgBlip` extension through the full loop;
-   custom paths retain solid SVG fill/stroke and exact connector IR through normalized HTML.
-   Effects remains.
+   custom paths retain solid SVG fill/stroke and exact connector IR; effects and text-body semantics
+   use versioned typed normalized-HTML payloads and converge exactly across the tested PPTX loop.
 5. [ ] Add reverse visual layers for unknown PPTX nodes instead of HTML omission plus detached XML.
 6. [ ] Add package/schema validation for generated and re-emitted decks.
 7. [ ] Add groups, media, masters/layouts/placeholders, notes, and extensions to the real-deck
    corpus.
-8. [ ] Expand effects using PowerPoint/Graph-calibrated evidence, beginning with inner shadow, glow,
-   and spread/offset behavior.
+8. [ ] Expand effects beyond the bidirectional offset-shadow/inset-layer/glow baseline using
+   PowerPoint/Graph-calibrated evidence for blur, soft edge, reflection, preset shadow, fill overlay,
+   compound ordering, and effect-bearing custom geometry.
 9. [ ] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, and repeated-round-trip count.
 10. [ ] Add strict OOXML and malformed/nonstandard producer cases after Transitional package

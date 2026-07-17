@@ -27,6 +27,7 @@ from domoxml.core.images import (
     normalise_image,
 )
 from domoxml.core.ir.connector_extract import extract_connector
+from domoxml.core.ir.effect_payload import decode_effects
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
@@ -77,6 +78,7 @@ from domoxml.core.ir.pattern import match_pattern_fill
 from domoxml.core.ir.slide_properties_extract import extract_slide_properties
 from domoxml.core.ir.svg_extract import extract_custom_geometry
 from domoxml.core.ir.table_extract import extract_table
+from domoxml.core.ir.text_payload import decode_text_body
 from domoxml.core.opc import decode_payload
 from domoxml.core.render.browser import (
     RenderedNode,
@@ -261,6 +263,9 @@ def _text_body_margins(node: RenderedNode) -> tuple[int, int, int, int]:
 
 
 def _text_body(node: RenderedNode) -> TextBody | None:
+    encoded = decode_text_body(node.styles.get("domoxmlTextPayload"))
+    if encoded is not None:
+        return encoded
     source = node.text_runs or (
         (RenderedTextRun(text=node.text, styles=node.styles),) if node.text else ()
     )
@@ -1083,6 +1088,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             custom_geom=svg.geometry,
                             fill=fill,
                             line=line,
+                            effects=decode_effects(node.styles.get("domoxmlEffects")) or (),
                         ),
                         node,
                     )
@@ -1258,8 +1264,13 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     "width": box.width + left_padding + right_padding,
                 }
             )
-        shadow = parse_shadow(node.styles.get("boxShadow"))
-        effect = _shadow_to_effect(shadow, box, warnings) if shadow is not None else None
+        encoded_effects = decode_effects(node.styles.get("domoxmlEffects"))
+        shadow = parse_shadow(node.styles.get("boxShadow")) if encoded_effects is None else None
+        effects = (
+            encoded_effects
+            if encoded_effects is not None
+            else ((_shadow_to_effect(shadow, box, warnings),) if shadow is not None else ())
+        )
         # Emit per-side border rects before the main shape so they appear behind its fill.
         contents.extend(side_rect_shapes)
         contents.append(
@@ -1269,7 +1280,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     geom=geom,
                     fill=fill,
                     line=line,
-                    effects=(effect,) if effect is not None else (),
+                    effects=effects,
                     corner_radius_emu=corner,
                     opacity=_opacity(node.styles),
                     text=text,

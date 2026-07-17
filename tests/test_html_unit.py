@@ -29,6 +29,7 @@ from domoxml.core.ir.model import (
     TextParagraph,
     TextRun,
 )
+from domoxml.core.ir.text_payload import decode_text_body, encode_text_body
 from domoxml.core.opc import decode_payload
 from domoxml.types import ConversionWarning, CoverageReport, PreservedFragment, RenderResult
 
@@ -84,6 +85,17 @@ def test_serialize_canvas_emits_stable_slide_html_css_and_assets() -> None:
     assert html.assets[0].path.startswith("assets/")
     assert f"url(../{html.assets[0].path})" in slide.html
     assert slide.html.count("opacity:0.5") == 1
+
+
+def test_serialize_canvas_carries_exact_text_body_payload() -> None:
+    source = _slide().shapes[0].text
+    assert source is not None
+
+    html = serialize_canvas([_slide()]).slides[0].html
+
+    assert "data-domoxml-text-payload=" in html
+    assert decode_text_body(encode_text_body(source)) == source
+    assert decode_text_body("not-json") is None
 
 
 def test_serialize_canvas_emits_identity_and_provenance_metadata() -> None:

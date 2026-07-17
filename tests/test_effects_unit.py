@@ -32,6 +32,7 @@ import pytest
 
 from domoxml.core.drawingml.shape import _effects_xml
 from domoxml.core.html import serialize_canvas
+from domoxml.core.ir.effect_payload import decode_effects, encode_effects
 from domoxml.core.ir.extract import _shadow_to_effect
 from domoxml.core.ir.model import (
     Blur,
@@ -55,9 +56,12 @@ _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
 def parse_effects_xml(
-    properties: Element, colors: dict[str, str]
+    properties: Element,
+    colors: dict[str, str],
+    *,
+    box: Box | None = None,
 ) -> tuple[tuple[Effect, ...], tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
-    return read_effects(properties, lambda element: rgba(element, colors))
+    return read_effects(properties, lambda element: rgba(element, colors), box=box)
 
 
 # -----------------------------------------------------------------------
@@ -287,20 +291,36 @@ def test_reverse_outer_shadow() -> None:
     assert not preserved
 
 
-def test_reverse_outer_shadow_with_sx_sy_encodes_spread() -> None:
-    # sx=120000 → scale is 1.2 → spread = 0.2 / 2 * dist = 0.1 * dist
+def test_reverse_outer_shadow_with_sx_sy_recovers_spread_from_shape_size() -> None:
+    box = Box(x=0, y=0, width=100_000, height=50_000)
     props = _shape_props(
         "<a:effectLst>"
-        '<a:outerShdw blurRad="0" dist="10000" dir="0" sx="120000" sy="120000">'
+        '<a:outerShdw blurRad="0" dist="10000" dir="0" sx="120000" sy="140000">'
         '<a:srgbClr val="000000"/>'
         "</a:outerShdw>"
         "</a:effectLst>"
     )
-    effects, _warns, _preserved = parse_effects_xml(props, {})
+    effects, _warns, _preserved = parse_effects_xml(props, {}, box=box)
     shadow = effects[0]
     assert isinstance(shadow, Shadow)
-    # spread_emu should be > 0 when sx/sy != 100000
-    assert shadow.spread_emu > 0
+    assert shadow.spread_emu == 10_000
+
+
+def test_reverse_outer_shadow_invalid_scale_uses_neutral_default() -> None:
+    box = Box(x=0, y=0, width=100_000, height=50_000)
+    props = _shape_props(
+        "<a:effectLst>"
+        '<a:outerShdw blurRad="0" dist="10000" dir="0" sx="invalid" sy="invalid">'
+        '<a:srgbClr val="000000"/>'
+        "</a:outerShdw>"
+        "</a:effectLst>"
+    )
+
+    effects, _warns, _preserved = parse_effects_xml(props, {}, box=box)
+
+    shadow = effects[0]
+    assert isinstance(shadow, Shadow)
+    assert shadow.spread_emu == 0
 
 
 def test_reverse_inner_shadow() -> None:
@@ -500,3 +520,23 @@ def test_html_inset_shadow_has_inset_keyword() -> None:
     )
     html = serialize_canvas([slide])
     assert "inset" in html.slides[0].html
+
+
+def test_normalized_html_carries_exact_versioned_effect_payload() -> None:
+    effects = (
+        Shadow(
+            color=Rgba(r=12, g=34, b=56, a=0.7),
+            blur_emu=px_to_emu(9),
+            distance_emu=px_to_emu(7),
+            direction_deg=123,
+            spread_emu=px_to_emu(2),
+        ),
+        Glow(color=Rgba(r=90, g=80, b=70, a=0.6), radius_emu=px_to_emu(11)),
+    )
+
+    html = serialize_canvas([_slide_with(*effects)])
+    payload = encode_effects(effects)
+
+    assert "data-domoxml-effects=" in html.slides[0].html
+    assert decode_effects(payload) == effects
+    assert decode_effects("not-json") is None

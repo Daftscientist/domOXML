@@ -152,7 +152,9 @@ contract therefore includes:
 Normalized HTML is deterministic browser-renderable output. Narrow `data-domoxml-*` metadata is
 allowed where CSS cannot carry editability, source grouping, or an Office semantic. The visible
 document must remain useful without proprietary metadata, while metadata-aware re-ingestion should
-recover the richer IR.
+recover the richer IR. Metadata currently retains source provenance; versioned typed payloads retain
+attached preservation graphs, effects, and text-body semantics, while typed connector JSON retains
+exact routing beside renderer-facing HTML.
 
 ## Shared And Format-Specific Ownership
 

@@ -201,6 +201,8 @@ _SNAPSHOT_JS = """
       domoxmlLayerRole: 'data-domoxml-layer-role',
       domoxmlPreservedPayload: 'data-domoxml-preserved-payload',
       domoxmlConnector: 'data-domoxml-connector',
+      domoxmlEffects: 'data-domoxml-effects',
+      domoxmlTextPayload: 'data-domoxml-text-payload',
     };
     for (const [key, attribute] of Object.entries(metadata)) {
       const value = el.getAttribute(attribute);

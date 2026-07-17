@@ -9,7 +9,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from domoxml.core.opc import OpcPackage
+from domoxml.core.opc import OpcPackage, validate_opc_package
+from domoxml.slides.validation import validate_pptx_package
 from domoxml.types import HtmlPresentation
 
 _SLIDE_PART = re.compile(r"ppt/slides/slide\d+\.xml$")
@@ -111,22 +112,6 @@ def load_real_decks(root: Path) -> list[RealDeckCase]:
     return [_load_case(path) for path in sorted(root.rglob("case.toml"))]
 
 
-def validate_opc_package(pptx: bytes) -> tuple[str, ...]:
-    """Return missing internal relationship targets for an OPC package."""
-    package = OpcPackage.from_bytes(pptx)
-    errors: list[str] = []
-    for source in (None, *package.parts):
-        for relationship in package.relationships(source):
-            if relationship.target_mode != "Internal":
-                continue
-            target = package.resolve(source, relationship)
-            if not package.has_part(target):
-                errors.append(
-                    f"{source or '<package>'}: {relationship.id} targets missing {target}"
-                )
-    return tuple(errors)
-
-
 def validate_real_deck(case: RealDeckCase, html: HtmlPresentation) -> tuple[str, ...]:
     """Validate provenance, package structure, reverse HTML, warnings, and preservation."""
     errors: list[str] = []
@@ -134,15 +119,18 @@ def validate_real_deck(case: RealDeckCase, html: HtmlPresentation) -> tuple[str,
     if digest != case.provenance.sha256:
         errors.append(f"sha256 {digest} != pinned {case.provenance.sha256}")
 
-    package = OpcPackage.from_bytes(case.pptx)
+    package_errors = validate_opc_package(case.pptx)
+    errors.extend(package_errors)
+    try:
+        package = OpcPackage.from_bytes(case.pptx)
+    except ValueError:
+        return tuple(errors)
     slide_count = sum(bool(_SLIDE_PART.fullmatch(part)) for part in package.parts)
     if slide_count != case.package.slides:
         errors.append(f"package slide count {slide_count} != expected {case.package.slides}")
     for part in case.package.required_parts:
         if not package.has_part(part):
             errors.append(f"missing required package part {part}")
-    errors.extend(validate_opc_package(case.pptx))
-
     if len(html.slides) != case.package.slides:
         errors.append(f"reverse slide count {len(html.slides)} != expected {case.package.slides}")
     if len(html.assets) < case.reverse.min_assets:
@@ -179,8 +167,11 @@ def validate_real_deck(case: RealDeckCase, html: HtmlPresentation) -> tuple[str,
 
 def validate_real_deck_roundtrip(case: RealDeckCase, pptx: bytes) -> tuple[str, ...]:
     """Validate re-emitted OPC relationships and required editable XML text/content."""
-    errors = list(validate_opc_package(pptx))
-    package = OpcPackage.from_bytes(pptx)
+    errors = list(validate_pptx_package(pptx))
+    try:
+        package = OpcPackage.from_bytes(pptx)
+    except ValueError:
+        return tuple(errors)
     slide_count = sum(bool(_SLIDE_PART.fullmatch(part)) for part in package.parts)
     if slide_count != case.package.slides:
         errors.append(f"roundtrip slide count {slide_count} != expected {case.package.slides}")

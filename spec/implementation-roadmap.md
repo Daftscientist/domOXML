@@ -11,7 +11,7 @@ Snapshot audited on **2026-07-17** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 659 tests are collected.
+- 682 tests are collected.
 - 18 atomic PPTX capability fixtures exist; 17 are bidirectional and one is a reverse-first chart
   preservation fixture.
 - 9 authored HTML fidelity cases exist.
@@ -38,7 +38,9 @@ The baseline is useful but not yet the product invariant:
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - forward conversion has a typed representation/editability/retention contract, but reverse ingest
   does not yet emit equivalent per-visual coverage records;
-- package relationship checks exist, but full ECMA/Open XML schema validation is not enforced.
+- generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
+  validation; full ECMA/Open XML XSD, Strict-package, AlternateContent, and extension-schema
+  validation are not yet enforced.
 
 ## Completion Contract
 
@@ -233,7 +235,11 @@ silently lowering the expected score.
    slide-scoped visual gate are implemented for positioned owned nodes and proven on the external
    chart. Automatic renderer policy and coverage of SmartArt, OLE, 3D, groups, and malformed nodes
    remain before this item is complete.
-6. [ ] Add package/schema validation for generated and re-emitted decks.
+6. [x] Add package/schema validation for generated and re-emitted decks. The package builder and
+   capability/real-deck gates now enforce content types, relationship ownership/IDs/targets,
+   namespaced relationship references, XML parseability, and the core presentation -> slide ->
+   layout -> master -> theme structure. Full ECMA XSD and Strict/extension schemas remain under
+   items 7 and 10 rather than being implied by this structural gate.
 7. [ ] Add groups, media, masters/layouts/placeholders, notes, and extensions to the real-deck
    corpus.
 8. [ ] Expand effects beyond the bidirectional offset-shadow/inset-layer/glow baseline using

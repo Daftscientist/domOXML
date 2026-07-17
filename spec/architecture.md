@@ -173,6 +173,16 @@ PPTX orchestration modules allocate parts and relationships, preserve ordering, 
 presentation inheritance, and dispatch to shared feature adapters. They must not become alternate
 implementations of text, geometry, effects, media, or tables.
 
+Every generated or re-emitted PPTX is validated before it leaves the package builder. The shared
+OPC gate checks content-type coverage, relationship-part ownership, duplicate relationship IDs,
+internal targets, XML parseability, and every namespaced relationship reference. The PPTX gate then
+checks the office-document root, presentation/slide/master/layout/theme graph, positive slide size,
+required PresentationML roots and shape trees, slide reachability, and unique nonvisual shape IDs.
+Capability and real-deck runners assert the same gate independently so validation cannot be bypassed
+silently by a future output path. This is a deterministic structural contract, not a claim of full
+ECMA-376 XSD validation; Strict packages, AlternateContent, extension schemas, and tolerated
+producer deviations remain corpus and schema work.
+
 DOCX will add flow-specific sections, styles, headers/footers, fields, pagination, footnotes, and
 WordprocessingML bindings. XLSX will add workbooks, sheets, cells, formulas, conditional formats,
 and SpreadsheetML bindings. Their difficulty is not zero, but neither should recreate shared OOXML

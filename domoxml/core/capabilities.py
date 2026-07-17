@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from domoxml.slides.validation import validate_pptx_package
 from domoxml.types import (
     ConversionWarning,
     CoverageReport,
@@ -246,13 +247,22 @@ def _validate_xml(fixture: CapabilityFixture, pptx: bytes | None) -> list[str]:
     return errors
 
 
+def _validate_pptx_output(fixture: CapabilityFixture, pptx: bytes | None) -> list[str]:
+    if pptx is None:
+        return _validate_xml(fixture, pptx)
+    package_errors = validate_pptx_package(pptx)
+    if package_errors:
+        return [f"package: {error}" for error in package_errors]
+    return _validate_xml(fixture, pptx)
+
+
 def validate_capability(fixture: CapabilityFixture, result: RenderResult) -> tuple[str, ...]:
     """Return structural mismatches for one rendered forward capability fixture."""
     errors = _validate_coverage(fixture, result.coverage, include_minimums=True)
     for expected in fixture.expected.warnings:
         if not _warning_matches(expected, result.warnings):
             errors.append(f"missing warning containing {expected!r}")
-    errors.extend(_validate_xml(fixture, result.pptx))
+    errors.extend(_validate_pptx_output(fixture, result.pptx))
     return tuple(errors)
 
 
@@ -261,7 +271,7 @@ def validate_roundtrip_capability(
 ) -> tuple[str, ...]:
     """Validate regenerated output without applying source-tree-specific minima."""
     errors = _validate_coverage(fixture, result.coverage, include_minimums=False)
-    errors.extend(_validate_xml(fixture, result.pptx))
+    errors.extend(_validate_pptx_output(fixture, result.pptx))
     return tuple(errors)
 
 

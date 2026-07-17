@@ -19,7 +19,7 @@ Audited on **2026-07-17**.
 | Slide backgrounds | Native subset | Native subset | `cap:transition-bg` (both) | theme/style-matrix backgrounds, image/pattern variants, inheritance |
 | Themes | Partial generated default; restores an attached chart's ambient source theme | Native/partial read | unit + chart real deck | general source-theme authoring, multiple-theme policy, scheme refs, format scheme and full inheritance |
 | Masters and layouts | Fixed generated baseline | Native/partial read, including placeholder body-property inheritance | unit/integration + chart real deck | author arbitrary masters/layouts and preserve them through round trips |
-| Placeholders | Gap on authoring | Native/partial read for geometry, runs, paragraphs and body properties | unit + chart real deck | public/IR model, create placeholders and preserve the full inheritance chain without flattening |
+| Placeholders | Gap on authoring | Native/partial read for geometry, runs, field runs, inherited paragraph alignment and body properties | unit + chart real deck | public/IR model, create placeholders and preserve the full inheritance chain without flattening |
 | Slide inheritance | Gap/flattened output | Partial/native resolution | unit only | complete slide -> layout -> master -> theme cascade and source-reference retention |
 | Transitions | Native subset | Native subset | `cap:transition-bg` (both) | complete transition set, attributes, sounds, advance timing and extension variants |
 | Animations/timing | Gap | Preserve only | unit only | timing IR/input contract, HTML state mapping, visual playback/layer policy, re-emission |
@@ -30,14 +30,14 @@ Audited on **2026-07-17**.
 | Native tables in graphic frames | Native subset | Native subset | `cap:table` (both) + real deck | table styles/inheritance and richer graphic-frame ordering |
 | Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph plus caller-rendered normalized-HTML element layer | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart IR, automatic renderer selection, semantic HTML rendering, and native authoring |
 | Groups | Gap on authoring | Native read then flattened | unit only | author/preserve nested groups, child coordinates, interleaved z-order and IDs |
-| Connectors | Partial | Partial | unit + forward-only custom path fixture | attachment/routing/arrows and structure-preserving reverse re-emission |
+| Connectors | Partial | Partial; transform-box route/endpoints are reported approximated/lost | unit + `cap:custom-path` (both) | attachment/routing/arrows and structure-preserving reverse re-emission |
 | Audio/video | Layered/not native | Native read | unit only | native relationships/parts, playback settings, poster handling and real deck |
 | SmartArt/diagram | Gap | Positioned fallback contract available; ownership/corpus proof pending | unit only | source attachment/re-emission, visual fixture, optional semantic model |
 | OLE/embedded objects | Gap | Positioned fallback contract available; ownership/corpus proof pending | unit only | preview fixture, package preservation/re-emission, security policy |
 | 3D/model extensions | Gap | Positioned fallback contract available where bounds and graph capture succeed | limited unit coverage | package preservation, visual fixture and representative corpus |
 | Accessibility and alternative text | Gap/partial incidental | Partial incidental | no capability fixture | first-class IR/API, `cNvPr` metadata and HTML semantics |
 | Comments/review history | Intentionally ignored | Intentionally ignored | policy | ensure ignored parts never damage visible/package conversion |
-| Unknown slide/extension nodes | no classification contract | Preserve only; often omitted visually | unit only | renderer-backed layer plus attached exact re-emission |
+| Unknown slide/extension nodes | no authoring classification contract | Per-visual `element_layer` with attached exact source graph when positioned and supplied an authoritative render; otherwise explicit `failed`/retention debt | chart capability + focused coverage tests | automatic renderer policy, SmartArt/OLE/3D corpus, group ownership, and attached re-emission proof beyond charts |
 
 ## Atomic Executable Coverage
 
@@ -63,7 +63,9 @@ Audited on **2026-07-17**.
 | `transition-bg` | both | slide transition/background subset |
 
 This table reports fixture execution, not completion of the entire named family. Thresholds and
-structural assertions live in each `capability.toml` and are the executable authority.
+structural assertions live in each `capability.toml` and are the executable authority. Every
+fixture pins exact representation, editability, retention, output-count, and raster-area bounds for
+the initial PPTX-ingest boundary; the four real-deck manifests pin the same reverse contract.
 
 ## PPTX-Specific Work Remaining
 

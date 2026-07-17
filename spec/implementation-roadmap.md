@@ -11,7 +11,7 @@ Snapshot audited on **2026-07-17** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 690 tests are collected.
+- 697 tests are collected.
 - 18 atomic PPTX capability fixtures exist; 17 are bidirectional and one is a reverse-first chart
   preservation fixture.
 - 9 authored HTML fidelity cases exist.
@@ -36,8 +36,10 @@ The baseline is useful but not yet the product invariant:
   use an owned node payload, retain their dependency graph and ambient theme, display an element
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
-- forward conversion has a typed representation/editability/retention contract, but reverse ingest
-  does not yet emit equivalent per-visual coverage records;
+- HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
+  retention, output-count, and raster-area records. All 18 atomic fixtures and 4 real decks pin
+  exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
+  coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
   validation; full ECMA/Open XML XSD, Strict-package, AlternateContent, and extension-schema
   validation are not yet enforced.
@@ -61,8 +63,8 @@ No capability is labelled bidirectional merely because both code paths return su
 
 ## Milestone 0: Make The Contract Accurate
 
-**Status: documentation, forward runtime records, and repeated re-ingestion ratchets implemented;
-complete reverse-ingest coverage records pending.**
+**Status: implemented for the active HTML and PPTX adapters, capability registry, and current
+atomic/real-deck corpus.**
 
 - Keep architecture, roadmap, and inventories authoritative and nonduplicated.
 - Generate schema appendices from pinned official ECMA-376 XSDs.
@@ -248,8 +250,8 @@ silently lowering the expected score.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,
-   and applies global/regional/structural convergence floors. The reverse PPTX reader still needs
-   first-class per-visual coverage output under milestone 0; this registry gate measures each
-   regenerated HTML -> IR -> PPTX boundary without claiming that missing ingest report.
+   and applies global/regional/structural convergence floors. The initial PPTX-ingest boundary now
+   emits first-class per-visual coverage and every atomic fixture plus real-deck case pins exact
+   representation, editability, retention, output-count, and raster-area bounds.
 10. [ ] Add strict OOXML and malformed/nonstandard producer cases after Transitional package
     preservation is reliable.

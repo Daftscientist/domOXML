@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 from xml.etree.ElementTree import Element
 
@@ -74,7 +74,15 @@ from domoxml.slides.inherit import (
 from domoxml.slides.media_read import read_media
 from domoxml.slides.text_read import read_text_body, read_text_run
 from domoxml.slides.transition import parse_transition
-from domoxml.types import ConversionWarning, PreservedFragment
+from domoxml.types import (
+    ConversionWarning,
+    CoverageItem,
+    CoverageReport,
+    Editability,
+    PreservedFragment,
+    Representation,
+    SourceRetention,
+)
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -117,6 +125,7 @@ class PptxReadResult:
     warnings: tuple[ConversionWarning, ...] = ()
     preserved: tuple[PreservedFragment, ...] = ()
     embedded_fonts: tuple[ReverseFontFace, ...] = ()
+    coverage: CoverageReport = field(default_factory=lambda: CoverageReport(items=()))
 
 
 def _int_attr(element: Element, name: str, default: int = 0) -> int:
@@ -344,6 +353,120 @@ def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> Sh
 
 def _local_name(element: Element) -> str:
     return element.tag.rsplit("}", 1)[-1]
+
+
+def _visual_label(slide_part: str, element: Element) -> str:
+    kind = _local_name(element)
+    non_visual = element.find("./*/p:cNvPr", _NS)
+    source_id = non_visual.get("id", "unknown") if non_visual is not None else "unknown"
+    return f"{slide_part}:{kind}#{source_id}"
+
+
+def _native_reverse_coverage(slide_part: str, element: Element) -> CoverageItem:
+    return CoverageItem(
+        element=_visual_label(slide_part, element),
+        representation=Representation.NATIVE,
+        editability=Editability.SEMANTIC,
+    )
+
+
+def _shape_reverse_coverage(
+    slide_part: str,
+    element: Element,
+    *,
+    has_preserved_effects: bool,
+) -> CoverageItem:
+    reasons: list[str] = []
+    retention = SourceRetention.NOT_REQUIRED
+    geometry = element.find("p:spPr/a:prstGeom", _NS)
+    if geometry is not None:
+        name = geometry.get("prst", "rect")
+        valid_geometry = frozenset(GeometryKind.__args__)  # type: ignore[attr-defined]
+        if name not in valid_geometry:
+            reasons.append(f"unsupported preset geometry {name!r} mapped to a rectangle")
+            retention = SourceRetention.LOST
+    if has_preserved_effects:
+        reasons.append("shape has detached source-only effect fragments")
+        if retention is SourceRetention.NOT_REQUIRED:
+            retention = SourceRetention.DETACHED
+    if not reasons:
+        return _native_reverse_coverage(slide_part, element)
+    return CoverageItem(
+        element=_visual_label(slide_part, element),
+        representation=Representation.APPROXIMATED,
+        editability=Editability.SEMANTIC,
+        source_retention=retention,
+        reason="; ".join(reasons),
+    )
+
+
+def _failed_reverse_coverage(
+    slide_part: str,
+    element: Element,
+    reason: str,
+    retention: SourceRetention,
+) -> CoverageItem:
+    return CoverageItem(
+        element=_visual_label(slide_part, element),
+        representation=Representation.FAILED,
+        editability=Editability.NONE,
+        source_retention=retention,
+        output_count=0,
+        reason=reason,
+    )
+
+
+def _group_output_count(group: GroupNode) -> int:
+    return sum(
+        _group_output_count(child) if isinstance(child, GroupNode) else 1
+        for child in group.children
+    )
+
+
+def _group_reverse_coverage(
+    slide_part: str,
+    element: Element,
+    group: GroupNode,
+    *,
+    has_preserved_children: bool,
+) -> CoverageItem:
+    output_count = _group_output_count(group)
+    reason = "PowerPoint group flattened into positioned HTML children"
+    if has_preserved_children:
+        reason += "; unsupported group children retained as detached source fragments"
+    if output_count == 0:
+        return _failed_reverse_coverage(
+            slide_part,
+            element,
+            reason,
+            SourceRetention.LOST,
+        )
+    if output_count == 1:
+        return CoverageItem(
+            element=_visual_label(slide_part, element),
+            representation=Representation.APPROXIMATED,
+            editability=Editability.COMPONENTS,
+            source_retention=SourceRetention.LOST,
+            reason=reason,
+        )
+    return CoverageItem(
+        element=_visual_label(slide_part, element),
+        representation=Representation.DECOMPOSED,
+        editability=Editability.COMPONENTS,
+        source_retention=SourceRetention.LOST,
+        output_count=output_count,
+        reason=reason,
+    )
+
+
+def _connector_reverse_coverage(slide_part: str, element: Element) -> CoverageItem:
+    return CoverageItem(
+        element=_visual_label(slide_part, element),
+        representation=Representation.APPROXIMATED,
+        editability=Editability.SEMANTIC,
+        source_retention=SourceRetention.LOST,
+        reason="connector routing and exact endpoints are approximated from its transform box",
+    )
 
 
 def _positioned_box(element: Element) -> Box | None:
@@ -586,7 +709,12 @@ def _slide(
     height: int,
     slide_index_by_part: dict[str, int],
     fallback_png: bytes | None = None,
-) -> tuple[SlideIR, tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
+) -> tuple[
+    SlideIR,
+    tuple[ConversionWarning, ...],
+    tuple[PreservedFragment, ...],
+    tuple[CoverageItem, ...],
+]:
     colors = _slide_colors(package, slide_part)
     hyperlink_for = _hyperlink_resolver(package, slide_part, slide_index_by_part)
     root = ElementTree.fromstring(package.read(slide_part))
@@ -595,11 +723,20 @@ def _slide(
     contents: list[Node] = []
     warnings: list[ConversionWarning] = []
     preserved: list[PreservedFragment] = []
+    coverage: list[CoverageItem] = []
 
     # --- Slide-level: background (p:cSld/p:bg) ---
     background = parse_background(
         root, lambda properties: _fill(properties, package, slide_part, colors)
     )
+    if background is not None:
+        coverage.append(
+            CoverageItem(
+                element=f"{slide_part}:background",
+                representation=Representation.NATIVE,
+                editability=Editability.SEMANTIC,
+            )
+        )
 
     # --- Slide-level: transition (p:transition, sibling of p:cSld) ---
     transition_el = root.find("p:transition", _NS)
@@ -636,6 +773,13 @@ def _slide(
                     contents.append(shape)
                     warnings.extend(shape_warns)
                     preserved.extend(shape_preserved)
+                    coverage.append(
+                        _shape_reverse_coverage(
+                            slide_part,
+                            element,
+                            has_preserved_effects=bool(shape_preserved),
+                        )
+                    )
                     if not shape_preserved:
                         continue
                     preserve_whole_node = False
@@ -650,18 +794,21 @@ def _slide(
                 )
                 if media is not None:
                     contents.append(_with_pptx_identity(media, element, slide_part))
+                    coverage.append(_native_reverse_coverage(slide_part, element))
                     continue
                 shape = _picture_shape(element, package, slide_part)
                 if shape is not None:
                     # The crop (a:srcRect) is recovered into the PictureFill and emitted as
                     # background-size/position by the HTML writer, so nothing is preserved.
                     contents.append(shape)
+                    coverage.append(_native_reverse_coverage(slide_part, element))
                     continue
                 reason = "preserved picture that the reverse adapter could not map"
             elif kind == "cxnSp":
                 connector = read_connector(element, lambda properties: _line(properties, colors))
                 if connector is not None:
                     contents.append(_with_pptx_identity(connector, element, slide_part))
+                    coverage.append(_connector_reverse_coverage(slide_part, element))
                     continue
                 reason = "preserved connector that the reverse adapter could not map"
             elif kind == "grpSp":
@@ -677,6 +824,14 @@ def _slide(
                     contents.append(group)
                     warnings.extend(group_warns)
                     preserved.extend(group_preserved)
+                    coverage.append(
+                        _group_reverse_coverage(
+                            slide_part,
+                            element,
+                            group,
+                            has_preserved_children=bool(group_preserved),
+                        )
+                    )
                     continue
                 reason = "preserved group that the reverse adapter could not map"
             elif kind == "graphicFrame":
@@ -690,6 +845,7 @@ def _slide(
                 )
                 if frame.table is not None:
                     contents.append(_with_pptx_identity(frame.table, element, slide_part))
+                    coverage.append(_native_reverse_coverage(slide_part, element))
                     continue
                 reason = frame.reason or "preserved unsupported graphicFrame"
             elif kind == "oleObj":
@@ -698,6 +854,8 @@ def _slide(
                 reason = f"preserved unsupported reverse slide node: {kind}"
             if preserve_whole_node:
                 box = _positioned_box(element)
+                source_retention = SourceRetention.DETACHED
+                has_visual_layer = False
                 if box is not None:
                     fallback = _fallback_picture(
                         fallback_png,
@@ -730,6 +888,7 @@ def _slide(
                             preserved_owner_id = fallback_node.node_id
                             reason += "; visual retained as an element layer"
                     else:
+                        source_retention = SourceRetention.ATTACHED
                         preserved_node = _with_pptx_identity(
                             PreservedNode(
                                 box=box,
@@ -741,6 +900,27 @@ def _slide(
                         )
                         contents.append(preserved_node)
                         preserved_owner_id = preserved_node.node_id
+                    has_visual_layer = fallback is not None and preserved_owner_id is not None
+                if has_visual_layer and box is not None:
+                    coverage.append(
+                        CoverageItem(
+                            element=_visual_label(slide_part, element),
+                            representation=Representation.ELEMENT_LAYER,
+                            editability=Editability.LAYERS,
+                            source_retention=source_retention,
+                            raster_area_emu2=box.width * box.height,
+                            reason=reason,
+                        )
+                    )
+                else:
+                    coverage.append(
+                        _failed_reverse_coverage(
+                            slide_part,
+                            element,
+                            reason,
+                            source_retention,
+                        )
+                    )
             warning, fragment = _preserve(slide_part, element, reason)
             if preserved_owner_id is not None:
                 fragment = fragment.model_copy(update={"owner_node_id": preserved_owner_id})
@@ -756,6 +936,7 @@ def _slide(
         ),
         tuple(warnings),
         tuple(preserved),
+        tuple(coverage),
     )
 
 
@@ -851,6 +1032,7 @@ def read_pptx_result(
         warnings=all_warnings,
         preserved=tuple(fragment for result in results for fragment in result[2]),
         embedded_fonts=tuple(font_faces),
+        coverage=CoverageReport(items=tuple(item for result in results for item in result[3])),
     )
 
 

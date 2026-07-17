@@ -11,7 +11,8 @@ survives the round-trip, or to spot-check against real PowerPoint (Graph backend
     uv run python scripts/fidelity_check.py --backend both --heatmap
 
 Outputs per slide land in ``--out`` (default ``out/fidelity/``, git-ignored): the source PNG,
-each backend's candidate PNG, an optional diff heatmap, plus ``summary.md`` / ``summary.json``.
+each backend's untouched ``-raw.png`` render and comparison-canvas candidate, an optional diff
+heatmap, plus ``summary.md`` / ``summary.json``.
 A backend with no tooling/credentials is skipped with a note by default. CI can pass
 ``--require-backend`` to fail closed instead. The process also exits non-zero when a present
 backend scores a slide below either its global or regional threshold.
@@ -106,6 +107,7 @@ def _score_backend(
     for index, (source, candidate) in enumerate(zip(source_pngs, candidates, strict=False)):
         report = compare(source, candidate, heatmap=heatmap)
         (out_dir / f"{case.name}-slide{index}-source.png").write_bytes(source)
+        (out_dir / f"{case.name}-slide{index}-{backend}-raw.png").write_bytes(candidate)
         (out_dir / f"{case.name}-slide{index}-{backend}.png").write_bytes(
             align_candidate_png(source, candidate)
         )

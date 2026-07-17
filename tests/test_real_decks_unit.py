@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from pydantic import ValidationError
 
 from domoxml.core.ir.model import PreservedNode
@@ -20,6 +22,13 @@ from domoxml.core.real_decks import (
 )
 from domoxml.presentation import Presentation
 from domoxml.slides import build_pptx, read_pptx_result
+from domoxml.types import Editability, Representation, SourceRetention
+
+
+def _fallback_pngs(count: int) -> tuple[bytes, ...]:
+    image = BytesIO()
+    Image.new("RGB", (1280, 720), "white").save(image, "PNG")
+    return (image.getvalue(),) * count
 
 
 def test_repository_real_decks_have_valid_pins_and_relationships() -> None:
@@ -34,11 +43,19 @@ def test_repository_real_decks_have_valid_pins_and_relationships() -> None:
     for case in cases:
         assert hashlib.sha256(case.pptx).hexdigest() == case.provenance.sha256
         assert validate_opc_package(case.pptx) == ()
+        assert set(case.reverse.max_representation) == set(Representation)
+        assert set(case.reverse.max_editability) == set(Editability)
+        assert set(case.reverse.max_source_retention) == set(SourceRetention)
+        assert case.reverse.min_output_count is not None
+        assert case.reverse.max_output_count is not None
+        assert case.reverse.min_raster_area_emu2 is not None
+        assert case.reverse.max_raster_area_emu2 is not None
 
 
 def test_repository_real_decks_match_reverse_contracts() -> None:
     for case in load_real_decks(Path("real-decks/pptx")):
-        assert validate_real_deck(case, Presentation.from_pptx(case.pptx)) == ()
+        html = Presentation.from_pptx(case.pptx, fallback_pngs=_fallback_pngs(case.package.slides))
+        assert validate_real_deck(case, html) == ()
 
 
 def test_external_chart_payload_is_owned_and_re_emitted_with_dependencies() -> None:

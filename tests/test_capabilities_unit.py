@@ -120,6 +120,13 @@ def test_every_capability_declares_complete_quality_and_convergence_bounds() -> 
             assert fixture.expected.max_raster_area_emu2 is not None
 
         if fixture.direction in (CapabilityDirection.REVERSE, CapabilityDirection.BOTH):
+            assert set(fixture.reverse.max_representation) == set(Representation)
+            assert set(fixture.reverse.max_editability) == set(Editability)
+            assert set(fixture.reverse.max_source_retention) == set(SourceRetention)
+            assert fixture.reverse.min_output_count is not None
+            assert fixture.reverse.max_output_count is not None
+            assert fixture.reverse.min_raster_area_emu2 is not None
+            assert fixture.reverse.max_raster_area_emu2 is not None
             assert fixture.roundtrip.cycles >= 2
             assert set(fixture.roundtrip.max_representation) == set(Representation)
             assert set(fixture.roundtrip.max_editability) == set(Editability)
@@ -272,9 +279,29 @@ def test_validates_reverse_html_warnings_and_preservation() -> None:
             ),
         ),
         css="",
+        coverage=CoverageReport(
+            items=tuple(
+                CoverageItem(
+                    element=f"native-{index}",
+                    representation=Representation.NATIVE,
+                    editability=Editability.SEMANTIC,
+                )
+                for index in range(2)
+            )
+        ),
     )
 
     assert validate_reverse_capability(fixture, html) == ()
+
+    coverage_regression = html.model_copy(
+        update={"coverage": CoverageReport(items=html.coverage.items[:1])}
+    )
+    assert validate_reverse_capability(fixture, coverage_regression)[:4] == (
+        "native count 1 < expected minimum 2",
+        "semantic editability count 1 < expected minimum 2",
+        "not_required source retention count 1 < expected minimum 2",
+        "output count 1 < expected minimum 2",
+    )
 
     missing = html.model_copy(
         update={

@@ -22,6 +22,7 @@ from domoxml.slides.appearance_read import ThemeColors, rgba
 from domoxml.slides.inherit import (
     PlaceholderContext,
     ThemeContext,
+    resolve_ppr,
     resolve_run_rpr,
     resolve_scheme_color,
     resolve_typeface,
@@ -188,11 +189,12 @@ def read_text_body(
     anchor, autofit, columns, column_gap_emu, margins = read_text_body_properties(body, ph_ctx)
     paragraphs: list[TextParagraph] = []
     for paragraph in body.findall("a:p", _NS):
-        properties = paragraph.find("a:pPr", _NS)
+        slide_properties = paragraph.find("a:pPr", _NS)
         level = 0
-        if properties is not None and (raw_level := properties.get("lvl")) is not None:
+        if slide_properties is not None and (raw_level := slide_properties.get("lvl")) is not None:
             with contextlib.suppress(ValueError):
                 level = max(0, int(raw_level))
+        properties = resolve_ppr(slide_properties, level, ph_ctx)
         alignment = _ALIGN_FROM_OOXML.get(
             properties.get("algn", "l") if properties is not None else "l", "left"
         )
@@ -236,8 +238,9 @@ def read_text_body(
         fallback_rpr = resolve_run_rpr(None, level, ph_ctx) if ph_ctx is not None else None
         runs = tuple(
             run
-            for element in paragraph.findall("a:r", _NS)
-            if (
+            for element in paragraph
+            if element.tag in {f"{{{_A}}}r", f"{{{_A}}}fld"}
+            and (
                 run := read_text_run(
                     element,
                     colors,

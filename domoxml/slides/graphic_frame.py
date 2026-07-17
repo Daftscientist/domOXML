@@ -105,7 +105,9 @@ def _text_body(
             properties.get("algn", "l") if properties is not None else "l", "left"
         )
         runs: list[TextRun] = []
-        for element in paragraph.findall("a:r", _NS):
+        for element in paragraph:
+            if element.tag not in {f"{{{_A}}}r", f"{{{_A}}}fld"}:
+                continue
             run = text_run_for(element)
             if run is None:
                 continue

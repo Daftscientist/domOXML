@@ -70,6 +70,7 @@ def _validate_forward_visual(
             out_dir.mkdir(parents=True, exist_ok=True)
             stem = f"{fixture.id}-slide{index}"
             (out_dir / f"{stem}-source.png").write_bytes(reference)
+            (out_dir / f"{stem}-libreoffice-raw.png").write_bytes(candidate)
             (out_dir / f"{stem}-libreoffice.png").write_bytes(
                 align_candidate_png(reference, candidate)
             )
@@ -129,6 +130,7 @@ def _validate_reverse_visual(
             out_dir.mkdir(parents=True, exist_ok=True)
             stem = f"{fixture.id}-slide{index}"
             (out_dir / f"{stem}-source.png").write_bytes(reference)
+            (out_dir / f"{stem}-reverse-raw.png").write_bytes(candidate)
             (out_dir / f"{stem}-reverse.png").write_bytes(align_candidate_png(reference, candidate))
             if report.diff_png is not None:
                 (out_dir / f"{stem}-reverse-diff.png").write_bytes(report.diff_png)
@@ -189,6 +191,7 @@ def _validate_convergence_visual(
             out_dir.mkdir(parents=True, exist_ok=True)
             stem = f"{fixture.id}-cycle{cycle}-slide{index}"
             (out_dir / f"{stem}-previous.png").write_bytes(reference)
+            (out_dir / f"{stem}-current-raw.png").write_bytes(current)
             (out_dir / f"{stem}-current.png").write_bytes(align_candidate_png(reference, current))
             if report.diff_png is not None:
                 (out_dir / f"{stem}-diff.png").write_bytes(report.diff_png)

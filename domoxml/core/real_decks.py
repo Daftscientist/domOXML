@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from domoxml.core.capabilities import CapabilityCoverageBounds, validate_coverage
 from domoxml.core.opc import OpcPackage, validate_opc_package
 from domoxml.slides.validation import validate_pptx_package
 from domoxml.types import HtmlPresentation
@@ -46,7 +47,7 @@ class PreservedExpected(BaseModel):
     xml_contains: str
 
 
-class DeckReverseExpected(BaseModel):
+class DeckReverseExpected(CapabilityCoverageBounds):
     """PPTX-to-HTML structure and diagnostic assertions."""
 
     model_config = ConfigDict(frozen=True)
@@ -115,6 +116,7 @@ def load_real_decks(root: Path) -> list[RealDeckCase]:
 def validate_real_deck(case: RealDeckCase, html: HtmlPresentation) -> tuple[str, ...]:
     """Validate provenance, package structure, reverse HTML, warnings, and preservation."""
     errors: list[str] = []
+    errors.extend(validate_coverage(case.reverse, html.coverage))
     digest = hashlib.sha256(case.pptx).hexdigest()
     if digest != case.provenance.sha256:
         errors.append(f"sha256 {digest} != pinned {case.provenance.sha256}")

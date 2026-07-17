@@ -21,6 +21,7 @@ Color-transform formulas (ECMA-376 §20.1.2.3 / §20.1.8.*)
 from __future__ import annotations
 
 import colorsys
+import copy
 from dataclasses import dataclass
 from xml.etree.ElementTree import Element
 
@@ -34,6 +35,22 @@ _BODY_TYPES = frozenset({"body", "subTitle"})
 
 # lstStyle level attribute → XPath tag name (a:lvl1pPr … a:lvl9pPr).
 _LVL_TAG = {i: f"{{{_A}}}lvl{i}pPr" for i in range(1, 10)}
+
+_PPR_CHOICE_GROUPS = (
+    frozenset(f"{{{_A}}}{name}" for name in ("buClrTx", "buClr")),
+    frozenset(f"{{{_A}}}{name}" for name in ("buSzTx", "buSzPct", "buSzPts")),
+    frozenset(f"{{{_A}}}{name}" for name in ("buFontTx", "buFont")),
+    frozenset(f"{{{_A}}}{name}" for name in ("buNone", "buAutoNum", "buChar", "buBlip")),
+)
+_RPR_CHOICE_GROUPS = (
+    frozenset(
+        f"{{{_A}}}{name}"
+        for name in ("noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill")
+    ),
+    frozenset(f"{{{_A}}}{name}" for name in ("effectLst", "effectDag")),
+    frozenset(f"{{{_A}}}{name}" for name in ("uLnTx", "uLn")),
+    frozenset(f"{{{_A}}}{name}" for name in ("uFillTx", "uFill")),
+)
 
 # Theme font scheme: typeface values that redirect to the theme major/minor font.
 _MAJOR_SENTINEL = "+mj-lt"
@@ -235,22 +252,44 @@ def resolve_ppr(
     level: int,
     ctx: PlaceholderContext | None,
 ) -> Element | None:
-    """Return the best a:pPr for ``level`` following the full precedence chain.
-
-    If ``slide_ppr`` is set, it wins outright (slide-level always wins).
-    Otherwise we walk layout lstStyle → master lstStyle → master txStyles at
-    the right level tag.
-    """
-    if slide_ppr is not None:
-        return slide_ppr
+    """Merge effective ``a:pPr`` values through the full precedence chain."""
     lvl_tag = _LVL_TAG.get(max(1, min(9, level + 1)))
     if lvl_tag is None:
-        return None
+        return copy.deepcopy(slide_ppr) if slide_ppr is not None else None
+    chain: list[Element] = [slide_ppr] if slide_ppr is not None else []
     for lst in _lstStyle_chain(ctx):
         lvl_ppr = lst.find(lvl_tag, _NS)
         if lvl_ppr is not None:
-            return lvl_ppr
-    return None
+            chain.append(lvl_ppr)
+    if not chain:
+        return None
+
+    result = copy.deepcopy(chain[0])
+
+    def inherit_missing(
+        target: Element,
+        fallback: Element,
+        choice_groups: tuple[frozenset[str], ...],
+    ) -> None:
+        for name, value in fallback.attrib.items():
+            target.attrib.setdefault(name, value)
+        for fallback_child in fallback:
+            target_child = next(
+                (child for child in target if child.tag == fallback_child.tag),
+                None,
+            )
+            has_choice = any(
+                fallback_child.tag in group and any(child.tag in group for child in target)
+                for group in choice_groups
+            )
+            if target_child is None and not has_choice:
+                target.append(copy.deepcopy(fallback_child))
+            elif target_child is not None and target_child.tag == f"{{{_A}}}defRPr":
+                inherit_missing(target_child, fallback_child, _RPR_CHOICE_GROUPS)
+
+    for fallback in chain[1:]:
+        inherit_missing(result, fallback, _PPR_CHOICE_GROUPS)
+    return result
 
 
 def _tx_style_for_type(tx_styles: Element, ph_type: str) -> Element | None:

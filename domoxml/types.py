@@ -303,6 +303,7 @@ class HtmlPresentation(BaseModel):
     assets: tuple[HtmlAsset, ...] = ()
     warnings: tuple[ConversionWarning, ...] = ()
     preserved: tuple[PreservedFragment, ...] = ()
+    coverage: CoverageReport = Field(default_factory=lambda: CoverageReport(items=()))
 
     def save(self, directory: Path) -> None:
         """Write HTML slides, shared CSS, and assets below ``directory``."""

@@ -37,9 +37,9 @@ def _shadow(
     if not inset:
         spreads: list[float] = []
         if box is not None and box.width > 0 and element.get("sx") is not None:
-            spreads.append((_int_attr(element, "sx") / 100_000 - 1) * box.width / 2)
+            spreads.append((_int_attr(element, "sx", 100_000) / 100_000 - 1) * box.width / 2)
         if box is not None and box.height > 0 and element.get("sy") is not None:
-            spreads.append((_int_attr(element, "sy") / 100_000 - 1) * box.height / 2)
+            spreads.append((_int_attr(element, "sy", 100_000) / 100_000 - 1) * box.height / 2)
         if spreads:
             spread_emu = round(sum(spreads) / len(spreads))
         else:

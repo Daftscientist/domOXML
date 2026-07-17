@@ -306,6 +306,23 @@ def test_reverse_outer_shadow_with_sx_sy_recovers_spread_from_shape_size() -> No
     assert shadow.spread_emu == 10_000
 
 
+def test_reverse_outer_shadow_invalid_scale_uses_neutral_default() -> None:
+    box = Box(x=0, y=0, width=100_000, height=50_000)
+    props = _shape_props(
+        "<a:effectLst>"
+        '<a:outerShdw blurRad="0" dist="10000" dir="0" sx="invalid" sy="invalid">'
+        '<a:srgbClr val="000000"/>'
+        "</a:outerShdw>"
+        "</a:effectLst>"
+    )
+
+    effects, _warns, _preserved = parse_effects_xml(props, {}, box=box)
+
+    shadow = effects[0]
+    assert isinstance(shadow, Shadow)
+    assert shadow.spread_emu == 0
+
+
 def test_reverse_inner_shadow() -> None:
     props = _shape_props(
         "<a:effectLst>"

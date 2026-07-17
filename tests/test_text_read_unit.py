@@ -5,6 +5,7 @@ from __future__ import annotations
 from xml.etree.ElementTree import Element, fromstring
 
 from domoxml.core.ir.model import Hyperlink
+from domoxml.slides.inherit import build_placeholder_context
 from domoxml.slides.text_read import read_text_body, read_text_run
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -63,3 +64,44 @@ def test_reads_body_layout_spacing_and_bullet_metadata() -> None:
     assert (paragraph.space_before_pt, paragraph.space_after_pt) == (6, 9)
     assert (paragraph.left_margin_pt, paragraph.indent_pt) == (1, 0.5)
     assert paragraph.bullet is not None and paragraph.bullet.kind == "char"
+
+
+def test_reads_text_fields_in_source_order() -> None:
+    shape = fromstring(
+        f'<p:sp xmlns:p="{_P}" xmlns:a="{_A}"><p:txBody>'
+        "<a:bodyPr/><a:p>"
+        '<a:r><a:rPr sz="1200"/><a:t>Page </a:t></a:r>'
+        '<a:fld id="{field-id}" type="slidenum">'
+        '<a:rPr sz="1200"/><a:t>2</a:t></a:fld>'
+        '<a:r><a:rPr sz="1200"/><a:t> of 3</a:t></a:r>'
+        "</a:p></p:txBody></p:sp>"
+    )
+
+    body = read_text_body(shape, {}, _no_link)
+
+    assert body is not None
+    assert [run.text for run in body.paragraphs[0].runs] == ["Page ", "2", " of 3"]
+
+
+def test_text_field_inherits_placeholder_paragraph_alignment() -> None:
+    shape = fromstring(
+        f'<p:sp xmlns:p="{_P}" xmlns:a="{_A}">'
+        '<p:nvSpPr><p:nvPr><p:ph type="sldNum" idx="10"/></p:nvPr></p:nvSpPr>'
+        "<p:txBody><a:bodyPr/><a:p>"
+        '<a:fld id="{field-id}" type="slidenum"><a:rPr/><a:t>2</a:t></a:fld>'
+        "</a:p></p:txBody></p:sp>"
+    )
+    master = fromstring(
+        f'<p:sldMaster xmlns:p="{_P}" xmlns:a="{_A}"><p:cSld><p:spTree><p:sp>'
+        '<p:nvSpPr><p:nvPr><p:ph type="sldNum" idx="4"/></p:nvPr></p:nvSpPr>'
+        '<p:txBody><a:bodyPr/><a:lstStyle><a:lvl1pPr algn="ctr">'
+        '<a:defRPr sz="1000"/></a:lvl1pPr></a:lstStyle></p:txBody>'
+        "</p:sp></p:spTree></p:cSld></p:sldMaster>"
+    )
+    context = build_placeholder_context(shape, None, master)
+
+    body = read_text_body(shape, {}, _no_link, ph_ctx=context)
+
+    assert body is not None
+    assert body.paragraphs[0].align == "center"
+    assert body.paragraphs[0].runs[0].size_pt == 10

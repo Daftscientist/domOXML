@@ -51,6 +51,16 @@ min_convergence_regional_similarity = 0.999
 min_convergence_structural_similarity = 0.999
 
 [reverse]
+min_representation = { native = 3 }
+max_representation = { native = 3, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 3 }
+max_editability = { semantic = 3, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 3 }
+max_source_retention = { not_required = 3, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 3
+max_output_count = 3
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
 expected_slides = 1
 html_contains = [".svg", "data-domoxml-source-format=\"html\""]
 max_warnings = 0

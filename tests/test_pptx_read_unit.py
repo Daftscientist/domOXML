@@ -35,7 +35,12 @@ from domoxml.core.ir.model import (
 from domoxml.core.opc import OpcPackage, write_package
 from domoxml.slides import build_pptx, read_pptx, read_pptx_result
 from domoxml.slides.appearance_read import rgba
-from domoxml.slides.read import _slide_colors, _with_pptx_identity
+from domoxml.slides.read import (
+    _group_reverse_coverage,
+    _slide_colors,
+    _with_pptx_identity,
+)
+from domoxml.types import Editability, Representation, SourceRetention
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -99,7 +104,9 @@ def _sample_ir() -> SlideIR:
 
 
 def test_reads_generated_pptx_into_canvas_ir() -> None:
-    [slide] = read_pptx(build_pptx([_sample_ir()], faces=[]))
+    pptx = build_pptx([_sample_ir()], faces=[])
+    result = read_pptx_result(pptx)
+    [slide] = result.slides
     assert (slide.width, slide.height) == (12_192_000, 6_858_000)
     assert len(slide.shapes) == 3
 
@@ -116,6 +123,10 @@ def test_reads_generated_pptx_into_canvas_ir() -> None:
     assert gradient.fill.angle_deg == 90
     assert isinstance(picture.fill, PictureFill)
     assert picture.fill.data == b"png-bytes"
+    assert result.coverage.count(Representation.NATIVE) == 3
+    assert result.coverage.count_editability(Editability.SEMANTIC) == 3
+    assert result.coverage.output_count == 3
+    assert result.coverage.raster_area_emu2 == 0
 
 
 def test_exposes_generated_pptx_as_html() -> None:
@@ -124,6 +135,7 @@ def test_exposes_generated_pptx_as_html() -> None:
     assert len(html.slides) == 1
     assert "Coffee " in html.slides[0].html and "calm" in html.slides[0].html
     assert len(html.assets) == 1
+    assert html.coverage.count(Representation.NATIVE) == 3
     assert Presentation.from_pptx(pptx) == html
 
 
@@ -192,6 +204,30 @@ def test_group_identity_does_not_fall_through_to_child_metadata() -> None:
         source_id="unknown",
         source_part="ppt/slides/slide1.xml",
     )
+
+
+def test_reverse_coverage_records_flattened_group_components_and_source_loss() -> None:
+    group_element = ElementTree.fromstring(
+        f'<p:grpSp xmlns:p="{_P}"><p:nvGrpSpPr>'
+        '<p:cNvPr id="9" name="group"/></p:nvGrpSpPr></p:grpSp>'
+    )
+    children = tuple(
+        ShapeNode(box=Box(x=index * 100, y=0, width=100, height=100)) for index in range(2)
+    )
+    group = GroupNode(
+        box=Box(x=0, y=0, width=200, height=100),
+        child_box=Box(x=0, y=0, width=200, height=100),
+        children=children,
+    )
+
+    coverage = _group_reverse_coverage(
+        "ppt/slides/slide1.xml", group_element, group, has_preserved_children=False
+    )
+
+    assert coverage.representation is Representation.DECOMPOSED
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.source_retention is SourceRetention.LOST
+    assert coverage.output_count == 2
 
 
 def test_resolves_theme_system_and_preset_colors() -> None:
@@ -311,6 +347,47 @@ def test_attaches_element_crop_to_positioned_unsupported_node() -> None:
         assert pixel == (42, 127, 98)
     [fragment] = [fragment for fragment in result.preserved if fragment.kind == "graphicFrame"]
     assert fragment.owner_node_id == preserved.node_id
+    [coverage] = [
+        item
+        for item in result.coverage.items
+        if item.element == "ppt/slides/slide1.xml:graphicFrame#20"
+    ]
+    assert coverage.representation is Representation.ELEMENT_LAYER
+    assert coverage.editability is Editability.LAYERS
+    assert coverage.source_retention is SourceRetention.ATTACHED
+    assert coverage.output_count == 1
+    assert coverage.raster_area_emu2 == 1_905_000 * 1_428_750
+
+
+def test_attached_source_without_renderer_is_reported_as_visually_failed() -> None:
+    package = OpcPackage.from_bytes(build_pptx([_sample_ir()], faces=[]))
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    slide_part = "ppt/slides/slide1.xml"
+    slide_xml = parts[slide_part]
+    assert isinstance(slide_xml, bytes)
+    frame = (
+        f'<p:graphicFrame xmlns:p="{_P}" xmlns:a="{_A}">'
+        '<p:nvGraphicFramePr><p:cNvPr id="20" name="unsupported"/>'
+        "<p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>"
+        '<p:xfrm><a:off x="3048000" y="952500"/>'
+        '<a:ext cx="1905000" cy="1428750"/></p:xfrm>'
+        '<a:graphic><a:graphicData uri="urn:example:unsupported"/></a:graphic>'
+        "</p:graphicFrame>"
+    ).encode()
+    parts[slide_part] = slide_xml.replace(b"</p:spTree>", frame + b"</p:spTree>")
+
+    result = read_pptx_result(write_package(parts))
+
+    [coverage] = [
+        item
+        for item in result.coverage.items
+        if item.element == "ppt/slides/slide1.xml:graphicFrame#20"
+    ]
+    assert coverage.representation is Representation.FAILED
+    assert coverage.editability is Editability.NONE
+    assert coverage.source_retention is SourceRetention.ATTACHED
+    assert coverage.output_count == 0
+    assert coverage.raster_area_emu2 == 0
 
 
 def test_rejects_mismatched_reverse_fallback_page_count() -> None:
@@ -357,6 +434,14 @@ def test_malformed_preserved_graph_still_gets_a_visual_layer() -> None:
     [fragment] = [fragment for fragment in result.preserved if fragment.kind == "graphicFrame"]
     assert fragment.owner_node_id == layer.node_id
     assert "visual retained as an element layer" in result.warnings[-1].message
+    [coverage] = [
+        item
+        for item in result.coverage.items
+        if item.element == "ppt/slides/slide1.xml:graphicFrame#20"
+    ]
+    assert coverage.representation is Representation.ELEMENT_LAYER
+    assert coverage.source_retention is SourceRetention.DETACHED
+    assert coverage.raster_area_emu2 == 1_905_000 * 1_428_750
 
 
 def test_reads_native_powerpoint_picture() -> None:

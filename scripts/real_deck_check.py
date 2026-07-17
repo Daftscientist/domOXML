@@ -65,7 +65,9 @@ def main(argv: list[str] | None = None) -> int:
 
     failures = 0
     for case in cases:
-        html = Presentation.from_pptx(case.pptx)
+        references_by_backend = {backend: _render(backend, case.pptx) for backend in active}
+        fallback_pngs = tuple(references_by_backend[active[0]])
+        html = Presentation.from_pptx(case.pptx, fallback_pngs=fallback_pngs)
         errors = list(validate_real_deck(case, html))
         roundtrip = render_html_roundtrip(html)
         if roundtrip.pptx is None:
@@ -79,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         for backend in active:
             if not case.visual or roundtrip.pptx is None:
                 continue
-            references = _render(backend, case.pptx)
+            references = references_by_backend[backend]
             candidates = _render(backend, roundtrip.pptx)
             for expected in case.visual:
                 if expected.slide >= len(references) or expected.slide >= len(candidates):
@@ -92,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
                 target.mkdir(parents=True, exist_ok=True)
                 stem = f"slide{expected.slide}-{backend}"
                 (target / f"{stem}-source.png").write_bytes(reference)
+                (target / f"{stem}-roundtrip-raw.png").write_bytes(candidate)
                 (target / f"{stem}-roundtrip.png").write_bytes(
                     align_candidate_png(reference, candidate)
                 )

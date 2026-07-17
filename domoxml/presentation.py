@@ -168,4 +168,5 @@ def pptx_to_html(
         warnings=result.warnings,
         preserved=result.preserved,
         embedded_fonts=result.embedded_fonts,
+        coverage=result.coverage,
     )

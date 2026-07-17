@@ -178,7 +178,7 @@ class CapabilityVisual(BaseModel):
         return self
 
 
-class CapabilityReverseExpected(BaseModel):
+class CapabilityReverseExpected(CapabilityCoverageBounds):
     """Structural behavior required after ingesting the fixture's PPTX."""
 
     model_config = ConfigDict(frozen=True)
@@ -270,7 +270,8 @@ def _warning_matches(expected: str, warnings: tuple[ConversionWarning, ...]) -> 
     return any(expected in warning.message for warning in warnings)
 
 
-def _validate_coverage(bounds: CapabilityCoverageBounds, report: CoverageReport) -> list[str]:
+def validate_coverage(bounds: CapabilityCoverageBounds, report: CoverageReport) -> list[str]:
+    """Return mismatches between one quality contract and its runtime report."""
     errors: list[str] = []
     for representation, expected in bounds.min_representation.items():
         actual = report.count(representation)
@@ -356,7 +357,7 @@ def _validate_pptx_output(fixture: CapabilityFixture, pptx: bytes | None) -> lis
 
 def validate_capability(fixture: CapabilityFixture, result: RenderResult) -> tuple[str, ...]:
     """Return structural mismatches for one rendered forward capability fixture."""
-    errors = _validate_coverage(fixture.expected, result.coverage)
+    errors = validate_coverage(fixture.expected, result.coverage)
     for expected in fixture.expected.warnings:
         if not _warning_matches(expected, result.warnings):
             errors.append(f"missing warning containing {expected!r}")
@@ -368,7 +369,7 @@ def validate_roundtrip_capability(
     fixture: CapabilityFixture, result: RenderResult
 ) -> tuple[str, ...]:
     """Validate regenerated output against its independent round-trip quality bounds."""
-    errors = _validate_coverage(fixture.roundtrip, result.coverage)
+    errors = validate_coverage(fixture.roundtrip, result.coverage)
     errors.extend(_validate_pptx_output(fixture, result.pptx))
     return tuple(errors)
 
@@ -378,7 +379,7 @@ def validate_reverse_capability(
 ) -> tuple[str, ...]:
     """Return structural mismatches in PPTX -> HTML capability output."""
     expected = fixture.reverse
-    errors: list[str] = []
+    errors = validate_coverage(expected, result.coverage)
     if len(result.slides) != expected.expected_slides:
         errors.append(f"slide count {len(result.slides)} != expected {expected.expected_slides}")
     if len(result.assets) < expected.min_assets:

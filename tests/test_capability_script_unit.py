@@ -34,9 +34,9 @@ from scripts.capability_check import (
 )
 
 
-def _png(color: str) -> bytes:
+def _png(color: str, size: tuple[int, int] = (64, 64)) -> bytes:
     buffer = io.BytesIO()
-    Image.new("RGB", (64, 64), color).save(buffer, format="PNG")
+    Image.new("RGB", size, color).save(buffer, format="PNG")
     return buffer.getvalue()
 
 
@@ -100,16 +100,18 @@ def test_reverse_visual_gate_checks_global_and_regional_similarity(tmp_path: Pat
 
     assert _validate_reverse_visual(fixture, (_png("white"),), _render_result(_png("white"))) == ()
 
+    candidate = _png("white", (32, 32))
     errors = _validate_reverse_visual(
         fixture,
         (_png("black"),),
-        _render_result(_png("white")),
+        _render_result(candidate),
         tmp_path,
     )
     assert len(errors) == 2
     assert "global similarity" in errors[0]
     assert "regional similarity" in errors[1]
     assert (tmp_path / "text-rich-runs-slide0-source.png").is_file()
+    assert (tmp_path / "text-rich-runs-slide0-reverse-raw.png").read_bytes() == candidate
     assert (tmp_path / "text-rich-runs-slide0-reverse.png").is_file()
     assert (tmp_path / "text-rich-runs-slide0-reverse-diff.png").is_file()
 
@@ -227,16 +229,18 @@ def test_forward_visual_gate_checks_global_and_regional_similarity(tmp_path: Pat
 
     assert _validate_forward_visual(fixture, _render_result(_png("white")), [_png("white")]) == ()
 
+    candidate = _png("white", (32, 32))
     errors = _validate_forward_visual(
         fixture,
         _render_result(_png("black")),
-        [_png("white")],
+        [candidate],
         tmp_path,
     )
     assert len(errors) == 2
     assert "global similarity" in errors[0]
     assert "regional similarity" in errors[1]
     assert (tmp_path / "text-rich-runs-slide0-source.png").is_file()
+    assert (tmp_path / "text-rich-runs-slide0-libreoffice-raw.png").read_bytes() == candidate
     assert (tmp_path / "text-rich-runs-slide0-libreoffice.png").is_file()
     assert (tmp_path / "text-rich-runs-slide0-libreoffice-diff.png").is_file()
 
@@ -284,6 +288,7 @@ def test_convergence_visual_gate_checks_every_quality_score(tmp_path: Path) -> N
     assert len(errors) == 3
     assert all("convergence" in error for error in errors)
     assert (tmp_path / "convergence-cycle2-slide0-previous.png").is_file()
+    assert (tmp_path / "convergence-cycle2-slide0-current-raw.png").is_file()
     assert (tmp_path / "convergence-cycle2-slide0-current.png").is_file()
     assert (tmp_path / "convergence-cycle2-slide0-diff.png").is_file()
 

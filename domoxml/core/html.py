@@ -53,6 +53,7 @@ from domoxml.core.svg_stroke import svg_dash_lengths
 from domoxml.core.units import emu_to_px
 from domoxml.types import (
     ConversionWarning,
+    CoverageReport,
     HtmlAsset,
     HtmlPresentation,
     HtmlSlide,
@@ -1112,6 +1113,7 @@ def serialize_canvas(
     warnings: tuple[ConversionWarning, ...] = (),
     preserved: tuple[PreservedFragment, ...] = (),
     embedded_fonts: tuple[ReverseFontFace, ...] = (),
+    coverage: CoverageReport | None = None,
 ) -> HtmlPresentation:
     """Serialize canvas IR to one stable HTML fragment per slide plus shared assets."""
     assets: dict[str, HtmlAsset] = {}
@@ -1140,4 +1142,5 @@ def serialize_canvas(
         assets=tuple(assets.values()),
         warnings=tuple(emitted_warnings),
         preserved=preserved,
+        coverage=coverage or CoverageReport(items=()),
     )

@@ -461,7 +461,9 @@ def test_reverse_reader_unknown_prstgeom_falls_back_to_rect() -> None:
     """An unknown prstGeom value in OOXML falls back to 'rect' in the IR."""
     from domoxml.core.ir.model import Box, Rgba, ShapeNode, SlideIR, SolidFill
     from domoxml.core.opc import OpcPackage, write_package
-    from domoxml.slides import build_pptx, read_pptx
+    from domoxml.slides import build_pptx
+    from domoxml.slides.read import read_pptx_result
+    from domoxml.types import Editability, Representation, SourceRetention
 
     # Inject an unknown prstGeom into the slide XML
     slide_ir = SlideIR(
@@ -483,5 +485,11 @@ def test_reverse_reader_unknown_prstgeom_falls_back_to_rect() -> None:
     slide_xml = parts[slide_part]
     assert isinstance(slide_xml, bytes)
     parts[slide_part] = slide_xml.replace(b'prst="rect"', b'prst="unknownPreset12345"')
-    [read_slide] = read_pptx(write_package(parts))
+    result = read_pptx_result(write_package(parts))
+    [read_slide] = result.slides
     assert read_slide.shapes[0].geom == "rect"  # fallback
+    [coverage] = result.coverage.items
+    assert coverage.representation is Representation.APPROXIMATED
+    assert coverage.editability is Editability.SEMANTIC
+    assert coverage.source_retention is SourceRetention.LOST
+    assert "unknownPreset12345" in coverage.reason

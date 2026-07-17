@@ -77,9 +77,10 @@ constructor arguments and filtered accessors remain compatibility views, but imp
 serializers operate on `contents` so heterogeneous nodes retain interleaved z-order. Every node
 adopted by a slide has a stable slide-scoped ID; active HTML and PPTX adapters also retain typed
 source provenance through normalized HTML metadata and a private OOXML extension. Exact
-stacking/group ownership, preservation ownership beyond positioned nodes with capturable OPC
-graphs, and per-node representation status still need to be completed in addition to the existing
-geometry and appearance.
+stacking/group ownership and preservation ownership beyond positioned nodes with capturable OPC
+graphs still need to be completed in addition to the existing geometry and appearance. Both HTML
+capture and PPTX ingestion emit a per-source-visual coverage report; normalized HTML carries the
+report on its public presentation result alongside warnings and preserved source fragments.
 
 Shared primitives include:
 
@@ -225,7 +226,9 @@ Fidelity is a multidimensional contract, not one whole-slide similarity number:
 Reference conditions must pin viewport, fonts, asset state, DPI, renderer version, and target
 platform. Chromium is the HTML reference renderer. LibreOffice supplies a fast CI signal but is
 not a substitute for PowerPoint. Microsoft Graph or desktop PowerPoint baselines cover
-renderer-sensitive behavior and release gates.
+renderer-sensitive behavior and release gates. Fidelity artifacts retain the untouched renderer
+PNG beside any candidate resized onto the reference canvas, so review can distinguish real framing
+and resolution from comparison normalization.
 
 The test estate has complementary tiers:
 
@@ -243,10 +246,11 @@ regression while allowing metrics and native coverage to improve monotonically. 
 cannot approve parity evidence that is visibly wrong.
 
 Each atomic capability manifest independently bounds the forward and regenerated-PPTX boundaries.
-The bounds cover representation, editability, source retention, emitted object count, and raster
-area. Reverse-capable fixtures also declare the number of rebuild/re-ingest cycles and global,
-regional, and structural convergence floors. Slide scoping must be explicit when one fixture owns
-only part of a multi-feature source deck; unscoped slides are not thereby claimed as covered.
+Reverse-capable manifests additionally bound the initial PPTX-ingest boundary. All bounds cover
+representation, editability, source retention, emitted object count, and raster area. These
+fixtures also declare the number of rebuild/re-ingest cycles and global, regional, and structural
+convergence floors. Slide scoping must be explicit when one fixture owns only part of a
+multi-feature source deck; unscoped slides are not thereby claimed as covered.
 
 ## Documentation Authority
 

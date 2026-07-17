@@ -22,6 +22,8 @@ every cell slot covered by a multi-span origin cell.
 
 from __future__ import annotations
 
+from xml.sax.saxutils import escape
+
 from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.drawingml.shape import (
     _CAP_TO_OOXML,  # pyright: ignore[reportPrivateUsage]
@@ -45,6 +47,20 @@ from domoxml.core.ir.model import (
 
 # The DrawingML namespace URI for table data.
 _TABLE_URI = "http://schemas.openxmlformats.org/drawingml/2006/table"
+
+
+def _tbl_pr_xml(node: TableNode) -> str:
+    flags = (
+        ("firstRow", node.first_row),
+        ("lastRow", node.last_row),
+        ("firstCol", node.first_col),
+        ("lastCol", node.last_col),
+        ("bandRow", node.band_row),
+        ("bandCol", node.band_col),
+    )
+    attrs = "".join(f' {name}="1"' for name, enabled in flags if enabled)
+    style = f"<a:tableStyleId>{escape(node.style_id)}</a:tableStyleId>" if node.style_id else ""
+    return f"<a:tblPr{attrs}>{style}</a:tblPr>" if style else f"<a:tblPr{attrs}/>"
 
 
 def _tc_border_xml(tag: str, line: Line | None) -> str:
@@ -239,7 +255,7 @@ def table_xml(node: TableNode, *, shape_id: int) -> str:
         rows_xml += f'<a:tr h="{row.height_emu}">{cells_xml}</a:tr>'
 
     # ---------- tbl ----------
-    tbl = f"<a:tbl><a:tblPr/>{tbl_grid}{rows_xml}</a:tbl>"
+    tbl = f"<a:tbl>{_tbl_pr_xml(node)}{tbl_grid}{rows_xml}</a:tbl>"
 
     # ---------- graphic ----------
     graphic = f'<a:graphic><a:graphicData uri="{_TABLE_URI}">{tbl}</a:graphicData></a:graphic>'

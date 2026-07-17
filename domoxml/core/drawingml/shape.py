@@ -416,9 +416,10 @@ def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:
     if run.letter_spacing_pt:
         # a:rPr spc is in 1/100 pt (ECMA-376 §21.1.2.3.9), may be negative.
         decorations += f' spc="{round(run.letter_spacing_pt * 100)}"'
+    bold = "" if run.bold_inherited else f' b="{1 if run.bold else 0}"'
     rpr = (
-        f'<a:rPr lang="en-US" sz="{round(run.size_pt * 100)}" '
-        f'b="{1 if run.bold else 0}" i="{1 if run.italic else 0}"{decorations} dirty="0">'
+        f'<a:rPr lang="en-US" sz="{round(run.size_pt * 100)}"{bold} '
+        f'i="{1 if run.italic else 0}"{decorations} dirty="0">'
         f"{_solid_fill(run.color)}"
         f"{_hyperlink_xml(run.hyperlink, rid)}"
         f'<a:latin typeface="{_attr(run.font_family)}"/></a:rPr>'

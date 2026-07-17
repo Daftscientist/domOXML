@@ -349,6 +349,7 @@ class TextRun(BaseModel):
     font_family: str
     size_pt: float = Field(gt=0)
     bold: bool = False
+    bold_inherited: bool = False
     italic: bool = False
     underline: bool | str = False
     strike: bool = False
@@ -731,6 +732,14 @@ class TableNode(CanvasNode):
     box: Box
     col_widths_emu: tuple[int, ...]
     rows: tuple[TableRow, ...]
+    style_id: str | None = None
+    first_row: bool = False
+    last_row: bool = False
+    first_col: bool = False
+    last_col: bool = False
+    band_row: bool = False
+    band_col: bool = False
+    header_bold_inherited: bool = False
 
 
 class MediaNode(CanvasNode):

@@ -10,7 +10,7 @@ import pytest
 from PIL import Image
 from pydantic import ValidationError
 
-from domoxml.core.ir.model import PreservedNode
+from domoxml.core.ir.model import PreservedNode, TableNode
 from domoxml.core.opc import OpcPackage
 from domoxml.core.real_decks import (
     DeckPackageExpected,
@@ -90,6 +90,25 @@ def test_external_chart_payload_is_owned_and_re_emitted_with_dependencies() -> N
     assert b"graphicFrame" in package.read("ppt/slides/slide2.xml")
 
 
+def test_external_table_style_lowers_to_explicit_ir_provenance() -> None:
+    case = next(
+        case
+        for case in load_real_decks(Path("real-decks/pptx"))
+        if case.id == "external-table-style"
+    )
+
+    result = read_pptx_result(case.pptx)
+    [table] = [
+        node for slide in result.slides for node in slide.contents if isinstance(node, TableNode)
+    ]
+
+    assert table.style_id == "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"
+    assert table.first_row and table.band_row and table.header_bold_inherited
+    assert not any((table.last_row, table.first_col, table.last_col, table.band_col))
+    run = table.rows[0].cells[0].text.paragraphs[0].runs[0]  # type: ignore[union-attr]
+    assert run.bold and run.bold_inherited
+
+
 def test_real_deck_roundtrip_rejects_dropped_slides() -> None:
     case = next(
         case for case in load_real_decks(Path("real-decks/pptx")) if case.package.slides == 1
@@ -149,7 +168,14 @@ def test_real_deck_rejects_out_of_range_visual_slide() -> None:
         },
         "package": {"slides": 1},
         "reverse": {},
-        "visual": [{"slide": 1, "min_similarity": 0.9, "min_regional_similarity": 0.8}],
+        "visual": [
+            {
+                "slide": 1,
+                "min_similarity": 0.9,
+                "min_regional_similarity": 0.8,
+                "min_focused_similarity": 0.7,
+            }
+        ],
     }
 
     with pytest.raises(ValidationError, match="visual slide indices out of range"):

@@ -11,13 +11,14 @@ Snapshot audited on **2026-07-17** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 697 tests are collected.
+- 700 tests are collected.
 - 18 atomic PPTX capability fixtures exist; 17 are bidirectional and one is a reverse-first chart
   preservation fixture.
 - 9 authored HTML fidelity cases exist.
 - 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and attached
   chart-graph re-emission with PPTX and normalized-HTML visual gates.
-- LibreOffice global, regional, and structural scores are merge-blocking for configured cases.
+- LibreOffice global, regional, focused, and structural scores are merge-blocking for configured
+  cases.
 - Microsoft Graph rendering exists as an opt-in backend, not a normal CI gate.
 
 The baseline is useful but not yet the product invariant:
@@ -54,7 +55,8 @@ A capability is complete only when all applicable gates pass:
 4. IR exports to deterministic browser-renderable HTML/CSS with no visible omission.
 5. Semantic and object editability are measured independently of pixels.
 6. Package structure and target-format semantics are asserted.
-7. Forward and reverse visual floors include global, regional, and structural metrics.
+7. Forward and reverse visual floors include global, regional, focused, and structural metrics
+   where the applicable corpus contract exposes them.
 8. Evidence is inspected directly when the capability changes.
 9. Repeated round trips converge within the declared tolerance.
 10. Unknown, malformed, extension, and adversarial combinations have explicit behavior.

@@ -30,7 +30,11 @@ from domoxml.core.ir.model import (
     TextParagraph,
     TextRun,
 )
-from domoxml.core.ir.table_payload import decode_table_geometry, encode_table_geometry
+from domoxml.core.ir.table_payload import (
+    apply_table_geometry,
+    decode_table_geometry,
+    encode_table_geometry,
+)
 from domoxml.slides import build_pptx
 
 _TABLE_URI = "http://schemas.openxmlformats.org/drawingml/2006/table"
@@ -192,6 +196,44 @@ def test_table_xml_cell_text() -> None:
     xml = table_xml(node, shape_id=2)
     assert "r0c0" in xml
     assert '<a:bodyPr wrap="square"/>' in xml
+
+
+def test_table_xml_reemits_style_and_leaves_inherited_bold_to_renderer() -> None:
+    from domoxml.core.drawingml import table_xml  # pyright: ignore[reportPrivateUsage]
+
+    table = _simple_table(n_rows=1, n_cols=1)
+    cell = table.rows[0].cells[0]
+    assert cell.text is not None
+    run = cell.text.paragraphs[0].runs[0].model_copy(update={"bold": True, "bold_inherited": True})
+    text = cell.text.model_copy(
+        update={"paragraphs": (cell.text.paragraphs[0].model_copy(update={"runs": (run,)}),)}
+    )
+    table = table.model_copy(
+        update={
+            "style_id": "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}",
+            "first_row": True,
+            "band_row": True,
+            "rows": (
+                table.rows[0].model_copy(
+                    update={"cells": (cell.model_copy(update={"text": text}),)}
+                ),
+            ),
+        }
+    )
+
+    root = ElementTree.fromstring(
+        f'<root xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        f'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+        f"{table_xml(table, shape_id=2)}</root>"
+    )
+    properties = root.find(".//{*}tblPr")
+    run_properties = root.find(".//{*}rPr")
+
+    assert properties is not None
+    assert properties.attrib == {"firstRow": "1", "bandRow": "1"}
+    assert properties.findtext("{*}tableStyleId") == table.style_id
+    assert run_properties is not None
+    assert run_properties.get("b") is None
 
 
 def test_table_xml_cell_fill() -> None:
@@ -391,7 +433,14 @@ def test_html_emits_table_element() -> None:
 
 
 def test_html_carries_exact_versioned_table_geometry() -> None:
-    table = _simple_table()
+    table = _simple_table().model_copy(
+        update={
+            "style_id": "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}",
+            "first_row": True,
+            "band_row": True,
+            "header_bold_inherited": True,
+        }
+    )
 
     encoded = encode_table_geometry(table)
     decoded = decode_table_geometry(encoded)
@@ -400,9 +449,58 @@ def test_html_carries_exact_versioned_table_geometry() -> None:
     assert decoded.box == table.box
     assert decoded.col_widths_emu == table.col_widths_emu
     assert decoded.row_heights_emu == tuple(row.height_emu for row in table.rows)
+    assert decoded.style_id == table.style_id
+    assert decoded.first_row and decoded.band_row and decoded.header_bold_inherited
     html = serialize_canvas([_slide_with_table(table)]).slides[0].html
     assert f'data-domoxml-table-geometry="{encoded}"' in html
     assert decode_table_geometry("not-a-payload") is None
+
+
+def test_table_geometry_restores_style_inherited_header_bold() -> None:
+    source = _simple_table(n_rows=1, n_cols=1).model_copy(
+        update={
+            "style_id": "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}",
+            "first_row": True,
+            "header_bold_inherited": True,
+        }
+    )
+    payload = decode_table_geometry(encode_table_geometry(source))
+    assert payload is not None
+    extracted = _simple_table(n_rows=1, n_cols=1)
+    cell = extracted.rows[0].cells[0]
+    assert cell.text is not None
+    bold_run = cell.text.paragraphs[0].runs[0].model_copy(update={"bold": True})
+    extracted = extracted.model_copy(
+        update={
+            "rows": (
+                extracted.rows[0].model_copy(
+                    update={
+                        "cells": (
+                            cell.model_copy(
+                                update={
+                                    "text": cell.text.model_copy(
+                                        update={
+                                            "paragraphs": (
+                                                cell.text.paragraphs[0].model_copy(
+                                                    update={"runs": (bold_run,)}
+                                                ),
+                                            )
+                                        }
+                                    )
+                                }
+                            ),
+                        )
+                    }
+                ),
+            )
+        }
+    )
+
+    restored = apply_table_geometry(extracted, payload)
+
+    assert restored.style_id == source.style_id
+    run = restored.rows[0].cells[0].text.paragraphs[0].runs[0]  # type: ignore[union-attr]
+    assert run.bold and run.bold_inherited
 
 
 def test_html_table_has_correct_cell_count() -> None:

@@ -78,7 +78,7 @@ from domoxml.core.ir.pattern import match_pattern_fill
 from domoxml.core.ir.slide_properties_extract import extract_slide_properties
 from domoxml.core.ir.svg_extract import extract_custom_geometry
 from domoxml.core.ir.table_extract import extract_table
-from domoxml.core.ir.table_payload import decode_table_geometry
+from domoxml.core.ir.table_payload import apply_table_geometry, decode_table_geometry
 from domoxml.core.ir.text_payload import decode_text_body
 from domoxml.core.opc import decode_payload
 from domoxml.core.render.browser import (
@@ -1073,18 +1073,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     and len(geometry.col_widths_emu) == len(table.col_widths_emu)
                     and len(geometry.row_heights_emu) == len(table.rows)
                 ):
-                    table = table.model_copy(
-                        update={
-                            "box": geometry.box,
-                            "col_widths_emu": geometry.col_widths_emu,
-                            "rows": tuple(
-                                row.model_copy(update={"height_emu": height})
-                                for row, height in zip(
-                                    table.rows, geometry.row_heights_emu, strict=True
-                                )
-                            ),
-                        }
-                    )
+                    table = apply_table_geometry(table, geometry)
                 contents.append(identities.apply(table, node))
                 consumed |= _subtree(node.index, children)
                 coverage.append(_native_coverage(_label(node)))

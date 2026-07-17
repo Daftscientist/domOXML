@@ -103,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"     {backend} slide{expected.slide}: global {report.similarity:.3f}, "
                     f"regional {report.regional_similarity:.3f}, "
+                    f"focused {report.focused_similarity:.3f}, "
                     f"structural {report.structural_similarity:.3f}"
                 )
                 if report.similarity < expected.min_similarity:
@@ -115,6 +116,12 @@ def main(argv: list[str] | None = None) -> int:
                         f"{backend} slide {expected.slide} regional "
                         f"{report.regional_similarity:.3f} "
                         f"< expected {expected.min_regional_similarity:.3f}"
+                    )
+                if report.focused_similarity < expected.min_focused_similarity:
+                    errors.append(
+                        f"{backend} slide {expected.slide} focused "
+                        f"{report.focused_similarity:.3f} "
+                        f"< expected {expected.min_focused_similarity:.3f}"
                     )
                 if report.structural_similarity < expected.min_structural_similarity:
                     errors.append(

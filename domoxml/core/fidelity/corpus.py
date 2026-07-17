@@ -7,6 +7,7 @@ Each case is a directory under the corpus root containing either a single ``slid
     size = "16:9"            # a SlideSize value; default "16:9"
     min_similarity = 0.9     # fidelity floor for this case; default 0.9
     min_regional_similarity = 0.97  # worst-region floor; default 0.97
+    min_focused_similarity = 0.8  # worst fine-grid regions; default 0.8
 
 Kept deliberately small and typed so the dev script, CI, and a future capability-matrix test
 all enumerate the same corpus the same way.
@@ -22,6 +23,7 @@ from domoxml.types import SlideSize
 
 _DEFAULT_MIN_SIMILARITY = 0.9
 _DEFAULT_MIN_REGIONAL_SIMILARITY = 0.97
+_DEFAULT_MIN_FOCUSED_SIMILARITY = 0.8
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,7 @@ class CorpusCase:
     size: SlideSize = SlideSize.WIDE_16_9
     min_similarity: float = _DEFAULT_MIN_SIMILARITY
     min_regional_similarity: float = _DEFAULT_MIN_REGIONAL_SIMILARITY
+    min_focused_similarity: float = _DEFAULT_MIN_FOCUSED_SIMILARITY
 
 
 def _read_slides(case_dir: Path) -> tuple[str, ...]:
@@ -72,6 +75,7 @@ def load_corpus(root: Path) -> list[CorpusCase]:
         min_regional_similarity = meta.get(
             "min_regional_similarity", _DEFAULT_MIN_REGIONAL_SIMILARITY
         )
+        min_focused_similarity = meta.get("min_focused_similarity", _DEFAULT_MIN_FOCUSED_SIMILARITY)
         cases.append(
             CorpusCase(
                 name=case_dir.name,
@@ -84,6 +88,9 @@ def load_corpus(root: Path) -> list[CorpusCase]:
                 min_regional_similarity=float(min_regional_similarity)
                 if isinstance(min_regional_similarity, (int, float))
                 else _DEFAULT_MIN_REGIONAL_SIMILARITY,
+                min_focused_similarity=float(min_focused_similarity)
+                if isinstance(min_focused_similarity, (int, float))
+                else _DEFAULT_MIN_FOCUSED_SIMILARITY,
             )
         )
     return cases

@@ -15,7 +15,7 @@ each backend's untouched ``-raw.png`` render and comparison-canvas candidate, an
 heatmap, plus ``summary.md`` / ``summary.json``.
 A backend with no tooling/credentials is skipped with a note by default. CI can pass
 ``--require-backend`` to fail closed instead. The process also exits non-zero when a present
-backend scores a slide below either its global or regional threshold.
+backend scores a slide below its global, regional, or focused threshold.
 """
 
 from __future__ import annotations
@@ -49,15 +49,18 @@ class SlideScore:
     slide: int
     similarity: float
     regional_similarity: float
+    focused_similarity: float
     perceptible_ratio: float
     threshold: float
     regional_threshold: float
+    focused_threshold: float
 
     @property
     def passed(self) -> bool:
         return (
             self.similarity >= self.threshold
             and self.regional_similarity >= self.regional_threshold
+            and self.focused_similarity >= self.focused_threshold
         )
 
 
@@ -120,9 +123,11 @@ def _score_backend(
                 slide=index,
                 similarity=report.similarity,
                 regional_similarity=report.regional_similarity,
+                focused_similarity=report.focused_similarity,
                 perceptible_ratio=report.perceptible_ratio,
                 threshold=case.min_similarity,
                 regional_threshold=case.min_regional_similarity,
+                focused_threshold=case.min_focused_similarity,
             )
         )
     if source_count != candidate_count:
@@ -134,9 +139,11 @@ def _score_backend(
                     slide=index,
                     similarity=0.0,
                     regional_similarity=0.0,
+                    focused_similarity=0.0,
                     perceptible_ratio=1.0,
                     threshold=case.min_similarity,
                     regional_threshold=case.min_regional_similarity,
+                    focused_threshold=case.min_focused_similarity,
                 )
             )
             print(
@@ -150,15 +157,16 @@ def _score_backend(
 def _write_summary(scores: list[SlideScore], skipped: list[str], out_dir: Path) -> None:
     rows = "\n".join(
         f"| {s.case} | {s.backend} | {s.slide} | {s.similarity:.3f} | "
-        f"{s.regional_similarity:.3f} | {s.perceptible_ratio:.3f} | "
-        f"{s.threshold:.2f} | {s.regional_threshold:.2f} | {'✅' if s.passed else '❌'} |"
+        f"{s.regional_similarity:.3f} | {s.focused_similarity:.3f} | "
+        f"{s.perceptible_ratio:.3f} | {s.threshold:.2f} | {s.regional_threshold:.2f} | "
+        f"{s.focused_threshold:.2f} | {'✅' if s.passed else '❌'} |"
         for s in scores
     )
     md = (
         "# Fidelity report\n\n"
-        "| Case | Backend | Slide | Similarity | Regional | Perceptible | "
-        "Threshold | Regional threshold | Pass |\n"
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+        "| Case | Backend | Slide | Similarity | Regional | Focused | Perceptible | "
+        "Threshold | Regional threshold | Focused threshold | Pass |\n"
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
         f"{rows}\n"
     )
     if skipped:
@@ -192,6 +200,12 @@ def main(argv: list[str] | None = None) -> int:
         type=float,
         default=None,
         help="override every case's worst-region similarity floor",
+    )
+    parser.add_argument(
+        "--focused-threshold",
+        type=float,
+        default=None,
+        help="override every case's fine-grid focused similarity floor",
     )
     parser.add_argument(
         "--require-backend",
@@ -239,6 +253,11 @@ def main(argv: list[str] | None = None) -> int:
                     if args.regional_threshold is not None
                     else case.min_regional_similarity
                 ),
+                min_focused_similarity=(
+                    args.focused_threshold
+                    if args.focused_threshold is not None
+                    else case.min_focused_similarity
+                ),
             )
             scores = _score_backend(
                 effective, backend, source_pngs, pptx, args.out, heatmap=args.heatmap
@@ -247,7 +266,8 @@ def main(argv: list[str] | None = None) -> int:
                 flag = "ok" if s.passed else "LOW"
                 print(
                     f"    {backend} slide{s.slide}: global {s.similarity:.3f}, "
-                    f"regional {s.regional_similarity:.3f} [{flag}]"
+                    f"regional {s.regional_similarity:.3f}, "
+                    f"focused {s.focused_similarity:.3f} [{flag}]"
                 )
             all_scores.extend(scores)
 

@@ -219,6 +219,8 @@ Fidelity is a multidimensional contract, not one whole-slide similarity number:
 
 - global pixels and color distribution;
 - worst-region similarity so small objects cannot disappear unnoticed;
+- fine-grid focused similarity over the worst two percent of regions so local typography and
+  compact-object drift cannot be diluted by nearby matching fill or whitespace;
 - structural edges, geometry, text boxes, and stacking;
 - semantic/native editability and fallback granularity;
 - package validity, relationships, and source-extension preservation;

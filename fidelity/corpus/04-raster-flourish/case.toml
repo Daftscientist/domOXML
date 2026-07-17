@@ -4,3 +4,4 @@ size = "16:9"
 # differently than Chromium. The editable text on top is what must stay faithful.
 min_similarity = 0.8
 min_regional_similarity = 0.98
+min_focused_similarity = 0.93

@@ -126,6 +126,7 @@ def _text_body(
                 update["color"] = default_color
             if default_bold and not _has_attribute(run_properties, default_properties, "b"):
                 update["bold"] = True
+                update["bold_inherited"] = True
             runs.append(run.model_copy(update=update) if update else run)
         if runs:
             paragraphs.append(TextParagraph(runs=tuple(runs), align=alignment))
@@ -217,6 +218,12 @@ def parse_table(
     table = element.find("a:graphic/a:graphicData/a:tbl", _NS)
     if table is None:
         return None
+    table_properties = table.find("a:tblPr", _NS)
+    style_id = (
+        table_properties.findtext("a:tableStyleId", default="", namespaces=_NS) or None
+        if table_properties is not None
+        else None
+    )
     column_widths = tuple(
         _int_attr(column, "w") for column in table.findall("a:tblGrid/a:gridCol", _NS)
     )
@@ -277,7 +284,27 @@ def parse_table(
         width=max(_int_attr(extent, "cx"), sum(column_widths)),
         height=max(_int_attr(extent, "cy"), sum(row.height_emu for row in rows)),
     )
-    return TableNode(box=box, col_widths_emu=column_widths, rows=tuple(rows))
+
+    def enabled(name: str) -> bool:
+        return table_properties is not None and table_properties.get(name) in {"1", "true"}
+
+    return TableNode(
+        box=box,
+        col_widths_emu=column_widths,
+        rows=tuple(rows),
+        style_id=style_id,
+        first_row=enabled("firstRow"),
+        last_row=enabled("lastRow"),
+        first_col=enabled("firstCol"),
+        last_col=enabled("lastCol"),
+        band_row=enabled("bandRow"),
+        band_col=enabled("bandCol"),
+        header_bold_inherited=(
+            bool(style_id)
+            and style_id.upper() == _POWERPOINT_DEFAULT_TABLE_STYLE
+            and enabled("firstRow")
+        ),
+    )
 
 
 def read_graphic_frame(

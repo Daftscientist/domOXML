@@ -14,6 +14,9 @@ _PERCEPTIBLE = 24
 _REGION_COLUMNS = 16
 _REGION_ROWS = 9
 _WORST_REGION_FRACTION = 0.10
+_FOCUSED_COLUMNS = 64
+_FOCUSED_ROWS = 36
+_WORST_FOCUSED_FRACTION = 0.02
 _REGION_BLUR_RADIUS_AT_2560 = 3.0
 _EDGE_THRESHOLD = 12
 _EDGE_BLUR_RADIUS_AT_720 = 0.6
@@ -27,6 +30,7 @@ class FidelityReport(BaseModel):
 
     similarity: float  # 1.0 = identical; 1 - (mean absolute diff / 255)
     regional_similarity: float  # same scale, over the worst decile of slide regions
+    focused_similarity: float  # fine-grid score over the worst 2%, sensitive to local text drift
     structural_similarity: float  # tolerant edge precision/recall, sensitive to missing objects
     perceptible_ratio: float  # fraction of pixels that differ visibly (> threshold)
     mean_diff: float  # mean absolute per-channel difference, 0..255
@@ -91,6 +95,23 @@ def _edge_similarity(ref: Image.Image, cand: Image.Image) -> float:
     )
 
 
+def _worst_region_diff(
+    difference: Image.Image,
+    *,
+    columns: int,
+    rows: int,
+    fraction: float,
+) -> float:
+    grid = difference.resize(  # pyright: ignore[reportUnknownMemberType]
+        (columns, rows), resample=Image.Resampling.BOX
+    )
+    region_diffs = [
+        float(value) for value in grid.get_flattened_data() if isinstance(value, (int, float))
+    ]
+    worst_count = max(1, math.ceil(len(region_diffs) * fraction))
+    return sum(sorted(region_diffs, reverse=True)[:worst_count]) / worst_count
+
+
 def compare(reference: bytes, candidate: bytes, *, heatmap: bool = False) -> FidelityReport:
     """Compare two PNG renders. The candidate is resized to the reference if sizes differ."""
     ref, cand = _aligned_images(reference, candidate)
@@ -109,18 +130,18 @@ def compare(reference: bytes, candidate: bytes, *, heatmap: bool = False) -> Fid
         ref.filter(ImageFilter.GaussianBlur(blur_radius)),
         cand.filter(ImageFilter.GaussianBlur(blur_radius)),
     ).convert("L")
-    region_diffs: list[float] = []
-    for row in range(_REGION_ROWS):
-        for column in range(_REGION_COLUMNS):
-            box = (
-                column * ref.width // _REGION_COLUMNS,
-                row * ref.height // _REGION_ROWS,
-                (column + 1) * ref.width // _REGION_COLUMNS,
-                (row + 1) * ref.height // _REGION_ROWS,
-            )
-            region_diffs.append(ImageStat.Stat(regional_diff.crop(box)).mean[0])
-    worst_count = max(1, math.ceil(len(region_diffs) * _WORST_REGION_FRACTION))
-    worst_region_diff = sum(sorted(region_diffs, reverse=True)[:worst_count]) / worst_count
+    worst_region_diff = _worst_region_diff(
+        regional_diff,
+        columns=_REGION_COLUMNS,
+        rows=_REGION_ROWS,
+        fraction=_WORST_REGION_FRACTION,
+    )
+    worst_focused_diff = _worst_region_diff(
+        regional_diff,
+        columns=_FOCUSED_COLUMNS,
+        rows=_FOCUSED_ROWS,
+        fraction=_WORST_FOCUSED_FRACTION,
+    )
 
     diff_png: bytes | None = None
     if heatmap:
@@ -131,6 +152,7 @@ def compare(reference: bytes, candidate: bytes, *, heatmap: bool = False) -> Fid
     return FidelityReport(
         similarity=1.0 - mean_diff / 255.0,
         regional_similarity=1.0 - worst_region_diff / 255.0,
+        focused_similarity=1.0 - worst_focused_diff / 255.0,
         structural_similarity=_edge_similarity(ref, cand),
         perceptible_ratio=perceptible,
         mean_diff=mean_diff,

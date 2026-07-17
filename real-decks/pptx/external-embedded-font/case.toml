@@ -45,6 +45,8 @@ roundtrip_xml_contains = [
 [[visual]]
 slide = 0
 # Distro LibreOffice repositions the malformed-font deck's editable text. Exact crop XML above
-# and the global floor carry the semantic gate; regional similarity guards gross regressions.
+# and the global floor carry the semantic gate; regional/focused floors are calibrated to the CI
+# distro font fallback and guard gross regressions.
 min_similarity = 0.978
 min_regional_similarity = 0.89
+min_focused_similarity = 0.68

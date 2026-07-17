@@ -19,6 +19,7 @@ def test_identical_renders_are_perfect() -> None:
     same = _png((10, 20, 30))
     report = compare(same, same)
     assert report.similarity == 1.0
+    assert report.focused_similarity == 1.0
     assert report.perceptible_ratio == 0.0
     assert report.mean_diff == 0.0
 
@@ -88,6 +89,7 @@ def test_regional_similarity_exposes_local_foreground_loss() -> None:
 
     assert report.similarity > 0.95
     assert report.regional_similarity < 0.9
+    assert report.focused_similarity < report.regional_similarity
 
 
 def test_regional_similarity_weights_only_worst_decile() -> None:

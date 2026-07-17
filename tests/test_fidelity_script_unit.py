@@ -64,14 +64,16 @@ def test_markdown_summary_contains_both_fidelity_gates(tmp_path: Path) -> None:
         slide=0,
         similarity=0.99,
         regional_similarity=0.98,
+        focused_similarity=0.96,
         perceptible_ratio=0.01,
         threshold=0.95,
         regional_threshold=0.97,
+        focused_threshold=0.94,
     )
 
     fidelity_check._write_summary([score], [], tmp_path)
 
     markdown = (tmp_path / "summary.md").read_text()
-    assert "| Similarity | Regional |" in markdown
+    assert "| Similarity | Regional | Focused |" in markdown
     assert "| 0.950 | 0.970 |" not in markdown
-    assert "| 0.95 | 0.97 |" in markdown
+    assert "| 0.95 | 0.97 | 0.94 |" in markdown

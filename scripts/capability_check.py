@@ -156,6 +156,62 @@ def _validate_reverse_visual(
     return tuple(errors)
 
 
+def _validate_convergence_visual(
+    fixture: CapabilityFixture,
+    previous: RenderResult,
+    candidate: RenderResult,
+    cycle: int,
+    out_dir: Path | None = None,
+    *,
+    report_scores: bool = False,
+) -> tuple[str, ...]:
+    global_floor = fixture.roundtrip.min_convergence_similarity
+    regional_floor = fixture.roundtrip.min_convergence_regional_similarity
+    structural_floor = fixture.roundtrip.min_convergence_structural_similarity
+    if global_floor is None and regional_floor is None and structural_floor is None:
+        return ()
+    if not previous.pngs or not candidate.pngs:
+        return ("convergence render produced no PNGs",)
+    if len(previous.pngs) != len(candidate.pngs):
+        return (f"convergence page count {len(candidate.pngs)} != previous {len(previous.pngs)}",)
+
+    indices = fixture.roundtrip.slide_indices or tuple(range(len(previous.pngs)))
+    invalid = tuple(index for index in indices if index >= len(previous.pngs))
+    if invalid:
+        return (f"convergence slide indices out of range: {invalid}",)
+
+    errors: list[str] = []
+    for index in indices:
+        reference = previous.pngs[index]
+        current = candidate.pngs[index]
+        report = compare(reference, current, heatmap=out_dir is not None)
+        if out_dir is not None:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            stem = f"{fixture.id}-cycle{cycle}-slide{index}"
+            (out_dir / f"{stem}-previous.png").write_bytes(reference)
+            (out_dir / f"{stem}-current.png").write_bytes(align_candidate_png(reference, current))
+            if report.diff_png is not None:
+                (out_dir / f"{stem}-diff.png").write_bytes(report.diff_png)
+        scores = (
+            ("global", report.similarity, global_floor),
+            ("regional", report.regional_similarity, regional_floor),
+            ("structural", report.structural_similarity, structural_floor),
+        )
+        for name, actual, floor in scores:
+            if floor is not None and actual < floor:
+                errors.append(
+                    f"cycle {cycle} slide {index} {name} convergence {actual:.3f} "
+                    f"< expected {floor:.3f}"
+                )
+        if report_scores:
+            print(
+                f"     cycle{cycle} slide{index}: global {report.similarity:.3f}, "
+                f"regional {report.regional_similarity:.3f}, "
+                f"structural {report.structural_similarity:.3f}"
+            )
+    return tuple(errors)
+
+
 def _validate_fixture(
     fixture: CapabilityFixture,
     out_dir: Path | None = None,
@@ -212,24 +268,52 @@ def _validate_fixture(
         errors.extend(
             f"reverse: {error}" for error in validate_reverse_capability(fixture, reverse)
         )
-        if fixture.reverse.roundtrip:
+        previous_roundtrip: RenderResult | None = None
+        for cycle in range(1, fixture.roundtrip.cycles + 1):
             roundtrip = _render_reverse_html(reverse)
             errors.extend(
-                f"roundtrip: {error}" for error in validate_roundtrip_capability(fixture, roundtrip)
+                f"roundtrip cycle {cycle}: {error}"
+                for error in validate_roundtrip_capability(fixture, roundtrip)
             )
-            source_pngs: tuple[bytes, ...] = forward.pngs if forward is not None else ()
-            if not source_pngs and has_reverse_threshold:
-                source_pngs = source_pptx_pngs
-            if source_pngs:
+            if cycle == 1:
+                source_pngs: tuple[bytes, ...] = forward.pngs if forward is not None else ()
+                if not source_pngs and has_reverse_threshold:
+                    source_pngs = source_pptx_pngs
+                if source_pngs:
+                    errors.extend(
+                        f"visual: {error}"
+                        for error in _validate_reverse_visual(
+                            fixture,
+                            source_pngs,
+                            roundtrip,
+                            out_dir,
+                            report_scores=report_scores,
+                        )
+                    )
+            elif previous_roundtrip is not None:
                 errors.extend(
-                    f"visual: {error}"
-                    for error in _validate_reverse_visual(
+                    f"convergence: {error}"
+                    for error in _validate_convergence_visual(
                         fixture,
-                        source_pngs,
+                        previous_roundtrip,
                         roundtrip,
+                        cycle,
                         out_dir,
                         report_scores=report_scores,
                     )
+                )
+            previous_roundtrip = roundtrip
+            if cycle < fixture.roundtrip.cycles:
+                if roundtrip.pptx is None:
+                    errors.append(f"roundtrip cycle {cycle}: produced no PPTX for next cycle")
+                    break
+                reverse = Presentation.from_pptx(
+                    roundtrip.pptx,
+                    fallback_pngs=roundtrip.pngs or None,
+                )
+                errors.extend(
+                    f"reverse cycle {cycle + 1}: {error}"
+                    for error in validate_reverse_capability(fixture, reverse)
                 )
 
     return tuple(errors)

@@ -11,7 +11,7 @@ Snapshot audited on **2026-07-17** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 682 tests are collected.
+- 690 tests are collected.
 - 18 atomic PPTX capability fixtures exist; 17 are bidirectional and one is a reverse-first chart
   preservation fixture.
 - 9 authored HTML fidelity cases exist.
@@ -61,8 +61,8 @@ No capability is labelled bidirectional merely because both code paths return su
 
 ## Milestone 0: Make The Contract Accurate
 
-**Status: documentation complete; forward runtime contract implemented, reverse integration
-pending.**
+**Status: documentation, forward runtime records, and repeated re-ingestion ratchets implemented;
+complete reverse-ingest coverage records pending.**
 
 - Keep architecture, roadmap, and inventories authoritative and nonduplicated.
 - Generate schema appendices from pinned official ECMA-376 XSDs.
@@ -245,7 +245,11 @@ silently lowering the expected score.
 8. [ ] Expand effects beyond the bidirectional offset-shadow/inset-layer/glow baseline using
    PowerPoint/Graph-calibrated evidence for blur, soft edge, reflection, preset shadow, fill overlay,
    compound ordering, and effect-bearing custom geometry.
-9. [ ] Add capability-registry fields for semantic editability, representation level, layer area,
-   source preservation, and repeated-round-trip count.
+9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
+   source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
+   fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,
+   and applies global/regional/structural convergence floors. The reverse PPTX reader still needs
+   first-class per-visual coverage output under milestone 0; this registry gate measures each
+   regenerated HTML -> IR -> PPTX boundary without claiming that missing ingest report.
 10. [ ] Add strict OOXML and malformed/nonstandard producer cases after Transitional package
     preservation is reliable.

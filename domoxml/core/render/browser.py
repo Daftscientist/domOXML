@@ -203,6 +203,7 @@ _SNAPSHOT_JS = """
       domoxmlConnector: 'data-domoxml-connector',
       domoxmlEffects: 'data-domoxml-effects',
       domoxmlTextPayload: 'data-domoxml-text-payload',
+      domoxmlTableGeometry: 'data-domoxml-table-geometry',
     };
     for (const [key, attribute] of Object.entries(metadata)) {
       const value = el.getAttribute(attribute);

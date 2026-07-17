@@ -13,6 +13,7 @@ from domoxml.core.capabilities import (
     CapabilityDirection,
     CapabilityFixture,
     CapabilityReverseExpected,
+    CapabilityRoundtripExpected,
     CapabilityVisual,
     load_capabilities,
 )
@@ -26,6 +27,7 @@ from domoxml.types import (
 )
 from scripts.capability_check import (
     _is_transient_render_error,
+    _validate_convergence_visual,
     _validate_fixture,
     _validate_forward_visual,
     _validate_reverse_visual,
@@ -259,6 +261,140 @@ def test_structural_similarity_is_enforced_in_both_visual_directions() -> None:
     assert "structural similarity" in forward_errors[0]
     assert len(reverse_errors) == 1
     assert "structural similarity" in reverse_errors[0]
+
+
+def test_convergence_visual_gate_checks_every_quality_score(tmp_path: Path) -> None:
+    previous = _render_result(_png_with_foreground(include_foreground=True))
+    candidate = _render_result(_png_with_foreground(include_foreground=False))
+    fixture = CapabilityFixture(
+        id="convergence",
+        direction=CapabilityDirection.REVERSE,
+        pptx=b"pptx",
+        visual_exclusion="unit fixture",
+        roundtrip=CapabilityRoundtripExpected(
+            cycles=2,
+            min_convergence_similarity=0.99,
+            min_convergence_regional_similarity=0.99,
+            min_convergence_structural_similarity=0.99,
+        ),
+    )
+
+    errors = _validate_convergence_visual(fixture, previous, candidate, 2, tmp_path)
+
+    assert len(errors) == 3
+    assert all("convergence" in error for error in errors)
+    assert (tmp_path / "convergence-cycle2-slide0-previous.png").is_file()
+    assert (tmp_path / "convergence-cycle2-slide0-current.png").is_file()
+    assert (tmp_path / "convergence-cycle2-slide0-diff.png").is_file()
+
+
+def test_convergence_visual_gate_can_scope_one_slide() -> None:
+    fixture = CapabilityFixture(
+        id="scoped-convergence",
+        direction=CapabilityDirection.REVERSE,
+        pptx=b"pptx",
+        visual_exclusion="unit fixture",
+        roundtrip=CapabilityRoundtripExpected(
+            cycles=2,
+            slide_indices=(1,),
+            min_convergence_similarity=0.99,
+        ),
+    )
+    previous = RenderResult(
+        pptx=None,
+        pngs=(_png("black"), _png("white")),
+        html=None,
+        coverage=CoverageReport(items=()),
+        warnings=(),
+    )
+    candidate = RenderResult(
+        pptx=None,
+        pngs=(_png("white"), _png("white")),
+        html=None,
+        coverage=CoverageReport(items=()),
+        warnings=(),
+    )
+
+    assert _validate_convergence_visual(fixture, previous, candidate, 2) == ()
+
+
+def test_convergence_visual_gate_rejects_missing_renders() -> None:
+    fixture = CapabilityFixture(
+        id="missing-convergence-render",
+        direction=CapabilityDirection.REVERSE,
+        pptx=b"pptx",
+        visual_exclusion="unit fixture",
+        roundtrip=CapabilityRoundtripExpected(
+            cycles=2,
+            min_convergence_similarity=0.99,
+        ),
+    )
+    empty = RenderResult(
+        pptx=None,
+        pngs=(),
+        html=None,
+        coverage=CoverageReport(items=()),
+        warnings=(),
+    )
+
+    assert _validate_convergence_visual(fixture, empty, empty, 2) == (
+        "convergence render produced no PNGs",
+    )
+
+
+def test_fixture_runner_reingests_every_configured_roundtrip_cycle(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    import scripts.capability_check as capability_check
+
+    reverse = HtmlPresentation(
+        slides=(HtmlSlide(html="<div>reverse</div>", width_px=64, height_px=64),),
+        css="",
+    )
+    fixture = CapabilityFixture(
+        id="cycles",
+        direction=CapabilityDirection.REVERSE,
+        pptx=b"source",
+        visual_exclusion="unit fixture",
+        roundtrip=CapabilityRoundtripExpected(cycles=2),
+    )
+    reads: list[bytes | Path] = []
+    renders = 0
+
+    def read_source(
+        cls: type[capability_check.Presentation],
+        source: bytes | Path,
+        *,
+        fallback_pngs: tuple[bytes, ...] | None = None,
+    ) -> HtmlPresentation:
+        assert cls is capability_check.Presentation
+        reads.append(source)
+        if source == b"cycle-1":
+            assert fallback_pngs == (_png("white"),)
+        return reverse
+
+    def render_reverse(html: HtmlPresentation) -> RenderResult:
+        nonlocal renders
+        assert html is reverse
+        renders += 1
+        return RenderResult(
+            pptx=f"cycle-{renders}".encode(),
+            pngs=(_png("white"),),
+            html=None,
+            coverage=CoverageReport(items=()),
+            warnings=(),
+        )
+
+    def validate_roundtrip(_fixture: CapabilityFixture, _result: RenderResult) -> tuple[str, ...]:
+        return ()
+
+    monkeypatch.setattr(capability_check.Presentation, "from_pptx", classmethod(read_source))
+    monkeypatch.setattr(capability_check, "_render_reverse_html", render_reverse)
+    monkeypatch.setattr(capability_check, "validate_roundtrip_capability", validate_roundtrip)
+
+    assert _validate_fixture(fixture, forward_visual_available=False) == ()
+    assert reads == [b"source", b"cycle-1"]
+    assert renders == 2
 
 
 def test_reverse_visual_gate_can_scope_one_slide() -> None:

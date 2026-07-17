@@ -78,6 +78,7 @@ from domoxml.core.ir.pattern import match_pattern_fill
 from domoxml.core.ir.slide_properties_extract import extract_slide_properties
 from domoxml.core.ir.svg_extract import extract_custom_geometry
 from domoxml.core.ir.table_extract import extract_table
+from domoxml.core.ir.table_payload import decode_table_geometry
 from domoxml.core.ir.text_payload import decode_text_body
 from domoxml.core.opc import decode_payload
 from domoxml.core.render.browser import (
@@ -262,8 +263,7 @@ def _text_body_margins(node: RenderedNode) -> tuple[int, int, int, int]:
     )
 
 
-def _text_body(node: RenderedNode) -> TextBody | None:
-    encoded = decode_text_body(node.styles.get("domoxmlTextPayload"))
+def _text_body_from_decoded(node: RenderedNode, encoded: TextBody | None) -> TextBody | None:
     if encoded is not None:
         return encoded
     source = node.text_runs or (
@@ -353,6 +353,10 @@ def _text_body(node: RenderedNode) -> TextBody | None:
         column_gap_emu=column_gap_emu,
         margins=margins,
     )
+
+
+def _text_body(node: RenderedNode) -> TextBody | None:
+    return _text_body_from_decoded(node, decode_text_body(node.styles.get("domoxmlTextPayload")))
 
 
 def _box(node: RenderedNode) -> Box:
@@ -1063,6 +1067,24 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 text_for=_text_body,
             )
             if table is not None:
+                geometry = decode_table_geometry(node.styles.get("domoxmlTableGeometry"))
+                if (
+                    geometry is not None
+                    and len(geometry.col_widths_emu) == len(table.col_widths_emu)
+                    and len(geometry.row_heights_emu) == len(table.rows)
+                ):
+                    table = table.model_copy(
+                        update={
+                            "box": geometry.box,
+                            "col_widths_emu": geometry.col_widths_emu,
+                            "rows": tuple(
+                                row.model_copy(update={"height_emu": height})
+                                for row, height in zip(
+                                    table.rows, geometry.row_heights_emu, strict=True
+                                )
+                            ),
+                        }
+                    )
                 contents.append(identities.apply(table, node))
                 consumed |= _subtree(node.index, children)
                 coverage.append(_native_coverage(_label(node)))
@@ -1264,7 +1286,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if _is_plain_inline(node, fill, line):
             coverage.append(_native_coverage(_label(node)))
             continue
-        text = _text_body(node)
+        encoded_text = decode_text_body(node.styles.get("domoxmlTextPayload"))
+        text = _text_body_from_decoded(node, encoded_text)
         approximation_reasons = list(warn_msgs)
         if (
             text is not None
@@ -1280,12 +1303,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     element=_label(node),
                 )
             )
-        if (
-            text is not None
-            and fill is None
-            and line is None
-            and decode_text_body(node.styles.get("domoxmlTextPayload")) is None
-        ):
+        if text is not None and fill is None and line is None and encoded_text is None:
             outside_bullet = (
                 any(paragraph.bullet is not None for paragraph in text.paragraphs)
                 and node.styles.get("listStylePosition", "outside") != "inside"
@@ -1323,7 +1341,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 node,
             )
         )
-        if node.styles.get("domoxmlConsolidatedText") == "true":
+        if node.styles.get("domoxmlConsolidatedText") == "true" or encoded_text is not None:
             consumed |= _subtree(node.index, children) - {node.index}
         if side_rect_shapes and not approximation_reasons:
             coverage.append(

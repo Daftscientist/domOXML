@@ -44,7 +44,10 @@ def test_report_tracks_native_editable_and_layered_axes() -> None:
     assert report.editable_ratio == 2 / 3
     assert report.layered_ratio == 1 / 3
     assert report.raster_area_emu2 == 200
+    assert report.output_count == 5
     assert report.count(Representation.DECOMPOSED) == 1
+    assert report.count_editability(Editability.COMPONENTS) == 1
+    assert report.count_source_retention(SourceRetention.NOT_REQUIRED) == 3
 
 
 @pytest.mark.parametrize(

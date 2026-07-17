@@ -26,10 +26,11 @@ backend described in [`architecture.md`](architecture.md).
 Forward conversion now emits a typed coverage record for every captured visual. Representation is
 `native`, `decomposed`, `hybrid`, `layered`, `element_layer`, `approximated`, or `failed`;
 editability, source retention, output count, and raster area are recorded independently. Capability
-manifests place explicit ceilings on every lossy representation. Applying this same record to PPTX
-ingest is still roadmap work; normalized-HTML re-ingestion now records attached element-layer or
-failed coverage for preserved nodes, but the reverse PPTX reader does not yet produce a complete
-per-visual coverage report.
+manifests place explicit forward and regenerated-output bounds on every representation, editing
+model, retention state, output count, and raster area. Applying this same record directly to PPTX
+ingest is still roadmap work; normalized-HTML re-ingestion records attached element-layer or failed
+coverage for preserved nodes, but the reverse PPTX reader does not yet produce a complete per-visual
+coverage report.
 
 ## Current Shared Capability Matrix
 
@@ -71,11 +72,11 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Raster images | Native | Native | integration | effects, linked images, color transforms, metadata/accessibility |
 | SVG vectors | Native SVG extension + PNG fallback | Native read and exact asset re-emission | `cap:svg-vector` (both) | cropped/effect-bearing SVG pictures, external assets, and adversarial SVG content |
 | Audio and video | Layered/not authored natively | Native read | unit only | native authoring, posters/playback, HTML/PPTX parity and real-deck evidence |
-| Tables | Native subset | Native subset | `cap:table` (both) + real deck | complete styles/inheritance, borders, layout, nested content and adversarial cases |
+| Tables | Native subset | Native subset; normalized HTML carries typed exact table geometry beside semantic markup | `cap:table` (both) + real deck | complete styles/inheritance, borders, layout, nested content and adversarial cases |
 | Charts | Attached source re-emission only; authored charts remain a gap | Attached preserve plus renderer-backed element layer when a slide render is supplied | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart/data IR, automatic renderer selection, semantic HTML rendering, and native authoring |
 | Unknown visual extensions | Element layer on HTML input | Positioned nodes can use authoritative element crops; malformed source graphs remain visible with explicit detached-source debt | chart capability + unit/integration | automatic renderer policy, complete ownership, alpha/isolation improvements, and broader fixtures |
-| Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/structural with explicit reverse slide scoping | CI + tests | full reverse coverage records, object-aware regions, typography/color metrics, layer/editability ratchets |
-| Repeated round trips | one cycle for 17 bidirectional fixtures | 17 bidirectional fixtures plus reverse-first chart preservation | capability runner | configurable multi-cycle convergence and broader source-format preservation gates |
+| Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/structural with explicit reverse and convergence slide scoping | CI + tests | full reverse coverage records, object-aware regions, and typography/color metrics |
+| Repeated round trips | every reverse-capable fixture rebuilds and re-ingests at least twice with representation/editability/retention/output/raster bounds | 17 bidirectional fixtures plus a three-cycle scoped reverse-first chart preservation fixture | capability runner + manifest contract tests | broader source-format preservation gates and PowerPoint-rendered convergence |
 
 ## Shared Work Remaining For PPTX
 

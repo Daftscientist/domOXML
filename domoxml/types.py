@@ -236,9 +236,22 @@ class CoverageReport(BaseModel):
         """Total rasterized output area in squared EMUs."""
         return sum(item.raster_area_emu2 for item in self.items)
 
+    @property
+    def output_count(self) -> int:
+        """Total editable and raster outputs produced for all source visuals."""
+        return sum(item.output_count for item in self.items)
+
     def count(self, representation: Representation) -> int:
         """Count source visuals using ``representation``."""
         return sum(item.representation is representation for item in self.items)
+
+    def count_editability(self, editability: Editability) -> int:
+        """Count source visuals retaining ``editability``."""
+        return sum(item.editability is editability for item in self.items)
+
+    def count_source_retention(self, retention: SourceRetention) -> int:
+        """Count source visuals with the requested source-retention state."""
+        return sum(item.source_retention is retention for item in self.items)
 
 
 class ConversionWarning(BaseModel):

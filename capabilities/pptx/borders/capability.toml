@@ -6,6 +6,14 @@ html_file = "slide.html"
 # The left-accent card is one source visual represented by two editable components.
 min_representation = { native = 4, decomposed = 1 }
 max_representation = { approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 9, components = 1 }
+max_editability = { semantic = 9, components = 1, layers = 0, none = 0 }
+min_source_retention = { not_required = 10 }
+max_source_retention = { not_required = 10, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 11
+max_output_count = 11
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
 
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"
@@ -19,6 +27,22 @@ source_to_pptx_min_structural_similarity = 0.95
 pptx_to_html_min_similarity = 0.995
 pptx_to_html_min_regional_similarity = 0.98
 pptx_to_html_min_structural_similarity = 0.97
+
+[roundtrip]
+cycles = 2
+min_representation = { native = 11 }
+max_representation = { native = 11, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 11 }
+max_editability = { semantic = 11, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 11 }
+max_source_retention = { not_required = 11, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 11
+max_output_count = 11
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+min_convergence_similarity = 0.999
+min_convergence_regional_similarity = 0.999
+min_convergence_structural_similarity = 0.999
 
 [reverse]
 html_contains = [

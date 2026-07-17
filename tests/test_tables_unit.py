@@ -30,6 +30,7 @@ from domoxml.core.ir.model import (
     TextParagraph,
     TextRun,
 )
+from domoxml.core.ir.table_payload import decode_table_geometry, encode_table_geometry
 from domoxml.slides import build_pptx
 
 _TABLE_URI = "http://schemas.openxmlformats.org/drawingml/2006/table"
@@ -389,6 +390,21 @@ def test_html_emits_table_element() -> None:
     assert "<table" in html
 
 
+def test_html_carries_exact_versioned_table_geometry() -> None:
+    table = _simple_table()
+
+    encoded = encode_table_geometry(table)
+    decoded = decode_table_geometry(encoded)
+
+    assert decoded is not None
+    assert decoded.box == table.box
+    assert decoded.col_widths_emu == table.col_widths_emu
+    assert decoded.row_heights_emu == tuple(row.height_emu for row in table.rows)
+    html = serialize_canvas([_slide_with_table(table)]).slides[0].html
+    assert f'data-domoxml-table-geometry="{encoded}"' in html
+    assert decode_table_geometry("not-a-payload") is None
+
+
 def test_html_table_has_correct_cell_count() -> None:
     """The HTML table has the expected number of ``<td>`` cells."""
     slide = _slide_with_table(_simple_table(n_rows=2, n_cols=3))
@@ -425,7 +441,7 @@ def test_html_table_preserves_authored_row_heights_and_border_box() -> None:
     html = serialize_canvas([slide]).slides[0].html
 
     assert "box-sizing:border-box" in html
-    assert html.count('<tr style="height:52.4934px">') == 2
+    assert html.count('<tr style="height:52.5px">') == 2
 
 
 # --------------------------------------------------------------------------- full round-trip

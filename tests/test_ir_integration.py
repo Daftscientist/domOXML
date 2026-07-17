@@ -9,14 +9,19 @@ from domoxml.core.ir import ExtractResult, extract_slide
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
+    CharBullet,
     PictureFill,
     PreservationPayload,
     PreservedNode,
     ShapeNode,
     SlideIR,
     SolidFill,
+    TableCell,
+    TableNode,
+    TableRow,
     TextBody,
     TextParagraph,
+    TextRun,
 )
 from domoxml.core.render import BrowserSession, compose_page
 from domoxml.core.roundtrip import inline_assets
@@ -131,7 +136,7 @@ async def test_serialized_text_payload_keeps_the_exact_source_box() -> None:
     body = TextBody(paragraphs=(TextParagraph(runs=()),))
     node = ShapeNode(
         node_id="title",
-        box=Box(x=762_000, y=438_150, width=10_668_000, height=419_100),
+        box=Box(x=760_363, y=442_466, width=438_894, height=1_840_260),
         text=body,
     )
     serialized = serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(node,))])
@@ -141,6 +146,59 @@ async def test_serialized_text_payload_keeps_the_exact_source_box() -> None:
 
     [title] = [shape for shape in recovered.shapes if shape.node_id == "title"]
     assert title.box == node.box
+
+
+async def test_serialized_bullet_payload_owns_its_rendered_list_subtree() -> None:
+    paragraphs = tuple(
+        TextParagraph(
+            runs=(TextRun(text=text, font_family="Arial", size_pt=18),),
+            bullet=CharBullet(char="\u2022"),
+        )
+        for text in ("First", "Second")
+    )
+    node = ShapeNode(
+        node_id="bullets",
+        box=Box(x=762_000, y=438_150, width=5_334_000, height=1_828_800),
+        text=TextBody(paragraphs=paragraphs),
+    )
+    serialized = inline_assets(
+        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(node,))])
+    )
+
+    result = await _render_and_extract_result(
+        f"<style>{serialized.css}</style>{serialized.slides[0].html}"
+    )
+
+    [recovered] = result.slide.shapes
+    assert recovered.node_id == "bullets"
+    assert recovered.text == node.text
+    assert len(result.coverage) == 1
+
+
+async def test_serialized_table_payload_preserves_exact_geometry() -> None:
+    table = TableNode(
+        node_id="table",
+        box=Box(x=4_114_800, y=2_743_200, width=4_114_800, height=1_371_600),
+        col_widths_emu=(2_057_400, 2_057_400),
+        rows=(
+            TableRow(height_emu=685_800, cells=(TableCell(), TableCell())),
+            TableRow(height_emu=685_800, cells=(TableCell(), TableCell())),
+        ),
+    )
+    serialized = inline_assets(
+        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(table,))])
+    )
+
+    result = await _render_and_extract_result(
+        f"<style>{serialized.css}</style>{serialized.slides[0].html}"
+    )
+
+    [recovered] = [node for node in result.slide.contents if isinstance(node, TableNode)]
+    assert recovered.box == table.box
+    assert recovered.col_widths_emu == table.col_widths_emu
+    assert tuple(row.height_emu for row in recovered.rows) == tuple(
+        row.height_emu for row in table.rows
+    )
 
 
 async def test_browser_capture_retains_serialized_svg_picture_bytes() -> None:

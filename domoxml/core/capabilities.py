@@ -16,9 +16,11 @@ from domoxml.slides.validation import validate_pptx_package
 from domoxml.types import (
     ConversionWarning,
     CoverageReport,
+    Editability,
     HtmlPresentation,
     RenderResult,
     Representation,
+    SourceRetention,
 )
 
 _NS = {
@@ -61,8 +63,27 @@ def _empty_representation_counts() -> dict[Representation, int]:
     return {}
 
 
-class CapabilityExpected(BaseModel):
-    """Structural behavior expected from a capability fixture."""
+def _empty_editability_counts() -> dict[Editability, int]:
+    return {}
+
+
+def _empty_source_retention_counts() -> dict[SourceRetention, int]:
+    return {}
+
+
+def _validate_count_bounds[CountKey: StrEnum](
+    name: str, minimums: dict[CountKey, int], maximums: dict[CountKey, int]
+) -> None:
+    if any(count < 0 for count in (*minimums.values(), *maximums.values())):
+        raise ValueError(f"{name} counts cannot be negative")
+    for value, minimum in minimums.items():
+        maximum = maximums.get(value)
+        if maximum is not None and minimum > maximum:
+            raise ValueError(f"minimum {value.value} count cannot exceed its maximum")
+
+
+class CapabilityCoverageBounds(BaseModel):
+    """Allowed representation quality and output size for one conversion boundary."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -72,19 +93,59 @@ class CapabilityExpected(BaseModel):
     max_representation: dict[Representation, int] = Field(
         default_factory=_empty_representation_counts
     )
+    min_editability: dict[Editability, int] = Field(default_factory=_empty_editability_counts)
+    max_editability: dict[Editability, int] = Field(default_factory=_empty_editability_counts)
+    min_source_retention: dict[SourceRetention, int] = Field(
+        default_factory=_empty_source_retention_counts
+    )
+    max_source_retention: dict[SourceRetention, int] = Field(
+        default_factory=_empty_source_retention_counts
+    )
+    min_output_count: int | None = Field(default=None, ge=0)
+    max_output_count: int | None = Field(default=None, ge=0)
+    min_raster_area_emu2: int | None = Field(default=None, ge=0)
+    max_raster_area_emu2: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _coverage_bounds_are_coherent(self) -> CapabilityCoverageBounds:
+        _validate_count_bounds("representation", self.min_representation, self.max_representation)
+        _validate_count_bounds("editability", self.min_editability, self.max_editability)
+        _validate_count_bounds(
+            "source retention", self.min_source_retention, self.max_source_retention
+        )
+        scalar_bounds = (
+            ("output count", self.min_output_count, self.max_output_count),
+            ("raster area", self.min_raster_area_emu2, self.max_raster_area_emu2),
+        )
+        for name, minimum, maximum in scalar_bounds:
+            if minimum is not None and maximum is not None and minimum > maximum:
+                raise ValueError(f"minimum {name} cannot exceed its maximum")
+        return self
+
+
+class CapabilityExpected(CapabilityCoverageBounds):
+    """Structural behavior expected from a forward capability fixture."""
+
     warnings: tuple[str, ...] = ()
     required_parts: tuple[str, ...] = ()
     xml: tuple[XmlExpectation, ...] = ()
 
+
+class CapabilityRoundtripExpected(CapabilityCoverageBounds):
+    """Quality contract applied to every regenerated PPTX cycle."""
+
+    cycles: int = Field(default=1, ge=1)
+    slide_indices: tuple[int, ...] = ()
+    min_convergence_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_convergence_regional_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_convergence_structural_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+
     @model_validator(mode="after")
-    def _representation_bounds_are_coherent(self) -> CapabilityExpected:
-        for bounds in (self.min_representation, self.max_representation):
-            if any(count < 0 for count in bounds.values()):
-                raise ValueError("representation counts cannot be negative")
-        for representation, minimum in self.min_representation.items():
-            maximum = self.max_representation.get(representation)
-            if maximum is not None and minimum > maximum:
-                raise ValueError(f"minimum {representation.value} count cannot exceed its maximum")
+    def _slide_indices_are_valid(self) -> CapabilityRoundtripExpected:
+        if any(index < 0 for index in self.slide_indices):
+            raise ValueError("round-trip convergence slide indices cannot be negative")
+        if len(set(self.slide_indices)) != len(self.slide_indices):
+            raise ValueError("round-trip convergence slide indices cannot contain duplicates")
         return self
 
 
@@ -120,7 +181,6 @@ class CapabilityReverseExpected(BaseModel):
     html_contains: tuple[str, ...] = ()
     max_warnings: int = Field(default=0, ge=0)
     max_preserved: int = Field(default=0, ge=0)
-    roundtrip: bool = True
 
 
 class CapabilityFixture(BaseModel):
@@ -135,6 +195,7 @@ class CapabilityFixture(BaseModel):
     reverse_render_pngs: tuple[bytes, ...] = Field(default=(), exclude=True)
     expected: CapabilityExpected = Field(default_factory=CapabilityExpected)
     reverse: CapabilityReverseExpected = Field(default_factory=CapabilityReverseExpected)
+    roundtrip: CapabilityRoundtripExpected = Field(default_factory=CapabilityRoundtripExpected)
     visual: CapabilityVisual = Field(default_factory=CapabilityVisual)
     visual_exclusion: str | None = None
 
@@ -202,24 +263,54 @@ def _warning_matches(expected: str, warnings: tuple[ConversionWarning, ...]) -> 
     return any(expected in warning.message for warning in warnings)
 
 
-def _validate_coverage(
-    fixture: CapabilityFixture,
-    report: CoverageReport,
-    *,
-    include_minimums: bool,
-) -> list[str]:
+def _validate_coverage(bounds: CapabilityCoverageBounds, report: CoverageReport) -> list[str]:
     errors: list[str] = []
-    if include_minimums:
-        for representation, expected in fixture.expected.min_representation.items():
-            actual = report.count(representation)
-            if actual < expected:
-                errors.append(
-                    f"{representation.value} count {actual} < expected minimum {expected}"
-                )
-    for representation, expected in fixture.expected.max_representation.items():
+    for representation, expected in bounds.min_representation.items():
+        actual = report.count(representation)
+        if actual < expected:
+            errors.append(f"{representation.value} count {actual} < expected minimum {expected}")
+    for representation, expected in bounds.max_representation.items():
         actual = report.count(representation)
         if actual > expected:
             errors.append(f"{representation.value} count {actual} > expected maximum {expected}")
+    for editability, expected in bounds.min_editability.items():
+        actual = report.count_editability(editability)
+        if actual < expected:
+            errors.append(
+                f"{editability.value} editability count {actual} < expected minimum {expected}"
+            )
+    for editability, expected in bounds.max_editability.items():
+        actual = report.count_editability(editability)
+        if actual > expected:
+            errors.append(
+                f"{editability.value} editability count {actual} > expected maximum {expected}"
+            )
+    for retention, expected in bounds.min_source_retention.items():
+        actual = report.count_source_retention(retention)
+        if actual < expected:
+            errors.append(
+                f"{retention.value} source retention count {actual} < expected minimum {expected}"
+            )
+    for retention, expected in bounds.max_source_retention.items():
+        actual = report.count_source_retention(retention)
+        if actual > expected:
+            errors.append(
+                f"{retention.value} source retention count {actual} > expected maximum {expected}"
+            )
+    scalar_checks = (
+        ("output count", report.output_count, bounds.min_output_count, bounds.max_output_count),
+        (
+            "raster area",
+            report.raster_area_emu2,
+            bounds.min_raster_area_emu2,
+            bounds.max_raster_area_emu2,
+        ),
+    )
+    for name, actual, minimum, maximum in scalar_checks:
+        if minimum is not None and actual < minimum:
+            errors.append(f"{name} {actual} < expected minimum {minimum}")
+        if maximum is not None and actual > maximum:
+            errors.append(f"{name} {actual} > expected maximum {maximum}")
     return errors
 
 
@@ -258,7 +349,7 @@ def _validate_pptx_output(fixture: CapabilityFixture, pptx: bytes | None) -> lis
 
 def validate_capability(fixture: CapabilityFixture, result: RenderResult) -> tuple[str, ...]:
     """Return structural mismatches for one rendered forward capability fixture."""
-    errors = _validate_coverage(fixture, result.coverage, include_minimums=True)
+    errors = _validate_coverage(fixture.expected, result.coverage)
     for expected in fixture.expected.warnings:
         if not _warning_matches(expected, result.warnings):
             errors.append(f"missing warning containing {expected!r}")
@@ -269,8 +360,8 @@ def validate_capability(fixture: CapabilityFixture, result: RenderResult) -> tup
 def validate_roundtrip_capability(
     fixture: CapabilityFixture, result: RenderResult
 ) -> tuple[str, ...]:
-    """Validate regenerated output without applying source-tree-specific minima."""
-    errors = _validate_coverage(fixture, result.coverage, include_minimums=False)
+    """Validate regenerated output against its independent round-trip quality bounds."""
+    errors = _validate_coverage(fixture.roundtrip, result.coverage)
     errors.extend(_validate_pptx_output(fixture, result.pptx))
     return tuple(errors)
 

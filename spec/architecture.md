@@ -154,8 +154,9 @@ Normalized HTML is deterministic browser-renderable output. Narrow `data-domoxml
 allowed where CSS cannot carry editability, source grouping, or an Office semantic. The visible
 document must remain useful without proprietary metadata, while metadata-aware re-ingestion should
 recover the richer IR. Metadata currently retains source provenance; versioned typed payloads retain
-attached preservation graphs, effects, and text-body semantics, while typed connector JSON retains
-exact routing beside renderer-facing HTML.
+attached preservation graphs, effects, text-body semantics, and exact table geometry, while typed
+connector JSON retains exact routing beside renderer-facing HTML. Geometry emitted to Chromium is
+normalized to its 1/64-pixel layout grid so repeated ingestion cannot accumulate subpixel drift.
 
 ## Shared And Format-Specific Ownership
 
@@ -240,6 +241,12 @@ The test estate has complementary tiers:
 Incomplete complex cases remain in the corpus with explicit baselines. CI should reject any
 regression while allowing metrics and native coverage to improve monotonically. A score alone
 cannot approve parity evidence that is visibly wrong.
+
+Each atomic capability manifest independently bounds the forward and regenerated-PPTX boundaries.
+The bounds cover representation, editability, source retention, emitted object count, and raster
+area. Reverse-capable fixtures also declare the number of rebuild/re-ingest cycles and global,
+regional, and structural convergence floors. Slide scoping must be explicit when one fixture owns
+only part of a multi-feature source deck; unscoped slides are not thereby claimed as covered.
 
 ## Documentation Authority
 

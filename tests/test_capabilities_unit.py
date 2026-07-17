@@ -8,6 +8,7 @@ from domoxml.core.capabilities import (
     CapabilityDirection,
     CapabilityExpected,
     CapabilityFixture,
+    CapabilityRoundtripExpected,
     load_capabilities,
     validate_capability,
     validate_reverse_capability,
@@ -30,6 +31,7 @@ from domoxml.types import (
     HtmlSlide,
     RenderResult,
     Representation,
+    SourceRetention,
 )
 
 
@@ -54,7 +56,7 @@ def test_every_bidirectional_fixture_declares_reverse_assertions() -> None:
     both = [fixture for fixture in fixtures if fixture.direction is CapabilityDirection.BOTH]
     assert both
     assert all(fixture.reverse.html_contains for fixture in both)
-    assert all(fixture.reverse.roundtrip for fixture in both)
+    assert all(fixture.roundtrip.cycles >= 2 for fixture in both)
 
 
 def test_every_visual_capability_gate_includes_structural_similarity() -> None:
@@ -92,8 +94,44 @@ def test_every_forward_fixture_caps_lossy_representations() -> None:
     )
 
 
+def test_every_capability_declares_complete_quality_and_convergence_bounds() -> None:
+    root = Path(__file__).resolve().parent.parent / "capabilities" / "pptx"
+    fixtures = load_capabilities(root)
+
+    for fixture in fixtures:
+        if fixture.direction in (CapabilityDirection.FORWARD, CapabilityDirection.BOTH):
+            assert set(fixture.expected.max_editability) == set(Editability)
+            assert set(fixture.expected.max_source_retention) == set(SourceRetention)
+            assert fixture.expected.min_output_count is not None
+            assert fixture.expected.max_output_count is not None
+            assert fixture.expected.min_raster_area_emu2 is not None
+            assert fixture.expected.max_raster_area_emu2 is not None
+
+        if fixture.direction in (CapabilityDirection.REVERSE, CapabilityDirection.BOTH):
+            assert fixture.roundtrip.cycles >= 2
+            assert set(fixture.roundtrip.max_representation) == set(Representation)
+            assert set(fixture.roundtrip.max_editability) == set(Editability)
+            assert set(fixture.roundtrip.max_source_retention) == set(SourceRetention)
+            assert fixture.roundtrip.min_output_count is not None
+            assert fixture.roundtrip.max_output_count is not None
+            assert fixture.roundtrip.min_raster_area_emu2 is not None
+            assert fixture.roundtrip.max_raster_area_emu2 is not None
+            assert fixture.roundtrip.min_convergence_similarity is not None
+            assert fixture.roundtrip.min_convergence_regional_similarity is not None
+            assert fixture.roundtrip.min_convergence_structural_similarity is not None
+
+
 def test_validates_native_coverage_and_ooxml_xpath() -> None:
     fixture = _fixture("text-rich-runs")
+    fixture = fixture.model_copy(
+        update={
+            "expected": CapabilityExpected(
+                min_representation={Representation.NATIVE: 3},
+                xml=fixture.expected.xml,
+            ),
+            "roundtrip": CapabilityRoundtripExpected(),
+        }
+    )
     body = TextBody(
         paragraphs=(
             TextParagraph(
@@ -144,7 +182,12 @@ def test_validates_native_coverage_and_ooxml_xpath() -> None:
 def test_roundtrip_validation_still_enforces_loss_ceiling() -> None:
     fixture = _fixture("text-rich-runs")
     fixture = fixture.model_copy(
-        update={"expected": fixture.expected.model_copy(update={"xml": ()})}
+        update={
+            "expected": fixture.expected.model_copy(update={"xml": ()}),
+            "roundtrip": CapabilityRoundtripExpected(
+                max_representation={Representation.APPROXIMATED: 0}
+            ),
+        }
     )
     result = RenderResult(
         pptx=None,

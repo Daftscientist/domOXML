@@ -285,7 +285,7 @@ def test_html_single_column_no_column_css() -> None:
 
 def test_html_text_insets_emit_padding() -> None:
     html = _html_for(_simple_body(margins=(96_000, 192_000, 288_000, 384_000)))
-    assert "padding:20.1575px 30.2362px 40.315px 10.0787px" in html
+    assert "padding:20.15625px 30.234375px 40.3125px 10.078125px" in html
 
 
 def test_html_autofit_none_emits_metadata() -> None:

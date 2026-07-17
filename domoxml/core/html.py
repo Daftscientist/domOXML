@@ -45,6 +45,7 @@ from domoxml.core.ir.model import (
 )
 from domoxml.core.ir.parse import autonum_to_css_list_style, bu_char_to_css_list_style
 from domoxml.core.ir.pattern import pattern_to_css
+from domoxml.core.ir.table_payload import encode_table_geometry
 from domoxml.core.ir.text_payload import encode_text_body
 from domoxml.core.opc import encode_payload
 from domoxml.core.svg_path import commands_to_svg_d
@@ -82,7 +83,12 @@ def _number(value: float) -> str:
 
 
 def _px(value: int) -> str:
-    return f"{_number(emu_to_px(value))}px"
+    # Blink lays CSS geometry out on a 1/64 px grid. Emit the nearest layout unit explicitly;
+    # otherwise decimal truncation can put a value just below its original grid boundary and
+    # make every normalized-HTML cycle drift by another 1/64 px.
+    layout_px = round(emu_to_px(value) * 64) / 64
+    rendered = f"{layout_px:.6f}".rstrip("0").rstrip(".") or "0"
+    return f"{rendered}px"
 
 
 def _identity_attrs(node: CanvasNode) -> str:
@@ -748,7 +754,9 @@ def _table_html(
         rows_html += f'<tr style="height:{_px(row.height_emu)}">{cells_html}</tr>'
 
     return (
-        f'<table{_identity_attrs(node)} style="{escape(table_style, quote=True)}">'
+        f"<table{_identity_attrs(node)} "
+        f'data-domoxml-table-geometry="{encode_table_geometry(node)}" '
+        f'style="{escape(table_style, quote=True)}">'
         f"{colgroup}"
         f"<tbody>{rows_html}</tbody>"
         f"</table>"

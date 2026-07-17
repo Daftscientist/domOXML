@@ -46,7 +46,7 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Rectangles, rounded rectangles, ellipses | Native | Native | integration | adversarial transform/effect combinations |
 | Preset shapes | Partial | Partial | `cap:preset-shapes` (both) | remaining curved/formula presets and adjustment handles |
 | Custom paths | Partial/native | Partial/native | `cap:custom-path` (both) | arcs/shorthand/multipath, guide formulas, multi-path fill/stroke semantics |
-| Connectors | Partial | Partial | `cap:custom-path` (both) + unit | routing, attachment sites, authored arrows, and bent/curved visual parity |
+| Connectors | Partial | Partial; transform-box route/endpoints are reported approximated/lost | `cap:custom-path` (both) + unit | routing, attachment sites, authored arrows, and bent/curved visual parity |
 | Groups and stacking | Gap for authored groups; flat output | Native read then flattened | unit only | canonical interleaved z-order, group authoring, nested transforms, stable grouping |
 | Solid and no fill | Native | Native | integration | explicit atomic bidirectional fixture |
 | Linear/radial gradients | Native subset | Native subset | fidelity corpus | every gradient form, transforms/stops, renderer calibration, theme-aware stops |

@@ -387,7 +387,8 @@ def _shape_reverse_coverage(
             retention = SourceRetention.LOST
     if has_preserved_effects:
         reasons.append("shape has detached source-only effect fragments")
-        retention = SourceRetention.DETACHED
+        if retention is SourceRetention.NOT_REQUIRED:
+            retention = SourceRetention.DETACHED
     if not reasons:
         return _native_reverse_coverage(slide_part, element)
     return CoverageItem(
@@ -438,27 +439,33 @@ def _group_reverse_coverage(
             slide_part,
             element,
             reason,
-            SourceRetention.DETACHED if has_preserved_children else SourceRetention.LOST,
+            SourceRetention.LOST,
         )
     if output_count == 1:
         return CoverageItem(
             element=_visual_label(slide_part, element),
             representation=Representation.APPROXIMATED,
             editability=Editability.COMPONENTS,
-            source_retention=(
-                SourceRetention.DETACHED if has_preserved_children else SourceRetention.LOST
-            ),
+            source_retention=SourceRetention.LOST,
             reason=reason,
         )
     return CoverageItem(
         element=_visual_label(slide_part, element),
         representation=Representation.DECOMPOSED,
         editability=Editability.COMPONENTS,
-        source_retention=(
-            SourceRetention.DETACHED if has_preserved_children else SourceRetention.LOST
-        ),
+        source_retention=SourceRetention.LOST,
         output_count=output_count,
         reason=reason,
+    )
+
+
+def _connector_reverse_coverage(slide_part: str, element: Element) -> CoverageItem:
+    return CoverageItem(
+        element=_visual_label(slide_part, element),
+        representation=Representation.APPROXIMATED,
+        editability=Editability.SEMANTIC,
+        source_retention=SourceRetention.LOST,
+        reason="connector routing and exact endpoints are approximated from its transform box",
     )
 
 
@@ -801,7 +808,7 @@ def _slide(
                 connector = read_connector(element, lambda properties: _line(properties, colors))
                 if connector is not None:
                     contents.append(_with_pptx_identity(connector, element, slide_part))
-                    coverage.append(_native_reverse_coverage(slide_part, element))
+                    coverage.append(_connector_reverse_coverage(slide_part, element))
                     continue
                 reason = "preserved connector that the reverse adapter could not map"
             elif kind == "grpSp":

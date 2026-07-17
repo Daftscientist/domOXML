@@ -30,7 +30,7 @@ Audited on **2026-07-17**.
 | Native tables in graphic frames | Native subset | Native subset | `cap:table` (both) + real deck | table styles/inheritance and richer graphic-frame ordering |
 | Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph plus caller-rendered normalized-HTML element layer | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart IR, automatic renderer selection, semantic HTML rendering, and native authoring |
 | Groups | Gap on authoring | Native read then flattened | unit only | author/preserve nested groups, child coordinates, interleaved z-order and IDs |
-| Connectors | Partial | Partial | unit + forward-only custom path fixture | attachment/routing/arrows and structure-preserving reverse re-emission |
+| Connectors | Partial | Partial; transform-box route/endpoints are reported approximated/lost | unit + `cap:custom-path` (both) | attachment/routing/arrows and structure-preserving reverse re-emission |
 | Audio/video | Layered/not native | Native read | unit only | native relationships/parts, playback settings, poster handling and real deck |
 | SmartArt/diagram | Gap | Positioned fallback contract available; ownership/corpus proof pending | unit only | source attachment/re-emission, visual fixture, optional semantic model |
 | OLE/embedded objects | Gap | Positioned fallback contract available; ownership/corpus proof pending | unit only | preview fixture, package preservation/re-emission, security policy |

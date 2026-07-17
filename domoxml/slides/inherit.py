@@ -21,6 +21,7 @@ Color-transform formulas (ECMA-376 §20.1.2.3 / §20.1.8.*)
 from __future__ import annotations
 
 import colorsys
+import copy
 from dataclasses import dataclass
 from xml.etree.ElementTree import Element
 
@@ -235,22 +236,36 @@ def resolve_ppr(
     level: int,
     ctx: PlaceholderContext | None,
 ) -> Element | None:
-    """Return the best a:pPr for ``level`` following the full precedence chain.
-
-    If ``slide_ppr`` is set, it wins outright (slide-level always wins).
-    Otherwise we walk layout lstStyle → master lstStyle → master txStyles at
-    the right level tag.
-    """
-    if slide_ppr is not None:
-        return slide_ppr
+    """Merge effective ``a:pPr`` values through the full precedence chain."""
     lvl_tag = _LVL_TAG.get(max(1, min(9, level + 1)))
     if lvl_tag is None:
-        return None
+        return copy.deepcopy(slide_ppr) if slide_ppr is not None else None
+    chain: list[Element] = [slide_ppr] if slide_ppr is not None else []
     for lst in _lstStyle_chain(ctx):
         lvl_ppr = lst.find(lvl_tag, _NS)
         if lvl_ppr is not None:
-            return lvl_ppr
-    return None
+            chain.append(lvl_ppr)
+    if not chain:
+        return None
+
+    result = copy.deepcopy(chain[0])
+
+    def inherit_missing(target: Element, fallback: Element) -> None:
+        for name, value in fallback.attrib.items():
+            target.attrib.setdefault(name, value)
+        for fallback_child in fallback:
+            target_child = next(
+                (child for child in target if child.tag == fallback_child.tag),
+                None,
+            )
+            if target_child is None:
+                target.append(copy.deepcopy(fallback_child))
+            else:
+                inherit_missing(target_child, fallback_child)
+
+    for fallback in chain[1:]:
+        inherit_missing(result, fallback)
+    return result
 
 
 def _tx_style_for_type(tx_styles: Element, ph_type: str) -> Element | None:

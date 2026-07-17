@@ -36,6 +36,7 @@ from domoxml.core.opc import OpcPackage, write_package
 from domoxml.slides import build_pptx, read_pptx, read_pptx_result
 from domoxml.slides.appearance_read import rgba
 from domoxml.slides.read import (
+    _connector_reverse_coverage,
     _group_reverse_coverage,
     _slide_colors,
     _with_pptx_identity,
@@ -228,6 +229,24 @@ def test_reverse_coverage_records_flattened_group_components_and_source_loss() -
     assert coverage.editability is Editability.COMPONENTS
     assert coverage.source_retention is SourceRetention.LOST
     assert coverage.output_count == 2
+
+    with_preserved_child = _group_reverse_coverage(
+        "ppt/slides/slide1.xml", group_element, group, has_preserved_children=True
+    )
+    assert with_preserved_child.source_retention is SourceRetention.LOST
+
+
+def test_reverse_coverage_reports_connector_geometry_approximation() -> None:
+    element = ElementTree.fromstring(
+        f'<p:cxnSp xmlns:p="{_P}"><p:nvCxnSpPr>'
+        '<p:cNvPr id="12" name="connector"/></p:nvCxnSpPr></p:cxnSp>'
+    )
+
+    coverage = _connector_reverse_coverage("ppt/slides/slide1.xml", element)
+
+    assert coverage.representation is Representation.APPROXIMATED
+    assert coverage.editability is Editability.SEMANTIC
+    assert coverage.source_retention is SourceRetention.LOST
 
 
 def test_resolves_theme_system_and_preset_colors() -> None:

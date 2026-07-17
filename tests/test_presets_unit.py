@@ -484,7 +484,11 @@ def test_reverse_reader_unknown_prstgeom_falls_back_to_rect() -> None:
     slide_part = "ppt/slides/slide1.xml"
     slide_xml = parts[slide_part]
     assert isinstance(slide_xml, bytes)
-    parts[slide_part] = slide_xml.replace(b'prst="rect"', b'prst="unknownPreset12345"')
+    parts[slide_part] = slide_xml.replace(
+        b'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>',
+        b'<a:prstGeom prst="unknownPreset12345"><a:avLst/></a:prstGeom>'
+        b'<a:effectLst><a:prstShdw prst="shdw1"/></a:effectLst>',
+    )
     result = read_pptx_result(write_package(parts))
     [read_slide] = result.slides
     assert read_slide.shapes[0].geom == "rect"  # fallback
@@ -493,3 +497,4 @@ def test_reverse_reader_unknown_prstgeom_falls_back_to_rect() -> None:
     assert coverage.editability is Editability.SEMANTIC
     assert coverage.source_retention is SourceRetention.LOST
     assert "unknownPreset12345" in coverage.reason
+    assert "effect fragments" in coverage.reason

@@ -87,7 +87,7 @@ def test_text_field_inherits_placeholder_paragraph_alignment() -> None:
     shape = fromstring(
         f'<p:sp xmlns:p="{_P}" xmlns:a="{_A}">'
         '<p:nvSpPr><p:nvPr><p:ph type="sldNum" idx="10"/></p:nvPr></p:nvSpPr>'
-        "<p:txBody><a:bodyPr/><a:p>"
+        '<p:txBody><a:bodyPr/><a:p><a:pPr lvl="0"/>'
         '<a:fld id="{field-id}" type="slidenum"><a:rPr/><a:t>2</a:t></a:fld>'
         "</a:p></p:txBody></p:sp>"
     )

@@ -155,8 +155,10 @@ Normalized HTML is deterministic browser-renderable output. Narrow `data-domoxml
 allowed where CSS cannot carry editability, source grouping, or an Office semantic. The visible
 document must remain useful without proprietary metadata, while metadata-aware re-ingestion should
 recover the richer IR. Metadata currently retains source provenance; versioned typed payloads retain
-attached preservation graphs, effects, text-body semantics, and exact table geometry, while typed
-connector JSON retains exact routing beside renderer-facing HTML. Geometry emitted to Chromium is
+attached preservation graphs, effects, text-body semantics, and exact table geometry. Typed
+connector JSON retains the canonical route beside renderer-facing HTML; current PPTX ingestion
+derives that route and its endpoints from the connector transform box, so coverage reports the
+result as approximated with source detail lost. Geometry emitted to Chromium is
 normalized to its 1/64-pixel layout grid so repeated ingestion cannot accumulate subpixel drift.
 
 ## Shared And Format-Specific Ownership

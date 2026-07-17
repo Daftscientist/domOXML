@@ -217,11 +217,14 @@ def test_loads_reverse_only_pptx_source(tmp_path: Path) -> None:
     case = tmp_path / "reverse"
     case.mkdir()
     (case / "source.pptx").write_bytes(b"pptx")
+    (case / "slide.png").write_bytes(b"png")
     (case / "capability.toml").write_text(
         'id = "reverse"\ndirection = "reverse"\npptx_file = "source.pptx"\n'
+        'reverse_render_files = ["slide.png"]\n'
         'visual_exclusion = "structural-only fixture"\n'
     )
 
     [fixture] = load_capabilities(tmp_path)
     assert fixture.html == ""
     assert fixture.pptx == b"pptx"
+    assert fixture.reverse_render_pngs == (b"png",)

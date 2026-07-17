@@ -18,23 +18,23 @@ Audited on **2026-07-17**.
 | Slide creation and relationships | Native | Native | integration | full schema validation and deterministic relationship preservation |
 | Slide backgrounds | Native subset | Native subset | `cap:transition-bg` (both) | theme/style-matrix backgrounds, image/pattern variants, inheritance |
 | Themes | Partial generated default; restores an attached chart's ambient source theme | Native/partial read | unit + chart real deck | general source-theme authoring, multiple-theme policy, scheme refs, format scheme and full inheritance |
-| Masters and layouts | Fixed generated baseline | Native/partial read | unit/integration | author arbitrary masters/layouts and preserve them through round trips |
-| Placeholders | Gap on authoring | Native/partial read | unit only | public/IR model, create placeholders, inherit text/geometry/style without flattening |
+| Masters and layouts | Fixed generated baseline | Native/partial read, including placeholder body-property inheritance | unit/integration + chart real deck | author arbitrary masters/layouts and preserve them through round trips |
+| Placeholders | Gap on authoring | Native/partial read for geometry, runs, paragraphs and body properties | unit + chart real deck | public/IR model, create placeholders and preserve the full inheritance chain without flattening |
 | Slide inheritance | Gap/flattened output | Partial/native resolution | unit only | complete slide -> layout -> master -> theme cascade and source-reference retention |
 | Transitions | Native subset | Native subset | `cap:transition-bg` (both) | complete transition set, attributes, sounds, advance timing and extension variants |
 | Animations/timing | Gap | Preserve only | unit only | timing IR/input contract, HTML state mapping, visual playback/layer policy, re-emission |
 | Speaker notes | Gap; no public argument | Gap | none | `Slide` notes argument, notes parts/relationships, normalized HTML metadata, round trip |
 | Embedded fonts | Partial/native | Partial/native | unit/integration + real deck | complete face slots, substitutions/licensing, malformed data and renderer baselines |
-| Pictures and raster fallback markers | Native | Native | capabilities/integration | stable layer ownership/group metadata and accessibility fields |
+| Pictures and raster fallback markers | Native | Native; authoritative reverse crops can attach to preserved positioned nodes | capabilities/integration + `cap:chart-preservation` | automatic renderer policy, stable group ownership and accessibility fields |
 | SVG extension (`asvg:svgBlip`) | Native write | Native read and exact re-emission for pure pictures | `cap:svg-vector` (both) | cropped/effect-bearing SVG pictures, external assets, and adversarial SVG content |
 | Native tables in graphic frames | Native subset | Native subset | `cap:table` (both) + real deck | table styles/inheritance and richer graphic-frame ordering |
-| Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph; omitted visually in normalized HTML | `cap:chart-preservation` (reverse) + real-deck PPTX visual gate | shared chart IR, normalized HTML visual layer/rendering, and native authoring |
+| Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph plus caller-rendered normalized-HTML element layer | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart IR, automatic renderer selection, semantic HTML rendering, and native authoring |
 | Groups | Gap on authoring | Native read then flattened | unit only | author/preserve nested groups, child coordinates, interleaved z-order and IDs |
 | Connectors | Partial | Partial | unit + forward-only custom path fixture | attachment/routing/arrows and structure-preserving reverse re-emission |
 | Audio/video | Layered/not native | Native read | unit only | native relationships/parts, playback settings, poster handling and real deck |
-| SmartArt/diagram | Gap | Preserve only; omitted visually | unit only | layered visual fallback, source attachment/re-emission, optional semantic model |
-| OLE/embedded objects | Gap | Preserve only; omitted visually | unit only | preview layer, package preservation/re-emission, security policy |
-| 3D/model extensions | Gap | Preserve only or unclassified | limited unit coverage | visual layer backend, package preservation and representative corpus |
+| SmartArt/diagram | Gap | Positioned fallback contract available; ownership/corpus proof pending | unit only | source attachment/re-emission, visual fixture, optional semantic model |
+| OLE/embedded objects | Gap | Positioned fallback contract available; ownership/corpus proof pending | unit only | preview fixture, package preservation/re-emission, security policy |
+| 3D/model extensions | Gap | Positioned fallback contract available where bounds and graph capture succeed | limited unit coverage | package preservation, visual fixture and representative corpus |
 | Accessibility and alternative text | Gap/partial incidental | Partial incidental | no capability fixture | first-class IR/API, `cNvPr` metadata and HTML semantics |
 | Comments/review history | Intentionally ignored | Intentionally ignored | policy | ensure ignored parts never damage visible/package conversion |
 | Unknown slide/extension nodes | no classification contract | Preserve only; often omitted visually | unit only | renderer-backed layer plus attached exact re-emission |
@@ -46,7 +46,7 @@ Audited on **2026-07-17**.
 | `body-props` | both | shared text-body properties used by PPTX |
 | `borders` | both | shared stroke/decomposition behavior |
 | `bullets-spacing` | both | shared list/paragraph behavior |
-| `chart-preservation` | reverse | owned chart graph, ambient theme, identity, and exact PPTX re-emission |
+| `chart-preservation` | reverse | owned chart graph, ambient theme, identity, renderer-backed HTML element layer, and exact PPTX re-emission |
 | `custom-path` | both | native custom geometry and connector structure survive normalized HTML and PPTX re-emission |
 | `effects` | both | native outer shadow/glow plus portable inset layer; broader effect-list family remains |
 | `hyperlink` | both | run hyperlinks and relationships |

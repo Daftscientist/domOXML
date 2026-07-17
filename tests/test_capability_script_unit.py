@@ -12,6 +12,7 @@ from pytest import MonkeyPatch
 from domoxml.core.capabilities import (
     CapabilityDirection,
     CapabilityFixture,
+    CapabilityReverseExpected,
     CapabilityVisual,
     load_capabilities,
 )
@@ -133,10 +134,14 @@ def test_reverse_only_fixture_renders_source_pptx_for_visual_gate(
     rendered_sources: list[bytes] = []
 
     def read_source(
-        cls: type[capability_check.Presentation], source: bytes | Path
+        cls: type[capability_check.Presentation],
+        source: bytes | Path,
+        *,
+        fallback_pngs: tuple[bytes, ...] | None = None,
     ) -> HtmlPresentation:
         assert cls is capability_check.Presentation
         assert source == source_pptx
+        assert fallback_pngs == (_png("black"),)
         return reverse
 
     def render_reverse(html: HtmlPresentation) -> RenderResult:
@@ -164,6 +169,54 @@ def test_reverse_only_fixture_renders_source_pptx_for_visual_gate(
 
     assert rendered_sources == [source_pptx]
     assert len([error for error in errors if error.startswith("visual:")]) == 2
+
+
+def test_reverse_only_fixture_uses_pinned_render_without_backend(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    import scripts.capability_check as capability_check
+
+    pinned = _png("black")
+    fixture = CapabilityFixture(
+        id="pinned-reverse",
+        direction=CapabilityDirection.REVERSE,
+        pptx=b"source",
+        reverse_render_pngs=(pinned,),
+        visual=CapabilityVisual(pptx_to_html_min_similarity=0.99),
+    )
+    reverse = HtmlPresentation(
+        slides=(HtmlSlide(html="<div>reverse</div>", width_px=64, height_px=64),),
+        css="",
+    )
+
+    def read_source(
+        cls: type[capability_check.Presentation],
+        source: bytes | Path,
+        *,
+        fallback_pngs: tuple[bytes, ...] | None = None,
+    ) -> HtmlPresentation:
+        assert cls is capability_check.Presentation
+        assert source == b"source"
+        assert fallback_pngs == (pinned,)
+        return reverse
+
+    monkeypatch.setattr(
+        capability_check.Presentation,
+        "from_pptx",
+        classmethod(read_source),
+    )
+
+    def render_reverse(html: HtmlPresentation) -> RenderResult:
+        assert html is reverse
+        return _render_result(pinned)
+
+    monkeypatch.setattr(
+        capability_check,
+        "_render_reverse_html",
+        render_reverse,
+    )
+
+    assert _validate_fixture(fixture, forward_visual_available=False) == ()
 
 
 def test_forward_visual_gate_checks_global_and_regional_similarity(tmp_path: Path) -> None:
@@ -206,3 +259,43 @@ def test_structural_similarity_is_enforced_in_both_visual_directions() -> None:
     assert "structural similarity" in forward_errors[0]
     assert len(reverse_errors) == 1
     assert "structural similarity" in reverse_errors[0]
+
+
+def test_reverse_visual_gate_can_scope_one_slide() -> None:
+    fixture = CapabilityFixture(
+        id="scoped-reverse",
+        direction=CapabilityDirection.REVERSE,
+        pptx=b"pptx",
+        visual=CapabilityVisual(
+            pptx_to_html_min_similarity=0.99,
+            pptx_to_html_slide_indices=(1,),
+        ),
+    )
+    source = (_png("black"), _png("white"))
+    candidate = RenderResult(
+        pptx=None,
+        pngs=(_png("white"), _png("white")),
+        html=None,
+        coverage=CoverageReport(items=()),
+        warnings=(),
+    )
+
+    assert _validate_reverse_visual(fixture, source, candidate) == ()
+
+
+def test_reverse_contract_requires_visual_assets() -> None:
+    from domoxml.core.capabilities import validate_reverse_capability
+
+    fixture = CapabilityFixture(
+        id="assets",
+        direction=CapabilityDirection.REVERSE,
+        pptx=b"pptx",
+        reverse=CapabilityReverseExpected(min_assets=1),
+        visual_exclusion="unit fixture",
+    )
+    html = HtmlPresentation(
+        slides=(HtmlSlide(html="<div/>", width_px=64, height_px=64),),
+        css="",
+    )
+
+    assert validate_reverse_capability(fixture, html) == ("reverse assets 0 < expected 1",)

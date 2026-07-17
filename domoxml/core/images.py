@@ -68,6 +68,53 @@ def crop_png(png: bytes, *, left: float, top: float, width: float, height: float
         return None
 
 
+def crop_slide_region(
+    png: bytes,
+    *,
+    slide_width: int,
+    slide_height: int,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+) -> bytes | None:
+    """Crop an EMU box from an authoritative full-slide render.
+
+    The returned PNG has the source box's full aspect ratio even when the box crosses a slide
+    boundary. Out-of-slide pixels are transparent because the slide viewport clips them during
+    normalized HTML rendering.
+    """
+    if slide_width <= 0 or slide_height <= 0 or width <= 0 or height <= 0:
+        return None
+    try:
+        with Image.open(BytesIO(png)) as source:
+            source.load()
+            scale_x = source.width / slide_width
+            scale_y = source.height / slide_height
+            source_left = round(left * scale_x)
+            source_top = round(top * scale_y)
+            source_right = round((left + width) * scale_x)
+            source_bottom = round((top + height) * scale_y)
+            output_width = max(1, source_right - source_left)
+            output_height = max(1, source_bottom - source_top)
+            output = Image.new("RGBA", (output_width, output_height), (0, 0, 0, 0))
+            clipped = (
+                max(0, source_left),
+                max(0, source_top),
+                min(source.width, source_right),
+                min(source.height, source_bottom),
+            )
+            if clipped[2] <= clipped[0] or clipped[3] <= clipped[1]:
+                return None
+            region = source.convert("RGBA").crop(clipped)
+            output.paste(region, (clipped[0] - source_left, clipped[1] - source_top))
+            buffer = BytesIO()
+            output.save(buffer, "PNG")
+            return buffer.getvalue()
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return None
+
+
 def image_dimensions(data: bytes) -> tuple[int, int] | None:
     """Return the ``(width, height)`` in pixels of an encoded image, or ``None`` if undecodable.
 

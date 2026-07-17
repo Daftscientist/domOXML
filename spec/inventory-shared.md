@@ -27,7 +27,9 @@ Forward conversion now emits a typed coverage record for every captured visual. 
 `native`, `decomposed`, `hybrid`, `layered`, `element_layer`, `approximated`, or `failed`;
 editability, source retention, output count, and raster area are recorded independently. Capability
 manifests place explicit ceilings on every lossy representation. Applying this same record to PPTX
-ingest and attached preservation is still roadmap work.
+ingest is still roadmap work; normalized-HTML re-ingestion now records attached element-layer or
+failed coverage for preserved nodes, but the reverse PPTX reader does not yet produce a complete
+per-visual coverage report.
 
 ## Current Shared Capability Matrix
 
@@ -60,7 +62,7 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Other effect-list constructs | Layered/gap | Preserve only | unit only | effect containers/order, preset shadow, fill overlay, visual fallback and re-emission |
 | Basic text runs | Native | Native | `cap:text-rich-runs` (both) | language/script coverage and font portability |
 | Decoration, caps, and spacing | Partial/native | Partial/native | `cap:text-decorations` (both) | complete underline/strike/baseline/RTL/vertical text variants |
-| Paragraph layout and body properties | Partial/native | Partial/native | `cap:body-props` (both) | tabs, complete inheritance, vertical/RTL, overflow and exact autofit parameters |
+| Paragraph layout and body properties | Partial/native | Partial/native with slide/layout/master placeholder body-property inheritance | `cap:body-props` (both) + inheritance unit + chart real deck | tabs, remaining inheritance, vertical/RTL, overflow and exact autofit parameters |
 | Bullets and numbering | Partial/native | Partial/native | `cap:bullets-spacing` (both) | all numbering schemes, bullet font/color/size, restart and nested edge cases |
 | Hyperlinks and slide targets | Native | Native | `cap:hyperlink` (both) | action types, tooltip/history, security policy, non-HTTP relationships |
 | Multi-column text | Partial/native | Partial/native | `cap:body-props` (both) | balanced-vs-sequential policy, overflow and renderer parity |
@@ -70,9 +72,9 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | SVG vectors | Native SVG extension + PNG fallback | Native read and exact asset re-emission | `cap:svg-vector` (both) | cropped/effect-bearing SVG pictures, external assets, and adversarial SVG content |
 | Audio and video | Layered/not authored natively | Native read | unit only | native authoring, posters/playback, HTML/PPTX parity and real-deck evidence |
 | Tables | Native subset | Native subset | `cap:table` (both) + real deck | complete styles/inheritance, borders, layout, nested content and adversarial cases |
-| Charts | Attached source re-emission only; authored charts remain a gap | Attached preserve; normalized HTML remains nonvisual | `cap:chart-preservation` (reverse) + real-deck PPTX visual gate | shared chart/data IR, HTML rendering/layer, and native chart authoring |
-| Unknown visual extensions | Element layer on HTML input | Preserve only on PPTX input | unit only | universal renderer-backed reverse layers and attached preservation payloads |
-| Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/structural | CI + tests | reverse coverage records, object-aware segmentation, typography/color metrics, layer/editability ratchets |
+| Charts | Attached source re-emission only; authored charts remain a gap | Attached preserve plus renderer-backed element layer when a slide render is supplied | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart/data IR, automatic renderer selection, semantic HTML rendering, and native authoring |
+| Unknown visual extensions | Element layer on HTML input | Positioned nodes can use authoritative element crops; malformed source graphs remain visible with explicit detached-source debt | chart capability + unit/integration | automatic renderer policy, complete ownership, alpha/isolation improvements, and broader fixtures |
+| Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/structural with explicit reverse slide scoping | CI + tests | full reverse coverage records, object-aware regions, typography/color metrics, layer/editability ratchets |
 | Repeated round trips | one cycle for 17 bidirectional fixtures | 17 bidirectional fixtures plus reverse-first chart preservation | capability runner | configurable multi-cycle convergence and broader source-format preservation gates |
 
 ## Shared Work Remaining For PPTX

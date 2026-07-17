@@ -77,8 +77,9 @@ constructor arguments and filtered accessors remain compatibility views, but imp
 serializers operate on `contents` so heterogeneous nodes retain interleaved z-order. Every node
 adopted by a slide has a stable slide-scoped ID; active HTML and PPTX adapters also retain typed
 source provenance through normalized HTML metadata and a private OOXML extension. Exact
-stacking/group ownership, preservation ownership beyond the implemented chart graph, and per-node
-representation status still need to be completed in addition to the existing geometry and appearance.
+stacking/group ownership, preservation ownership beyond positioned nodes with capturable OPC
+graphs, and per-node representation status still need to be completed in addition to the existing
+geometry and appearance.
 
 Shared primitives include:
 
@@ -188,11 +189,15 @@ public API for every enterprise collaboration feature.
 | Preserve and re-emit | unknown extensions and useful source features awaiting a native adapter |
 | Intentionally ignore | comments/review history or obscure collaboration state explicitly excluded from product scope |
 
-Preservation is not visual support. Chart graphic frames now attach their transitive OPC graph and
-ambient theme to an ordered IR node and re-emit to PPTX, but the chart still disappears visually
-from normalized HTML until the reverse layer or semantic chart renderer exists. Other preserved
-families must likewise attach to their owning IR node or package location; storing detached
-fragments in a result object is only an intermediate safeguard.
+Preservation is not visual support. A positioned preserved node may now carry both its transitive
+OPC graph and a renderer-derived element crop: normalized HTML displays the crop, while
+metadata-aware re-ingestion retains the original source object for PPTX re-emission. The chart
+fixture proves this path with an authoritative caller-supplied slide render. The crop is not folded
+into the opaque source payload, so visual and source ownership remain independently measurable.
+When a positioned node has a render but its OPC graph cannot be attached safely, the crop remains a
+stable picture layer and the source fragment stays explicitly detached. Preserved families without
+a positioned node or render remain nonvisual debt; storing fragments only in a result object is an
+intermediate safeguard, not parity.
 
 ## Fidelity And Regression System
 

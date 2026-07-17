@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Self
 
@@ -56,9 +57,18 @@ class Presentation:
         return self
 
     @classmethod
-    def from_pptx(cls, source: bytes | Path) -> HtmlPresentation:
-        """Read a ``.pptx`` into deterministic per-slide HTML/CSS."""
-        return pptx_to_html(source)
+    def from_pptx(
+        cls,
+        source: bytes | Path,
+        *,
+        fallback_pngs: Sequence[bytes] | None = None,
+    ) -> HtmlPresentation:
+        """Read a ``.pptx`` into deterministic per-slide HTML/CSS.
+
+        Pass one authoritative render per slide in ``fallback_pngs`` to keep unsupported
+        positioned source visuals visible as owned element layers.
+        """
+        return pptx_to_html(source, fallback_pngs=fallback_pngs)
 
     def render(
         self, formats: set[OutputFormat], *, indices: set[int] | None = None
@@ -147,10 +157,12 @@ class Presentation:
         return rendered
 
 
-def pptx_to_html(source: bytes | Path) -> HtmlPresentation:
+def pptx_to_html(
+    source: bytes | Path, *, fallback_pngs: Sequence[bytes] | None = None
+) -> HtmlPresentation:
     """Read PPTX bytes or a path into deterministic per-slide HTML/CSS."""
     pptx = source.read_bytes() if isinstance(source, Path) else source
-    result = read_pptx_result(pptx)
+    result = read_pptx_result(pptx, fallback_pngs=fallback_pngs)
     return serialize_canvas(
         list(result.slides),
         warnings=result.warnings,

@@ -8,7 +8,7 @@ import tomllib
 import zipfile
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -98,6 +98,15 @@ class CapabilityVisual(BaseModel):
     pptx_to_html_min_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     pptx_to_html_min_regional_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     pptx_to_html_min_structural_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+    pptx_to_html_slide_indices: tuple[int, ...] = ()
+
+    @model_validator(mode="after")
+    def _slide_indices_are_valid(self) -> CapabilityVisual:
+        if any(index < 0 for index in self.pptx_to_html_slide_indices):
+            raise ValueError("reverse visual slide indices cannot be negative")
+        if len(set(self.pptx_to_html_slide_indices)) != len(self.pptx_to_html_slide_indices):
+            raise ValueError("reverse visual slide indices cannot contain duplicates")
+        return self
 
 
 class CapabilityReverseExpected(BaseModel):
@@ -106,6 +115,7 @@ class CapabilityReverseExpected(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     expected_slides: int = Field(default=1, ge=1)
+    min_assets: int = Field(default=0, ge=0)
     html_contains: tuple[str, ...] = ()
     max_warnings: int = Field(default=0, ge=0)
     max_preserved: int = Field(default=0, ge=0)
@@ -121,6 +131,7 @@ class CapabilityFixture(BaseModel):
     direction: CapabilityDirection
     html: str = ""
     pptx: bytes | None = Field(default=None, exclude=True)
+    reverse_render_pngs: tuple[bytes, ...] = Field(default=(), exclude=True)
     expected: CapabilityExpected = Field(default_factory=CapabilityExpected)
     reverse: CapabilityReverseExpected = Field(default_factory=CapabilityReverseExpected)
     visual: CapabilityVisual = Field(default_factory=CapabilityVisual)
@@ -165,6 +176,17 @@ def _load_fixture(path: Path) -> CapabilityFixture:
     if pptx_file is not None and not isinstance(pptx_file, str):
         raise ValueError(f"{path}: pptx_file must be a string")
     raw["pptx"] = (path.parent / pptx_file).read_bytes() if pptx_file is not None else None
+    reverse_render_value: object = raw.pop("reverse_render_files", [])
+    if not isinstance(reverse_render_value, list):
+        raise ValueError(f"{path}: reverse_render_files must be a list of strings")
+    reverse_render_files: list[str] = []
+    for item in cast(list[object], reverse_render_value):
+        if not isinstance(item, str):
+            raise ValueError(f"{path}: reverse_render_files must be a list of strings")
+        reverse_render_files.append(item)
+    raw["reverse_render_pngs"] = tuple(
+        (path.parent / item).read_bytes() for item in reverse_render_files
+    )
     return CapabilityFixture.model_validate(raw)
 
 
@@ -251,6 +273,8 @@ def validate_reverse_capability(
     errors: list[str] = []
     if len(result.slides) != expected.expected_slides:
         errors.append(f"slide count {len(result.slides)} != expected {expected.expected_slides}")
+    if len(result.assets) < expected.min_assets:
+        errors.append(f"reverse assets {len(result.assets)} < expected {expected.min_assets}")
     document = result.css + "\n" + "\n".join(slide.html for slide in result.slides)
     for token in expected.html_contains:
         if token not in document:

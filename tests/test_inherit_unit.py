@@ -116,14 +116,21 @@ def _deck(*, slide_sp: str, layout_sp: str = "", master_sp: str = "", tx_styles:
     return write_package(parts)
 
 
-def _ph_sp(*, ph_type: str, ph_idx: str | None, xfrm: str = "", body: str = "") -> str:
+def _ph_sp(
+    *,
+    ph_type: str,
+    ph_idx: str | None,
+    xfrm: str = "",
+    body: str = "",
+    body_pr: str = "",
+) -> str:
     """A placeholder <p:sp>. Empty ``xfrm`` omits the a:xfrm (forcing inheritance)."""
     idx_attr = f' idx="{ph_idx}"' if ph_idx is not None else ""
     return (
         f'<p:sp><p:nvSpPr><p:cNvPr id="2" name="ph"/><p:cNvSpPr/>'
         f'<p:nvPr><p:ph type="{ph_type}"{idx_attr}/></p:nvPr></p:nvSpPr>'
         f"<p:spPr>{xfrm}</p:spPr>"
-        f"<p:txBody><a:bodyPr/><a:lstStyle/>{body}</p:txBody></p:sp>"
+        f"<p:txBody><a:bodyPr{body_pr}/><a:lstStyle/>{body}</p:txBody></p:sp>"
     )
 
 
@@ -151,6 +158,27 @@ def test_geometry_inherited_from_master_when_layout_absent() -> None:
     [ir] = read_pptx(_deck(slide_sp=slide, layout_sp=layout, master_sp=master))
     box = ir.shapes[0].box
     assert (box.x, box.y, box.width, box.height) == (100000, 200000, 4000000, 2000000)
+
+
+def test_text_body_properties_inherit_from_layout_placeholder() -> None:
+    slide = _ph_sp(
+        ph_type="title",
+        ph_idx="0",
+        xfrm=_XFRM.format(x=0, y=0, cx=5_000_000, cy=1_000_000),
+        body="<a:p><a:r><a:t>Heading</a:t></a:r></a:p>",
+    )
+    layout = _ph_sp(
+        ph_type="title",
+        ph_idx="0",
+        body_pr=' anchor="b" lIns="0" tIns="100" rIns="200" bIns="300"',
+    )
+
+    [ir] = read_pptx(_deck(slide_sp=slide, layout_sp=layout))
+
+    text = ir.shapes[0].text
+    assert text is not None
+    assert text.anchor == "bottom"
+    assert text.margins == (0, 100, 200, 300)
 
 
 def test_title_run_inherits_master_titlestyle_size_and_font() -> None:

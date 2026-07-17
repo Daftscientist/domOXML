@@ -56,8 +56,10 @@ class PlaceholderContext:
     ph_type: str  # the ph type attribute value; empty string if not a ph
     ph_idx: int  # the ph idx attribute; 0 if absent (title default)
     layout_ph_sppr: Element | None  # layout placeholder spPr
+    layout_ph_body_pr: Element | None  # layout placeholder txBody bodyPr
     layout_ph_lstStyle: Element | None  # layout placeholder txBody lstStyle
     master_ph_sppr: Element | None  # master placeholder spPr
+    master_ph_body_pr: Element | None  # master placeholder txBody bodyPr
     master_ph_lstStyle: Element | None  # master placeholder txBody lstStyle
     master_tx_styles: Element | None  # master p:txStyles
 
@@ -133,8 +135,10 @@ def build_placeholder_context(
     ph_type, ph_idx = _ph_attrs(ph)
 
     layout_ph_sppr: Element | None = None
+    layout_ph_body_pr: Element | None = None
     layout_ph_lstStyle: Element | None = None
     master_ph_sppr: Element | None = None
+    master_ph_body_pr: Element | None = None
     master_ph_lstStyle: Element | None = None
     master_tx_styles: Element | None = None
 
@@ -144,6 +148,7 @@ def build_placeholder_context(
             layout_ph_sppr = layout_sp.find("p:spPr", _NS)
             layout_body = layout_sp.find("p:txBody", _NS)
             if layout_body is not None:
+                layout_ph_body_pr = layout_body.find("a:bodyPr", _NS)
                 layout_ph_lstStyle = layout_body.find("a:lstStyle", _NS)
 
     if master_root is not None:
@@ -153,6 +158,7 @@ def build_placeholder_context(
             master_ph_sppr = master_sp.find("p:spPr", _NS)
             master_body = master_sp.find("p:txBody", _NS)
             if master_body is not None:
+                master_ph_body_pr = master_body.find("a:bodyPr", _NS)
                 master_ph_lstStyle = master_body.find("a:lstStyle", _NS)
         master_tx_styles = master_root.find("p:txStyles", _NS)
 
@@ -160,8 +166,10 @@ def build_placeholder_context(
         ph_type=ph_type,
         ph_idx=ph_idx,
         layout_ph_sppr=layout_ph_sppr,
+        layout_ph_body_pr=layout_ph_body_pr,
         layout_ph_lstStyle=layout_ph_lstStyle,
         master_ph_sppr=master_ph_sppr,
+        master_ph_body_pr=master_ph_body_pr,
         master_ph_lstStyle=master_ph_lstStyle,
         master_tx_styles=master_tx_styles,
     )

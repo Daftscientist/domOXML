@@ -1015,10 +1015,39 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 coverage.append(_failed_coverage(label, reason))
                 warnings.append(ConversionWarning(message=reason, element=label))
             else:
+                fallback_fill, fallback_reason = _resolve_fill(node, rendered)
+                fallback = fallback_fill if isinstance(fallback_fill, PictureFill) else None
                 contents.append(
-                    identities.apply(PreservedNode(box=_box(node), payload=payload), node)
+                    identities.apply(
+                        PreservedNode(box=_box(node), payload=payload, fallback=fallback), node
+                    )
                 )
                 consumed |= _subtree(node.index, children)
+                if fallback is not None:
+                    box = _box(node)
+                    coverage.append(
+                        CoverageItem(
+                            element=label,
+                            representation=Representation.ELEMENT_LAYER,
+                            editability=Editability.LAYERS,
+                            source_retention=SourceRetention.ATTACHED,
+                            raster_area_emu2=box.width * box.height,
+                            reason="renderer-derived fallback for attached source object",
+                        )
+                    )
+                else:
+                    reason = fallback_reason or "attached source object has no visual fallback"
+                    coverage.append(
+                        CoverageItem(
+                            element=label,
+                            representation=Representation.FAILED,
+                            editability=Editability.NONE,
+                            source_retention=SourceRetention.ATTACHED,
+                            output_count=0,
+                            reason=reason,
+                        )
+                    )
+                    warnings.append(ConversionWarning(message=reason, element=label))
             continue
 
         # --- Native table interception ---
@@ -1251,7 +1280,12 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     element=_label(node),
                 )
             )
-        if text is not None and fill is None and line is None:
+        if (
+            text is not None
+            and fill is None
+            and line is None
+            and decode_text_body(node.styles.get("domoxmlTextPayload")) is None
+        ):
             outside_bullet = (
                 any(paragraph.bullet is not None for paragraph in text.paragraphs)
                 and node.styles.get("listStylePosition", "outside") != "inside"

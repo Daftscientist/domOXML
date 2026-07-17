@@ -11,12 +11,12 @@ Snapshot audited on **2026-07-17** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 647 tests are collected.
+- 659 tests are collected.
 - 18 atomic PPTX capability fixtures exist; 17 are bidirectional and one is a reverse-first chart
   preservation fixture.
 - 9 authored HTML fidelity cases exist.
 - 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and attached
-  chart-graph re-emission with a visual gate.
+  chart-graph re-emission with PPTX and normalized-HTML visual gates.
 - LibreOffice global, regional, and structural scores are merge-blocking for configured cases.
 - Microsoft Graph rendering exists as an opt-in backend, not a normal CI gate.
 
@@ -28,9 +28,13 @@ The baseline is useful but not yet the product invariant:
   general preservation ownership remain incomplete;
 - forward raster fallback exists, but its granularity and semantic debt are not comprehensively
   asserted;
-- unknown reverse PPTX visuals are often preserved as detached XML without a rendered layer;
+- positioned reverse PPTX visuals can own caller-supplied renderer crops; capturable OPC graphs
+  remain attached, while malformed graphs retain the visual as a stable picture layer and report
+  detached-source debt. The chart fixture proves the attached path; unpositioned nodes, missing
+  renders, and preservation families without owned graphs remain nonvisual/detached debt;
 - detached preserved fragments are not generally re-emitted by `render_html_roundtrip()`; charts
-  now use an owned node payload and retain their dependency graph and ambient theme;
+  use an owned node payload, retain their dependency graph and ambient theme, display an element
+  layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - forward conversion has a typed representation/editability/retention contract, but reverse ingest
   does not yet emit equivalent per-visual coverage records;
@@ -225,6 +229,10 @@ silently lowering the expected score.
    custom paths retain solid SVG fill/stroke and exact connector IR; effects and text-body semantics
    use versioned typed normalized-HTML payloads and converge exactly across the tested PPTX loop.
 5. [ ] Add reverse visual layers for unknown PPTX nodes instead of HTML omission plus detached XML.
+   The renderer-backed contract, EMU-accurate crop, HTML asset, attached source recovery, and
+   slide-scoped visual gate are implemented for positioned owned nodes and proven on the external
+   chart. Automatic renderer policy and coverage of SmartArt, OLE, 3D, groups, and malformed nodes
+   remain before this item is complete.
 6. [ ] Add package/schema validation for generated and re-emitted decks.
 7. [ ] Add groups, media, masters/layouts/placeholders, notes, and extensions to the real-deck
    corpus.

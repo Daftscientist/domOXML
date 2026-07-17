@@ -119,15 +119,18 @@ def validate_real_deck(case: RealDeckCase, html: HtmlPresentation) -> tuple[str,
     if digest != case.provenance.sha256:
         errors.append(f"sha256 {digest} != pinned {case.provenance.sha256}")
 
-    package = OpcPackage.from_bytes(case.pptx)
+    package_errors = validate_opc_package(case.pptx)
+    errors.extend(package_errors)
+    try:
+        package = OpcPackage.from_bytes(case.pptx)
+    except ValueError:
+        return tuple(errors)
     slide_count = sum(bool(_SLIDE_PART.fullmatch(part)) for part in package.parts)
     if slide_count != case.package.slides:
         errors.append(f"package slide count {slide_count} != expected {case.package.slides}")
     for part in case.package.required_parts:
         if not package.has_part(part):
             errors.append(f"missing required package part {part}")
-    errors.extend(validate_opc_package(case.pptx))
-
     if len(html.slides) != case.package.slides:
         errors.append(f"reverse slide count {len(html.slides)} != expected {case.package.slides}")
     if len(html.assets) < case.reverse.min_assets:
@@ -165,7 +168,10 @@ def validate_real_deck(case: RealDeckCase, html: HtmlPresentation) -> tuple[str,
 def validate_real_deck_roundtrip(case: RealDeckCase, pptx: bytes) -> tuple[str, ...]:
     """Validate re-emitted OPC relationships and required editable XML text/content."""
     errors = list(validate_pptx_package(pptx))
-    package = OpcPackage.from_bytes(pptx)
+    try:
+        package = OpcPackage.from_bytes(pptx)
+    except ValueError:
+        return tuple(errors)
     slide_count = sum(bool(_SLIDE_PART.fullmatch(part)) for part in package.parts)
     if slide_count != case.package.slides:
         errors.append(f"roundtrip slide count {slide_count} != expected {case.package.slides}")

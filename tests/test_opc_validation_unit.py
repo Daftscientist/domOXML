@@ -129,6 +129,21 @@ def test_reports_malformed_xml() -> None:
     assert any(error.startswith("ppt/broken.xml: malformed XML:") for error in errors)
 
 
+def test_reports_defused_xml_without_raising() -> None:
+    hostile = b'<!DOCTYPE item [<!ENTITY value "blocked">]><item>&value;</item>'
+    pptx = _package({"ppt/hostile.xml": hostile})
+
+    shared_errors = validate_opc_package(pptx)
+    pptx_errors = validate_pptx_package(pptx)
+
+    assert any(
+        "ppt/hostile.xml: malformed XML: EntitiesForbidden" in error for error in shared_errors
+    )
+    assert any(
+        "ppt/hostile.xml: malformed XML: EntitiesForbidden" in error for error in pptx_errors
+    )
+
+
 def test_pptx_validation_reports_missing_slide_target() -> None:
     parts = _parts(build_pptx([_slide()], faces=[]))
     del parts["ppt/slides/slide1.xml"]
@@ -161,15 +176,40 @@ def test_pptx_validation_reports_wrong_core_root_namespace() -> None:
     assert any("ppt/slides/slide1.xml: root" in error for error in errors)
 
 
-def test_pptx_validation_reports_invalid_slide_ids() -> None:
-    parts = _parts(build_pptx([_slide(), _slide()], faces=[]))
-    parts["ppt/presentation.xml"] = parts["ppt/presentation.xml"].replace(
-        b'<p:sldId id="257"', b'<p:sldId id="0"', 1
+def test_pptx_validation_rejects_foreign_namespace_shape_tree() -> None:
+    parts = _parts(build_pptx([_slide()], faces=[]))
+    parts["ppt/slides/slide1.xml"] = (
+        parts["ppt/slides/slide1.xml"]
+        .replace(b"<p:cSld>", b'<x:cSld xmlns:x="urn:foreign">')
+        .replace(b"</p:cSld>", b"</x:cSld>")
     )
 
     errors = validate_pptx_package(write_package(parts))
 
-    assert "ppt/presentation.xml: p:sldId id values must be positive integers" in errors
+    assert "ppt/slides/slide1.xml: missing p:cSld/p:spTree" in errors
+
+
+@pytest.mark.parametrize("invalid_id", [b"255", b"2147483648", b"not-an-integer"])
+def test_pptx_validation_reports_invalid_slide_ids(invalid_id: bytes) -> None:
+    parts = _parts(build_pptx([_slide()], faces=[]))
+    parts["ppt/presentation.xml"] = parts["ppt/presentation.xml"].replace(
+        b'<p:sldId id="256"', b'<p:sldId id="' + invalid_id + b'"', 1
+    )
+
+    errors = validate_pptx_package(write_package(parts))
+
+    assert "ppt/presentation.xml: p:sldId id values must be integers in [256, 2147483648)" in errors
+
+
+def test_pptx_validation_accepts_largest_slide_id() -> None:
+    parts = _parts(build_pptx([_slide()], faces=[]))
+    parts["ppt/presentation.xml"] = parts["ppt/presentation.xml"].replace(
+        b'<p:sldId id="256"', b'<p:sldId id="2147483647"', 1
+    )
+
+    errors = validate_pptx_package(write_package(parts))
+
+    assert not any("p:sldId id values" in error for error in errors)
 
 
 def test_pptx_validation_reports_duplicate_nonvisual_shape_ids() -> None:
@@ -183,6 +223,23 @@ def test_pptx_validation_reports_duplicate_nonvisual_shape_ids() -> None:
     errors = validate_pptx_package(write_package(parts))
 
     assert "ppt/slides/slide1.xml: duplicate p:cNvPr id '2'" in errors
+
+
+@pytest.mark.parametrize(
+    "part",
+    [
+        "ppt/slideLayouts/slideLayout1.xml",
+        "ppt/slideMasters/slideMaster1.xml",
+    ],
+)
+def test_pptx_validation_reports_duplicate_layout_and_master_shape_ids(part: str) -> None:
+    parts = _parts(build_pptx([_slide()], faces=[]))
+    duplicate = b'<p:nvSpPr><p:cNvPr id="1" name="duplicate"/></p:nvSpPr>'
+    parts[part] = parts[part].replace(b"</p:spTree>", duplicate + b"</p:spTree>", 1)
+
+    errors = validate_pptx_package(write_package(parts))
+
+    assert f"{part}: duplicate p:cNvPr id '1'" in errors
 
 
 def test_pptx_validation_reports_missing_picture_content_type_and_relationship() -> None:

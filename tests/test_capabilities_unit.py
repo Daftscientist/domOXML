@@ -191,6 +191,7 @@ def test_forward_and_roundtrip_capabilities_reject_invalid_packages() -> None:
         id="package-validation",
         direction=CapabilityDirection.FORWARD,
         html="<p>x</p>",
+        expected=CapabilityExpected(required_parts=("ppt/presentation.xml",)),
     )
     result = RenderResult(
         pptx=b"not a package",

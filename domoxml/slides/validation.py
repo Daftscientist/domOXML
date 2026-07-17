@@ -6,6 +6,7 @@ from collections import Counter
 from xml.etree.ElementTree import Element, ParseError
 
 from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 
 from domoxml.core.opc import OpcPackage, Relationship, validate_opc_package
 
@@ -17,18 +18,16 @@ _PRESENTATION_CONTENT_TYPE = (
 )
 
 
-def _local_name(element: Element) -> str:
-    return element.tag.rsplit("}", 1)[-1]
-
-
 def _children(element: Element, name: str) -> list[Element]:
-    return [child for child in element if _local_name(child) == name]
+    expected = f"{{{_P}}}{name}"
+    return [child for child in element if child.tag == expected]
 
 
 def _descendant(element: Element, *path: str) -> Element | None:
     current = element
     for name in path:
-        current = next((child for child in current if _local_name(child) == name), None)
+        expected = f"{{{_P}}}{name}"
+        current = next((child for child in current if child.tag == expected), None)
         if current is None:
             return None
     return current
@@ -49,7 +48,7 @@ def _relationships(
 ) -> tuple[Relationship, ...]:
     try:
         return package.relationships(source)
-    except (KeyError, ParseError, ValueError) as error:
+    except (DefusedXmlException, KeyError, ParseError, ValueError) as error:
         errors.append(f"{source or '<package>'}: cannot read relationships: {error}")
         return ()
 
@@ -87,7 +86,7 @@ def _root(
         return None
     try:
         root = ElementTree.fromstring(package.read(part))
-    except ParseError:
+    except (DefusedXmlException, ParseError):
         return None  # The shared OPC validator already reports the parse error.
     expected_tag = f"{{{namespace}}}{expected}"
     if root.tag != expected_tag:
@@ -99,6 +98,13 @@ def _root(
 def _positive_int(value: str | None) -> bool:
     try:
         return value is not None and int(value) > 0
+    except ValueError:
+        return False
+
+
+def _slide_id(value: str | None) -> bool:
+    try:
+        return value is not None and 256 <= int(value) < 2_147_483_648
     except ValueError:
         return False
 
@@ -116,23 +122,28 @@ def _required_relation(
     return _resolve(package, source, matches[0], errors)
 
 
+def _validate_shape_tree(root: Element, part: str, errors: list[str]) -> None:
+    if _descendant(root, "cSld", "spTree") is None:
+        errors.append(f"{part}: missing p:cSld/p:spTree")
+        return
+    ids = [element.get("id", "") for element in root.iter(f"{{{_P}}}cNvPr")]
+    duplicates = sorted(item for item, count in Counter(ids).items() if item and count > 1)
+    for shape_id in duplicates:
+        errors.append(f"{part}: duplicate p:cNvPr id {shape_id!r}")
+
+
 def _validate_slide(package: OpcPackage, part: str, errors: list[str]) -> None:
     root = _root(package, part, "sld", errors)
     if root is None:
         return
-    if _descendant(root, "cSld", "spTree") is None:
-        errors.append(f"{part}: missing p:cSld/p:spTree")
-    ids = [element.get("id", "") for element in root.iter() if _local_name(element) == "cNvPr"]
-    duplicates = sorted(item for item, count in Counter(ids).items() if item and count > 1)
-    for shape_id in duplicates:
-        errors.append(f"{part}: duplicate p:cNvPr id {shape_id!r}")
+    _validate_shape_tree(root, part, errors)
 
     layout_part = _required_relation(package, part, "slideLayout", errors)
     if layout_part is None:
         return
     layout = _root(package, layout_part, "sldLayout", errors)
-    if layout is not None and _descendant(layout, "cSld", "spTree") is None:
-        errors.append(f"{layout_part}: missing p:cSld/p:spTree")
+    if layout is not None:
+        _validate_shape_tree(layout, layout_part, errors)
     master_part = _required_relation(package, layout_part, "slideMaster", errors)
     if master_part is not None:
         _validate_master(package, master_part, errors)
@@ -142,8 +153,7 @@ def _validate_master(package: OpcPackage, part: str, errors: list[str]) -> None:
     root = _root(package, part, "sldMaster", errors)
     if root is None:
         return
-    if _descendant(root, "cSld", "spTree") is None:
-        errors.append(f"{part}: missing p:cSld/p:spTree")
+    _validate_shape_tree(root, part, errors)
     relationships = _relationships(package, part, errors)
     layouts = [item for item in relationships if _role(item) == "slideLayout"]
     themes = [item for item in relationships if _role(item) == "theme"]
@@ -154,7 +164,9 @@ def _validate_master(package: OpcPackage, part: str, errors: list[str]) -> None:
     for relationship in layouts:
         target = _resolve(package, part, relationship, errors)
         if target is not None:
-            _root(package, target, "sldLayout", errors)
+            layout = _root(package, target, "sldLayout", errors)
+            if layout is not None:
+                _validate_shape_tree(layout, target, errors)
     for relationship in themes:
         target = _resolve(package, part, relationship, errors)
         if target is not None:
@@ -174,7 +186,7 @@ def _validate_presentation(package: OpcPackage, errors: list[str]) -> None:
         return
     try:
         content_type = package.content_type(presentation_part)
-    except (KeyError, ParseError):
+    except (DefusedXmlException, KeyError, ParseError):
         content_type = None
     if content_type != _PRESENTATION_CONTENT_TYPE:
         errors.append(
@@ -203,8 +215,10 @@ def _validate_presentation(package: OpcPackage, errors: list[str]) -> None:
     numeric_ids = [item.get("id", "") for item in slide_ids]
     if len(set(numeric_ids)) != len(numeric_ids):
         errors.append(f"{presentation_part}: duplicate p:sldId id")
-    if any(not _positive_int(item) for item in numeric_ids):
-        errors.append(f"{presentation_part}: p:sldId id values must be positive integers")
+    if any(not _slide_id(item) for item in numeric_ids):
+        errors.append(
+            f"{presentation_part}: p:sldId id values must be integers in [256, 2147483648)"
+        )
 
     referenced_slides: set[str] = set()
     for slide_id in slide_ids:
@@ -262,7 +276,7 @@ def _validate_presentation(package: OpcPackage, errors: list[str]) -> None:
 def _content_type(package: OpcPackage, part: str) -> str:
     try:
         return package.content_type(part)
-    except (KeyError, ParseError):
+    except (DefusedXmlException, KeyError, ParseError):
         return ""
 
 

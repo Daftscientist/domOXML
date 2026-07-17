@@ -6,6 +6,7 @@ from pathlib import PurePosixPath
 from xml.etree.ElementTree import Element, ParseError
 
 from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 
 from domoxml.core.opc.reader import OpcPackage, Relationship, normalize_part
 
@@ -25,7 +26,7 @@ def _xml_roots(package: OpcPackage, errors: list[str]) -> dict[str, Element]:
             continue
         try:
             roots[part] = ElementTree.fromstring(package.read(part))
-        except ParseError as error:
+        except (DefusedXmlException, ParseError) as error:
             errors.append(f"{part}: malformed XML: {error}")
     return roots
 

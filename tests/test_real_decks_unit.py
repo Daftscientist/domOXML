@@ -84,6 +84,24 @@ def test_real_deck_roundtrip_rejects_dropped_slides() -> None:
     assert "roundtrip slide count 1 != expected 2" in errors
 
 
+def test_real_deck_validators_return_invalid_zip_diagnostics() -> None:
+    case = load_real_decks(Path("real-decks/pptx"))[0]
+    invalid = b"not a package"
+    invalid_case = case.model_copy(
+        update={
+            "pptx": invalid,
+            "provenance": case.provenance.model_copy(
+                update={"sha256": hashlib.sha256(invalid).hexdigest()}
+            ),
+        }
+    )
+    valid_html = Presentation.from_pptx(case.pptx)
+
+    expected = "invalid OPC package: expected a ZIP archive"
+    assert expected in validate_real_deck(invalid_case, valid_html)
+    assert validate_real_deck_roundtrip(case, invalid) == (expected,)
+
+
 def test_real_deck_requires_visual_gate_or_exclusion() -> None:
     raw = {
         "id": "missing-visual-contract",

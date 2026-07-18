@@ -10,7 +10,7 @@ import math
 import re
 from typing import Literal
 
-from domoxml.core.ir.model import GradientFill, GradientStop, Line, LineSpacing, Rgba, Shadow
+from domoxml.core.ir.model import Blur, GradientFill, GradientStop, Line, LineSpacing, Rgba, Shadow
 from domoxml.core.units import px_to_emu, px_to_pt
 
 _RGB_RE = re.compile(
@@ -21,6 +21,7 @@ _LENGTH_RE = re.compile(r"(-?[\d.]+)\s*px", re.IGNORECASE)
 _PERCENT_RE = re.compile(r"(-?[\d.]+)\s*%")
 _ANGLE_RE = re.compile(r"(-?[\d.]+)\s*deg", re.IGNORECASE)
 _FUNC_RE = re.compile(r"\b(linear|radial|conic)-gradient\s*\(", re.IGNORECASE)
+_BLUR_FILTER_RE = re.compile(r"blur\(\s*([\d.]+)px\s*\)", re.IGNORECASE)
 
 
 def parse_color(value: str | None) -> Rgba | None:
@@ -291,6 +292,20 @@ def parse_shadow(value: str | None) -> Shadow | None:
         inset=inset,
         spread_emu=px_to_emu(spread),
     )
+
+
+def parse_blur_filter(value: str | None) -> Blur | None:
+    """Map a lone CSS ``blur(<px>)`` filter to native DrawingML blur.
+
+    Compound filters and non-pixel lengths remain on the layered fallback path because their
+    ordering and units cannot be represented by one ``a:blur`` node without approximation.
+    """
+    if not value or value.strip().lower() == "none":
+        return None
+    match = _BLUR_FILTER_RE.fullmatch(value.strip())
+    if match is None:
+        return None
+    return Blur(radius_emu=px_to_emu(float(match.group(1))))
 
 
 # --------------------------------------------------------------------------- gradients

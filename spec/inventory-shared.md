@@ -34,12 +34,12 @@ element-layer or failed coverage for preserved nodes.
 
 ## Current Shared Capability Matrix
 
-Audited on **2026-07-17**. `cap:*` refers to a manifest below `capabilities/pptx/`; “both” means the
+Audited on **2026-07-18**. `cap:*` refers to a manifest below `capabilities/pptx/`; “both” means the
 runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structural floors.
 
 | Family | Current forward path | Current reverse path | Evidence | Main remaining work |
 |---|---|---|---|---|
-| OPC packages and relationships | Native; generated/re-emitted output is blocked on content-type, relationship graph/reference, XML, and core-format validation | Native; source packages receive shared OPC validation | 21 focused package tests + capability package assertion + 18 capabilities + 4 real decks | full XSD/Open XML validation, strict packages, alternate content, extension schemas, general extension re-emission beyond attached charts |
+| OPC packages and relationships | Native; generated/re-emitted output is blocked on content-type, relationship graph/reference, XML, and core-format validation | Native; source packages receive shared OPC validation | 21 focused package tests + capability package assertion + 19 capabilities + 4 real decks | full XSD/Open XML validation, strict packages, general alternate content, extension schemas, general extension re-emission beyond attached charts |
 | Units, page boxes, identity, and fixed layout | Native, canonical ordered scene with slide-scoped IDs/provenance | Native, canonical ordered scene with recovered IDs/provenance | `cap:interleaved-order` + `cap:node-identity` (both) + broad tests | exact group reconstruction and preservation ownership beyond charts |
 | Solid colors and alpha | Native | Native | fidelity corpus + integration | complete color models/transforms and theme-token preservation on forward output |
 | Theme colors and font schemes | Partial; attached chart re-emission restores its ambient source theme | Partial/native read | unit + chart real deck | general forward scheme references, complete style matrix, script fonts, deck-level source-theme policy |
@@ -59,7 +59,8 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Outer shadow | Partial/native | Native with exact typed HTML payload | `cap:effects` (both) | adversarial negative spread, multiple shadows, and broader color models |
 | Inner shadow | Portable element layer | Native read; browser-visible CSS | `cap:effects` (both) | owned source payload on the layer and renderer-selectable native policy |
 | Glow | Partial/native | CSS plus exact typed HTML payload | `cap:effects` (both) | compound effects, non-rect geometry, and broader halo calibration |
-| Blur, soft edge, reflection | Layered forward | Partial CSS/preserve | unit only | minimal hybrid layers, exact bounds, stable round trips |
+| Blur | Native PowerPoint effect retained beneath an isolated portable layer; LibreOffice selects the same picture alone through `mc:AlternateContent` | Native effect and fallback recovered as one hybrid; CSS plus exact typed payload | `cap:blur-effect` (both), LO + Graph evidence | compound blur ordering, image/custom geometry cases, and more renderer versions |
+| Soft edge and reflection | Layered forward | Partial CSS/preserve | unit only | minimal hybrid layers, exact bounds, stable round trips |
 | Other effect-list constructs | Layered/gap | Preserve only | unit only | effect containers/order, preset shadow, fill overlay, visual fallback and re-emission |
 | Basic text runs | Native | Native | `cap:text-rich-runs` (both) | language/script coverage and font portability |
 | Decoration, caps, and spacing | Partial/native | Partial/native | `cap:text-decorations` (both) | complete underline/strike/baseline/RTL/vertical text variants |
@@ -76,7 +77,7 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Charts | Attached source re-emission only; authored charts remain a gap | Attached preserve plus renderer-backed element layer when a slide render is supplied | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart/data IR, automatic renderer selection, semantic HTML rendering, and native authoring |
 | Unknown visual extensions | Element layer on HTML input | Positioned nodes can use authoritative element crops; malformed source graphs remain visible with explicit detached-source debt | chart capability + unit/integration | automatic renderer policy, complete ownership, alpha/isolation improvements, and broader fixtures |
 | Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/fine-focused/structural plus typed initial-ingest coverage and explicit reverse/convergence slide scoping; raw candidates retained beside aligned comparisons | CI + tests | semantic typography/color metrics and broader adversarial reverse bounds |
-| Repeated round trips | every reverse-capable fixture rebuilds and re-ingests at least twice with representation/editability/retention/output/raster bounds | 17 bidirectional fixtures plus a three-cycle scoped reverse-first chart preservation fixture | capability runner + manifest contract tests | broader source-format preservation gates and PowerPoint-rendered convergence |
+| Repeated round trips | every reverse-capable fixture rebuilds and re-ingests at least twice with representation/editability/retention/output/raster bounds | 18 bidirectional fixtures plus a three-cycle scoped reverse-first chart preservation fixture | capability runner + manifest contract tests | broader source-format preservation gates and PowerPoint-rendered convergence |
 
 ## Shared Work Remaining For PPTX
 

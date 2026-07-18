@@ -358,7 +358,10 @@ def _append_effect_styles(
             blur_filters.append(f"blur({_number(emu_to_px(effect.radius_emu))}px)")
             warnings.append(
                 ConversionWarning(
-                    message="a:blur mapped to CSS filter:blur() — forward round-trip will rasterise"
+                    message=(
+                        "a:blur mapped to CSS filter:blur(); rebuilt PPTX uses an isolated "
+                        "renderer fallback"
+                    )
                 )
             )
         elif isinstance(effect, SoftEdge):

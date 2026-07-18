@@ -12,6 +12,7 @@ from PIL import Image
 from domoxml.core.ir import extract_slide
 from domoxml.core.ir.effect_payload import encode_effects
 from domoxml.core.ir.model import (
+    Blur,
     Box,
     Connector,
     Glow,
@@ -179,7 +180,7 @@ def test_gradient_fill_is_native() -> None:
     assert result.coverage[0].editability is Editability.SEMANTIC
 
 
-def test_css_filter_rasterises_and_warns() -> None:
+def test_css_blur_filter_is_native_and_editable() -> None:
     node = RenderedNode(
         tag="div",
         x=0,
@@ -190,7 +191,29 @@ def test_css_filter_rasterises_and_warns() -> None:
         styles={"filter": "blur(4px)", "backgroundColor": "rgb(1,2,3)"},
     )
     result = extract_slide(_slide(node))
-    assert isinstance(result.slide.shapes[0].fill, PictureFill)  # baked pixels, not dropped
+    shape = result.slide.shapes[0]
+    assert isinstance(shape.fill, SolidFill)
+    assert shape.effects == (Blur(radius_emu=38100),)
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.picture.raster_role == "portable-blur-fallback"
+    assert result.coverage[0].representation is Representation.HYBRID
+    assert result.coverage[0].editability is Editability.COMPONENTS
+    assert result.coverage[0].raster_area_emu2 > 0
+    assert "isolated renderer fallback" in result.warnings[0].message
+
+
+def test_unsupported_css_filter_rasterises_and_warns() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={"filter": "brightness(0.8)", "backgroundColor": "rgb(1,2,3)"},
+    )
+    result = extract_slide(_slide(node))
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
     assert result.coverage[0].editability is Editability.LAYERS
     assert result.coverage[0].raster_area_emu2 > 0
@@ -205,7 +228,7 @@ def test_empty_raster_region_is_recorded_as_failed_not_layered() -> None:
         width=10,
         height=10,
         index=0,
-        styles={"filter": "blur(4px)", "backgroundColor": "rgb(1,2,3)"},
+        styles={"filter": "brightness(0.8)", "backgroundColor": "rgb(1,2,3)"},
     )
 
     result = extract_slide(_slide(node))
@@ -349,7 +372,7 @@ def test_browser_requests_isolated_raster_for_inset_shadow() -> None:
     assert _needs_isolated_raster(node)
 
 
-def test_css_filter_uses_isolated_raster_region_when_available() -> None:
+def test_unsupported_css_filter_uses_isolated_raster_region_when_available() -> None:
     node = RenderedNode(
         tag="div",
         x=5,
@@ -357,7 +380,7 @@ def test_css_filter_uses_isolated_raster_region_when_available() -> None:
         width=10,
         height=10,
         index=0,
-        styles={"filter": "blur(4px)", "backgroundColor": "rgb(1,2,3)"},
+        styles={"filter": "brightness(0.8)", "backgroundColor": "rgb(1,2,3)"},
     )
     # RenderedRaster coords are CSS px; slide scale only affects cropping,
     # extract._raster_shape converts CSS px via px_to_emu without applying rendered.scale.
@@ -367,6 +390,19 @@ def test_css_filter_uses_isolated_raster_region_when_available() -> None:
     shape = result.slide.shapes[0]
     assert shape.box == Box(x=9525, y=19050, width=171450, height=171450)
     assert isinstance(shape.fill, PictureFill) and shape.fill.data == raster.png
+
+
+def test_browser_requests_isolated_renderer_fallback_for_native_css_blur() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        styles={"filter": "blur(4px)"},
+    )
+
+    assert _needs_isolated_raster(node)
 
 
 def test_rasterised_parent_consumes_its_subtree() -> None:

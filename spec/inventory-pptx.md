@@ -9,7 +9,7 @@ evidence covers both conversion directions and the round-trip path.
 
 ## Current PresentationML Capability Matrix
 
-Audited on **2026-07-17**.
+Audited on **2026-07-18**.
 
 | Capability | HTML/CSS -> PPTX | PPTX -> HTML/CSS | Evidence | Main remaining work |
 |---|---|---|---|---|
@@ -25,7 +25,7 @@ Audited on **2026-07-17**.
 | Animations/timing | Gap | Preserve only | unit only | timing IR/input contract, HTML state mapping, visual playback/layer policy, re-emission |
 | Speaker notes | Gap; no public argument | Gap | none | `Slide` notes argument, notes parts/relationships, normalized HTML metadata, round trip |
 | Embedded fonts | Partial/native | Partial/native | unit/integration + real deck | complete face slots, substitutions/licensing, malformed data and renderer baselines |
-| Pictures and raster fallback markers | Native | Native; authoritative reverse crops can attach to preserved positioned nodes | capabilities/integration + `cap:chart-preservation` | automatic renderer policy, stable group ownership and accessibility fields |
+| Pictures and raster fallback markers | Native; isolated blur fallbacks are renderer-selected through `mc:AlternateContent` | Native; authoritative reverse crops can attach to preserved positioned nodes and portable blur fallbacks recover beside their semantic owner | capabilities/integration + `cap:blur-effect` + `cap:chart-preservation` | automatic renderer policy beyond blur, stable group ownership and accessibility fields |
 | SVG extension (`asvg:svgBlip`) | Native write | Native read and exact re-emission for pure pictures | `cap:svg-vector` (both) | cropped/effect-bearing SVG pictures, external assets, and adversarial SVG content |
 | Native tables in graphic frames | Native subset | Native subset; default style reference/flags survive IR and normalized HTML | `cap:table` (both) + LO/Graph real deck | arbitrary style definitions/inheritance and richer graphic-frame ordering |
 | Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph plus caller-rendered normalized-HTML element layer | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart IR, automatic renderer selection, semantic HTML rendering, and native authoring |
@@ -45,6 +45,7 @@ Audited on **2026-07-17**.
 |---|---|---|
 | `body-props` | both | shared text-body properties used by PPTX |
 | `borders` | both | shared stroke/decomposition behavior |
+| `blur-effect` | both | native PowerPoint blur plus isolated LibreOffice fallback, exact effect payload, transform/text stacking, and convergence |
 | `bullets-spacing` | both | shared list/paragraph behavior |
 | `chart-preservation` | reverse | owned chart graph, ambient theme, identity, renderer-backed HTML element layer, and exact PPTX re-emission |
 | `custom-path` | both | native custom geometry and connector structure survive normalized HTML and PPTX re-emission |
@@ -75,7 +76,7 @@ the initial PPTX-ingest boundary; the four real-deck manifests pin the same reve
 4. Complete transitions plus an explicit animation/timing authoring contract.
 5. Native media authoring and playback relationships.
 6. Chart visual layers/native authoring plus SmartArt, OLE, 3D, and unknown-node exact re-emission.
-7. Strict, alternate-content, Microsoft-extension, and malformed-but-accepted package coverage.
+7. Strict, broader alternate-content, Microsoft-extension, and malformed-but-accepted package coverage.
 8. Larger Microsoft-authored corpus and repeated PowerPoint-rendered convergence gates.
 
 <!-- BEGIN GENERATED SCHEMA INVENTORY -->

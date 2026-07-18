@@ -14,6 +14,7 @@ from pptx.util import Inches
 from domoxml import Presentation, pptx_to_html
 from domoxml.core.ir.model import (
     AutoNumberBullet,
+    Blur,
     Box,
     CharBullet,
     GradientFill,
@@ -21,6 +22,7 @@ from domoxml.core.ir.model import (
     GroupNode,
     Line,
     PictureFill,
+    PortableFallback,
     PreservedNode,
     Rgba,
     Shadow,
@@ -128,6 +130,78 @@ def test_reads_generated_pptx_into_canvas_ir() -> None:
     assert result.coverage.count_editability(Editability.SEMANTIC) == 3
     assert result.coverage.output_count == 3
     assert result.coverage.raster_area_emu2 == 0
+
+
+def test_portable_blur_fallback_uses_alternate_content_and_round_trips() -> None:
+    fallback_box = Box(x=800_000, y=700_000, width=2_400_000, height=1_400_000)
+    shape = ShapeNode(
+        box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
+        fill=SolidFill(color=Rgba(r=232, g=74, b=95)),
+        effects=(Blur(radius_emu=95_250),),
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-blur-png",
+                ext="png",
+                raster_role="portable-blur-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert 'mc:Choice Requires="p16"' in slide_xml
+    assert '<a:blur rad="95250" grow="1"/>' in slide_xml
+    assert 'descr="domoxml-raster:portable-blur-fallback"' in slide_xml
+    assert '<mc:Choice Requires="p16"><p:sp>' in slide_xml
+    assert slide_xml.count("domoxml-raster:portable-blur-fallback") == 2
+
+    result = read_pptx_result(pptx)
+    [recovered] = result.slides[0].shapes
+    assert recovered.effects == shape.effects
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == fallback_box
+    assert recovered.portable_fallback.picture.data == b"isolated-blur-png"
+    assert result.coverage.count(Representation.HYBRID) == 1
+    assert result.coverage.count_editability(Editability.COMPONENTS) == 1
+    assert result.coverage.output_count == 2
+    assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
+
+
+def test_portable_fallback_reports_and_retains_unsupported_choice_effects() -> None:
+    shape = ShapeNode(
+        box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
+        fill=SolidFill(color=Rgba(r=232, g=74, b=95)),
+        effects=(Blur(radius_emu=95_250),),
+        portable_fallback=PortableFallback(
+            box=Box(x=800_000, y=700_000, width=2_400_000, height=1_400_000),
+            picture=PictureFill(data=b"isolated-blur-png", ext="png"),
+        ),
+    )
+    package = OpcPackage.from_bytes(
+        build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    )
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    slide_part = "ppt/slides/slide1.xml"
+    root = ElementTree.fromstring(package.read(slide_part))
+    effect_list = root.find(
+        ".//{http://schemas.openxmlformats.org/markup-compatibility/2006}Choice/"
+        "p:sp/p:spPr/a:effectLst",
+        {"p": _P, "a": _A},
+    )
+    assert effect_list is not None
+    effect_list.append(ElementTree.fromstring(f'<a:fillOverlay xmlns:a="{_A}" blend="mult"/>'))
+    parts[slide_part] = ElementTree.tostring(root)
+
+    result = read_pptx_result(write_package(parts))
+
+    [coverage] = result.coverage.items
+    assert coverage.representation is Representation.HYBRID
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.source_retention is SourceRetention.DETACHED
+    assert "detached source-only effect fragments" in (coverage.reason or "")
+    assert {fragment.kind for fragment in result.preserved} == {"fillOverlay", "AlternateContent"}
 
 
 def test_exposes_generated_pptx_as_html() -> None:

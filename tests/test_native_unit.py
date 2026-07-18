@@ -25,14 +25,21 @@ from domoxml.core.ir.model import (
     TextParagraph,
     TextRun,
 )
-from domoxml.core.ir.parse import parse_border_side, parse_gradient, parse_shadow
+from domoxml.core.ir.parse import (
+    parse_border_side,
+    parse_box_reflection,
+    parse_gradient,
+    parse_shadow,
+)
 from domoxml.core.ir.text_payload import encode_text_body
 from domoxml.core.render.browser import (
     RenderedNode,
     RenderedRaster,
     RenderedSlide,
     _needs_isolated_raster,
+    _raster_bounds,
 )
+from domoxml.core.units import px_to_emu
 from domoxml.types import Editability, Representation, SourceRetention
 
 
@@ -200,6 +207,39 @@ def test_css_blur_filter_is_native_and_editable() -> None:
     assert result.coverage[0].editability is Editability.COMPONENTS
     assert result.coverage[0].raster_area_emu2 > 0
     assert "isolated renderer fallback" in result.warnings[0].message
+
+
+def test_css_box_reflection_is_native_with_paint_bound_fallback() -> None:
+    reflection_css = (
+        "below 4px linear-gradient(rgba(0, 0, 0, 0.75) 0%, "
+        "rgba(0, 0, 0, 0) 100%) 0 fill / auto / 0 stretch"
+    )
+    node = RenderedNode(
+        tag="div",
+        x=5,
+        y=6,
+        width=10,
+        height=10,
+        index=0,
+        styles={"webkitBoxReflect": reflection_css, "backgroundColor": "rgb(1,2,3)"},
+    )
+    raster = RenderedRaster(png=_png(20, 48), x=5, y=6, width=10, height=24)
+    result = extract_slide(_slide(node).model_copy(update={"rasters": {0: raster}}))
+
+    shape = result.slide.shapes[0]
+    assert shape.effects == (parse_box_reflection(reflection_css),)
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(5),
+        y=px_to_emu(6),
+        width=px_to_emu(10),
+        height=px_to_emu(24),
+    )
+    assert shape.portable_fallback.picture.raster_role == "portable-effect-fallback"
+    assert result.coverage[0].representation is Representation.HYBRID
+    assert result.coverage[0].editability is Editability.COMPONENTS
+    assert result.coverage[0].raster_area_emu2 == px_to_emu(10) * px_to_emu(24)
+    assert "reflection" in (result.coverage[0].reason or "")
 
 
 def test_unsupported_css_filter_rasterises_and_warns() -> None:
@@ -403,6 +443,56 @@ def test_browser_requests_isolated_renderer_fallback_for_native_css_blur() -> No
     )
 
     assert _needs_isolated_raster(node)
+
+
+def test_browser_reflection_fallback_bounds_include_reflected_copy() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=20,
+        y=30,
+        width=80,
+        height=40,
+        styles={
+            "webkitBoxReflect": ("below 6px linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0))")
+        },
+    )
+
+    assert _needs_isolated_raster(node)
+    assert _raster_bounds(node, slide_width=200, slide_height=150) == (20, 30, 100, 116)
+
+
+def test_browser_reflection_bounds_include_blur_around_reflected_copy() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=20,
+        y=30,
+        width=80,
+        height=40,
+        styles={
+            "filter": "blur(2px)",
+            "webkitBoxReflect": ("below 6px linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0))"),
+        },
+    )
+
+    assert _raster_bounds(node, slide_width=200, slide_height=150) == (14, 24, 106, 122)
+
+
+def test_browser_reflection_bounds_follow_rotated_local_axis() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=100,
+        y=30,
+        width=40,
+        height=80,
+        styles={
+            "transform": "matrix(0, 1, -1, 0, 0, 0)",
+            "domoxmlLayoutWidth": "80",
+            "domoxmlLayoutHeight": "40",
+            "webkitBoxReflect": ("below 6px linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0))"),
+        },
+    )
+
+    assert _raster_bounds(node, slide_width=200, slide_height=150) == (54, 30, 140, 110)
 
 
 def test_rasterised_parent_consumes_its_subtree() -> None:

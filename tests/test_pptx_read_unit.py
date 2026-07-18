@@ -24,6 +24,7 @@ from domoxml.core.ir.model import (
     PictureFill,
     PortableFallback,
     PreservedNode,
+    Reflection,
     Rgba,
     Shadow,
     ShapeNode,
@@ -163,6 +164,46 @@ def test_portable_blur_fallback_uses_alternate_content_and_round_trips() -> None
     assert recovered.portable_fallback is not None
     assert recovered.portable_fallback.box == fallback_box
     assert recovered.portable_fallback.picture.data == b"isolated-blur-png"
+    assert result.coverage.count(Representation.HYBRID) == 1
+    assert result.coverage.count_editability(Editability.COMPONENTS) == 1
+    assert result.coverage.output_count == 2
+    assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
+
+
+def test_portable_reflection_fallback_uses_alternate_content_and_round_trips() -> None:
+    fallback_box = Box(x=900_000, y=700_000, width=2_200_000, height=2_100_000)
+    reflection = Reflection(
+        distance_emu=114_300,
+        start_alpha=0.8,
+        end_alpha=0.0,
+    )
+    shape = ShapeNode(
+        box=Box(x=1_000_000, y=900_000, width=2_000_000, height=900_000),
+        fill=SolidFill(color=Rgba(r=232, g=74, b=95)),
+        effects=(reflection,),
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-reflection-png",
+                ext="png",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert 'mc:Choice Requires="p16"' in slide_xml
+    assert '<a:reflection blurRad="0" dist="114300" stA="80000" endA="0"' in slide_xml
+    assert slide_xml.count("domoxml-raster:portable-effect-fallback") == 2
+
+    result = read_pptx_result(pptx)
+    [recovered] = result.slides[0].shapes
+    assert recovered.effects == (reflection,)
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == fallback_box
+    assert recovered.portable_fallback.picture.data == b"isolated-reflection-png"
     assert result.coverage.count(Representation.HYBRID) == 1
     assert result.coverage.count_editability(Editability.COMPONENTS) == 1
     assert result.coverage.output_count == 2

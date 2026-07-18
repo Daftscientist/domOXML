@@ -11,8 +11,8 @@ Snapshot audited on **2026-07-18** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 705 tests are collected.
-- 19 atomic PPTX capability fixtures exist; 18 are bidirectional and one is a reverse-first chart
+- 716 tests are collected.
+- 20 atomic PPTX capability fixtures exist; 19 are bidirectional and one is a reverse-first chart
   preservation fixture.
 - 9 authored HTML fidelity cases exist.
 - 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and attached
@@ -38,7 +38,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 19 atomic fixtures and 4 real decks pin
+  retention, output-count, and raster-area records. All 20 atomic fixtures and 4 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -248,10 +248,13 @@ silently lowering the expected score.
    corpus.
 8. [ ] Expand effects beyond the bidirectional offset-shadow/inset-layer/glow baseline using
    PowerPoint/Graph-calibrated evidence for blur, soft edge, reflection, preset shadow, fill overlay,
-   compound ordering, and effect-bearing custom geometry. CSS blur now has a bidirectional atomic
-   fixture: PowerPoint retains native `a:blur` beneath an isolated paint-bound layer, LibreOffice
-   selects the same fallback alone, both branches recover into one hybrid IR node, and two-cycle
-   convergence is exact.
+   compound ordering, and effect-bearing custom geometry. CSS blur and the conservative
+   `below <px> linear-gradient(...)` reflection subset now have bidirectional atomic fixtures:
+   PowerPoint retains native `a:blur` or `a:reflection` beneath an isolated paint-bound layer,
+   LibreOffice selects the same fallback alone, both branches recover into one hybrid IR node, and
+   two-cycle convergence is exact. Native reflection blur uses an owned mirrored CSS layer and
+   transform-aware isolated bounds on reverse output. Reflection directions other than `below`,
+   non-pixel gaps, and compound reflection ordering remain open.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,

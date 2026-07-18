@@ -13,6 +13,8 @@ from domoxml.core.ir.model import (
     PictureFill,
     PreservationPayload,
     PreservedNode,
+    Reflection,
+    Rgba,
     ShapeNode,
     SlideIR,
     SolidFill,
@@ -25,8 +27,8 @@ from domoxml.core.ir.model import (
 )
 from domoxml.core.render import BrowserSession, compose_page
 from domoxml.core.roundtrip import inline_assets
-from domoxml.core.units import pixels
-from domoxml.types import Representation, SlideSize, SourceRetention, Theme
+from domoxml.core.units import pixels, px_to_emu
+from domoxml.types import Editability, Representation, SlideSize, SourceRetention, Theme
 
 pytestmark = pytest.mark.integration
 
@@ -69,6 +71,79 @@ async def test_extracts_fill_and_text_from_a_real_render() -> None:
         )
         for s in ir.shapes
     )
+
+
+async def test_extracts_css_reflection_with_complete_isolated_paint_bounds() -> None:
+    result = await _render_and_extract_result(
+        '<div style="position:absolute;left:100px;top:80px;width:220px;height:90px;'
+        "background:#e84a5f;color:white;font-size:24px;"
+        "-webkit-box-reflect:below 12px linear-gradient(to bottom, "
+        'rgba(0,0,0,0.8) 0%, transparent 100%)">REFLECT</div>'
+    )
+
+    [shape] = [
+        shape
+        for shape in result.slide.shapes
+        if any(isinstance(effect, Reflection) for effect in shape.effects)
+    ]
+    assert shape.effects == (
+        Reflection(
+            distance_emu=px_to_emu(12),
+            start_alpha=0.8,
+            end_alpha=0.0,
+        ),
+    )
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(100),
+        y=px_to_emu(80),
+        width=px_to_emu(220),
+        height=px_to_emu(192),
+    )
+    [coverage] = [item for item in result.coverage if item.representation is Representation.HYBRID]
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(192)
+
+
+async def test_blurred_reflection_render_layer_reingests_as_one_hybrid_owner() -> None:
+    reflection = Reflection(
+        blur_emu=px_to_emu(4),
+        distance_emu=px_to_emu(12),
+        start_alpha=0.8,
+        end_alpha=0.0,
+    )
+    node = ShapeNode(
+        node_id="blurred-reflection",
+        box=Box(
+            x=px_to_emu(100),
+            y=px_to_emu(80),
+            width=px_to_emu(220),
+            height=px_to_emu(90),
+        ),
+        fill=SolidFill(color=Rgba(r=232, g=74, b=95)),
+        effects=(reflection,),
+    )
+    serialized = inline_assets(
+        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(node,))])
+    )
+
+    result = await _render_and_extract_result(
+        f"<style>{serialized.css}</style>{serialized.slides[0].html}"
+    )
+
+    [recovered] = [shape for shape in result.slide.shapes if shape.node_id == node.node_id]
+    assert recovered.effects == (reflection,)
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == Box(
+        x=px_to_emu(88),
+        y=px_to_emu(80),
+        width=px_to_emu(244),
+        height=px_to_emu(204),
+    )
+    assert len(result.slide.shapes) == 1
+    [coverage] = result.coverage
+    assert coverage.representation is Representation.HYBRID
+    assert coverage.output_count == 2
 
 
 async def test_browser_capture_preserves_canvas_identity_metadata() -> None:

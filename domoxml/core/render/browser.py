@@ -28,7 +28,7 @@ _SNAPSHOT_JS = """
     fontVariantCaps: cs.fontVariantCaps, letterSpacing: cs.letterSpacing,
     textAlign: cs.textAlign, lineHeight: cs.lineHeight,
     borderRadius: cs.borderRadius, opacity: cs.opacity,
-    boxShadow: cs.boxShadow, filter: cs.filter,
+    boxShadow: cs.boxShadow, filter: cs.filter, webkitBoxReflect: cs.webkitBoxReflect,
     mixBlendMode: cs.mixBlendMode, backdropFilter: cs.backdropFilter,
     clipPath: cs.clipPath, transform: cs.transform, transformOrigin: cs.transformOrigin,
     borderTopWidth: cs.borderTopWidth, borderTopStyle: cs.borderTopStyle,
@@ -147,6 +147,7 @@ _SNAPSHOT_JS = """
   };
   const out = [];
   const walk = (el, parent) => {
+    if (el.getAttribute('data-domoxml-render-layer') === 'true') return;
     const r = el.getBoundingClientRect();
     const text = Array.from(el.childNodes)
       .filter((n) => n.nodeType === 3)
@@ -202,6 +203,8 @@ _SNAPSHOT_JS = """
       domoxmlPreservedPayload: 'data-domoxml-preserved-payload',
       domoxmlConnector: 'data-domoxml-connector',
       domoxmlEffects: 'data-domoxml-effects',
+      domoxmlReflectionDistance: 'data-domoxml-reflection-distance',
+      domoxmlReflectionBlur: 'data-domoxml-reflection-blur',
       domoxmlTextPayload: 'data-domoxml-text-payload',
       domoxmlTableGeometry: 'data-domoxml-table-geometry',
     };
@@ -227,6 +230,7 @@ _SNAPSHOT_JS = """
 
 _CAPTURED_RESOURCE_TYPES = frozenset({"image", "font"})
 _BLUR_RE = re.compile(r"blur\(\s*([\d.]+)px\s*\)", re.IGNORECASE)
+_BOX_REFLECTION_RE = re.compile(r"^(above|below|left|right)\s+(-?[\d.]+)px\b", re.IGNORECASE)
 _MATRIX_RE = re.compile(
     r"matrix\(\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*"
     r"([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*\)",
@@ -312,9 +316,89 @@ class RenderedSlide(BaseModel):
     rasters: dict[int, RenderedRaster] = Field(default_factory=dict[int, RenderedRaster])
 
 
-def _raster_padding(node: RenderedNode) -> float:
+def _raster_bounds(
+    node: RenderedNode, *, slide_width: int, slide_height: int
+) -> tuple[float, float, float, float]:
+    """Return slide-clamped paint bounds for an isolated element raster."""
     match = _BLUR_RE.search(node.styles.get("filter", ""))
-    return float(match.group(1)) * 3 if match is not None else 0.0
+    padding = float(match.group(1)) * 3 if match is not None else 0.0
+    left = node.x - padding
+    top = node.y - padding
+    right = node.x + node.width + padding
+    bottom = node.y + node.height + padding
+
+    reflection = _BOX_REFLECTION_RE.match(node.styles.get("webkitBoxReflect", ""))
+    reflection_blur = 0.0
+    if reflection is None and node.styles.get("domoxmlReflectionDistance"):
+        direction = "below"
+        distance = max(0.0, float(node.styles["domoxmlReflectionDistance"]))
+        reflection_blur = max(0.0, float(node.styles.get("domoxmlReflectionBlur", "0")))
+    elif reflection is not None:
+        direction = reflection.group(1).lower()
+        distance = max(0.0, float(reflection.group(2)))
+    else:
+        direction = ""
+        distance = 0.0
+
+    if direction:
+        transform = node.styles.get("transform", "none")
+        matrix = _MATRIX_RE.search(transform)
+        if transform not in ("", "none") and matrix is None:
+            return (0.0, 0.0, float(slide_width), float(slide_height))
+        a, b, c, d = (
+            (float(matrix.group(index)) for index in range(1, 5))
+            if matrix is not None
+            else (1.0, 0.0, 0.0, 1.0)
+        )
+        layout_width = float(node.styles.get("domoxmlLayoutWidth", node.width))
+        layout_height = float(node.styles.get("domoxmlLayoutHeight", node.height))
+
+        def transformed_rect(
+            x0: float, y0: float, x1: float, y1: float
+        ) -> tuple[float, float, float, float]:
+            points = (
+                (a * x0 + c * y0, b * x0 + d * y0),
+                (a * x1 + c * y0, b * x1 + d * y0),
+                (a * x0 + c * y1, b * x0 + d * y1),
+                (a * x1 + c * y1, b * x1 + d * y1),
+            )
+            xs, ys = zip(*points, strict=True)
+            return min(xs), min(ys), max(xs), max(ys)
+
+        original = transformed_rect(0.0, 0.0, layout_width, layout_height)
+        if direction == "below":
+            reflected = transformed_rect(
+                0.0,
+                layout_height + distance,
+                layout_width,
+                (2 * layout_height) + distance,
+            )
+        elif direction == "above":
+            reflected = transformed_rect(0.0, -layout_height - distance, layout_width, -distance)
+        elif direction == "left":
+            reflected = transformed_rect(-layout_width - distance, 0.0, -distance, layout_height)
+        else:
+            reflected = transformed_rect(
+                layout_width + distance,
+                0.0,
+                (2 * layout_width) + distance,
+                layout_height,
+            )
+        ref_left = node.x + reflected[0] - original[0]
+        ref_top = node.y + reflected[1] - original[1]
+        ref_right = node.x + reflected[2] - original[0]
+        ref_bottom = node.y + reflected[3] - original[1]
+        reflected_padding = padding + (reflection_blur * 3)
+        left = min(left, ref_left - reflected_padding)
+        top = min(top, ref_top - reflected_padding)
+        right = max(right, ref_right + reflected_padding)
+        bottom = max(bottom, ref_bottom + reflected_padding)
+    return (
+        max(0.0, left),
+        max(0.0, top),
+        min(float(slide_width), right),
+        min(float(slide_height), bottom),
+    )
 
 
 def _decompose_matrix(a: float, b: float, c: float, d: float) -> tuple[float, bool, bool] | None:
@@ -459,6 +543,8 @@ def _needs_isolated_raster(node: RenderedNode) -> bool:
         or styles.get("mixBlendMode", "normal") not in ("normal", "")
         or styles.get("backdropFilter", "none") not in ("none", "")
         or styles.get("filter", "none") not in ("none", "")
+        or styles.get("webkitBoxReflect", "none") not in ("none", "")
+        or bool(styles.get("domoxmlReflectionDistance"))
         or is_complex_transform(styles.get("transform"))
     )
 
@@ -545,11 +631,7 @@ class BrowserSession:
                 finally:
                     await restore.evaluate("(restore) => restore()")
                     await restore.dispose()
-                padding = _raster_padding(node)
-                x = max(0.0, node.x - padding)
-                y = max(0.0, node.y - padding)
-                right = min(float(width), node.x + node.width + padding)
-                bottom = min(float(height), node.y + node.height + padding)
+                x, y, right, bottom = _raster_bounds(node, slide_width=width, slide_height=height)
                 crop = crop_png(
                     isolated_page,
                     left=x * self._scale,

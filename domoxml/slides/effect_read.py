@@ -110,14 +110,22 @@ def read_effects(
                 Reflection(
                     blur_emu=_int_attr(child, "blurRad"),
                     distance_emu=_int_attr(child, "dist"),
-                    start_alpha=min(1.0, max(0.0, _int_attr(child, "startA", 100_000) / 100_000)),
+                    start_alpha=min(
+                        1.0,
+                        max(
+                            0.0,
+                            _int_attr(child, "stA", _int_attr(child, "startA", 100_000)) / 100_000,
+                        ),
+                    ),
                     end_alpha=min(1.0, max(0.0, _int_attr(child, "endA") / 100_000)),
                 )
             )
             warnings.append(
                 ConversionWarning(
-                    message="a:reflection approximated as -webkit-box-reflect; "
-                    "forward round-trip will rasterise"
+                    message=(
+                        "a:reflection mapped to -webkit-box-reflect; rebuilt PPTX uses an "
+                        "isolated renderer fallback"
+                    )
                 )
             )
         else:

@@ -10,7 +10,16 @@ import math
 import re
 from typing import Literal
 
-from domoxml.core.ir.model import Blur, GradientFill, GradientStop, Line, LineSpacing, Rgba, Shadow
+from domoxml.core.ir.model import (
+    Blur,
+    GradientFill,
+    GradientStop,
+    Line,
+    LineSpacing,
+    Reflection,
+    Rgba,
+    Shadow,
+)
 from domoxml.core.units import px_to_emu, px_to_pt
 
 _RGB_RE = re.compile(
@@ -22,6 +31,7 @@ _PERCENT_RE = re.compile(r"(-?[\d.]+)\s*%")
 _ANGLE_RE = re.compile(r"(-?[\d.]+)\s*deg", re.IGNORECASE)
 _FUNC_RE = re.compile(r"\b(linear|radial|conic)-gradient\s*\(", re.IGNORECASE)
 _BLUR_FILTER_RE = re.compile(r"blur\(\s*([\d.]+)px\s*\)", re.IGNORECASE)
+_BOX_REFLECTION_RE = re.compile(r"^below\s+([\d.]+)px\s+", re.IGNORECASE)
 
 
 def parse_color(value: str | None) -> Rgba | None:
@@ -306,6 +316,48 @@ def parse_blur_filter(value: str | None) -> Blur | None:
     if match is None:
         return None
     return Blur(radius_emu=px_to_emu(float(match.group(1))))
+
+
+def parse_box_reflection(value: str | None) -> Reflection | None:
+    """Map a conservative computed ``-webkit-box-reflect`` value to DrawingML reflection.
+
+    PowerPoint's current IR models a reflection below the shape. Other directions, non-pixel
+    gaps, and masks outside a vertical two-stop 0%-to-100% fade stay on the element-layer path.
+    CSS box reflection has no independent blur control, so authored CSS maps to ``blur_emu=0``.
+    """
+    if not value or value.strip().lower() == "none":
+        return None
+    normalized = value.strip()
+    match = _BOX_REFLECTION_RE.match(normalized)
+    gradient = _gradient_body(normalized)
+    if match is None or gradient is None or gradient[1]:
+        return None
+    parts = [part.strip() for part in _split_top_level(gradient[0])]
+    if parts and parse_color(parts[0]) is None:
+        direction = parts.pop(0).lower()
+        if direction not in {"to bottom", "180deg"}:
+            return None
+    if len(parts) != 2:
+        return None
+    colors = tuple(parse_color(part) for part in parts)
+    positions = tuple(_PERCENT_RE.search(part) for part in parts)
+    if any(color is None for color in colors) or any(position is None for position in positions):
+        return None
+    start_position, end_position = positions
+    if (
+        start_position is None
+        or end_position is None
+        or float(start_position.group(1)) != 0.0
+        or float(end_position.group(1)) != 100.0
+    ):
+        return None
+    start_color, end_color = colors
+    assert start_color is not None and end_color is not None
+    return Reflection(
+        distance_emu=px_to_emu(float(match.group(1))),
+        start_alpha=start_color.a,
+        end_alpha=end_color.a,
+    )
 
 
 # --------------------------------------------------------------------------- gradients

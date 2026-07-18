@@ -46,6 +46,7 @@ from domoxml.core.ir.model import (
     PictureFill,
     PortableFallback,
     PreservedNode,
+    Reflection,
     Rgba,
     Shadow,
     ShapeNode,
@@ -66,6 +67,7 @@ from domoxml.core.ir.parse import (
     parse_background_size,
     parse_blur_filter,
     parse_border_side,
+    parse_box_reflection,
     parse_caps,
     parse_color,
     parse_decoration,
@@ -498,6 +500,9 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     filter_value = styles.get("filter", "none")
     if filter_value not in ("none", "") and parse_blur_filter(filter_value) is None:
         return "CSS filter has no native mapping"
+    reflection_value = styles.get("webkitBoxReflect", "none")
+    if reflection_value not in ("none", "") and parse_box_reflection(reflection_value) is None:
+        return "CSS box reflection has no native mapping"
     shadow = parse_shadow(styles.get("boxShadow"))
     if shadow is not None and shadow.inset:
         return "inset box-shadow is rasterised because LibreOffice ignores a:innerShdw"
@@ -1313,29 +1318,53 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         encoded_effects = decode_effects(node.styles.get("domoxmlEffects"))
         shadow = parse_shadow(node.styles.get("boxShadow")) if encoded_effects is None else None
         blur = parse_blur_filter(node.styles.get("filter")) if encoded_effects is None else None
+        reflection = (
+            parse_box_reflection(node.styles.get("webkitBoxReflect"))
+            if encoded_effects is None
+            else None
+        )
         effects = (
             encoded_effects
             if encoded_effects is not None
             else (
                 ((blur,) if blur is not None else ())
+                + ((reflection,) if reflection is not None else ())
                 + ((_shadow_to_effect(shadow, box, warnings),) if shadow is not None else ())
             )
         )
         portable_fallback: PortableFallback | None = None
-        if any(isinstance(effect, Blur) for effect in effects):
+        portable_effects = tuple(
+            effect for effect in effects if isinstance(effect, Blur | Reflection)
+        )
+        if portable_effects:
             fallback_shape = _raster_shape(node, rendered)
             if fallback_shape is not None and isinstance(fallback_shape.fill, PictureFill):
+                only_blur = all(isinstance(effect, Blur) for effect in portable_effects)
+                effect_names = ", ".join(effect.kind for effect in portable_effects)
                 portable_fallback = PortableFallback(
                     box=fallback_shape.box,
                     picture=fallback_shape.fill.model_copy(
-                        update={"raster_role": "portable-blur-fallback"}
+                        update={
+                            "raster_role": (
+                                "portable-blur-fallback"
+                                if only_blur
+                                else "portable-effect-fallback"
+                            )
+                        }
                     ),
                 )
                 warnings.append(
                     ConversionWarning(
                         message=(
-                            "CSS blur emitted as editable native a:blur with an isolated "
-                            "renderer fallback"
+                            (
+                                "CSS blur emitted as editable native a:blur with an isolated "
+                                "renderer fallback"
+                            )
+                            if only_blur
+                            else (
+                                f"CSS {effect_names} emitted as editable native effect metadata "
+                                "with an isolated renderer fallback"
+                            )
                         ),
                         element=_label(node),
                     )
@@ -1384,6 +1413,9 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 )
             )
         elif portable_fallback is not None:
+            effect_names = ", ".join(
+                effect.kind for effect in effects if isinstance(effect, Blur | Reflection)
+            )
             coverage.append(
                 CoverageItem(
                     element=_label(node),
@@ -1391,7 +1423,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     editability=Editability.COMPONENTS,
                     output_count=2,
                     raster_area_emu2=(portable_fallback.box.width * portable_fallback.box.height),
-                    reason="editable native blur with an isolated renderer fallback",
+                    reason=(f"editable native {effect_names} with an isolated renderer fallback"),
                 )
             )
         else:

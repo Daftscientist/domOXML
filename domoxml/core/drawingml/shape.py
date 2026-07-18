@@ -329,7 +329,7 @@ def _effects_xml(node: ShapeNode) -> str:
             parts.append(
                 f'<a:reflection blurRad="{effect.blur_emu}" '
                 f'dist="{effect.distance_emu}" '
-                f'startA="{round(effect.start_alpha * 100_000)}" '
+                f'stA="{round(effect.start_alpha * 100_000)}" '
                 f'endA="{round(effect.end_alpha * 100_000)}" '
                 f'dir="5400000" fadeDir="5400000" sx="100000" sy="-100000" '
                 f'ky="0" kx="0" algn="bl" rotWithShape="0"/>'

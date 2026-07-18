@@ -25,7 +25,7 @@ Audited on **2026-07-18**.
 | Animations/timing | Gap | Preserve only | unit only | timing IR/input contract, HTML state mapping, visual playback/layer policy, re-emission |
 | Speaker notes | Gap; no public argument | Gap | none | `Slide` notes argument, notes parts/relationships, normalized HTML metadata, round trip |
 | Embedded fonts | Partial/native | Partial/native | unit/integration + real deck | complete face slots, substitutions/licensing, malformed data and renderer baselines |
-| Pictures and raster fallback markers | Native; isolated blur fallbacks are renderer-selected through `mc:AlternateContent` | Native; authoritative reverse crops can attach to preserved positioned nodes and portable blur fallbacks recover beside their semantic owner | capabilities/integration + `cap:blur-effect` + `cap:chart-preservation` | automatic renderer policy beyond blur, stable group ownership and accessibility fields |
+| Pictures and raster fallback markers | Native; isolated blur/reflection fallbacks are renderer-selected through `mc:AlternateContent` | Native; authoritative reverse crops can attach to preserved positioned nodes and portable effect fallbacks recover beside their semantic owner | capabilities/integration + `cap:blur-effect` + `cap:reflection-effect` + `cap:chart-preservation` | automatic renderer policy beyond proven effects, stable group ownership and accessibility fields |
 | SVG extension (`asvg:svgBlip`) | Native write | Native read and exact re-emission for pure pictures | `cap:svg-vector` (both) | cropped/effect-bearing SVG pictures, external assets, and adversarial SVG content |
 | Native tables in graphic frames | Native subset | Native subset; default style reference/flags survive IR and normalized HTML | `cap:table` (both) + LO/Graph real deck | arbitrary style definitions/inheritance and richer graphic-frame ordering |
 | Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph plus caller-rendered normalized-HTML element layer | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart IR, automatic renderer selection, semantic HTML rendering, and native authoring |
@@ -56,6 +56,7 @@ Audited on **2026-07-18**.
 | `pattern-fills` | both | DrawingML pattern mapping |
 | `picture-crop` | both | picture crop and reverse CSS |
 | `preset-shapes` | both | supported preset geometry subset |
+| `reflection-effect` | both | native PowerPoint reflection plus isolated LibreOffice fallback, exact effect payload, stacking, and convergence |
 | `svg-vector` | both | original SVG asset, identity, native picture, and extension survive re-emission |
 | `table` | both | native DrawingML table subset |
 | `text-decorations` | both | text decoration subset |

@@ -46,7 +46,7 @@ from domoxml.core.ir.model import (
     SoftEdge,
     SolidFill,
 )
-from domoxml.core.ir.parse import parse_blur_filter, parse_shadow
+from domoxml.core.ir.parse import parse_blur_filter, parse_box_reflection, parse_shadow
 from domoxml.core.units import px_to_emu
 from domoxml.slides.appearance_read import rgba
 from domoxml.slides.effect_read import Effect, read_effects
@@ -96,6 +96,42 @@ def test_parse_lone_css_blur_filter() -> None:
     assert parse_blur_filter("none") is None
     assert parse_blur_filter("blur(4px) brightness(0.8)") is None
     assert parse_blur_filter("blur(0.25em)") is None
+
+
+def test_parse_computed_css_box_reflection() -> None:
+    reflection = parse_box_reflection(
+        "below 12px linear-gradient(rgba(0, 0, 0, 0.8) 0%, "
+        "rgba(0, 0, 0, 0) 100%) 0 fill / auto / 0 stretch"
+    )
+
+    assert reflection == Reflection(
+        distance_emu=px_to_emu(12),
+        start_alpha=0.8,
+        end_alpha=0.0,
+    )
+
+
+def test_rejects_css_reflection_that_cannot_map_to_current_ir() -> None:
+    assert parse_box_reflection("above 12px linear-gradient(black, transparent)") is None
+    assert parse_box_reflection("below 1em linear-gradient(black, transparent)") is None
+    assert parse_box_reflection("below 12px none") is None
+    assert (
+        parse_box_reflection(
+            "below 12px linear-gradient(to right, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)"
+        )
+        is None
+    )
+    assert (
+        parse_box_reflection("below 12px linear-gradient(rgba(0,0,0,0.8) 10%, rgba(0,0,0,0) 90%)")
+        is None
+    )
+    assert (
+        parse_box_reflection(
+            "below 12px linear-gradient(rgba(0,0,0,0.8) 0%, "
+            "rgba(0,0,0,0.4) 50%, rgba(0,0,0,0) 100%)"
+        )
+        is None
+    )
 
 
 def test_parse_shadow_captures_spread() -> None:
@@ -382,9 +418,7 @@ def test_reverse_soft_edge() -> None:
 
 def test_reverse_reflection() -> None:
     props = _shape_props(
-        "<a:effectLst>"
-        '<a:reflection blurRad="5000" dist="0" startA="100000" endA="0"/>'
-        "</a:effectLst>"
+        '<a:effectLst><a:reflection blurRad="5000" dist="0" stA="100000" endA="0"/></a:effectLst>'
     )
     effects, warns, _preserved = parse_effects_xml(props, {})
     refl = effects[0]
@@ -394,6 +428,15 @@ def test_reverse_reflection() -> None:
     assert refl.end_alpha == pytest.approx(0.0)
     assert len(warns) == 1
     assert "reflect" in warns[0].message.lower()
+
+
+def test_reverse_reflection_tolerates_legacy_start_alpha_attribute() -> None:
+    props = _shape_props('<a:effectLst><a:reflection startA="42000" endA="0"/></a:effectLst>')
+
+    effects, _warns, _preserved = parse_effects_xml(props, {})
+
+    assert isinstance(effects[0], Reflection)
+    assert effects[0].start_alpha == pytest.approx(0.42)
 
 
 def test_reverse_prst_shadow_preserved() -> None:
@@ -507,12 +550,32 @@ def test_html_soft_edge_emits_mask() -> None:
 
 
 def test_html_reflection_emits_webkit_reflect_and_warning() -> None:
-    slide = _slide_with(
-        Reflection(blur_emu=px_to_emu(5), distance_emu=px_to_emu(2), start_alpha=1.0, end_alpha=0.0)
-    )
+    slide = _slide_with(Reflection(distance_emu=px_to_emu(2), start_alpha=1.0, end_alpha=0.0))
     html = serialize_canvas([slide])
     assert "-webkit-box-reflect" in html.slides[0].html
-    assert any("reflect" in w.message.lower() for w in html.warnings)
+    assert "background-color:rgba(0,128,255,1)" in html.slides[0].html
+    assert any("renderer fallback" in w.message for w in html.warnings)
+
+
+def test_html_blurred_reflection_uses_owned_render_layer() -> None:
+    slide = _slide_with(
+        Reflection(
+            blur_emu=px_to_emu(5),
+            distance_emu=px_to_emu(2),
+            start_alpha=1.0,
+            end_alpha=0.0,
+        )
+    )
+
+    html = serialize_canvas([slide])
+    markup = html.slides[0].html
+
+    assert "-webkit-box-reflect" not in markup
+    assert 'data-domoxml-reflection-distance="2"' in markup
+    assert 'data-domoxml-reflection-blur="5"' in markup
+    assert 'data-domoxml-render-layer="true"' in markup
+    assert "filter:blur(5px)" in markup
+    assert "background-color:rgba(0,128,255,1)" in markup
 
 
 def test_html_inset_shadow_has_inset_keyword() -> None:

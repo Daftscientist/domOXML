@@ -132,8 +132,10 @@ Renderer-selective hybrids use markup compatibility when a native Office effect 
 available in PowerPoint but not painted by another supported renderer. The semantic choice remains
 authoritative; an isolated paint-bound fallback is emitted above it for exact output and as the sole
 branch for incompatible renderers, measured as raster area, and recovered beside the native node on
-re-ingestion. The blur capability currently uses a PowerPoint 2015 choice containing native blur plus
-its portable layer, with the same picture selected alone by LibreOffice.
+re-ingestion. The blur and conservative below-shape CSS reflection capabilities use a PowerPoint
+2015 choice containing the native effect plus its portable layer, with the same picture selected
+alone by LibreOffice. Their isolated bounds include the full effect paint extent rather than only
+the semantic shape box.
 
 ## Direction Contract
 

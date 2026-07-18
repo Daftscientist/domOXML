@@ -373,8 +373,30 @@ def _append_effect_styles(
                 f"at 50% 50%, black calc(100% - {rad_px}px), transparent 100%)"
             )
         else:
-            # Reflection is handled in _node_html; skip in style accumulation.
-            pass
+            # Reflection is the remaining effect union arm.
+            dist_px = _number(emu_to_px(effect.distance_emu))
+            if effect.blur_emu == 0:
+                gradient = (
+                    "linear-gradient(to bottom, "
+                    f"rgba(0,0,0,{_number(effect.start_alpha)}) 0%, "
+                    f"rgba(0,0,0,{_number(effect.end_alpha)}) 100%)"
+                )
+                styles.append(f"-webkit-box-reflect:below {dist_px}px {gradient}")
+            warnings.append(
+                ConversionWarning(
+                    message=(
+                        (
+                            "a:reflection mapped to -webkit-box-reflect; rebuilt PPTX uses an "
+                            "isolated renderer fallback"
+                        )
+                        if effect.blur_emu == 0
+                        else (
+                            "blurred a:reflection rendered as an owned CSS layer; rebuilt PPTX "
+                            "uses an isolated renderer fallback"
+                        )
+                    )
+                )
+            )
 
     if box_shadows:
         styles.append(f"box-shadow:{','.join(box_shadows)}")
@@ -383,6 +405,55 @@ def _append_effect_styles(
     if soft_edge_masks:
         styles.append(f"mask-image:{','.join(soft_edge_masks)}")
         styles.append("-webkit-mask-image:" + ",".join(soft_edge_masks))
+
+
+def _blurred_reflection_layer(node: ShapeNode, assets: dict[str, HtmlAsset]) -> tuple[str, str]:
+    """Renderer-only child and parent metadata for a reflection with independent blur."""
+    reflection = next(
+        (
+            effect
+            for effect in node.effects
+            if isinstance(effect, Reflection) and effect.blur_emu > 0
+        ),
+        None,
+    )
+    if reflection is None:
+        return "", ""
+
+    reflected = node.model_copy(
+        update={
+            "box": node.box.model_copy(update={"x": 0, "y": 0}),
+            "effects": (),
+            "portable_fallback": None,
+            "transform": None,
+        }
+    )
+    child_style = _shape_style(reflected, assets, [])
+    body_css = _text_body_css(reflected.text, [])
+    if body_css:
+        child_style += ";" + body_css
+    distance_px = _number(emu_to_px(reflection.distance_emu))
+    blur_px = _number(emu_to_px(reflection.blur_emu))
+    mask = (
+        "linear-gradient(to bottom, "
+        f"rgba(0,0,0,{_number(reflection.end_alpha)}) 0%, "
+        f"rgba(0,0,0,{_number(reflection.start_alpha)}) 100%)"
+    )
+    child_style += (
+        f";left:0;top:calc(100% + {distance_px}px);position:absolute;"
+        f"transform:scaleY(-1);transform-origin:center;filter:blur({blur_px}px);"
+        f"mask-image:{mask};-webkit-mask-image:{mask};pointer-events:none"
+    )
+    parent_attrs = (
+        f' data-domoxml-reflection-distance="{distance_px}"'
+        f' data-domoxml-reflection-blur="{blur_px}"'
+    )
+    child = (
+        '<div class="domoxml-reflection-layer" data-domoxml-render-layer="true" '
+        f'aria-hidden="true" style="{escape(child_style, quote=True)}">'
+        f"{_text_html(reflected.text, [])}</div>"
+    )
+    return parent_attrs, child
 
 
 def _decoration_css(run: TextRun) -> str | None:
@@ -869,42 +940,12 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
             raster_attr = f' data-domoxml-raster="{escape(node.fill.raster_role, quote=True)}"'
         style = escape(combined_style, quote=True)
         metadata_attrs = _identity_attrs(node) + _effect_attrs(node) + _text_payload_attrs(node)
+        reflection_attrs, reflection_layer = _blurred_reflection_layer(node, assets)
         inner = (
             f'<div class="domoxml-shape"{metadata_attrs} style="{style}"'
-            f"{autofit_attr}{text_body_attr}{raster_attr}>"
-            f"{_text_html(node.text, warnings)}</div>"
+            f"{autofit_attr}{text_body_attr}{raster_attr}{reflection_attrs}>"
+            f"{_text_html(node.text, warnings)}{reflection_layer}</div>"
         )
-        # Wrap with reflection if present
-        reflections = [e for e in node.effects if isinstance(e, Reflection)]
-        if reflections:
-            ref = reflections[0]
-            dist_px = _number(emu_to_px(ref.distance_emu))
-            # Build a gradient mask for the reflection fade
-            grad = (
-                f"linear-gradient(to bottom, "
-                f"rgba(0,0,0,{_number(ref.start_alpha)}) 0%, "
-                f"rgba(0,0,0,{_number(ref.end_alpha)}) 100%)"
-            )
-            reflect_style = (
-                f"-webkit-box-reflect:below {dist_px}px {grad};box-reflect:below {dist_px}px {grad}"
-            )
-            warnings.append(
-                ConversionWarning(
-                    message="a:reflection approximated as -webkit-box-reflect; "
-                    "support is WebKit/Blink only — forward round-trip will rasterise"
-                )
-            )
-            # Wrap so the reflect doesn't escape the slide bounds
-            w = _px(node.box.width)
-            h = _px(node.box.height)
-            left = _px(node.box.x)
-            top = _px(node.box.y)
-            return (
-                f'<div class="domoxml-shape"{metadata_attrs} '
-                f'style="left:{left};top:{top};width:{w};height:{h};'
-                f'{reflect_style}">'
-                f"{_text_html(node.text, warnings)}</div>"
-            )
         return inner
     if isinstance(node, GroupNode):
         return _group_html(node, assets, warnings)

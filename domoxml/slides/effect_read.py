@@ -97,7 +97,10 @@ def read_effects(
             effects.append(Blur(radius_emu=_int_attr(child, "rad")))
             warnings.append(
                 ConversionWarning(
-                    message="a:blur mapped to filter:blur() — forward round-trip will rasterise"
+                    message=(
+                        "a:blur mapped to filter:blur(); rebuilt PPTX uses an isolated "
+                        "renderer fallback"
+                    )
                 )
             )
         elif kind == "softEdge":

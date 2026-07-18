@@ -46,7 +46,7 @@ from domoxml.core.ir.model import (
     SoftEdge,
     SolidFill,
 )
-from domoxml.core.ir.parse import parse_shadow
+from domoxml.core.ir.parse import parse_blur_filter, parse_shadow
 from domoxml.core.units import px_to_emu
 from domoxml.slides.appearance_read import rgba
 from domoxml.slides.effect_read import Effect, read_effects
@@ -89,6 +89,13 @@ def _node(
 # -----------------------------------------------------------------------
 # Forward: parse_shadow (spread parsed correctly)
 # -----------------------------------------------------------------------
+
+
+def test_parse_lone_css_blur_filter() -> None:
+    assert parse_blur_filter("blur(4.5px)") == Blur(radius_emu=px_to_emu(4.5))
+    assert parse_blur_filter("none") is None
+    assert parse_blur_filter("blur(4px) brightness(0.8)") is None
+    assert parse_blur_filter("blur(0.25em)") is None
 
 
 def test_parse_shadow_captures_spread() -> None:
@@ -362,7 +369,7 @@ def test_reverse_blur_produces_warning() -> None:
     assert isinstance(blur, Blur)
     assert blur.radius_emu == 25_000
     assert len(warns) == 1
-    assert "rasterise" in warns[0].message
+    assert "renderer fallback" in warns[0].message
 
 
 def test_reverse_soft_edge() -> None:
@@ -488,7 +495,7 @@ def test_html_blur_emits_filter_and_warning() -> None:
     html = serialize_canvas([slide])
     assert "filter" in html.slides[0].html
     assert "blur" in html.slides[0].html
-    assert any("rasterise" in w.message for w in html.warnings)
+    assert any("renderer fallback" in w.message for w in html.warnings)
 
 
 def test_html_soft_edge_emits_mask() -> None:

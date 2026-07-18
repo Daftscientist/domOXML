@@ -184,6 +184,19 @@ class PictureFill(BaseModel):
     raster_role: str | None = None
 
 
+class PortableFallback(BaseModel):
+    """An isolated picture used only when a target renderer cannot paint a native feature.
+
+    The semantic node remains authoritative and editable. ``box`` is the paint-bound crop in
+    slide coordinates, which may be larger than the owning shape when an effect overflows.
+    """
+
+    model_config = _FROZEN
+
+    box: Box
+    picture: PictureFill
+
+
 class PatternFill(BaseModel):
     """A two-colour preset pattern (``a:pattFill``). ``preset`` is the DrawingML pattern name
     (e.g. ``"pct50"``, ``"ltHorz"``, ``"diagCross"``); ``fg``/``bg`` are its foreground and
@@ -652,6 +665,7 @@ class ShapeNode(CanvasNode):
     line: Line | None = None
     side_lines: SideLines | None = None
     effects: tuple[Effect, ...] = ()
+    portable_fallback: PortableFallback | None = None
     transform: Transform | None = None
     corner_radius_emu: int = 0
     opacity: float = Field(default=1.0, ge=0.0, le=1.0)

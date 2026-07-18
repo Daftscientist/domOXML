@@ -251,6 +251,7 @@ def _slide(
     media_parts: dict[str, bytes] = {}
     image_rels: list[tuple[str, str]] = []
     blip_rids: dict[int, str] = {}
+    fallback_rids: dict[int, str] = {}
     svg_rids: dict[int, str] = {}
     has_svg = False
     next_rid = 2  # rId1 is the layout
@@ -295,6 +296,9 @@ def _slide(
             if node.fill.svg_data is not None:
                 svg_rids[position] = register_media(node.fill.svg_data, "svg")
                 has_svg = True
+        if isinstance(node, ShapeNode) and node.portable_fallback is not None:
+            fallback = node.portable_fallback.picture
+            fallback_rids[position] = register_media(fallback.data, fallback.ext)
 
     # One slide relationship per run hyperlink, in document order. Identity-keyed so two runs
     # with structurally-equal links still each get their own rel (matching the IR objects).
@@ -360,15 +364,51 @@ def _slide(
                     )
                 )
             else:
-                content_parts.append(
-                    shape_xml(
-                        node,
-                        shape_id=shape_id,
-                        blip_rid=blip_rid,
-                        svg_rid=svg_rids.get(position),
-                        hyperlink_rid=_hyperlink_rid,
-                    )
+                native_xml = shape_xml(
+                    node,
+                    shape_id=shape_id,
+                    blip_rid=blip_rid,
+                    svg_rid=svg_rids.get(position),
+                    hyperlink_rid=_hyperlink_rid,
                 )
+                fallback_rid = fallback_rids.get(position)
+                if node.portable_fallback is None or fallback_rid is None:
+                    content_parts.append(native_xml)
+                else:
+                    fallback_node = node.model_copy(
+                        update={
+                            "box": node.portable_fallback.box,
+                            "geom": "rect",
+                            "custom_geom": None,
+                            "fill": node.portable_fallback.picture,
+                            "line": None,
+                            "side_lines": None,
+                            "effects": (),
+                            "portable_fallback": None,
+                            "transform": None,
+                            "corner_radius_emu": 0,
+                            "opacity": 1.0,
+                            "text": None,
+                        }
+                    )
+                    choice_fallback_xml = picture_xml(
+                        fallback_node,
+                        shape_id=len(slide.contents) + 2 + position,
+                        blip_rid=fallback_rid,
+                    )
+                    fallback_xml = picture_xml(
+                        fallback_node,
+                        shape_id=(2 * len(slide.contents)) + 2 + position,
+                        blip_rid=fallback_rid,
+                    )
+                    content_parts.append(
+                        "<mc:AlternateContent "
+                        'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+                        'xmlns:p16="http://schemas.microsoft.com/office/powerpoint/2015/main">'
+                        f'<mc:Choice Requires="p16">{native_xml}{choice_fallback_xml}</mc:Choice>'
+                        f"<mc:Fallback>{fallback_xml}</mc:Fallback>"
+                        "</mc:AlternateContent>"
+                    )
         elif isinstance(node, Connector):
             content_parts.append(_connector_xml(node, shape_id=shape_id))
         elif isinstance(node, TableNode):

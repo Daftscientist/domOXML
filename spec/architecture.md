@@ -104,7 +104,7 @@ Every visible source subtree is lowered using the first level that meets the fid
 |---|---|---|
 | Native | one target primitive represents the feature | semantic and object editable |
 | Decomposed | several native primitives reproduce it | components editable; source relation retained |
-| Hybrid | semantic/native content plus rasterized effect or decoration layers | core content editable; visual layers movable |
+| Hybrid | semantic/native content plus rasterized effect, decoration, or renderer-selective fallback layers | core content editable; visible layers movable where simultaneously emitted |
 | Layered | the smallest practical independent raster layers reproduce the source | layers independently movable and replaceable |
 | Element layer | one rasterized source subtree when finer separation is not reliable | element movable as one object |
 
@@ -127,6 +127,13 @@ Rasterization is a compatibility backend, not an error. It must:
 - avoid duplicating content retained natively;
 - label layer role and source ownership for stable re-ingestion;
 - report semantic editability debt independently of visual fidelity.
+
+Renderer-selective hybrids use markup compatibility when a native Office effect is editable and
+available in PowerPoint but not painted by another supported renderer. The semantic choice remains
+authoritative; an isolated paint-bound fallback is emitted above it for exact output and as the sole
+branch for incompatible renderers, measured as raster area, and recovered beside the native node on
+re-ingestion. The blur capability currently uses a PowerPoint 2015 choice containing native blur plus
+its portable layer, with the same picture selected alone by LibreOffice.
 
 ## Direction Contract
 

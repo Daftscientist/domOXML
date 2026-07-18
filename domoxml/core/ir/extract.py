@@ -3,7 +3,8 @@
 The mapping is **native-first**: every element that OOXML can express (solid/gradient/
 picture fills, borders, shadows, basic geometry, text) is mapped to native, editable
 DrawingML. An element is rasterised **only** when it has no faithful native mapping
-(conic gradients, CSS filters, blend modes, clip paths, rotation, ``<svg>``/``<canvas>``).
+(conic gradients, unsupported CSS filters, blend modes, clip paths, rotation,
+``<svg>``/``<canvas>``).
 Nothing is ever dropped silently: every element yields a :class:`CoverageItem`, and every
 raster/approximation yields a :class:`ConversionWarning`.
 """
@@ -30,6 +31,7 @@ from domoxml.core.ir.connector_extract import extract_connector
 from domoxml.core.ir.effect_payload import decode_effects
 from domoxml.core.ir.model import (
     AutoNumberBullet,
+    Blur,
     Box,
     CanvasNode,
     CharBullet,
@@ -42,6 +44,7 @@ from domoxml.core.ir.model import (
     LineSpacing,
     Node,
     PictureFill,
+    PortableFallback,
     PreservedNode,
     Rgba,
     Shadow,
@@ -61,6 +64,7 @@ from domoxml.core.ir.parse import (
     is_bold,
     parse_background_position,
     parse_background_size,
+    parse_blur_filter,
     parse_border_side,
     parse_caps,
     parse_color,
@@ -491,7 +495,8 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
         return "mix-blend-mode has no native mapping"
     if styles.get("backdropFilter", "none") not in ("none", ""):
         return "backdrop-filter has no native mapping"
-    if styles.get("filter", "none") not in ("none", ""):
+    filter_value = styles.get("filter", "none")
+    if filter_value not in ("none", "") and parse_blur_filter(filter_value) is None:
         return "CSS filter has no native mapping"
     shadow = parse_shadow(styles.get("boxShadow"))
     if shadow is not None and shadow.inset:
@@ -1307,11 +1312,34 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             )
         encoded_effects = decode_effects(node.styles.get("domoxmlEffects"))
         shadow = parse_shadow(node.styles.get("boxShadow")) if encoded_effects is None else None
+        blur = parse_blur_filter(node.styles.get("filter")) if encoded_effects is None else None
         effects = (
             encoded_effects
             if encoded_effects is not None
-            else ((_shadow_to_effect(shadow, box, warnings),) if shadow is not None else ())
+            else (
+                ((blur,) if blur is not None else ())
+                + ((_shadow_to_effect(shadow, box, warnings),) if shadow is not None else ())
+            )
         )
+        portable_fallback: PortableFallback | None = None
+        if any(isinstance(effect, Blur) for effect in effects):
+            fallback_shape = _raster_shape(node, rendered)
+            if fallback_shape is not None and isinstance(fallback_shape.fill, PictureFill):
+                portable_fallback = PortableFallback(
+                    box=fallback_shape.box,
+                    picture=fallback_shape.fill.model_copy(
+                        update={"raster_role": "portable-blur-fallback"}
+                    ),
+                )
+                warnings.append(
+                    ConversionWarning(
+                        message=(
+                            "CSS blur emitted as editable native a:blur with an isolated "
+                            "renderer fallback"
+                        ),
+                        element=_label(node),
+                    )
+                )
         # Emit per-side border rects before the main shape so they appear behind its fill.
         contents.extend(side_rect_shapes)
         contents.append(
@@ -1322,6 +1350,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     fill=fill,
                     line=line,
                     effects=effects,
+                    portable_fallback=portable_fallback,
                     corner_radius_emu=corner,
                     opacity=_opacity(node.styles),
                     text=text,
@@ -1352,6 +1381,17 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     ),
                     output_count=1 + len(side_rect_shapes),
                     reason="; ".join(dict.fromkeys(approximation_reasons)),
+                )
+            )
+        elif portable_fallback is not None:
+            coverage.append(
+                CoverageItem(
+                    element=_label(node),
+                    representation=Representation.HYBRID,
+                    editability=Editability.COMPONENTS,
+                    output_count=2,
+                    raster_area_emu2=(portable_fallback.box.width * portable_fallback.box.height),
+                    reason="editable native blur with an isolated renderer fallback",
                 )
             )
         else:

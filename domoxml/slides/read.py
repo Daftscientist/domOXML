@@ -29,6 +29,7 @@ from domoxml.core.ir.model import (
     PathCommand,
     PictureFill,
     Point,
+    PortableFallback,
     PreservedNode,
     QuadTo,
     ShapeNode,
@@ -760,6 +761,69 @@ def _slide(
             preserve_whole_node = True
             if kind in {"nvGrpSpPr", "grpSpPr"}:
                 continue
+            if kind == "AlternateContent":
+                choice = next((child for child in element if _local_name(child) == "Choice"), None)
+                fallback_branch = next(
+                    (child for child in element if _local_name(child) == "Fallback"), None
+                )
+                native = next(iter(choice), None) if choice is not None else None
+                fallback_element = (
+                    next(iter(fallback_branch), None) if fallback_branch is not None else None
+                )
+                if (
+                    native is not None
+                    and _local_name(native) == "sp"
+                    and fallback_element is not None
+                    and _local_name(fallback_element) == "pic"
+                ):
+                    shape, shape_warns, shape_preserved = _shape(
+                        native,
+                        package,
+                        slide_part,
+                        colors,
+                        hyperlink_for,
+                        inherit_ctx=inherit_ctx,
+                    )
+                    fallback_shape = _picture_shape(fallback_element, package, slide_part)
+                    if (
+                        shape is not None
+                        and fallback_shape is not None
+                        and isinstance(fallback_shape.fill, PictureFill)
+                    ):
+                        portable_fallback = PortableFallback(
+                            box=fallback_shape.box,
+                            picture=fallback_shape.fill,
+                        )
+                        contents.append(
+                            shape.model_copy(update={"portable_fallback": portable_fallback})
+                        )
+                        warnings.extend(shape_warns)
+                        preserved.extend(shape_preserved)
+                        has_preserved_effects = bool(shape_preserved)
+                        reason = "editable native visual with an isolated renderer fallback"
+                        if has_preserved_effects:
+                            reason += "; shape has detached source-only effect fragments"
+                        coverage.append(
+                            CoverageItem(
+                                element=_visual_label(slide_part, native),
+                                representation=Representation.HYBRID,
+                                editability=Editability.COMPONENTS,
+                                source_retention=(
+                                    SourceRetention.DETACHED
+                                    if has_preserved_effects
+                                    else SourceRetention.NOT_REQUIRED
+                                ),
+                                output_count=2,
+                                raster_area_emu2=(
+                                    portable_fallback.box.width * portable_fallback.box.height
+                                ),
+                                reason=reason,
+                            )
+                        )
+                        if not has_preserved_effects:
+                            continue
+                        preserve_whole_node = False
+                reason = "preserved unsupported markup-compatibility visual"
             if kind == "sp":
                 shape, shape_warns, shape_preserved = _shape(
                     element,

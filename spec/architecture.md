@@ -132,10 +132,13 @@ Renderer-selective hybrids use markup compatibility when a native Office effect 
 available in PowerPoint but not painted by another supported renderer. The semantic choice remains
 authoritative; an isolated paint-bound fallback is emitted above it for exact output and as the sole
 branch for incompatible renderers, measured as raster area, and recovered beside the native node on
-re-ingestion. The blur and conservative below-shape CSS reflection capabilities use a PowerPoint
-2015 choice containing the native effect plus its portable layer, with the same picture selected
-alone by LibreOffice. Their isolated bounds include the full effect paint extent rather than only
-the semantic shape box.
+re-ingestion. Blur, conservative below-shape CSS reflection, and the strict two-axis CSS soft-edge
+mask use a PowerPoint 2015 choice containing the native effect plus its portable layer, with the
+same picture selected alone by LibreOffice. Blur and reflection bounds include their full overflow;
+soft edge uses the shape paint box because its feather is wholly inset. Normalized rectangles use
+the same two-axis mask, while normalized ellipses use a boundary-following closest-side radial mask.
+Nondefault authored mask geometry does not enter this hybrid path and remains visible through the
+general element-layer fallback.
 
 ## Direction Contract
 

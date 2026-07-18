@@ -51,6 +51,7 @@ from domoxml.core.ir.model import (
     Shadow,
     ShapeNode,
     SlideIR,
+    SoftEdge,
     SolidFill,
     SourceProvenance,
     SrcRect,
@@ -79,6 +80,7 @@ from domoxml.core.ir.parse import (
     parse_polygon,
     parse_radius_px,
     parse_shadow,
+    parse_soft_edge_mask,
 )
 from domoxml.core.ir.pattern import match_pattern_fill
 from domoxml.core.ir.slide_properties_extract import extract_slide_properties
@@ -500,6 +502,26 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     filter_value = styles.get("filter", "none")
     if filter_value not in ("none", "") and parse_blur_filter(filter_value) is None:
         return "CSS filter has no native mapping"
+    mask_value = styles.get("maskImage", "none")
+    mask_corner = px_to_emu(
+        parse_radius_px(styles.get("borderRadius"), shorter_side_px=min(node.width, node.height))
+    )
+    if (
+        mask_value not in ("none", "")
+        and parse_soft_edge_mask(
+            mask_value,
+            styles.get("maskComposite"),
+            repeat=styles.get("maskRepeat"),
+            position=styles.get("maskPosition"),
+            size=styles.get("maskSize"),
+            origin=styles.get("maskOrigin"),
+            clip=styles.get("maskClip"),
+            mode=styles.get("maskMode"),
+            ellipse=_geometry(_box(node), mask_corner) == "ellipse",
+        )
+        is None
+    ):
+        return "CSS mask has no native mapping"
     reflection_value = styles.get("webkitBoxReflect", "none")
     if reflection_value not in ("none", "") and parse_box_reflection(reflection_value) is None:
         return "CSS box reflection has no native mapping"
@@ -895,6 +917,9 @@ def _is_plain_inline(node: RenderedNode, fill: Fill | None, line: Line | None) -
         and fill is None
         and line is None
         and parse_shadow(node.styles.get("boxShadow")) is None
+        and node.styles.get("filter", "none") in ("none", "")
+        and node.styles.get("maskImage", "none") in ("none", "")
+        and node.styles.get("webkitBoxReflect", "none") in ("none", "")
     )
 
 
@@ -1318,6 +1343,21 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         encoded_effects = decode_effects(node.styles.get("domoxmlEffects"))
         shadow = parse_shadow(node.styles.get("boxShadow")) if encoded_effects is None else None
         blur = parse_blur_filter(node.styles.get("filter")) if encoded_effects is None else None
+        soft_edge = (
+            parse_soft_edge_mask(
+                node.styles.get("maskImage"),
+                node.styles.get("maskComposite"),
+                repeat=node.styles.get("maskRepeat"),
+                position=node.styles.get("maskPosition"),
+                size=node.styles.get("maskSize"),
+                origin=node.styles.get("maskOrigin"),
+                clip=node.styles.get("maskClip"),
+                mode=node.styles.get("maskMode"),
+                ellipse=geom == "ellipse",
+            )
+            if encoded_effects is None
+            else None
+        )
         reflection = (
             parse_box_reflection(node.styles.get("webkitBoxReflect"))
             if encoded_effects is None
@@ -1328,13 +1368,17 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             if encoded_effects is not None
             else (
                 ((blur,) if blur is not None else ())
+                + ((soft_edge,) if soft_edge is not None else ())
                 + ((reflection,) if reflection is not None else ())
                 + ((_shadow_to_effect(shadow, box, warnings),) if shadow is not None else ())
             )
         )
         portable_fallback: PortableFallback | None = None
         portable_effects = tuple(
-            effect for effect in effects if isinstance(effect, Blur | Reflection)
+            effect
+            for effect in effects
+            if isinstance(effect, Blur | Reflection)
+            or (isinstance(effect, SoftEdge) and effect.radius_emu > 0)
         )
         if portable_effects:
             fallback_shape = _raster_shape(node, rendered)
@@ -1413,9 +1457,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 )
             )
         elif portable_fallback is not None:
-            effect_names = ", ".join(
-                effect.kind for effect in effects if isinstance(effect, Blur | Reflection)
-            )
+            effect_names = ", ".join(effect.kind for effect in portable_effects)
             coverage.append(
                 CoverageItem(
                     element=_label(node),

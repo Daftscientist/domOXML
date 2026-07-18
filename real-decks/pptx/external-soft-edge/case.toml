@@ -1,0 +1,59 @@
+id = "external-soft-edge"
+pptx_file = "source.pptx"
+
+[provenance]
+source_url = "https://github.com/iOfficeAI/OfficeCLI/blob/c402d04892b1db5e3824054d7e62f191514bf21b/examples/ppt/shapes/shapes-effects.pptx"
+source_revision = "c402d04892b1db5e3824054d7e62f191514bf21b"
+license = "Apache-2.0"
+sha256 = "eb68392bc115db53a47cb6e7ee95be4a97fb85a85a917d7d3faf25580a9ef00f"
+
+[package]
+slides = 5
+required_parts = [
+  "ppt/slides/slide1.xml",
+  "ppt/slides/slide5.xml",
+  "ppt/theme/theme1.xml",
+  "ppt/media/image.png",
+]
+
+[reverse]
+min_representation = { native = 34 }
+max_representation = { native = 34, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 34 }
+max_editability = { semantic = 34, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 34 }
+max_source_retention = { not_required = 34, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 34
+max_output_count = 34
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+min_assets = 1
+max_warnings = 4
+warning_contains = ["a:softEdge mapped to a geometry-aware CSS alpha mask"]
+preserved_count = 0
+html_contains = [
+  "radial-gradient(ellipse closest-side",
+  "data-domoxml-effects=",
+  "softEdge=20pt  (heavy feather)",
+  "https://example.com",
+]
+roundtrip_xml_contains = [
+  "softEdge / link / name / zorder",
+  "softEdge=8pt",
+  "softEdge=20pt  (heavy feather)",
+  '<a:softEdge rad="0"/>',
+  '<a:softEdge rad="101600"/>',
+  '<a:softEdge rad="254000"/>',
+  "https://example.com",
+  "cta-button",
+]
+
+[[visual]]
+slide = 4
+# The soft-edge falloff and stacking are directly visible and guarded. The intentionally lower
+# focused floor classifies the still-open ellipse text-rectangle mapping: normalized HTML places
+# text against the CSS box instead of PowerPoint's geometry-specific internal text rectangle.
+min_similarity = 0.965
+min_regional_similarity = 0.82
+min_focused_similarity = 0.56
+min_structural_similarity = 0.80

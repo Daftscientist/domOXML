@@ -20,6 +20,7 @@ from domoxml.core.ir.model import (
     PictureFill,
     Rgba,
     Shadow,
+    SoftEdge,
     SolidFill,
     TextBody,
     TextParagraph,
@@ -30,6 +31,7 @@ from domoxml.core.ir.parse import (
     parse_box_reflection,
     parse_gradient,
     parse_shadow,
+    parse_soft_edge_mask,
 )
 from domoxml.core.ir.text_payload import encode_text_body
 from domoxml.core.render.browser import (
@@ -242,6 +244,91 @@ def test_css_box_reflection_is_native_with_paint_bound_fallback() -> None:
     assert "reflection" in (result.coverage[0].reason or "")
 
 
+def test_css_soft_edge_is_native_with_shape_bound_fallback() -> None:
+    mask = (
+        "linear-gradient(to right, rgba(0,0,0,0) 0px, rgb(0,0,0) 4px, "
+        "rgb(0,0,0) calc(100% - 4px), rgba(0,0,0,0) 100%),"
+        "linear-gradient(rgba(0,0,0,0) 0px, rgb(0,0,0) 4px, "
+        "rgb(0,0,0) calc(100% - 4px), rgba(0,0,0,0) 100%)"
+    )
+    node = RenderedNode(
+        tag="div",
+        x=5,
+        y=6,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "maskImage": mask,
+            "maskComposite": "intersect, intersect",
+            "backgroundColor": "rgb(1,2,3)",
+        },
+    )
+    raster = RenderedRaster(png=_png(20, 20), x=5, y=6, width=10, height=10)
+    result = extract_slide(_slide(node).model_copy(update={"rasters": {0: raster}}))
+
+    shape = result.slide.shapes[0]
+    assert shape.effects == (parse_soft_edge_mask(mask, "intersect, intersect"),)
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(5),
+        y=px_to_emu(6),
+        width=px_to_emu(10),
+        height=px_to_emu(10),
+    )
+    assert shape.portable_fallback.picture.raster_role == "portable-effect-fallback"
+    assert result.coverage[0].representation is Representation.HYBRID
+    assert result.coverage[0].editability is Editability.COMPONENTS
+    assert result.coverage[0].raster_area_emu2 == px_to_emu(10) * px_to_emu(10)
+    assert "softEdge" in (result.coverage[0].reason or "")
+
+
+def test_zero_radius_soft_edge_stays_native_without_fallback() -> None:
+    effect = SoftEdge(radius_emu=0)
+    node = RenderedNode(
+        tag="div",
+        x=5,
+        y=6,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "domoxmlEffects": encode_effects((effect,)),
+            "backgroundColor": "rgb(1,2,3)",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    shape = result.slide.shapes[0]
+    assert shape.effects == (effect,)
+    assert shape.portable_fallback is None
+    assert result.coverage[0].representation is Representation.NATIVE
+
+
+def test_unmapped_css_mask_uses_visible_element_layer() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "maskImage": "radial-gradient(rgb(0,0,0), rgba(0,0,0,0))",
+            "maskComposite": "add",
+            "backgroundColor": "rgb(1,2,3)",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert result.coverage[0].editability is Editability.LAYERS
+    assert "CSS mask" in (result.coverage[0].reason or "")
+
+
 def test_unsupported_css_filter_rasterises_and_warns() -> None:
     node = RenderedNode(
         tag="div",
@@ -443,6 +530,20 @@ def test_browser_requests_isolated_renderer_fallback_for_native_css_blur() -> No
     )
 
     assert _needs_isolated_raster(node)
+
+
+def test_browser_requests_isolated_renderer_fallback_for_css_mask() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        styles={"maskImage": "linear-gradient(rgb(0,0,0), rgba(0,0,0,0))"},
+    )
+
+    assert _needs_isolated_raster(node)
+    assert _raster_bounds(node, slide_width=20, slide_height=20) == (0, 0, 10, 10)
 
 
 def test_browser_reflection_fallback_bounds_include_reflected_copy() -> None:

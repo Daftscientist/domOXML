@@ -29,6 +29,9 @@ _SNAPSHOT_JS = """
     textAlign: cs.textAlign, lineHeight: cs.lineHeight,
     borderRadius: cs.borderRadius, opacity: cs.opacity,
     boxShadow: cs.boxShadow, filter: cs.filter, webkitBoxReflect: cs.webkitBoxReflect,
+    maskImage: cs.maskImage, maskComposite: cs.maskComposite,
+    maskRepeat: cs.maskRepeat, maskPosition: cs.maskPosition, maskSize: cs.maskSize,
+    maskOrigin: cs.maskOrigin, maskClip: cs.maskClip, maskMode: cs.maskMode,
     mixBlendMode: cs.mixBlendMode, backdropFilter: cs.backdropFilter,
     clipPath: cs.clipPath, transform: cs.transform, transformOrigin: cs.transformOrigin,
     borderTopWidth: cs.borderTopWidth, borderTopStyle: cs.borderTopStyle,
@@ -543,6 +546,7 @@ def _needs_isolated_raster(node: RenderedNode) -> bool:
         or styles.get("mixBlendMode", "normal") not in ("normal", "")
         or styles.get("backdropFilter", "none") not in ("none", "")
         or styles.get("filter", "none") not in ("none", "")
+        or styles.get("maskImage", "none") not in ("none", "")
         or styles.get("webkitBoxReflect", "none") not in ("none", "")
         or bool(styles.get("domoxmlReflectionDistance"))
         or is_complex_transform(styles.get("transform"))

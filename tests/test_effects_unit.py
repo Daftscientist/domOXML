@@ -46,7 +46,12 @@ from domoxml.core.ir.model import (
     SoftEdge,
     SolidFill,
 )
-from domoxml.core.ir.parse import parse_blur_filter, parse_box_reflection, parse_shadow
+from domoxml.core.ir.parse import (
+    parse_blur_filter,
+    parse_box_reflection,
+    parse_shadow,
+    parse_soft_edge_mask,
+)
 from domoxml.core.units import px_to_emu
 from domoxml.slides.appearance_read import rgba
 from domoxml.slides.effect_read import Effect, read_effects
@@ -109,6 +114,68 @@ def test_parse_computed_css_box_reflection() -> None:
         start_alpha=0.8,
         end_alpha=0.0,
     )
+
+
+def test_parse_computed_css_soft_edge_mask() -> None:
+    mask = (
+        "linear-gradient(to right, rgba(0, 0, 0, 0) 0px, rgb(0, 0, 0) 12px, "
+        "rgb(0, 0, 0) calc(100% - 12px), rgba(0, 0, 0, 0) 100%), "
+        "linear-gradient(rgba(0, 0, 0, 0) 0px, rgb(0, 0, 0) 12px, "
+        "rgb(0, 0, 0) calc(100% - 12px), rgba(0, 0, 0, 0) 100%)"
+    )
+
+    assert parse_soft_edge_mask(
+        mask,
+        "intersect, intersect",
+        repeat="repeat, repeat",
+        position="0% 0%, 0% 0%",
+        size="auto, auto",
+        origin="border-box, border-box",
+        clip="border-box, border-box",
+        mode="match-source, match-source",
+    ) == SoftEdge(radius_emu=px_to_emu(12))
+
+
+def test_parse_computed_css_ellipse_soft_edge_mask() -> None:
+    mask = "radial-gradient(closest-side, rgb(0, 0, 0) calc(100% - 12px), rgba(0, 0, 0, 0) 100%)"
+
+    assert parse_soft_edge_mask(mask, "intersect", ellipse=True) == SoftEdge(
+        radius_emu=px_to_emu(12)
+    )
+    assert parse_soft_edge_mask(mask, "intersect", ellipse=False) is None
+
+
+def test_rejects_css_masks_that_are_not_exact_soft_edges() -> None:
+    valid = (
+        "linear-gradient(to right, rgba(0,0,0,0) 0px, rgb(0,0,0) 12px, "
+        "rgb(0,0,0) calc(100% - 12px), rgba(0,0,0,0) 100%),"
+        "linear-gradient(rgba(0,0,0,0) 0px, rgb(0,0,0) 12px, "
+        "rgb(0,0,0) calc(100% - 12px), rgba(0,0,0,0) 100%)"
+    )
+    unequal_axes = valid.replace("12px", "8px", 2)
+    intermediate_stop = valid.replace("rgb(0,0,0) 12px", "rgb(0,0,0) 6px,rgb(0,0,0) 12px", 1)
+
+    assert parse_soft_edge_mask(valid, "add, add") is None
+    assert parse_soft_edge_mask(unequal_axes, "intersect, intersect") is None
+    assert parse_soft_edge_mask(intermediate_stop, "intersect, intersect") is None
+    assert parse_soft_edge_mask("radial-gradient(black,transparent)", "intersect") is None
+    assert parse_soft_edge_mask(valid, "intersect, intersect", size="50% 50%, 50% 50%") is None
+
+
+def test_rejects_malformed_css_soft_edge_lengths_without_raising() -> None:
+    linear = (
+        "linear-gradient(to right, transparent 0px, black {radius}px, "
+        "black calc(100% - {radius}px), transparent 100%),"
+        "linear-gradient(transparent 0px, black {radius}px, "
+        "black calc(100% - {radius}px), transparent 100%)"
+    )
+    radial = "radial-gradient(closest-side, black calc(100% - {radius}px), transparent 100%)"
+
+    for malformed in (".", "1..2"):
+        assert parse_soft_edge_mask(linear.format(radius=malformed), "intersect, intersect") is None
+        assert (
+            parse_soft_edge_mask(radial.format(radius=malformed), "intersect", ellipse=True) is None
+        )
 
 
 def test_rejects_css_reflection_that_cannot_map_to_current_ir() -> None:
@@ -410,10 +477,21 @@ def test_reverse_blur_produces_warning() -> None:
 
 def test_reverse_soft_edge() -> None:
     props = _shape_props('<a:effectLst><a:softEdge rad="15000"/></a:effectLst>')
-    effects, _warns, _preserved = parse_effects_xml(props, {})
+    effects, warns, _preserved = parse_effects_xml(props, {})
     soft = effects[0]
     assert isinstance(soft, SoftEdge)
     assert soft.radius_emu == 15_000
+    assert len(warns) == 1
+    assert "renderer fallback" in warns[0].message
+
+
+def test_reverse_zero_radius_soft_edge_does_not_claim_fallback() -> None:
+    props = _shape_props('<a:effectLst><a:softEdge rad="0"/></a:effectLst>')
+
+    effects, warns, _preserved = parse_effects_xml(props, {})
+
+    assert effects == (SoftEdge(radius_emu=0),)
+    assert not warns
 
 
 def test_reverse_reflection() -> None:
@@ -544,9 +622,29 @@ def test_html_blur_emits_filter_and_warning() -> None:
 def test_html_soft_edge_emits_mask() -> None:
     slide = _slide_with(SoftEdge(radius_emu=px_to_emu(10)))
     html = serialize_canvas([slide])
-    # Should include mask-image with radial-gradient
     assert "mask-image" in html.slides[0].html
-    assert "radial-gradient" in html.slides[0].html
+    assert "linear-gradient(to right" in html.slides[0].html
+    assert "linear-gradient(to bottom" in html.slides[0].html
+    assert "mask-composite:intersect" in html.slides[0].html
+    assert any("renderer fallback" in warning.message for warning in html.warnings)
+
+
+def test_html_ellipse_soft_edge_emits_boundary_following_radial_mask() -> None:
+    slide = _slide_with(SoftEdge(radius_emu=px_to_emu(10)))
+    ellipse = slide.shapes[0].model_copy(update={"geom": "ellipse"})
+
+    html = serialize_canvas([slide.model_copy(update={"contents": (ellipse,)})])
+
+    assert "radial-gradient(ellipse closest-side" in html.slides[0].html
+    assert "linear-gradient(to right" not in html.slides[0].html
+
+
+def test_zero_radius_soft_edge_retains_payload_without_needless_mask() -> None:
+    html = serialize_canvas([_slide_with(SoftEdge(radius_emu=0))])
+
+    assert "data-domoxml-effects=" in html.slides[0].html
+    assert "mask-image" not in html.slides[0].html
+    assert not html.warnings
 
 
 def test_html_reflection_emits_webkit_reflect_and_warning() -> None:

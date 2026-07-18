@@ -17,6 +17,7 @@ from domoxml.core.ir.model import (
     Rgba,
     ShapeNode,
     SlideIR,
+    SoftEdge,
     SolidFill,
     TableCell,
     TableNode,
@@ -103,6 +104,35 @@ async def test_extracts_css_reflection_with_complete_isolated_paint_bounds() -> 
     [coverage] = [item for item in result.coverage if item.representation is Representation.HYBRID]
     assert coverage.editability is Editability.COMPONENTS
     assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(192)
+
+
+async def test_extracts_css_soft_edge_with_shape_bound_fallback() -> None:
+    result = await _render_and_extract_result(
+        '<div style="position:absolute;left:100px;top:80px;width:220px;height:90px;'
+        "background:#276678;color:white;font-size:24px;"
+        "mask-image:linear-gradient(to right,transparent 0px,black 12px,"
+        "black calc(100% - 12px),transparent 100%),"
+        "linear-gradient(to bottom,transparent 0px,black 12px,"
+        "black calc(100% - 12px),transparent 100%);"
+        'mask-composite:intersect">SOFT EDGE</div>'
+    )
+
+    [shape] = [
+        shape
+        for shape in result.slide.shapes
+        if any(isinstance(effect, SoftEdge) for effect in shape.effects)
+    ]
+    assert shape.effects == (SoftEdge(radius_emu=px_to_emu(12)),)
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(100),
+        y=px_to_emu(80),
+        width=px_to_emu(220),
+        height=px_to_emu(90),
+    )
+    [coverage] = [item for item in result.coverage if item.representation is Representation.HYBRID]
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(90)
 
 
 async def test_blurred_reflection_render_layer_reingests_as_one_hybrid_owner() -> None:

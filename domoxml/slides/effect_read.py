@@ -104,7 +104,17 @@ def read_effects(
                 )
             )
         elif kind == "softEdge":
-            effects.append(SoftEdge(radius_emu=_int_attr(child, "rad")))
+            radius = _int_attr(child, "rad")
+            effects.append(SoftEdge(radius_emu=radius))
+            if radius > 0:
+                warnings.append(
+                    ConversionWarning(
+                        message=(
+                            "a:softEdge mapped to a geometry-aware CSS alpha mask; rebuilt PPTX "
+                            "uses an isolated renderer fallback"
+                        )
+                    )
+                )
         elif kind == "reflection":
             effects.append(
                 Reflection(

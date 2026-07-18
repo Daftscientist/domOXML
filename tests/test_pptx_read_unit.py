@@ -29,6 +29,7 @@ from domoxml.core.ir.model import (
     Shadow,
     ShapeNode,
     SlideIR,
+    SoftEdge,
     SolidFill,
     SourceProvenance,
     TextBody,
@@ -204,6 +205,42 @@ def test_portable_reflection_fallback_uses_alternate_content_and_round_trips() -
     assert recovered.portable_fallback is not None
     assert recovered.portable_fallback.box == fallback_box
     assert recovered.portable_fallback.picture.data == b"isolated-reflection-png"
+    assert result.coverage.count(Representation.HYBRID) == 1
+    assert result.coverage.count_editability(Editability.COMPONENTS) == 1
+    assert result.coverage.output_count == 2
+    assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
+
+
+def test_portable_soft_edge_fallback_uses_alternate_content_and_round_trips() -> None:
+    fallback_box = Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000)
+    soft_edge = SoftEdge(radius_emu=114_300)
+    shape = ShapeNode(
+        box=fallback_box,
+        fill=SolidFill(color=Rgba(r=39, g=102, b=120)),
+        effects=(soft_edge,),
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-soft-edge-png",
+                ext="png",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert 'mc:Choice Requires="p16"' in slide_xml
+    assert '<a:softEdge rad="114300"/>' in slide_xml
+    assert slide_xml.count("domoxml-raster:portable-effect-fallback") == 2
+
+    result = read_pptx_result(pptx)
+    [recovered] = result.slides[0].shapes
+    assert recovered.effects == (soft_edge,)
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == fallback_box
+    assert recovered.portable_fallback.picture.data == b"isolated-soft-edge-png"
     assert result.coverage.count(Representation.HYBRID) == 1
     assert result.coverage.count_editability(Editability.COMPONENTS) == 1
     assert result.coverage.output_count == 2

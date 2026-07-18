@@ -27,6 +27,13 @@ solid external-producer case disproved the proposed CSS `normal` mapping, despit
 high whole-slide score. The reader now retains that source fragment and uses the owned visible
 fallback path until equivalent browser semantics are calibrated.
 
+The reverse-first owned-fallback fixture exercises a regular rotated shape rather than an
+`AlternateContent` branch. Its pinned Graph render remains the authoritative PowerPoint reference
+even on runners that also have LibreOffice. The reconstructed HTML scores 1.000 global, 1.000
+regional, and 0.949 structural; direct inspection shows that the structural difference is confined
+to a one-pixel antialiasing perimeter. The next normalized HTML cycle is 1.000 on all three metrics,
+with one movable layer, attached source payload, and stable raster area.
+
 ## Atomic Source
 
 ![Chromium source](source.png)
@@ -54,6 +61,12 @@ fallback path until equivalent browser semantics are calibrated.
 ![Microsoft Graph native overlays](native-graph.png)
 
 ![Native overlay diff](native-graph-diff.png)
+
+## Unsupported `over` Owned Fallback
+
+| Graph source | Normalized HTML fallback | Diff |
+|---|---|---|
+| ![Graph unsupported over source](owned-over-source.png) | ![Owned fallback candidate](owned-over-reverse.png) | ![Owned fallback diff](owned-over-diff.png) |
 
 ## External Aspose Deck
 

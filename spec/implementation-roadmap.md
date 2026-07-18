@@ -12,8 +12,8 @@ Snapshot audited on **2026-07-18** against the repository, executable manifests,
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
 - 749 tests are collected.
-- 22 atomic PPTX capability fixtures exist; 21 are bidirectional and one is a reverse-first chart
-  preservation fixture.
+- 23 atomic PPTX capability fixtures exist; 21 are bidirectional and two are reverse-first fixtures
+  for chart preservation and owned unsupported fill-overlay fallback.
 - 9 authored HTML fidelity cases exist.
 - 6 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, attached
   chart-graph re-emission, ellipse soft-edge radii, and four native solid fill-overlay blend modes
@@ -39,7 +39,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 22 atomic fixtures and 6 real decks pin
+  retention, output-count, and raster-area records. All 23 atomic fixtures and 6 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural

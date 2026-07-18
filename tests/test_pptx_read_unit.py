@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
+import pytest
 from defusedxml import ElementTree
 from PIL import Image
 from pptx import Presentation as PptxPresentation
@@ -339,6 +340,7 @@ def test_portable_fallback_reports_and_retains_unsupported_choice_effects() -> N
     assert b"fillOverlay" in OpcPackage.from_bytes(rebuilt).read(slide_part)
 
 
+@pytest.mark.integration
 def test_unsupported_over_overlay_uses_owned_source_render_and_re_emits() -> None:
     shape = ShapeNode(
         box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),

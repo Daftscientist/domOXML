@@ -262,7 +262,7 @@ def _validate_fixture(
             or fixture.visual.pptx_to_html_min_regional_similarity is not None
             or fixture.visual.pptx_to_html_min_structural_similarity is not None
         )
-        if has_reverse_threshold and forward_visual_available:
+        if has_reverse_threshold and forward_visual_available and not source_pptx_pngs:
             source_pptx_pngs = tuple(render_pptx_to_pngs(source_pptx))
         reverse = Presentation.from_pptx(
             source_pptx,

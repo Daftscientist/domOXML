@@ -175,7 +175,7 @@ def test_reverse_only_fixture_renders_source_pptx_for_visual_gate(
     assert len([error for error in errors if error.startswith("visual:")]) == 2
 
 
-def test_reverse_only_fixture_uses_pinned_render_without_backend(
+def test_reverse_only_fixture_prefers_authoritative_pinned_render_with_backend(
     monkeypatch: MonkeyPatch,
 ) -> None:
     import scripts.capability_check as capability_check
@@ -220,7 +220,12 @@ def test_reverse_only_fixture_uses_pinned_render_without_backend(
         render_reverse,
     )
 
-    assert _validate_fixture(fixture, forward_visual_available=False) == ()
+    def unexpected_render(_pptx: bytes) -> list[bytes]:
+        raise AssertionError("pinned render must remain authoritative")
+
+    monkeypatch.setattr(capability_check, "render_pptx_to_pngs", unexpected_render)
+
+    assert _validate_fixture(fixture, forward_visual_available=True) == ()
 
 
 def test_forward_visual_gate_checks_global_and_regional_similarity(tmp_path: Path) -> None:

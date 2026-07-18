@@ -1,0 +1,58 @@
+id = "fill-overlay-owned-fallback"
+direction = "reverse"
+pptx_file = "source.pptx"
+reverse_render_files = ["source-graph.png"]
+
+[expected]
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:sp/p:spPr/a:effectLst/a:fillOverlay[@blend='over']"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:sp/p:spPr/a:xfrm[@rot='1800000']"
+min_count = 1
+max_count = 1
+
+[visual]
+pptx_to_html_min_similarity = 0.99
+pptx_to_html_min_regional_similarity = 0.97
+pptx_to_html_min_structural_similarity = 0.945
+
+[reverse]
+min_representation = { element_layer = 1 }
+max_representation = { native = 0, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
+min_editability = { layers = 1 }
+max_editability = { semantic = 0, components = 0, layers = 1, none = 0 }
+min_source_retention = { attached = 1 }
+max_source_retention = { not_required = 0, attached = 1, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 1
+max_output_count = 1
+min_raster_area_emu2 = 15531166946292
+max_raster_area_emu2 = 15531166946292
+expected_slides = 1
+min_assets = 1
+html_contains = [
+  'data-domoxml-preserved-payload=',
+  'data-domoxml-representation="element-layer"',
+]
+max_warnings = 2
+max_preserved = 1
+
+[roundtrip]
+cycles = 2
+min_representation = { element_layer = 1 }
+max_representation = { native = 0, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
+min_editability = { layers = 1 }
+max_editability = { semantic = 0, components = 0, layers = 1, none = 0 }
+min_source_retention = { attached = 1 }
+max_source_retention = { not_required = 0, attached = 1, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 1
+max_output_count = 1
+min_raster_area_emu2 = 15530816805686
+max_raster_area_emu2 = 15530816805686
+min_convergence_similarity = 0.999
+min_convergence_regional_similarity = 0.999
+min_convergence_structural_similarity = 0.999

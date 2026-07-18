@@ -19,6 +19,7 @@ from domoxml.core.ir.model import (
     Reflection,
     Rgba,
     Shadow,
+    SoftEdge,
 )
 from domoxml.core.units import px_to_emu, px_to_pt
 
@@ -32,6 +33,13 @@ _ANGLE_RE = re.compile(r"(-?[\d.]+)\s*deg", re.IGNORECASE)
 _FUNC_RE = re.compile(r"\b(linear|radial|conic)-gradient\s*\(", re.IGNORECASE)
 _BLUR_FILTER_RE = re.compile(r"blur\(\s*([\d.]+)px\s*\)", re.IGNORECASE)
 _BOX_REFLECTION_RE = re.compile(r"^below\s+([\d.]+)px\s+", re.IGNORECASE)
+_SOFT_EDGE_INNER_END_RE = re.compile(r"(\d+(?:\.\d+)?|\.\d+)px\s*$", re.IGNORECASE)
+_SOFT_EDGE_FAR_INNER_END_RE = re.compile(
+    r"calc\(\s*100%\s*-\s*(\d+(?:\.\d+)?|\.\d+)px\s*\)\s*$",
+    re.IGNORECASE,
+)
+_SOFT_EDGE_ZERO_END_RE = re.compile(r"(?:0(?:\.0+)?(?:px|%))\s*$", re.IGNORECASE)
+_SOFT_EDGE_FULL_END_RE = re.compile(r"100(?:\.0+)?%\s*$", re.IGNORECASE)
 
 
 def parse_color(value: str | None) -> Rgba | None:
@@ -358,6 +366,127 @@ def parse_box_reflection(value: str | None) -> Reflection | None:
         start_alpha=start_color.a,
         end_alpha=end_color.a,
     )
+
+
+def _soft_edge_axis(layer: str, *, direction: str) -> float | None:
+    """Return the feather radius for one strict computed linear-gradient mask axis."""
+    normalized = layer.strip()
+    prefix = "linear-gradient("
+    if not normalized.lower().startswith(prefix) or not normalized.endswith(")"):
+        return None
+    parts = [part.strip() for part in _split_top_level(normalized[len(prefix) : -1])]
+    if parts and parse_color(parts[0]) is None:
+        actual_direction = parts.pop(0).lower()
+        if actual_direction != direction:
+            return None
+    elif direction != "to bottom":
+        return None
+    if len(parts) != 4:
+        return None
+    colors = tuple(parse_color(part) for part in parts)
+    if any(color is None for color in colors):
+        return None
+    first, near_inner, far_inner, last = colors
+    assert first is not None and near_inner is not None
+    assert far_inner is not None and last is not None
+    if first.a != 0.0 or near_inner.a != 1.0 or far_inner.a != 1.0 or last.a != 0.0:
+        return None
+    near_match = _SOFT_EDGE_INNER_END_RE.search(parts[1])
+    far_match = _SOFT_EDGE_FAR_INNER_END_RE.search(parts[2])
+    if (
+        _SOFT_EDGE_ZERO_END_RE.search(parts[0]) is None
+        or near_match is None
+        or far_match is None
+        or _SOFT_EDGE_FULL_END_RE.search(parts[3]) is None
+    ):
+        return None
+    near_radius = float(near_match.group(1))
+    far_radius = float(far_match.group(1))
+    if near_radius <= 0.0 or near_radius != far_radius:
+        return None
+    return near_radius
+
+
+def _soft_edge_ellipse(layer: str) -> float | None:
+    """Return the feather radius for the strict computed ellipse mask form."""
+    normalized = layer.strip()
+    prefix = "radial-gradient("
+    if not normalized.lower().startswith(prefix) or not normalized.endswith(")"):
+        return None
+    parts = [part.strip() for part in _split_top_level(normalized[len(prefix) : -1])]
+    if len(parts) != 3 or parts[0].lower() != "closest-side":
+        return None
+    inner, outer = parse_color(parts[1]), parse_color(parts[2])
+    radius = _SOFT_EDGE_FAR_INNER_END_RE.search(parts[1])
+    if (
+        inner is None
+        or outer is None
+        or inner.a != 1.0
+        or outer.a != 0.0
+        or radius is None
+        or _SOFT_EDGE_FULL_END_RE.search(parts[2]) is None
+    ):
+        return None
+    radius_px = float(radius.group(1))
+    return radius_px if radius_px > 0.0 else None
+
+
+def _default_two_layer_mask_value(value: str | None, expected: str) -> bool:
+    if value is None:
+        return True
+    return [part.strip().lower() for part in _split_top_level(value)] in (
+        [expected],
+        [expected, expected],
+    )
+
+
+def parse_soft_edge_mask(
+    value: str | None,
+    composite: str | None,
+    *,
+    repeat: str | None = None,
+    position: str | None = None,
+    size: str | None = None,
+    origin: str | None = None,
+    clip: str | None = None,
+    mode: str | None = None,
+    ellipse: bool = False,
+) -> SoftEdge | None:
+    """Map domOXML's conservative CSS feather masks to DrawingML soft edge.
+
+    Rectangles require two intersecting alpha gradients with equal pixel radii. Ellipses require a
+    closest-side radial alpha gradient. Other masks stay on the visible element-layer path rather
+    than being approximated as ``a:softEdge``.
+    """
+    if not value or value.strip().lower() == "none":
+        return None
+    layers = _split_top_level(value)
+    composites = [part.strip().lower() for part in _split_top_level(composite or "")]
+    expected_layers = 1 if ellipse else 2
+    if len(layers) != expected_layers or composites not in (
+        ["intersect"],
+        ["intersect", "intersect"],
+    ):
+        return None
+    if not all(
+        (
+            _default_two_layer_mask_value(repeat, "repeat"),
+            _default_two_layer_mask_value(position, "0% 0%"),
+            _default_two_layer_mask_value(size, "auto"),
+            _default_two_layer_mask_value(origin, "border-box"),
+            _default_two_layer_mask_value(clip, "border-box"),
+            _default_two_layer_mask_value(mode, "match-source"),
+        )
+    ):
+        return None
+    if ellipse:
+        radius = _soft_edge_ellipse(layers[0])
+        return SoftEdge(radius_emu=px_to_emu(radius)) if radius is not None else None
+    horizontal = _soft_edge_axis(layers[0], direction="to right")
+    vertical = _soft_edge_axis(layers[1], direction="to bottom")
+    if horizontal is None or vertical is None or horizontal != vertical:
+        return None
+    return SoftEdge(radius_emu=px_to_emu(horizontal))
 
 
 # --------------------------------------------------------------------------- gradients

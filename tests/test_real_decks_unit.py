@@ -38,6 +38,7 @@ def test_repository_real_decks_have_valid_pins_and_relationships() -> None:
         "external-chart-preservation",
         "external-embedded-font",
         "external-image-crop",
+        "external-soft-edge",
         "external-table-style",
     }
     for case in cases:

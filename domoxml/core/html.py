@@ -365,12 +365,32 @@ def _append_effect_styles(
                 )
             )
         elif isinstance(effect, SoftEdge):
-            # Approximate softEdge as a CSS mask with an inset radial gradient.
-            # The gradient fades from opaque at (radius) inset to transparent at the edge.
+            if effect.radius_emu == 0:
+                continue
             rad_px = _number(emu_to_px(effect.radius_emu))
-            soft_edge_masks.append(
-                f"radial-gradient(ellipse calc(100% - {rad_px}px) calc(100% - {rad_px}px) "
-                f"at 50% 50%, black calc(100% - {rad_px}px), transparent 100%)"
+            if node.geom == "ellipse":
+                soft_edge_masks.append(
+                    "radial-gradient(ellipse closest-side at 50% 50%,"
+                    f"black calc(100% - {rad_px}px),transparent 100%)"
+                )
+            else:
+                stops = (
+                    f"transparent 0px,black {rad_px}px,"
+                    f"black calc(100% - {rad_px}px),transparent 100%"
+                )
+                soft_edge_masks.extend(
+                    (
+                        f"linear-gradient(to right,{stops})",
+                        f"linear-gradient(to bottom,{stops})",
+                    )
+                )
+            warnings.append(
+                ConversionWarning(
+                    message=(
+                        "a:softEdge mapped to a geometry-aware CSS alpha mask; rebuilt PPTX "
+                        "uses an isolated renderer fallback"
+                    )
+                )
             )
         else:
             # Reflection is the remaining effect union arm.
@@ -405,6 +425,7 @@ def _append_effect_styles(
     if soft_edge_masks:
         styles.append(f"mask-image:{','.join(soft_edge_masks)}")
         styles.append("-webkit-mask-image:" + ",".join(soft_edge_masks))
+        styles.append("mask-composite:intersect")
 
 
 def _blurred_reflection_layer(node: ShapeNode, assets: dict[str, HtmlAsset]) -> tuple[str, str]:

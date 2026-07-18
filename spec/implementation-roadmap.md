@@ -11,12 +11,12 @@ Snapshot audited on **2026-07-18** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 716 tests are collected.
-- 20 atomic PPTX capability fixtures exist; 19 are bidirectional and one is a reverse-first chart
+- 729 tests are collected.
+- 21 atomic PPTX capability fixtures exist; 20 are bidirectional and one is a reverse-first chart
   preservation fixture.
 - 9 authored HTML fidelity cases exist.
-- 4 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, and attached
-  chart-graph re-emission with PPTX and normalized-HTML visual gates.
+- 5 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, attached
+  chart-graph re-emission, and ellipse soft-edge radii with PPTX and normalized-HTML visual gates.
 - LibreOffice global, regional, focused, and structural scores are merge-blocking for configured
   cases.
 - Microsoft Graph rendering exists as an opt-in backend, not a normal CI gate.
@@ -38,7 +38,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 20 atomic fixtures and 4 real decks pin
+  retention, output-count, and raster-area records. All 21 atomic fixtures and 5 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -249,12 +249,17 @@ silently lowering the expected score.
 8. [ ] Expand effects beyond the bidirectional offset-shadow/inset-layer/glow baseline using
    PowerPoint/Graph-calibrated evidence for blur, soft edge, reflection, preset shadow, fill overlay,
    compound ordering, and effect-bearing custom geometry. CSS blur and the conservative
-   `below <px> linear-gradient(...)` reflection subset now have bidirectional atomic fixtures:
-   PowerPoint retains native `a:blur` or `a:reflection` beneath an isolated paint-bound layer,
-   LibreOffice selects the same fallback alone, both branches recover into one hybrid IR node, and
-   two-cycle convergence is exact. Native reflection blur uses an owned mirrored CSS layer and
-   transform-aware isolated bounds on reverse output. Reflection directions other than `below`,
-   non-pixel gaps, and compound reflection ordering remain open.
+   `below <px> linear-gradient(...)` reflection subset, and strict two-axis intersecting soft-edge
+   mask now have bidirectional atomic fixtures. PowerPoint retains native `a:blur`, `a:reflection`,
+   or `a:softEdge` beneath an isolated layer; LibreOffice selects the same fallback alone; both
+   branches recover into one hybrid IR node; and two-cycle convergence is exact. Native reflection
+   blur uses an owned mirrored CSS layer and transform-aware isolated bounds on reverse output.
+   Soft-edge mask sizing, position, repeat, origin, clip, and mode are admitted only at their exact
+   default geometry; other masks take the visible element-layer path. Normalized ellipses use a
+   geometry-aware radial feather, proven against an external OfficeCLI deck whose exact zero/8pt/
+   20pt radii survive re-emission; its baseline also records the separate ellipse internal-text-
+   rectangle debt. Reflection directions other than `below`, non-pixel gaps, preset shadow, fill
+   overlay, compound ordering, and effect-bearing custom geometry remain open.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,

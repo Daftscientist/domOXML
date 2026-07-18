@@ -36,6 +36,7 @@ from domoxml.core.ir.model import (
     CanvasNode,
     CharBullet,
     Fill,
+    FillOverlay,
     Geometry,
     Glow,
     GradientFill,
@@ -63,6 +64,7 @@ from domoxml.core.ir.model import (
 from domoxml.core.ir.parse import (
     css_list_style_to_autonum,
     css_list_style_to_bu_char,
+    fill_overlay_base_styles,
     is_bold,
     parse_background_position,
     parse_background_size,
@@ -72,6 +74,7 @@ from domoxml.core.ir.parse import (
     parse_caps,
     parse_color,
     parse_decoration,
+    parse_fill_overlay,
     parse_gradient,
     parse_length_px,
     parse_letter_spacing_pt,
@@ -497,6 +500,45 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
         return "clip-path has no native mapping"
     if styles.get("mixBlendMode", "normal") not in ("normal", ""):
         return "mix-blend-mode has no native mapping"
+    blend_mode = styles.get("backgroundBlendMode", "normal")
+    encoded_effects = decode_effects(styles.get("domoxmlEffects"))
+    encoded_overlay = next(
+        (effect for effect in (encoded_effects or ()) if isinstance(effect, FillOverlay)),
+        None,
+    )
+    normalized_overlay = (
+        fill_overlay_base_styles(
+            styles.get("backgroundImage"),
+            blend_mode,
+            encoded_overlay,
+            background_size=styles.get("backgroundSize"),
+            background_position=styles.get("backgroundPosition"),
+            background_repeat=styles.get("backgroundRepeat"),
+            background_origin=styles.get("backgroundOrigin"),
+            background_clip=styles.get("backgroundClip"),
+        )
+        if encoded_overlay is not None
+        else None
+    )
+    if encoded_overlay is not None and normalized_overlay is None:
+        return "encoded fill-overlay metadata does not match rendered CSS"
+    has_normalized_overlay = normalized_overlay is not None
+    if (
+        blend_mode not in ("normal", "")
+        and parse_fill_overlay(
+            styles.get("backgroundImage"),
+            styles.get("backgroundColor"),
+            blend_mode,
+            background_size=styles.get("backgroundSize"),
+            background_position=styles.get("backgroundPosition"),
+            background_repeat=styles.get("backgroundRepeat"),
+            background_origin=styles.get("backgroundOrigin"),
+            background_clip=styles.get("backgroundClip"),
+        )
+        is None
+        and not has_normalized_overlay
+    ):
+        return "background-blend-mode has no native fill-overlay mapping"
     if styles.get("backdropFilter", "none") not in ("none", ""):
         return "backdrop-filter has no native mapping"
     filter_value = styles.get("filter", "none")
@@ -712,6 +754,40 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
         return PictureFill(data=data, ext=ext, crop=crop), None
 
     background_image = styles.get("backgroundImage", "none")
+    encoded_effects = decode_effects(styles.get("domoxmlEffects"))
+    encoded_overlay = next(
+        (effect for effect in (encoded_effects or ()) if isinstance(effect, FillOverlay)),
+        None,
+    )
+    if encoded_overlay is not None:
+        base_styles = fill_overlay_base_styles(
+            background_image,
+            styles.get("backgroundBlendMode"),
+            encoded_overlay,
+            background_size=styles.get("backgroundSize"),
+            background_position=styles.get("backgroundPosition"),
+            background_repeat=styles.get("backgroundRepeat"),
+            background_origin=styles.get("backgroundOrigin"),
+            background_clip=styles.get("backgroundClip"),
+        )
+        if base_styles is None:
+            return None, "encoded fill-overlay metadata does not match rendered CSS"
+        styles = {**styles, **base_styles}
+        background_image = styles["backgroundImage"]
+    else:
+        fill_overlay = parse_fill_overlay(
+            background_image,
+            styles.get("backgroundColor"),
+            styles.get("backgroundBlendMode"),
+            background_size=styles.get("backgroundSize"),
+            background_position=styles.get("backgroundPosition"),
+            background_repeat=styles.get("backgroundRepeat"),
+            background_origin=styles.get("backgroundOrigin"),
+            background_clip=styles.get("backgroundClip"),
+        )
+        if fill_overlay is not None:
+            return fill_overlay[0], None
+
     # Check for url(...) first, before checking for gradient keywords
     if "url(" in background_image:
         match = _URL_RE.search(background_image)
@@ -719,7 +795,7 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
         if resolved is None:
             return None, "background image was not captured"
         data, ext = resolved
-        crop = _background_crop(data, node)
+        crop = _background_crop(data, node.model_copy(update={"styles": styles}))
         return PictureFill(data=data, ext=ext, crop=crop), None
     if "repeating-linear-gradient" in background_image.lower():
         # Try the native two-colour stripe -> a:pattFill mapping before the gradient path.
@@ -1363,6 +1439,20 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             if encoded_effects is None
             else None
         )
+        fill_overlay = (
+            parse_fill_overlay(
+                node.styles.get("backgroundImage"),
+                node.styles.get("backgroundColor"),
+                node.styles.get("backgroundBlendMode"),
+                background_size=node.styles.get("backgroundSize"),
+                background_position=node.styles.get("backgroundPosition"),
+                background_repeat=node.styles.get("backgroundRepeat"),
+                background_origin=node.styles.get("backgroundOrigin"),
+                background_clip=node.styles.get("backgroundClip"),
+            )
+            if encoded_effects is None
+            else None
+        )
         effects = (
             encoded_effects
             if encoded_effects is not None
@@ -1370,6 +1460,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 ((blur,) if blur is not None else ())
                 + ((soft_edge,) if soft_edge is not None else ())
                 + ((reflection,) if reflection is not None else ())
+                + ((fill_overlay[1],) if fill_overlay is not None else ())
                 + ((_shadow_to_effect(shadow, box, warnings),) if shadow is not None else ())
             )
         )
@@ -1379,6 +1470,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             for effect in effects
             if isinstance(effect, Blur | Reflection)
             or (isinstance(effect, SoftEdge) and effect.radius_emu > 0)
+            or (isinstance(effect, FillOverlay) and effect.fill.color.a > 0.0)
         )
         if portable_effects:
             fallback_shape = _raster_shape(node, rendered)

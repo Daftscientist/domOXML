@@ -12,6 +12,8 @@ from typing import Literal
 
 from domoxml.core.ir.model import (
     Blur,
+    FillOverlay,
+    FillOverlayBlend,
     GradientFill,
     GradientStop,
     Line,
@@ -20,6 +22,7 @@ from domoxml.core.ir.model import (
     Rgba,
     Shadow,
     SoftEdge,
+    SolidFill,
 )
 from domoxml.core.units import px_to_emu, px_to_pt
 
@@ -40,6 +43,12 @@ _SOFT_EDGE_FAR_INNER_END_RE = re.compile(
 )
 _SOFT_EDGE_ZERO_END_RE = re.compile(r"(?:0(?:\.0+)?(?:px|%))\s*$", re.IGNORECASE)
 _SOFT_EDGE_FULL_END_RE = re.compile(r"100(?:\.0+)?%\s*$", re.IGNORECASE)
+_FILL_OVERLAY_BLEND: dict[str, FillOverlayBlend] = {
+    "multiply": "mult",
+    "screen": "screen",
+    "darken": "darken",
+    "lighten": "lighten",
+}
 
 
 def parse_color(value: str | None) -> Rgba | None:
@@ -560,6 +569,146 @@ def parse_gradient(value: str | None) -> GradientFill | None:
     if len(stops) < 2:
         return None
     return GradientFill(stops=stops, angle_deg=angle, radial=radial)
+
+
+def parse_fill_overlay(
+    background_image: str | None,
+    background_color: str | None,
+    blend_mode: str | None,
+    *,
+    background_size: str | None = None,
+    background_position: str | None = None,
+    background_repeat: str | None = None,
+    background_origin: str | None = None,
+    background_clip: str | None = None,
+) -> tuple[SolidFill, FillOverlay] | None:
+    """Parse one uniform CSS gradient with a proven DrawingML blend equivalent."""
+    blend = (blend_mode or "normal").strip().lower()
+    if "," in blend or blend not in _FILL_OVERLAY_BLEND:
+        return None
+    geometry = _background_layer_values(
+        1,
+        background_size=background_size,
+        background_position=background_position,
+        background_repeat=background_repeat,
+        background_origin=background_origin,
+        background_clip=background_clip,
+    )
+    if geometry is None or not _overlay_layer_covers_shape(geometry, 0):
+        return None
+    base_color = parse_color(background_color)
+    overlay = parse_gradient(background_image)
+    if base_color is None or base_color.a <= 0.0 or overlay is None:
+        return None
+    overlay_color = overlay.stops[0].color
+    if any(stop.color != overlay_color for stop in overlay.stops[1:]):
+        return None
+    return (
+        SolidFill(color=base_color),
+        FillOverlay(
+            fill=SolidFill(color=overlay_color),
+            blend=_FILL_OVERLAY_BLEND[blend],
+        ),
+    )
+
+
+def fill_overlay_base_styles(
+    background_image: str | None,
+    blend_mode: str | None,
+    effect: FillOverlay,
+    *,
+    background_size: str | None = None,
+    background_position: str | None = None,
+    background_repeat: str | None = None,
+    background_origin: str | None = None,
+    background_clip: str | None = None,
+) -> dict[str, str] | None:
+    """Remove one validated normalized-HTML overlay layer and recover base-layer CSS."""
+    layers = _split_top_level(background_image or "")
+    modes = [part.strip().lower() for part in _split_top_level(blend_mode or "")]
+    expected = {
+        "mult": "multiply",
+        "screen": "screen",
+        "darken": "darken",
+        "lighten": "lighten",
+    }[effect.blend]
+    if not layers or len(modes) != len(layers) or modes[0] != expected:
+        return None
+    if any(mode != "normal" for mode in modes[1:]):
+        return None
+    overlay = parse_gradient(layers[0])
+    if overlay is None or any(
+        (stop.color.r, stop.color.g, stop.color.b)
+        != (effect.fill.color.r, effect.fill.color.g, effect.fill.color.b)
+        or abs(stop.color.a - effect.fill.color.a) > (1 / 255)
+        for stop in overlay.stops
+    ):
+        return None
+    geometry = _background_layer_values(
+        len(layers),
+        background_size=background_size,
+        background_position=background_position,
+        background_repeat=background_repeat,
+        background_origin=background_origin,
+        background_clip=background_clip,
+    )
+    if geometry is None or not _overlay_layer_covers_shape(geometry, 0):
+        return None
+    base_styles = {
+        "backgroundImage": ",".join(layers[1:]) or "none",
+        "backgroundBlendMode": ",".join(modes[1:]) or "normal",
+    }
+    for css_name, style_name in (
+        ("backgroundSize", "backgroundSize"),
+        ("backgroundPosition", "backgroundPosition"),
+        ("backgroundRepeat", "backgroundRepeat"),
+        ("backgroundOrigin", "backgroundOrigin"),
+        ("backgroundClip", "backgroundClip"),
+    ):
+        values = geometry[css_name]
+        base_styles[style_name] = ",".join(values[1:]) or values[0]
+    return base_styles
+
+
+def _background_layer_values(
+    layer_count: int,
+    *,
+    background_size: str | None,
+    background_position: str | None,
+    background_repeat: str | None,
+    background_origin: str | None,
+    background_clip: str | None,
+) -> dict[str, tuple[str, ...]] | None:
+    defaults = {
+        "backgroundSize": "auto",
+        "backgroundPosition": "0% 0%",
+        "backgroundRepeat": "repeat",
+        "backgroundOrigin": "padding-box",
+        "backgroundClip": "border-box",
+    }
+    raw = {
+        "backgroundSize": background_size,
+        "backgroundPosition": background_position,
+        "backgroundRepeat": background_repeat,
+        "backgroundOrigin": background_origin,
+        "backgroundClip": background_clip,
+    }
+    resolved: dict[str, tuple[str, ...]] = {}
+    for name, default in defaults.items():
+        parts = tuple(part.strip().lower() for part in _split_top_level(raw[name] or default))
+        if not parts or len(parts) > layer_count:
+            return None
+        resolved[name] = tuple(parts[index % len(parts)] for index in range(layer_count))
+    return resolved
+
+
+def _overlay_layer_covers_shape(geometry: dict[str, tuple[str, ...]], index: int) -> bool:
+    size = geometry["backgroundSize"][index]
+    return (
+        size in {"auto", "auto auto", "100% 100%"}
+        and geometry["backgroundOrigin"][index] == "padding-box"
+        and geometry["backgroundClip"][index] == "border-box"
+    )
 
 
 _KEYWORD_ANGLE = {

@@ -19,6 +19,7 @@ from domoxml.core.ir.model import (
     ColorSpec,
     Connector,
     Fill,
+    FillOverlay,
     Glow,
     GradientFill,
     GroupNode,
@@ -392,8 +393,7 @@ def _append_effect_styles(
                     )
                 )
             )
-        else:
-            # Reflection is the remaining effect union arm.
+        elif isinstance(effect, Reflection):
             dist_px = _number(emu_to_px(effect.distance_emu))
             if effect.blur_emu == 0:
                 gradient = (
@@ -417,6 +417,52 @@ def _append_effect_styles(
                     )
                 )
             )
+        else:
+            overlay = f"linear-gradient({_rgba(effect.fill.color)},{_rgba(effect.fill.color)})"
+            background_index = next(
+                (
+                    index
+                    for index in range(len(styles) - 1, -1, -1)
+                    if styles[index].startswith("background-image:")
+                ),
+                None,
+            )
+            if background_index is None:
+                styles.append(f"background-image:{overlay}")
+                blend_modes = _fill_overlay_blend_css(effect)
+            else:
+                base_background = styles[background_index].removeprefix("background-image:")
+                styles[background_index] = f"background-image:{overlay},{base_background}"
+                blend_modes = f"{_fill_overlay_blend_css(effect)},normal"
+                for property_name, overlay_value in (
+                    ("background-size", "auto"),
+                    ("background-position", "0% 0%"),
+                    ("background-repeat", "repeat"),
+                    ("background-origin", "padding-box"),
+                    ("background-clip", "border-box"),
+                ):
+                    prefix = f"{property_name}:"
+                    property_index = next(
+                        (
+                            index
+                            for index in range(len(styles) - 1, -1, -1)
+                            if styles[index].startswith(prefix)
+                        ),
+                        None,
+                    )
+                    if property_index is not None:
+                        base_value = styles[property_index].removeprefix(prefix)
+                        styles[property_index] = f"{prefix}{overlay_value},{base_value}"
+            styles.append(f"background-blend-mode:{blend_modes}")
+            if effect.fill.color.a > 0.0:
+                warnings.append(
+                    ConversionWarning(
+                        message=(
+                            "a:fillOverlay mapped to CSS background blending; rebuilt PPTX uses "
+                            "an isolated renderer fallback"
+                        )
+                    )
+                )
 
     if box_shadows:
         styles.append(f"box-shadow:{','.join(box_shadows)}")
@@ -426,6 +472,15 @@ def _append_effect_styles(
         styles.append(f"mask-image:{','.join(soft_edge_masks)}")
         styles.append("-webkit-mask-image:" + ",".join(soft_edge_masks))
         styles.append("mask-composite:intersect")
+
+
+def _fill_overlay_blend_css(effect: FillOverlay) -> str:
+    return {
+        "mult": "multiply",
+        "screen": "screen",
+        "darken": "darken",
+        "lighten": "lighten",
+    }[effect.blend]
 
 
 def _blurred_reflection_layer(node: ShapeNode, assets: dict[str, HtmlAsset]) -> tuple[str, str]:

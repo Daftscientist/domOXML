@@ -134,11 +134,23 @@ authoritative; an isolated paint-bound fallback is emitted above it for exact ou
 branch for incompatible renderers, measured as raster area, and recovered beside the native node on
 re-ingestion. Blur, conservative below-shape CSS reflection, and the strict two-axis CSS soft-edge
 mask use a PowerPoint 2015 choice containing the native effect plus its portable layer, with the
-same picture selected alone by LibreOffice. Blur and reflection bounds include their full overflow;
-soft edge uses the shape paint box because its feather is wholly inset. Normalized rectangles use
-the same two-axis mask, while normalized ellipses use a boundary-following closest-side radial mask.
-Nondefault authored mask geometry does not enter this hybrid path and remains visible through the
-general element-layer fallback.
+same picture selected alone by LibreOffice. Solid fill overlays using multiply, screen, darken, or
+lighten use the exact native effect alone in the PowerPoint choice and the portable picture only in
+the LibreOffice fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned
+geometry. Blur and reflection bounds include their full overflow; soft edge and fill overlay use
+the shape paint box, expanded to its axis-aligned painted bounds after rotation. Normalized
+rectangles use the same two-axis mask, while normalized ellipses
+use a boundary-following closest-side radial mask. Nondefault authored mask geometry does not enter
+this hybrid path and remains visible through the general element-layer fallback.
+DrawingML's `over` fill-overlay mode is not treated as CSS `normal`: direct Graph inspection proves
+that mapping false, so it retains its source payload and takes the owned fallback path until an
+equivalent browser representation is calibrated. Its payload, rotated paint bounds, coverage, and
+fallback layer remain stable through two normalized HTML rebuild cycles.
+Normalized fill-overlay recovery requires exact RGB and blend tokens while admitting at most one
+8-bit alpha quantum, matching Chromium computed-color serialization without accepting a visibly
+different overlay. The admitted overlay layer must cover the whole shape using the default
+background origin and clip. Partial background geometry or stale encoded effect metadata takes the
+owned visible element-layer path rather than producing a different native composition.
 
 ## Direction Contract
 

@@ -7,7 +7,7 @@ Forward tests verify:
 - zero-offset box-shadow → a:glow (IR decision in extract)
 - non-zero-offset box-shadow stays a:outerShdw
 
-Reverse tests verify all 8 effect kinds in effectLst:
+Reverse tests verify all 8 legacy effect kinds in effectLst plus typed solid fill overlay:
 - a:outerShdw (with sx/sy grow → spread_emu)
 - a:innerShdw → inset Shadow
 - a:glow → Glow IR → box-shadow CSS
@@ -15,7 +15,7 @@ Reverse tests verify all 8 effect kinds in effectLst:
 - a:softEdge → SoftEdge IR → mask-image CSS
 - a:reflection → Reflection IR → -webkit-box-reflect CSS + warning
 - a:prstShdw → PreservedFragment + warning
-- a:fillOverlay → PreservedFragment + warning
+- solid a:fillOverlay → FillOverlay IR; unsupported fill families stay preserved
 
 Edge cases:
 - Multiple effects on one shape (order preserved)
@@ -37,7 +37,9 @@ from domoxml.core.ir.extract import _shadow_to_effect
 from domoxml.core.ir.model import (
     Blur,
     Box,
+    FillOverlay,
     Glow,
+    PictureFill,
     Reflection,
     Rgba,
     Shadow,
@@ -45,10 +47,13 @@ from domoxml.core.ir.model import (
     SlideIR,
     SoftEdge,
     SolidFill,
+    SrcRect,
 )
 from domoxml.core.ir.parse import (
+    fill_overlay_base_styles,
     parse_blur_filter,
     parse_box_reflection,
+    parse_fill_overlay,
     parse_shadow,
     parse_soft_edge_mask,
 )
@@ -176,6 +181,77 @@ def test_rejects_malformed_css_soft_edge_lengths_without_raising() -> None:
         assert (
             parse_soft_edge_mask(radial.format(radius=malformed), "intersect", ellipse=True) is None
         )
+
+
+def test_parse_solid_css_fill_overlay() -> None:
+    assert parse_fill_overlay(
+        "linear-gradient(rgb(255, 40, 80), rgb(255, 40, 80))",
+        "rgb(20, 60, 140)",
+        "multiply",
+    ) == (
+        SolidFill(color=Rgba(r=20, g=60, b=140)),
+        FillOverlay(
+            fill=SolidFill(color=Rgba(r=255, g=40, b=80)),
+            blend="mult",
+        ),
+    )
+
+
+def test_rejects_css_that_is_not_an_exact_solid_fill_overlay() -> None:
+    constant = "linear-gradient(rgb(255, 40, 80), rgb(255, 40, 80))"
+
+    assert parse_fill_overlay(constant, "rgb(20, 60, 140)", "normal") is None
+    assert (
+        parse_fill_overlay(
+            "linear-gradient(rgb(255, 40, 80), rgb(0, 0, 0))",
+            "rgb(20, 60, 140)",
+            "multiply",
+        )
+        is None
+    )
+    assert parse_fill_overlay(constant, "transparent", "multiply") is None
+    assert parse_fill_overlay(constant, "rgb(20, 60, 140)", "color-burn") is None
+    assert (
+        parse_fill_overlay(
+            constant,
+            "rgb(20, 60, 140)",
+            "multiply",
+            background_size="50% 50%",
+            background_repeat="no-repeat",
+        )
+        is None
+    )
+    assert (
+        parse_fill_overlay(
+            constant,
+            "rgb(20, 60, 140)",
+            "multiply",
+            background_origin="content-box",
+        )
+        is None
+    )
+
+
+def test_normalized_fill_overlay_peels_per_layer_background_geometry() -> None:
+    effect = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="mult",
+    )
+
+    base = fill_overlay_base_styles(
+        "linear-gradient(rgba(255, 40, 80, .75), rgba(255, 40, 80, .75)),url(asset.png)",
+        "multiply,normal",
+        effect,
+        background_size="auto,200% 100%",
+        background_position="0% 0%,50% 50%",
+        background_repeat="repeat,no-repeat",
+    )
+
+    assert base is not None
+    assert base["backgroundImage"] == "url(asset.png)"
+    assert base["backgroundSize"] == "200% 100%"
+    assert base["backgroundPosition"] == "50% 50%"
+    assert base["backgroundRepeat"] == "no-repeat"
 
 
 def test_rejects_css_reflection_that_cannot_map_to_current_ir() -> None:
@@ -375,6 +451,20 @@ def test_glow_xml_emitted() -> None:
     assert 'rad="5000"' in xml
 
 
+def test_fill_overlay_xml_emitted() -> None:
+    overlay = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="mult",
+    )
+
+    xml = _effects_xml(_node(effects=(overlay,)))
+
+    assert (
+        '<a:fillOverlay blend="mult"><a:solidFill><a:srgbClr val="FF2850">'
+        '<a:alpha val="75000"/></a:srgbClr></a:solidFill></a:fillOverlay>' in xml
+    )
+
+
 # -----------------------------------------------------------------------
 # Reverse: parse_effects_xml — all 8 effect kinds
 # -----------------------------------------------------------------------
@@ -533,15 +623,54 @@ def test_reverse_prst_shadow_preserved() -> None:
     assert "preserved" in warns[0].message
 
 
-def test_reverse_fill_overlay_preserved() -> None:
+def test_reverse_solid_fill_overlay_is_typed() -> None:
     fill_overlay = (
-        '<a:fillOverlay blend="over">'
-        '<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>'
+        '<a:fillOverlay blend="screen">'
+        '<a:solidFill><a:srgbClr val="FF0000"><a:alpha val="65000"/></a:srgbClr></a:solidFill>'
         "</a:fillOverlay>"
     )
     props = _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>")
     effects, warns, preserved = parse_effects_xml(props, {})
-    assert len(effects) == 0
+
+    assert effects == (
+        FillOverlay(
+            fill=SolidFill(color=Rgba(r=255, g=0, b=0, a=0.65)),
+            blend="screen",
+        ),
+    )
+    assert preserved == ()
+    assert "renderer fallback" in warns[0].message
+
+
+def test_reverse_unsupported_fill_overlay_stays_preserved() -> None:
+    fill_overlay = (
+        '<a:fillOverlay blend="over"><a:gradFill><a:gsLst>'
+        '<a:gs pos="0"><a:srgbClr val="FF0000"/></a:gs>'
+        '<a:gs pos="100000"><a:srgbClr val="0000FF"/></a:gs>'
+        "</a:gsLst></a:gradFill></a:fillOverlay>"
+    )
+
+    effects, warns, preserved = parse_effects_xml(
+        _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>"), {}
+    )
+
+    assert effects == ()
+    assert preserved[0].kind == "fillOverlay"
+    assert "preserved" in warns[0].message
+
+
+def test_reverse_over_fill_overlay_stays_preserved_until_css_semantics_are_proven() -> None:
+    fill_overlay = (
+        '<a:fillOverlay blend="over">'
+        '<a:solidFill><a:srgbClr val="FF0000"><a:alpha val="65000"/></a:srgbClr></a:solidFill>'
+        "</a:fillOverlay>"
+    )
+
+    effects, warns, preserved = parse_effects_xml(
+        _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>"), {}
+    )
+
+    assert effects == ()
     assert preserved[0].kind == "fillOverlay"
     assert "preserved" in warns[0].message
 
@@ -653,6 +782,57 @@ def test_html_reflection_emits_webkit_reflect_and_warning() -> None:
     assert "-webkit-box-reflect" in html.slides[0].html
     assert "background-color:rgba(0,128,255,1)" in html.slides[0].html
     assert any("renderer fallback" in w.message for w in html.warnings)
+
+
+def test_html_fill_overlay_emits_composited_background_and_warning() -> None:
+    overlay = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="mult",
+    )
+
+    html = serialize_canvas([_slide_with(overlay)])
+    markup = html.slides[0].html
+
+    assert "background-color:rgba(0,128,255,1)" in markup
+    assert "background-image:linear-gradient(rgba(255,40,80,0.75),rgba(255,40,80,0.75))" in markup
+    assert "background-blend-mode:multiply" in markup
+    assert any("renderer fallback" in warning.message for warning in html.warnings)
+
+
+def test_html_fill_overlay_keeps_picture_crop_geometry_on_the_base_layer() -> None:
+    overlay = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="mult",
+    )
+    slide = _slide_with(overlay)
+    shape = slide.shapes[0].model_copy(
+        update={
+            "fill": PictureFill(
+                data=b"picture-bytes",
+                ext="png",
+                crop=SrcRect(left=0.25, right=0.25),
+            )
+        }
+    )
+
+    markup = serialize_canvas([slide.model_copy(update={"contents": (shape,)})]).slides[0].html
+
+    assert "background-size:auto,200% 100%" in markup
+    assert "background-position:0% 0%,50% 50%" in markup
+    assert "background-repeat:repeat,no-repeat" in markup
+
+
+def test_transparent_fill_overlay_retains_payload_without_needless_warning() -> None:
+    overlay = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.0)),
+        blend="screen",
+    )
+
+    html = serialize_canvas([_slide_with(overlay)])
+
+    assert "data-domoxml-effects=" in html.slides[0].html
+    assert "background-blend-mode:screen" in html.slides[0].html
+    assert not html.warnings
 
 
 def test_html_blurred_reflection_uses_owned_render_layer() -> None:

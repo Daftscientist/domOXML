@@ -1,0 +1,56 @@
+id = "external-fill-overlay"
+pptx_file = "source.pptx"
+
+[provenance]
+source_url = "https://github.com/aspose-slides-foss/Aspose.Slides-FOSS-for-Python/tree/6ca17fd6593e0f31ed5e6fb53eb4c5896b7a6525"
+source_revision = "6ca17fd6593e0f31ed5e6fb53eb4c5896b7a6525"
+license = "MIT"
+sha256 = "b57044a8e8c65277c31e49bf53925cbadd7d9621c494f7b861be6d7e01f781e9"
+
+[package]
+slides = 1
+required_parts = [
+  "ppt/slides/slide1.xml",
+  "ppt/slideLayouts/slideLayout1.xml",
+  "ppt/slideMasters/slideMaster1.xml",
+  "ppt/theme/theme1.xml",
+]
+
+[reverse]
+min_representation = { native = 4 }
+max_representation = { native = 4, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 4 }
+max_editability = { semantic = 4, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 4 }
+max_source_retention = { not_required = 4, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 4
+max_output_count = 4
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+min_assets = 0
+max_warnings = 10
+warning_contains = ["a:fillOverlay mapped to CSS background blending"]
+preserved_count = 0
+html_contains = [
+  "data-domoxml-effects=",
+  "background-blend-mode:multiply",
+  "background-blend-mode:screen",
+  "background-blend-mode:darken",
+  "background-blend-mode:lighten",
+]
+roundtrip_xml_contains = [
+  '<a:fillOverlay blend="mult">',
+  '<a:fillOverlay blend="screen">',
+  '<a:fillOverlay blend="darken">',
+  '<a:fillOverlay blend="lighten">',
+]
+
+[[visual]]
+slide = 0
+# LibreOffice ignores the source effect but displays domOXML's portable fallback. Graph is the
+# PowerPoint-semantic visual gate; LibreOffice output remains part of direct review evidence.
+backends = ["graph"]
+min_similarity = 0.995
+min_regional_similarity = 0.98
+min_focused_similarity = 0.94
+min_structural_similarity = 0.98

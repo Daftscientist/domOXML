@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
@@ -471,7 +472,7 @@ def _connector_reverse_coverage(slide_part: str, element: Element) -> CoverageIt
 
 
 def _positioned_box(element: Element) -> Box | None:
-    """Return the viewport box for a direct slide-tree visual when it has one."""
+    """Return the axis-aligned paint box for a direct slide-tree visual when it has one."""
     kind = _local_name(element)
     transform = (
         element.find("p:xfrm", _NS)
@@ -484,12 +485,26 @@ def _positioned_box(element: Element) -> Box | None:
     extent = transform.find("a:ext", _NS) if transform is not None else None
     if offset is None or extent is None:
         return None
-    return Box(
+    assert transform is not None
+    box = Box(
         x=_int_attr(offset, "x"),
         y=_int_attr(offset, "y"),
         width=max(1, _int_attr(extent, "cx")),
         height=max(1, _int_attr(extent, "cy")),
     )
+    rotation = _int_attr(transform, "rot") / 60_000
+    if rotation % 180 == 0:
+        return box
+    radians = math.radians(rotation)
+    painted_width = abs(box.width * math.cos(radians)) + abs(box.height * math.sin(radians))
+    painted_height = abs(box.width * math.sin(radians)) + abs(box.height * math.cos(radians))
+    center_x = box.x + (box.width / 2)
+    center_y = box.y + (box.height / 2)
+    left = math.floor(center_x - (painted_width / 2))
+    top = math.floor(center_y - (painted_height / 2))
+    right = math.ceil(center_x + (painted_width / 2))
+    bottom = math.ceil(center_y + (painted_height / 2))
+    return Box(x=left, y=top, width=max(1, right - left), height=max(1, bottom - top))
 
 
 def _fallback_picture(
@@ -759,6 +774,7 @@ def _slide(
             kind = _local_name(element)
             preserved_owner_id: str | None = None
             preserve_whole_node = True
+            reason = f"preserved unsupported reverse slide node: {kind}"
             if kind in {"nvGrpSpPr", "grpSpPr"}:
                 continue
             if kind == "AlternateContent":
@@ -790,6 +806,66 @@ def _slide(
                         and fallback_shape is not None
                         and isinstance(fallback_shape.fill, PictureFill)
                     ):
+                        if shape_preserved:
+                            reason = (
+                                "shape has unsupported source effects; retained as one owned "
+                                "visual layer"
+                            )
+                            try:
+                                payload = capture_payload(
+                                    package,
+                                    slide_part,
+                                    element,
+                                    kind="AlternateContent",
+                                    ambient_theme_part=inherit_ctx.theme_part,
+                                )
+                            except (KeyError, ValueError):
+                                fallback_node = _with_pptx_identity(
+                                    ShapeNode(
+                                        box=fallback_shape.box,
+                                        fill=fallback_shape.fill.model_copy(
+                                            update={"raster_role": "pptx-source-fallback"}
+                                        ),
+                                    ),
+                                    native,
+                                    slide_part,
+                                )
+                                contents.append(fallback_node)
+                                source_retention = SourceRetention.DETACHED
+                                owner_node_id = fallback_node.node_id
+                                reason += "; dependent OPC graph could not be attached"
+                            else:
+                                preserved_node = _with_pptx_identity(
+                                    PreservedNode(
+                                        box=fallback_shape.box,
+                                        payload=payload,
+                                        fallback=fallback_shape.fill,
+                                    ),
+                                    native,
+                                    slide_part,
+                                )
+                                contents.append(preserved_node)
+                                source_retention = SourceRetention.ATTACHED
+                                owner_node_id = preserved_node.node_id
+                            warnings.extend(shape_warns)
+                            warning, fragment = _preserve(slide_part, element, reason)
+                            warnings.append(warning)
+                            preserved.append(
+                                fragment.model_copy(update={"owner_node_id": owner_node_id})
+                            )
+                            coverage.append(
+                                CoverageItem(
+                                    element=_visual_label(slide_part, native),
+                                    representation=Representation.ELEMENT_LAYER,
+                                    editability=Editability.LAYERS,
+                                    source_retention=source_retention,
+                                    raster_area_emu2=(
+                                        fallback_shape.box.width * fallback_shape.box.height
+                                    ),
+                                    reason=reason,
+                                )
+                            )
+                            continue
                         portable_fallback = PortableFallback(
                             box=fallback_shape.box,
                             picture=fallback_shape.fill,
@@ -834,20 +910,31 @@ def _slide(
                     inherit_ctx=inherit_ctx,
                 )
                 if shape is not None:
-                    contents.append(shape)
                     warnings.extend(shape_warns)
-                    preserved.extend(shape_preserved)
-                    coverage.append(
-                        _shape_reverse_coverage(
-                            slide_part,
-                            element,
-                            has_preserved_effects=bool(shape_preserved),
+                    if (
+                        shape_preserved
+                        and fallback_png is not None
+                        and all(fragment.kind == "fillOverlay" for fragment in shape_preserved)
+                    ):
+                        reason = (
+                            "shape has unsupported source effects; retained as one owned "
+                            "visual layer"
                         )
-                    )
-                    if not shape_preserved:
-                        continue
-                    preserve_whole_node = False
-                reason = "preserved shape that the reverse adapter could not map"
+                    else:
+                        contents.append(shape)
+                        preserved.extend(shape_preserved)
+                        coverage.append(
+                            _shape_reverse_coverage(
+                                slide_part,
+                                element,
+                                has_preserved_effects=bool(shape_preserved),
+                            )
+                        )
+                        if not shape_preserved:
+                            continue
+                        preserve_whole_node = False
+                else:
+                    reason = "preserved shape that the reverse adapter could not map"
             elif kind == "pic":
                 # Video/audio pics carry a media relationship — recover as a MediaNode.
                 media = read_media(

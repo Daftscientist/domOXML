@@ -17,6 +17,7 @@ from domoxml.core.ir.model import (
     Blur,
     Box,
     CharBullet,
+    FillOverlay,
     GradientFill,
     GradientStop,
     GroupNode,
@@ -35,8 +36,10 @@ from domoxml.core.ir.model import (
     TextBody,
     TextParagraph,
     TextRun,
+    Transform,
 )
 from domoxml.core.opc import OpcPackage, write_package
+from domoxml.core.roundtrip import render_html_roundtrip
 from domoxml.slides import build_pptx, read_pptx, read_pptx_result
 from domoxml.slides.appearance_read import rgba
 from domoxml.slides.read import (
@@ -247,6 +250,48 @@ def test_portable_soft_edge_fallback_uses_alternate_content_and_round_trips() ->
     assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
 
 
+def test_portable_fill_overlay_fallback_uses_alternate_content_and_round_trips() -> None:
+    fallback_box = Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000)
+    overlay = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="mult",
+    )
+    shape = ShapeNode(
+        box=fallback_box,
+        fill=SolidFill(color=Rgba(r=20, g=60, b=140)),
+        effects=(overlay,),
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-fill-overlay-png",
+                ext="png",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert 'mc:Choice Requires="p16"' in slide_xml
+    assert '<a:fillOverlay blend="mult"><a:solidFill>' in slide_xml
+    assert '<a:srgbClr val="FF2850"><a:alpha val="75000"/>' in slide_xml
+    assert slide_xml.count("domoxml-raster:portable-effect-fallback") == 1
+    assert '<mc:Choice Requires="p16"><p:sp>' in slide_xml
+    assert "</p:sp></mc:Choice>" in slide_xml
+
+    result = read_pptx_result(pptx)
+    [recovered] = result.slides[0].shapes
+    assert recovered.effects == (overlay,)
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == fallback_box
+    assert recovered.portable_fallback.picture.data == b"isolated-fill-overlay-png"
+    assert result.coverage.count(Representation.HYBRID) == 1
+    assert result.coverage.count_editability(Editability.COMPONENTS) == 1
+    assert result.coverage.output_count == 2
+    assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
+
+
 def test_portable_fallback_reports_and_retains_unsupported_choice_effects() -> None:
     shape = ShapeNode(
         box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
@@ -274,12 +319,74 @@ def test_portable_fallback_reports_and_retains_unsupported_choice_effects() -> N
 
     result = read_pptx_result(write_package(parts))
 
+    [recovered] = [node for node in result.slides[0].contents if isinstance(node, PreservedNode)]
+    assert recovered.fallback is not None
+    assert recovered.fallback.data == b"isolated-blur-png"
+    assert shape.portable_fallback is not None
+    assert recovered.box == shape.portable_fallback.box
+    assert "fillOverlay" in recovered.payload.root_xml
     [coverage] = result.coverage.items
-    assert coverage.representation is Representation.HYBRID
-    assert coverage.editability is Editability.COMPONENTS
-    assert coverage.source_retention is SourceRetention.DETACHED
-    assert "detached source-only effect fragments" in (coverage.reason or "")
-    assert {fragment.kind for fragment in result.preserved} == {"fillOverlay", "AlternateContent"}
+    assert coverage.representation is Representation.ELEMENT_LAYER
+    assert coverage.editability is Editability.LAYERS
+    assert coverage.source_retention is SourceRetention.ATTACHED
+    assert coverage.raster_area_emu2 == (
+        shape.portable_fallback.box.width * shape.portable_fallback.box.height
+    )
+    assert "owned visual layer" in (coverage.reason or "")
+    assert {fragment.kind for fragment in result.preserved} == {"AlternateContent"}
+
+    rebuilt = build_pptx(list(result.slides), faces=[])
+    assert b"fillOverlay" in OpcPackage.from_bytes(rebuilt).read(slide_part)
+
+
+def test_unsupported_over_overlay_uses_owned_source_render_and_re_emits() -> None:
+    shape = ShapeNode(
+        box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
+        fill=SolidFill(color=Rgba(r=20, g=60, b=140)),
+        effects=(
+            FillOverlay(
+                fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+                blend="mult",
+            ),
+        ),
+        transform=Transform(rotation_deg=30),
+    )
+    package = OpcPackage.from_bytes(
+        build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    )
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    slide_part = "ppt/slides/slide1.xml"
+    parts[slide_part] = package.read(slide_part).replace(b'blend="mult"', b'blend="over"')
+    rendered = BytesIO()
+    Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")
+
+    current = write_package(parts)
+    fallback_pngs = (rendered.getvalue(),)
+    previous_metrics: tuple[int, int] | None = None
+    previous_pngs: tuple[bytes, ...] | None = None
+    for _cycle in range(2):
+        html = Presentation.from_pptx(current, fallback_pngs=fallback_pngs)
+
+        assert 'data-domoxml-representation="element-layer"' in html.slides[0].html
+        assert "data-domoxml-preserved-payload=" in html.slides[0].html
+        [coverage] = html.coverage.items
+        assert coverage.representation is Representation.ELEMENT_LAYER
+        assert coverage.editability is Editability.LAYERS
+        assert coverage.source_retention is SourceRetention.ATTACHED
+        assert coverage.raster_area_emu2 > shape.box.width * shape.box.height
+        metrics = (coverage.output_count, coverage.raster_area_emu2)
+        if previous_metrics is not None:
+            assert metrics == previous_metrics
+        previous_metrics = metrics
+
+        rebuilt = render_html_roundtrip(html)
+        assert rebuilt.pptx is not None
+        if previous_pngs is not None:
+            assert rebuilt.pngs == previous_pngs
+        previous_pngs = rebuilt.pngs
+        fallback_pngs = rebuilt.pngs
+        current = rebuilt.pptx
+        assert b'fillOverlay blend="over"' in OpcPackage.from_bytes(current).read(slide_part)
 
 
 def test_exposes_generated_pptx_as_html() -> None:

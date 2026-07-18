@@ -6,13 +6,24 @@ from collections.abc import Callable
 from xml.etree import ElementTree
 from xml.etree.ElementTree import Element
 
-from domoxml.core.ir.model import Blur, Box, Glow, Reflection, Rgba, Shadow, SoftEdge
+from domoxml.core.ir.model import (
+    Blur,
+    Box,
+    FillOverlay,
+    FillOverlayBlend,
+    Glow,
+    Reflection,
+    Rgba,
+    Shadow,
+    SoftEdge,
+    SolidFill,
+)
 from domoxml.types import ConversionWarning, PreservedFragment
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _NS = {"a": _A}
 
-type Effect = Shadow | Glow | Blur | SoftEdge | Reflection
+type Effect = Shadow | Glow | Blur | SoftEdge | Reflection | FillOverlay
 type ColorParser = Callable[[Element], Rgba | None]
 
 
@@ -138,10 +149,44 @@ def read_effects(
                     )
                 )
             )
+        elif kind == "fillOverlay":
+            solid = child.find("a:solidFill", _NS)
+            color = color_for(solid) if solid is not None else None
+            blend = child.get("blend", "over")
+            supported_blends: set[FillOverlayBlend] = {
+                "mult",
+                "screen",
+                "darken",
+                "lighten",
+            }
+            if color is not None and blend in supported_blends:
+                effects.append(
+                    FillOverlay(
+                        fill=SolidFill(color=color),
+                        blend=blend,
+                    )
+                )
+                if color.a > 0.0:
+                    warnings.append(
+                        ConversionWarning(
+                            message=(
+                                "a:fillOverlay mapped to CSS background blending; rebuilt PPTX "
+                                "uses an isolated renderer fallback"
+                            )
+                        )
+                    )
+            else:
+                warning, fragment = _preserve(
+                    child,
+                    kind,
+                    "a:fillOverlay has no supported solid CSS mapping; preserved as fragment",
+                )
+                warnings.append(warning)
+                preserved.append(fragment)
         else:
             message = (
                 f"a:{kind} has no CSS mapping; preserved as fragment"
-                if kind in {"prstShdw", "fillOverlay"}
+                if kind == "prstShdw"
                 else f"a:{kind} (in effectLst) has no CSS mapping; preserved as fragment"
             )
             warning, fragment = _preserve(child, kind, message)

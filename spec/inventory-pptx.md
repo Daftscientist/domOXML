@@ -13,7 +13,7 @@ Audited on **2026-07-18**.
 
 | Capability | HTML/CSS -> PPTX | PPTX -> HTML/CSS | Evidence | Main remaining work |
 |---|---|---|---|---|
-| Presentation package, slide order, and visual IDs | Native with private identity extension and mandatory core package validation | Native with extension or `cNvPr` fallback provenance | package-validator unit suite + `cap:node-identity` (both) + 5 real decks | sections/custom shows where useful, strict/nonstandard packages and full XSD validation |
+| Presentation package, slide order, and visual IDs | Native with private identity extension and mandatory core package validation | Native with extension or `cNvPr` fallback provenance | package-validator unit suite + `cap:node-identity` (both) + 6 real decks | sections/custom shows where useful, strict/nonstandard packages and full XSD validation |
 | Slide dimensions | Native | Native | integration | mixed-size output policy and repeated-round-trip proof |
 | Slide creation and relationships | Native; builder rejects missing/duplicate/dangling package graphs and invalid core structure | Native | package-validator unit suite + all capability/re-emission gates | full ECMA XSD validation and deterministic source relationship preservation |
 | Slide backgrounds | Native subset | Native subset | `cap:transition-bg` (both) | theme/style-matrix backgrounds, image/pattern variants, inheritance |
@@ -25,7 +25,7 @@ Audited on **2026-07-18**.
 | Animations/timing | Gap | Preserve only | unit only | timing IR/input contract, HTML state mapping, visual playback/layer policy, re-emission |
 | Speaker notes | Gap; no public argument | Gap | none | `Slide` notes argument, notes parts/relationships, normalized HTML metadata, round trip |
 | Embedded fonts | Partial/native | Partial/native | unit/integration + real deck | complete face slots, substitutions/licensing, malformed data and renderer baselines |
-| Pictures and raster fallback markers | Native; isolated blur/reflection/soft-edge fallbacks are renderer-selected through `mc:AlternateContent` | Native; authoritative reverse crops can attach to preserved positioned nodes and portable effect fallbacks recover beside their semantic owner | capabilities/integration + `cap:blur-effect` + `cap:reflection-effect` + `cap:soft-edge-effect` + `cap:chart-preservation` | automatic renderer policy beyond proven effects, stable group ownership and accessibility fields |
+| Pictures and raster fallback markers | Native; isolated blur/reflection/soft-edge/fill-overlay fallbacks are renderer-selected through `mc:AlternateContent` | Native; authoritative reverse crops can attach to preserved positioned nodes and portable effect fallbacks recover beside their semantic owner | capabilities/integration + `cap:blur-effect` + `cap:reflection-effect` + `cap:soft-edge-effect` + `cap:fill-overlay-effect` + `cap:chart-preservation` | automatic renderer policy beyond proven effects, stable group ownership and accessibility fields |
 | SVG extension (`asvg:svgBlip`) | Native write | Native read and exact re-emission for pure pictures | `cap:svg-vector` (both) | cropped/effect-bearing SVG pictures, external assets, and adversarial SVG content |
 | Native tables in graphic frames | Native subset | Native subset; default style reference/flags survive IR and normalized HTML | `cap:table` (both) + LO/Graph real deck | arbitrary style definitions/inheritance and richer graphic-frame ordering |
 | Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph plus caller-rendered normalized-HTML element layer | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart IR, automatic renderer selection, semantic HTML rendering, and native authoring |
@@ -50,6 +50,7 @@ Audited on **2026-07-18**.
 | `chart-preservation` | reverse | owned chart graph, ambient theme, identity, renderer-backed HTML element layer, and exact PPTX re-emission |
 | `custom-path` | both | native custom geometry and connector structure survive normalized HTML and PPTX re-emission |
 | `effects` | both | native outer shadow/glow plus portable inset layer; broader effect-list family remains |
+| `fill-overlay-effect` | both | four editable solid blend modes, portable renderer branches, exact payload, stacking, and convergence |
 | `hyperlink` | both | run hyperlinks and relationships |
 | `interleaved-order` | both | canonical mixed-node z-order through both adapters |
 | `node-identity` | both | stable IDs, source provenance, ownership, and private OOXML extension |
@@ -68,7 +69,7 @@ Audited on **2026-07-18**.
 This table reports fixture execution, not completion of the entire named family. Thresholds and
 structural assertions live in each `capability.toml` and are the executable authority. Every
 fixture pins exact representation, editability, retention, output-count, and raster-area bounds for
-the initial PPTX-ingest boundary; the five real-deck manifests pin the same reverse contract.
+the initial PPTX-ingest boundary; the six real-deck manifests pin the same reverse contract.
 
 ## PPTX-Specific Work Remaining
 

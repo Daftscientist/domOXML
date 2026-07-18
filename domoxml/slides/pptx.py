@@ -11,6 +11,7 @@ from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.fonts import FontFace, load_faces
 from domoxml.core.ir.model import (
     Connector,
+    FillOverlay,
     Hyperlink,
     PictureFill,
     PreservationPart,
@@ -401,11 +402,17 @@ def _slide(
                         shape_id=(2 * len(slide.contents)) + 2 + position,
                         blip_rid=fallback_rid,
                     )
+                    choice_fallback = (
+                        ""
+                        if node.effects
+                        and all(isinstance(effect, FillOverlay) for effect in node.effects)
+                        else choice_fallback_xml
+                    )
                     content_parts.append(
                         "<mc:AlternateContent "
                         'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
                         'xmlns:p16="http://schemas.microsoft.com/office/powerpoint/2015/main">'
-                        f'<mc:Choice Requires="p16">{native_xml}{choice_fallback_xml}</mc:Choice>'
+                        f'<mc:Choice Requires="p16">{native_xml}{choice_fallback}</mc:Choice>'
                         f"<mc:Fallback>{fallback_xml}</mc:Fallback>"
                         "</mc:AlternateContent>"
                     )

@@ -18,6 +18,7 @@ from domoxml.core.fidelity import (
     render_pptx_to_pngs_via_graph,
 )
 from domoxml.core.real_decks import (
+    RealDeckCase,
     load_real_decks,
     validate_real_deck,
     validate_real_deck_roundtrip,
@@ -38,6 +39,16 @@ def _render(backend: Backend, pptx: bytes) -> list[bytes]:
         if backend == "libreoffice"
         else render_pptx_to_pngs_via_graph(pptx)
     )
+
+
+def source_fallback_backend(case: RealDeckCase, active: list[Backend]) -> Backend:
+    """Prefer the sole renderer named by a case's visual contract for source-owned layers."""
+    scoped = {
+        backend for expected in case.visual for backend in expected.backends if backend in active
+    }
+    if len(scoped) == 1:
+        return cast(Backend, scoped.pop())
+    return active[0]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -66,7 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     failures = 0
     for case in cases:
         references_by_backend = {backend: _render(backend, case.pptx) for backend in active}
-        fallback_pngs = tuple(references_by_backend[active[0]])
+        source_backend = source_fallback_backend(case, active)
+        fallback_pngs = tuple(references_by_backend[source_backend])
         html = Presentation.from_pptx(case.pptx, fallback_pngs=fallback_pngs)
         errors = list(validate_real_deck(case, html))
         roundtrip = render_html_roundtrip(html)
@@ -81,9 +93,14 @@ def main(argv: list[str] | None = None) -> int:
         for backend in active:
             if not case.visual or roundtrip.pptx is None:
                 continue
+            expected_for_backend = [
+                expected for expected in case.visual if backend in expected.backends
+            ]
+            if not expected_for_backend:
+                continue
             references = references_by_backend[backend]
             candidates = _render(backend, roundtrip.pptx)
-            for expected in case.visual:
+            for expected in expected_for_backend:
                 if expected.slide >= len(references) or expected.slide >= len(candidates):
                     errors.append(f"{backend} slide {expected.slide}: render page missing")
                     continue

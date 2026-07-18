@@ -10,6 +10,7 @@ from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
     CharBullet,
+    FillOverlay,
     PictureFill,
     PreservationPayload,
     PreservedNode,
@@ -123,6 +124,38 @@ async def test_extracts_css_soft_edge_with_shape_bound_fallback() -> None:
         if any(isinstance(effect, SoftEdge) for effect in shape.effects)
     ]
     assert shape.effects == (SoftEdge(radius_emu=px_to_emu(12)),)
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(100),
+        y=px_to_emu(80),
+        width=px_to_emu(220),
+        height=px_to_emu(90),
+    )
+    [coverage] = [item for item in result.coverage if item.representation is Representation.HYBRID]
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(90)
+
+
+async def test_extracts_css_fill_overlay_with_shape_bound_fallback() -> None:
+    result = await _render_and_extract_result(
+        '<div style="position:absolute;left:100px;top:80px;width:220px;height:90px;'
+        "background-color:#143c8c;"
+        "background-image:linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75));"
+        'background-blend-mode:multiply;color:white;font-size:24px">OVERLAY</div>'
+    )
+
+    [shape] = [
+        shape
+        for shape in result.slide.shapes
+        if any(isinstance(effect, FillOverlay) for effect in shape.effects)
+    ]
+    assert shape.effects == (
+        FillOverlay(
+            fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+            blend="mult",
+        ),
+    )
+    assert shape.fill == SolidFill(color=Rgba(r=20, g=60, b=140))
     assert shape.portable_fallback is not None
     assert shape.portable_fallback.box == Box(
         x=px_to_emu(100),

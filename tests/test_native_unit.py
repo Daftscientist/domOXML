@@ -15,6 +15,7 @@ from domoxml.core.ir.model import (
     Blur,
     Box,
     Connector,
+    FillOverlay,
     Glow,
     GradientFill,
     PictureFill,
@@ -29,6 +30,7 @@ from domoxml.core.ir.model import (
 from domoxml.core.ir.parse import (
     parse_border_side,
     parse_box_reflection,
+    parse_fill_overlay,
     parse_gradient,
     parse_shadow,
     parse_soft_edge_mask,
@@ -304,6 +306,186 @@ def test_zero_radius_soft_edge_stays_native_without_fallback() -> None:
     assert shape.effects == (effect,)
     assert shape.portable_fallback is None
     assert result.coverage[0].representation is Representation.NATIVE
+
+
+def test_css_fill_overlay_is_native_with_shape_bound_fallback() -> None:
+    background_image = "linear-gradient(rgb(255, 40, 80), rgb(255, 40, 80))"
+    node = RenderedNode(
+        tag="div",
+        x=5,
+        y=4,
+        width=10,
+        height=8,
+        index=0,
+        styles={
+            "backgroundImage": background_image,
+            "backgroundColor": "rgb(20, 60, 140)",
+            "backgroundBlendMode": "multiply",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    shape = result.slide.shapes[0]
+    parsed = parse_fill_overlay(
+        background_image,
+        "rgb(20, 60, 140)",
+        "multiply",
+    )
+    assert parsed is not None
+    assert shape.fill == parsed[0]
+    assert shape.effects == (parsed[1],)
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(5),
+        y=px_to_emu(4),
+        width=px_to_emu(10),
+        height=px_to_emu(8),
+    )
+    assert shape.portable_fallback.picture.raster_role == "portable-effect-fallback"
+    assert result.coverage[0].representation is Representation.HYBRID
+    assert result.coverage[0].editability is Editability.COMPONENTS
+    assert result.coverage[0].raster_area_emu2 == px_to_emu(10) * px_to_emu(8)
+    assert "fillOverlay" in (result.coverage[0].reason or "")
+
+
+def test_encoded_transparent_fill_overlay_recovers_base_fill_without_fallback() -> None:
+    effect = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.0)),
+        blend="screen",
+    )
+    node = RenderedNode(
+        tag="div",
+        x=5,
+        y=4,
+        width=10,
+        height=8,
+        index=0,
+        styles={
+            "domoxmlEffects": encode_effects((effect,)),
+            "backgroundImage": "linear-gradient(rgba(255, 40, 80, 0), rgba(255, 40, 80, 0))",
+            "backgroundColor": "rgb(20, 60, 140)",
+            "backgroundBlendMode": "screen",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    shape = result.slide.shapes[0]
+    assert shape.fill == SolidFill(color=Rgba(r=20, g=60, b=140))
+    assert shape.effects == (effect,)
+    assert shape.portable_fallback is None
+    assert result.coverage[0].representation is Representation.NATIVE
+
+
+def test_encoded_fill_overlay_recovers_stacked_gradient_base() -> None:
+    effect = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.72157)),
+        blend="mult",
+    )
+    node = RenderedNode(
+        tag="div",
+        x=5,
+        y=4,
+        width=10,
+        height=8,
+        index=0,
+        styles={
+            "domoxmlEffects": encode_effects((effect,)),
+            "backgroundImage": (
+                "linear-gradient(rgba(255, 40, 80, 0.72), rgba(255, 40, 80, 0.72)), "
+                "linear-gradient(90deg, rgb(10, 20, 30), rgb(40, 50, 60))"
+            ),
+            "backgroundColor": "rgba(0, 0, 0, 0)",
+            "backgroundBlendMode": "multiply, normal",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    shape = result.slide.shapes[0]
+    assert isinstance(shape.fill, GradientFill)
+    assert [stop.color for stop in shape.fill.stops] == [
+        Rgba(r=10, g=20, b=30),
+        Rgba(r=40, g=50, b=60),
+    ]
+    assert shape.effects == (effect,)
+    assert shape.portable_fallback is not None
+    assert result.coverage[0].representation is Representation.HYBRID
+
+
+def test_nonuniform_background_blend_uses_visible_element_layer() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "backgroundImage": "linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))",
+            "backgroundColor": "rgb(20, 60, 140)",
+            "backgroundBlendMode": "multiply",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert "background-blend-mode" in (result.coverage[0].reason or "")
+
+
+def test_partial_uniform_background_blend_uses_visible_element_layer() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "backgroundImage": "linear-gradient(rgb(255, 0, 0), rgb(255, 0, 0))",
+            "backgroundColor": "rgb(20, 60, 140)",
+            "backgroundBlendMode": "multiply",
+            "backgroundSize": "50% 50%",
+            "backgroundPosition": "100% 100%",
+            "backgroundRepeat": "no-repeat",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert "background-blend-mode" in (result.coverage[0].reason or "")
+
+
+def test_stale_encoded_fill_overlay_uses_visible_element_layer() -> None:
+    effect = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="mult",
+    )
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "domoxmlEffects": encode_effects((effect,)),
+            "backgroundImage": "linear-gradient(rgb(0, 255, 0), rgb(0, 255, 0))",
+            "backgroundColor": "rgb(20, 60, 140)",
+            "backgroundBlendMode": "multiply",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert "metadata does not match" in (result.coverage[0].reason or "")
 
 
 def test_unmapped_css_mask_uses_visible_element_layer() -> None:

@@ -1,0 +1,88 @@
+id = "fill-overlay-effect"
+direction = "both"
+html_file = "slide.html"
+
+[expected]
+min_representation = { native = 5, hybrid = 4 }
+max_representation = { native = 5, decomposed = 0, approximated = 0, hybrid = 4, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 5, components = 4 }
+max_editability = { semantic = 5, components = 4, layers = 0, none = 0 }
+min_source_retention = { not_required = 9 }
+max_source_retention = { not_required = 9, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 13
+max_output_count = 13
+min_raster_area_emu2 = 13064490000000
+max_raster_area_emu2 = 13064490000000
+warnings = ["editable native effect metadata with an isolated renderer fallback"]
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:sp/p:spPr/a:effectLst/a:fillOverlay"
+min_count = 4
+max_count = 4
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:sp/p:spPr/a:effectLst/a:fillOverlay[@blend='mult']/a:solidFill/a:srgbClr[@val='F43F5E']"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Fallback/p:pic/p:nvPicPr/p:cNvPr[@descr='domoxml-raster:portable-effect-fallback']"
+min_count = 4
+max_count = 4
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:pic/p:nvPicPr/p:cNvPr[@descr='domoxml-raster:portable-effect-fallback']"
+min_count = 0
+max_count = 0
+
+[visual]
+source_to_pptx_min_similarity = 0.99
+source_to_pptx_min_regional_similarity = 0.96
+source_to_pptx_min_structural_similarity = 0.97
+pptx_to_html_min_similarity = 0.99
+pptx_to_html_min_regional_similarity = 0.96
+pptx_to_html_min_structural_similarity = 0.97
+
+[roundtrip]
+cycles = 2
+min_representation = { native = 5, hybrid = 4 }
+max_representation = { native = 5, decomposed = 0, approximated = 0, hybrid = 4, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 5, components = 4 }
+max_editability = { semantic = 5, components = 4, layers = 0, none = 0 }
+min_source_retention = { not_required = 9 }
+max_source_retention = { not_required = 9, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 13
+max_output_count = 13
+min_raster_area_emu2 = 13064490000000
+max_raster_area_emu2 = 13064490000000
+min_convergence_similarity = 0.999
+min_convergence_regional_similarity = 0.999
+min_convergence_structural_similarity = 0.999
+
+[reverse]
+min_representation = { native = 5, hybrid = 4 }
+max_representation = { native = 5, decomposed = 0, approximated = 0, hybrid = 4, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 5, components = 4 }
+max_editability = { semantic = 5, components = 4, layers = 0, none = 0 }
+min_source_retention = { not_required = 9 }
+max_source_retention = { not_required = 9, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 13
+max_output_count = 13
+min_raster_area_emu2 = 13064490000000
+max_raster_area_emu2 = 13064490000000
+expected_slides = 1
+html_contains = [
+  "data-domoxml-effects=",
+  "background-blend-mode:multiply",
+  "background-blend-mode:screen",
+  "background-blend-mode:darken",
+  "background-blend-mode:lighten",
+  "MULTIPLY",
+  "LIGHTEN",
+]
+max_warnings = 8
+max_preserved = 0

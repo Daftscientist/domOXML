@@ -13,7 +13,7 @@ Audited on **2026-07-24**.
 
 | Capability | HTML/CSS -> PPTX | PPTX -> HTML/CSS | Evidence | Main remaining work |
 |---|---|---|---|---|
-| Presentation package, slide order, and visual IDs | Native with private identity extension and mandatory core package validation | Native with extension or `cNvPr` fallback provenance | package-validator unit suite + `cap:node-identity` (both) + 6 real decks | sections/custom shows where useful, strict/nonstandard packages and full XSD validation |
+| Presentation package, slide order, and visual IDs | Native with private identity extension and mandatory core package validation | Native with extension or `cNvPr` fallback provenance | package-validator unit suite + `cap:node-identity` (both) + 7 real decks | sections/custom shows where useful, strict/nonstandard packages and full XSD validation |
 | Slide dimensions | Native | Native | integration | mixed-size output policy and repeated-round-trip proof |
 | Slide creation and relationships | Native; builder rejects missing/duplicate/dangling package graphs and invalid core structure | Native | package-validator unit suite + all capability/re-emission gates | full ECMA XSD validation and deterministic source relationship preservation |
 | Slide backgrounds | Native subset | Native subset | `cap:transition-bg` (both) | theme/style-matrix backgrounds, image/pattern variants, inheritance |
@@ -49,6 +49,7 @@ Audited on **2026-07-24**.
 | `bullets-spacing` | both | shared list/paragraph behavior |
 | `chart-preservation` | reverse | owned chart graph, ambient theme, identity, renderer-backed HTML element layer, and exact PPTX re-emission |
 | `custom-path` | both | native custom geometry and connector structure survive normalized HTML and PPTX re-emission |
+| `custom-path-effects` | both | single-path SVG offset shadow and glow lower to native effects, paint path-aware normalized HTML, reject omission by visual floors, and converge after two cycles |
 | `effects` | both | native outer shadow/glow plus portable inset layer; broader effect-list family remains |
 | `fill-overlay-effect` | both | four editable solid blend modes, portable renderer branches, exact payload, stacking, and convergence |
 | `fill-overlay-owned-fallback` | reverse | rotated unsupported `over` blend remains visible as one owned layer, retains exact source payload, and converges after the fallback boundary |
@@ -72,7 +73,7 @@ Audited on **2026-07-24**.
 This table reports fixture execution, not completion of the entire named family. Thresholds and
 structural assertions live in each `capability.toml` and are the executable authority. Every
 fixture pins exact representation, editability, retention, output-count, and raster-area bounds for
-the initial PPTX-ingest boundary; the six real-deck manifests pin the same reverse contract.
+the initial PPTX-ingest boundary; the seven real-deck manifests pin the same reverse contract.
 
 ## PPTX-Specific Work Remaining
 

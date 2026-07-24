@@ -24,6 +24,8 @@ def extract_custom_geometry(
     node: RenderedNode,
     nodes: tuple[RenderedNode, ...],
     children: dict[int, list[int]],
+    *,
+    encoded_geometry: CustomGeometry | None = None,
 ) -> SvgGeometryExtract:
     """Convert a single-path inline SVG when its view box and path are supported."""
     view_box = node.src.strip().split()
@@ -45,6 +47,8 @@ def extract_custom_geometry(
     if len(paths) != 1:
         return SvgGeometryExtract(geometry=None, style_node=node)
     style_node = paths[0]
+    if encoded_geometry is not None:
+        return SvgGeometryExtract(geometry=encoded_geometry, style_node=style_node)
     parsed = parse_svg_path(style_node.src)
     if parsed.bail_reason is not None:
         snippet = node.text[:24].strip()

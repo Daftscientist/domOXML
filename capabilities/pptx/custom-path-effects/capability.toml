@@ -1,0 +1,77 @@
+id = "custom-path-effects"
+direction = "both"
+html_file = "slide.html"
+
+[expected]
+min_representation = { native = 2 }
+max_representation = { rasterized = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 2 }
+max_editability = { semantic = 2, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 2 }
+max_source_retention = { not_required = 2, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 2
+max_output_count = 2
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:custGeom"
+min_count = 2
+max_count = 2
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:custGeom/following-sibling::a:effectLst/a:outerShdw"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//a:custGeom/following-sibling::a:effectLst/a:glow"
+min_count = 1
+max_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.996
+source_to_pptx_min_regional_similarity = 0.98
+source_to_pptx_min_structural_similarity = 0.998
+pptx_to_html_min_similarity = 0.999
+pptx_to_html_min_regional_similarity = 0.999
+pptx_to_html_min_structural_similarity = 0.999
+
+[roundtrip]
+cycles = 2
+min_representation = { native = 2 }
+max_representation = { rasterized = 0, native = 2, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 2 }
+max_editability = { semantic = 2, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 2 }
+max_source_retention = { not_required = 2, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 2
+max_output_count = 2
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+min_convergence_similarity = 0.999
+min_convergence_regional_similarity = 0.999
+min_convergence_structural_similarity = 0.999
+
+[reverse]
+min_representation = { native = 3 }
+max_representation = { rasterized = 0, native = 3, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 3 }
+max_editability = { semantic = 3, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 3 }
+max_source_retention = { not_required = 3, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 3
+max_output_count = 3
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+expected_slides = 1
+html_contains = [
+  "<path d=",
+  "data-domoxml-effects=",
+  "filter:drop-shadow(",
+]
+max_warnings = 0
+max_preserved = 0

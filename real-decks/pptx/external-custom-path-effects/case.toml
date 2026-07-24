@@ -1,0 +1,52 @@
+id = "external-custom-path-effects"
+pptx_file = "source.pptx"
+
+[provenance]
+source_url = "https://github.com/apache/poi/blob/0d6d4872c491b1f230f51c6878e57407c60ae697/test-data/slideshow/customGeo.pptx"
+source_revision = "0d6d4872c491b1f230f51c6878e57407c60ae697"
+license = "Apache-2.0"
+sha256 = "060716dcb2bc1c1430eb800aa40e63f666dff9cfaaf8e438fb6f13c967bd8a3e"
+source_sha256 = "9baa7f4554cbaddfcebcc431432268ea34f20c02787172bb0a7d12d640e7e84f"
+derivation = "Slide 6 only; retain Diagram 3 and its first four no-text custom-path children; remove timing and all other visual nodes."
+
+[package]
+slides = 1
+required_parts = [
+  "ppt/slides/slide1.xml",
+  "ppt/slideLayouts/slideLayout1.xml",
+  "ppt/slideMasters/slideMaster1.xml",
+  "ppt/theme/theme1.xml",
+]
+
+[reverse]
+min_representation = { decomposed = 1 }
+max_representation = { rasterized = 0, native = 0, decomposed = 1, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { components = 1 }
+max_editability = { semantic = 0, components = 1, layers = 0, none = 0 }
+min_source_retention = { lost = 1 }
+max_source_retention = { not_required = 0, attached = 0, detached = 0, ignored = 0, lost = 1 }
+min_output_count = 4
+max_output_count = 4
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+min_assets = 0
+max_warnings = 0
+preserved_count = 0
+html_contains = [
+  "data-domoxml-custom-geometry=",
+  "data-domoxml-effects=",
+  "drop-shadow(0px 2.4144px 0px",
+]
+roundtrip_xml_contains = [
+  "<a:custGeom>",
+  '<a:outerShdw blurRad="0" dist="22997" dir="5400000"',
+  '<a:pt x="0" y="310602"/>',
+]
+
+[[visual]]
+slide = 0
+# Every floor rejects a deck with the four source outer shadows removed on both renderers.
+min_similarity = 0.9998
+min_regional_similarity = 0.998
+min_focused_similarity = 0.99
+min_structural_similarity = 0.99

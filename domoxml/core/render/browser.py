@@ -206,6 +206,7 @@ _SNAPSHOT_JS = """
       domoxmlLayerRole: 'data-domoxml-layer-role',
       domoxmlPreservedPayload: 'data-domoxml-preserved-payload',
       domoxmlRepresentation: 'data-domoxml-representation',
+      domoxmlSlideFallback: 'data-domoxml-slide-fallback',
       domoxmlConnector: 'data-domoxml-connector',
       domoxmlEffects: 'data-domoxml-effects',
       domoxmlReflectionDistance: 'data-domoxml-reflection-distance',

@@ -228,6 +228,39 @@ def test_serialize_canvas_makes_preserved_fallback_visible_as_an_asset() -> None
     assert result.assets[0].data == b"fallback-png"
 
 
+def test_serialize_canvas_places_slide_fallback_above_retained_contents() -> None:
+    payload = PreservationPayload(kind="sp", root_xml="<p:sp/>")
+    preserved = PreservedNode(
+        node_id="shadow-source",
+        box=Box(x=100, y=200, width=300, height=400),
+        payload=payload,
+    )
+    sibling = ShapeNode(
+        box=Box(x=500, y=600, width=200, height=100),
+        fill=SolidFill(color=Rgba(r=239, g=68, b=68, a=0.55)),
+    )
+    result = serialize_canvas(
+        [
+            SlideIR(
+                width=1_000,
+                height=1_000,
+                contents=(preserved, sibling),
+                renderer_fallback=PictureFill(data=b"slide-png", ext="png"),
+                renderer_fallback_owner_node_id="shadow-source",
+            )
+        ]
+    )
+
+    html = result.slides[0].html
+    assert html.index('data-domoxml-node-id="shadow-source"') < html.index(
+        'data-domoxml-slide-fallback="rasterized"'
+    )
+    assert 'class="domoxml-slide-fallback"' in html
+    assert 'data-domoxml-owner-node-id="shadow-source"' in html
+    assert "z-index:2147483647" in html
+    assert result.assets[-1].data == b"slide-png"
+
+
 def test_render_result_save_writes_every_artifact(tmp_path: Path) -> None:
     html = serialize_canvas([_slide()])
     result = RenderResult(

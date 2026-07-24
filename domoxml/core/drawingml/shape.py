@@ -28,6 +28,7 @@ from domoxml.core.ir.model import (
     PatternFill,
     PictureFill,
     QuadTo,
+    Reflection,
     Rgba,
     Shadow,
     ShapeNode,
@@ -324,8 +325,7 @@ def _effects_xml(node: ShapeNode) -> str:
             parts.append(f'<a:blur rad="{effect.radius_emu}" grow="1"/>')
         elif isinstance(effect, SoftEdge):
             parts.append(f'<a:softEdge rad="{effect.radius_emu}"/>')
-        else:
-            # Reflection is the remaining union arm.
+        elif isinstance(effect, Reflection):
             parts.append(
                 f'<a:reflection blurRad="{effect.blur_emu}" '
                 f'dist="{effect.distance_emu}" '
@@ -333,6 +333,11 @@ def _effects_xml(node: ShapeNode) -> str:
                 f'endA="{round(effect.end_alpha * 100_000)}" '
                 f'dir="5400000" fadeDir="5400000" sx="100000" sy="-100000" '
                 f'ky="0" kx="0" algn="bl" rotWithShape="0"/>'
+            )
+        else:
+            parts.append(
+                f'<a:fillOverlay blend="{effect.blend}">'
+                f"{_solid_fill(effect.fill.color)}</a:fillOverlay>"
             )
     if not parts:
         return ""

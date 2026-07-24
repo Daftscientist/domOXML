@@ -6,6 +6,7 @@ import hashlib
 import re
 import tomllib
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -63,11 +64,14 @@ class DeckReverseExpected(CapabilityCoverageBounds):
 
 
 class DeckVisualExpected(BaseModel):
-    """Renderer-independent visual floors for one round-tripped slide."""
+    """Visual floors for one round-tripped slide on the selected renderers."""
 
     model_config = ConfigDict(frozen=True)
 
     slide: int = Field(ge=0)
+    backends: tuple[Literal["libreoffice", "graph"], ...] = Field(
+        default=("libreoffice", "graph"), min_length=1
+    )
     min_similarity: float = Field(ge=0.0, le=1.0)
     min_regional_similarity: float = Field(ge=0.0, le=1.0)
     min_focused_similarity: float = Field(ge=0.0, le=1.0)

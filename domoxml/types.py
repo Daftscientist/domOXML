@@ -67,6 +67,7 @@ class Representation(StrEnum):
     HYBRID = "hybrid"
     LAYERED = "layered"
     ELEMENT_LAYER = "element_layer"
+    RASTERIZED = "rasterized"
     APPROXIMATED = "approximated"
     FAILED = "failed"
 
@@ -170,6 +171,9 @@ class CoverageItem(BaseModel):
         elif representation is Representation.ELEMENT_LAYER:
             if self.editability is not Editability.LAYERS or self.output_count != 1:
                 raise ValueError("element-layer representation requires one editable layer")
+        elif representation is Representation.RASTERIZED:
+            if self.editability is not Editability.NONE or self.output_count != 1:
+                raise ValueError("rasterized representation requires one noneditable output")
         elif representation is Representation.APPROXIMATED:
             if self.editability is Editability.NONE or self.output_count < 1:
                 raise ValueError("approximated representation requires an editable output")
@@ -182,6 +186,7 @@ class CoverageItem(BaseModel):
             Representation.HYBRID,
             Representation.LAYERED,
             Representation.ELEMENT_LAYER,
+            Representation.RASTERIZED,
         )
         if uses_raster != (self.raster_area_emu2 > 0):
             raise ValueError("raster area must be positive exactly when raster layers are used")
@@ -226,7 +231,12 @@ class CoverageReport(BaseModel):
             return 0.0
         layered = sum(
             item.representation
-            in (Representation.HYBRID, Representation.LAYERED, Representation.ELEMENT_LAYER)
+            in (
+                Representation.HYBRID,
+                Representation.LAYERED,
+                Representation.ELEMENT_LAYER,
+                Representation.RASTERIZED,
+            )
             for item in self.items
         )
         return layered / len(self.items)

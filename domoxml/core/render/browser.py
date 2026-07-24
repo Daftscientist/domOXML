@@ -21,7 +21,8 @@ _SNAPSHOT_JS = """
   const pick = (cs) => ({
     color: cs.color, backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage,
     backgroundSize: cs.backgroundSize, backgroundPosition: cs.backgroundPosition,
-    backgroundRepeat: cs.backgroundRepeat,
+    backgroundRepeat: cs.backgroundRepeat, backgroundBlendMode: cs.backgroundBlendMode,
+    backgroundOrigin: cs.backgroundOrigin, backgroundClip: cs.backgroundClip,
     fontSize: cs.fontSize, fontFamily: cs.fontFamily,
     fontWeight: cs.fontWeight, fontStyle: cs.fontStyle,
     textDecorationLine: cs.textDecorationLine, textTransform: cs.textTransform,
@@ -204,6 +205,7 @@ _SNAPSHOT_JS = """
       domoxmlOwnerNodeId: 'data-domoxml-owner-node-id',
       domoxmlLayerRole: 'data-domoxml-layer-role',
       domoxmlPreservedPayload: 'data-domoxml-preserved-payload',
+      domoxmlRepresentation: 'data-domoxml-representation',
       domoxmlConnector: 'data-domoxml-connector',
       domoxmlEffects: 'data-domoxml-effects',
       domoxmlReflectionDistance: 'data-domoxml-reflection-distance',

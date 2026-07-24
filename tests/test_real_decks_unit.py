@@ -14,6 +14,7 @@ from domoxml.core.ir.model import PreservedNode, TableNode
 from domoxml.core.opc import OpcPackage
 from domoxml.core.real_decks import (
     DeckPackageExpected,
+    DeckVisualExpected,
     RealDeckCase,
     load_real_decks,
     validate_opc_package,
@@ -23,6 +24,7 @@ from domoxml.core.real_decks import (
 from domoxml.presentation import Presentation
 from domoxml.slides import build_pptx, read_pptx_result
 from domoxml.types import Editability, Representation, SourceRetention
+from scripts.real_deck_check import source_fallback_backend
 
 
 def _fallback_pngs(count: int) -> tuple[bytes, ...]:
@@ -37,6 +39,7 @@ def test_repository_real_decks_have_valid_pins_and_relationships() -> None:
     assert {case.id for case in cases} == {
         "external-chart-preservation",
         "external-embedded-font",
+        "external-fill-overlay",
         "external-image-crop",
         "external-soft-edge",
         "external-table-style",
@@ -155,6 +158,32 @@ def test_real_deck_requires_visual_gate_or_exclusion() -> None:
 
     with pytest.raises(ValidationError, match="visual floors or one visual_exclusion"):
         RealDeckCase.model_validate(raw)
+
+
+def test_real_deck_visual_backends_default_to_both_and_cannot_be_empty() -> None:
+    floors = {
+        "slide": 0,
+        "min_similarity": 0.9,
+        "min_regional_similarity": 0.8,
+        "min_focused_similarity": 0.7,
+    }
+
+    assert DeckVisualExpected.model_validate(floors).backends == ("libreoffice", "graph")
+    assert DeckVisualExpected.model_validate({**floors, "backends": ["graph"]}).backends == (
+        "graph",
+    )
+    with pytest.raises(ValidationError):
+        DeckVisualExpected.model_validate({**floors, "backends": []})
+
+
+def test_graph_only_visual_contract_selects_graph_source_fallback() -> None:
+    case = next(
+        case
+        for case in load_real_decks(Path("real-decks/pptx"))
+        if case.id == "external-fill-overlay"
+    )
+
+    assert source_fallback_backend(case, ["libreoffice", "graph"]) == "graph"
 
 
 def test_real_deck_rejects_out_of_range_visual_slide() -> None:

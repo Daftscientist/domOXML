@@ -7,16 +7,17 @@ new unsupported visual states.
 
 ## Current Baseline
 
-Snapshot audited on **2026-07-18** against the repository, executable manifests, and tests:
+Snapshot audited on **2026-07-24** against the repository, executable manifests, and tests:
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 729 tests are collected.
-- 21 atomic PPTX capability fixtures exist; 20 are bidirectional and one is a reverse-first chart
-  preservation fixture.
+- 756 tests are collected.
+- 23 atomic PPTX capability fixtures exist; 21 are bidirectional and two are reverse-first fixtures
+  for chart preservation and owned unsupported fill-overlay fallback.
 - 9 authored HTML fidelity cases exist.
-- 5 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, attached
-  chart-graph re-emission, and ellipse soft-edge radii with PPTX and normalized-HTML visual gates.
+- 6 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, attached
+  chart-graph re-emission, ellipse soft-edge radii, and four native solid fill-overlay blend modes
+  with PPTX and normalized-HTML visual gates.
 - LibreOffice global, regional, focused, and structural scores are merge-blocking for configured
   cases.
 - Microsoft Graph rendering exists as an opt-in backend, not a normal CI gate.
@@ -38,7 +39,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 21 atomic fixtures and 5 real decks pin
+  retention, output-count, and raster-area records. All 23 atomic fixtures and 6 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -72,8 +73,8 @@ atomic/real-deck corpus.**
 - Generate schema appendices from pinned official ECMA-376 XSDs.
 - Replace element-name coverage percentages with capability-level evidence.
 - Replace `unsupported` as a visual disposition with representation and scope policies.
-- Add representation statuses: native, decomposed, hybrid, layered, element-layer, preserved, and
-  intentionally ignored.
+- Add representation statuses: native, decomposed, hybrid, layered, element-layer, rasterized,
+  approximated, failed, preserved, and intentionally ignored.
 - Record semantic editability, visual parity, preservation, and verification as separate fields.
 - Make inventory rows point to executable capability IDs as coverage grows.
 
@@ -249,17 +250,29 @@ silently lowering the expected score.
 8. [ ] Expand effects beyond the bidirectional offset-shadow/inset-layer/glow baseline using
    PowerPoint/Graph-calibrated evidence for blur, soft edge, reflection, preset shadow, fill overlay,
    compound ordering, and effect-bearing custom geometry. CSS blur and the conservative
-   `below <px> linear-gradient(...)` reflection subset, and strict two-axis intersecting soft-edge
-   mask now have bidirectional atomic fixtures. PowerPoint retains native `a:blur`, `a:reflection`,
-   or `a:softEdge` beneath an isolated layer; LibreOffice selects the same fallback alone; both
-   branches recover into one hybrid IR node; and two-cycle convergence is exact. Native reflection
+   `below <px> linear-gradient(...)` reflection subset, strict two-axis intersecting soft-edge
+   mask, and solid multiply/screen/darken/lighten fill overlays now have bidirectional atomic
+   fixtures. PowerPoint retains native `a:blur`, `a:reflection`, or `a:softEdge` beneath an
+   isolated layer, while exact native `a:fillOverlay` is selected without a redundant overlaid
+   bitmap; LibreOffice selects the portable fallback alone. Both branches recover into one hybrid
+   IR node, and two-cycle convergence is exact. Fill-overlay recovery requires exact RGB and blend
+   tokens while allowing at most one 8-bit alpha quantum introduced by Chromium computed-color
+   serialization; partial background geometry and stale normalized metadata take the visible
+   element-layer path. Unsupported rotated `over` payload, paint bounds, isolated fallback bytes,
+   and ownership are pinned across two PPTX-to-normalized-HTML rebuild cycles; unsafe overlapping
+   crops remain visible but report rasterized/noneditable. Native reflection
    blur uses an owned mirrored CSS layer and transform-aware isolated bounds on reverse output.
    Soft-edge mask sizing, position, repeat, origin, clip, and mode are admitted only at their exact
    default geometry; other masks take the visible element-layer path. Normalized ellipses use a
    geometry-aware radial feather, proven against an external OfficeCLI deck whose exact zero/8pt/
    20pt radii survive re-emission; its baseline also records the separate ellipse internal-text-
-   rectangle debt. Reflection directions other than `below`, non-pixel gaps, preset shadow, fill
-   overlay, compound ordering, and effect-bearing custom geometry remain open.
+   rectangle debt. An Aspose-generated real deck pins all four verified overlay modes against
+   PowerPoint/Graph; LibreOffice's ignored source effect and domOXML's intended portable output are
+   retained as direct review evidence. DrawingML `over` is explicitly not mapped to CSS `normal`
+   after Graph inspection disproved equivalence, and remains source-preserved on the admitted owned
+   fallback path. Reflection directions other than `below`, non-pixel gaps, preset shadow, gradient/other
+   fill-overlay families, `over` calibration, compound ordering, and effect-bearing custom geometry
+   remain open.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,

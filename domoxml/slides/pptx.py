@@ -11,6 +11,7 @@ from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.fonts import FontFace, load_faces
 from domoxml.core.ir.model import (
     Connector,
+    FillOverlay,
     Hyperlink,
     PictureFill,
     PreservationPart,
@@ -299,6 +300,13 @@ def _slide(
         if isinstance(node, ShapeNode) and node.portable_fallback is not None:
             fallback = node.portable_fallback.picture
             fallback_rids[position] = register_media(fallback.data, fallback.ext)
+        if (
+            isinstance(node, PreservedNode)
+            and node.fallback is not None
+            and node.fallback_representation == "element_layer"
+            and node.payload.kind == "sp"
+        ):
+            fallback_rids[position] = register_media(node.fallback.data, node.fallback.ext)
 
     # One slide relationship per run hyperlink, in document order. Identity-keyed so two runs
     # with structurally-equal links still each get their own rel (matching the IR objects).
@@ -401,11 +409,17 @@ def _slide(
                         shape_id=(2 * len(slide.contents)) + 2 + position,
                         blip_rid=fallback_rid,
                     )
+                    choice_fallback = (
+                        ""
+                        if node.effects
+                        and all(isinstance(effect, FillOverlay) for effect in node.effects)
+                        else choice_fallback_xml
+                    )
                     content_parts.append(
                         "<mc:AlternateContent "
                         'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
                         'xmlns:p16="http://schemas.microsoft.com/office/powerpoint/2015/main">'
-                        f'<mc:Choice Requires="p16">{native_xml}{choice_fallback_xml}</mc:Choice>'
+                        f'<mc:Choice Requires="p16">{native_xml}{choice_fallback}</mc:Choice>'
                         f"<mc:Fallback>{fallback_xml}</mc:Fallback>"
                         "</mc:AlternateContent>"
                     )
@@ -414,13 +428,32 @@ def _slide(
         elif isinstance(node, TableNode):
             content_parts.append(table_xml(node, shape_id=shape_id))
         elif isinstance(node, PreservedNode):
-            content_parts.append(
-                rewrite_root_xml(
-                    node,
-                    shape_id=shape_id,
-                    relationship_ids=preserved_rids[position],
-                )
+            native_xml = rewrite_root_xml(
+                node,
+                shape_id=shape_id,
+                relationship_ids=preserved_rids[position],
             )
+            fallback_rid = fallback_rids.get(position)
+            if node.payload.kind != "sp" or node.fallback is None or fallback_rid is None:
+                content_parts.append(native_xml)
+            else:
+                fallback_node = ShapeNode(
+                    box=node.box,
+                    fill=node.fallback.model_copy(update={"raster_role": "pptx-source-fallback"}),
+                )
+                fallback_xml = picture_xml(
+                    fallback_node,
+                    shape_id=(2 * len(slide.contents)) + 2 + position,
+                    blip_rid=fallback_rid,
+                )
+                content_parts.append(
+                    "<mc:AlternateContent "
+                    'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+                    'xmlns:p16="http://schemas.microsoft.com/office/powerpoint/2015/main">'
+                    f'<mc:Choice Requires="p16">{native_xml}</mc:Choice>'
+                    f"<mc:Fallback>{fallback_xml}</mc:Fallback>"
+                    "</mc:AlternateContent>"
+                )
     contents = "".join(content_parts)
     bg_xml = background_xml(slide.background, bg_blip_rid) if slide.background is not None else ""
     transition = transition_xml(slide.transition)

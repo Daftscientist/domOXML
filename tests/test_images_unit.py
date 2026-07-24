@@ -52,3 +52,49 @@ def test_slide_region_keeps_transparent_pixels_outside_viewport() -> None:
         assert isinstance(painted, tuple)
         assert transparent[3] == 0
         assert painted[:3] == (42, 127, 98)
+
+
+def test_slide_region_can_mask_an_owned_rotated_layer() -> None:
+    crop = crop_slide_region(
+        _png(),
+        slide_width=100,
+        slide_height=50,
+        left=20,
+        top=0,
+        width=60,
+        height=50,
+        mask_polygon=((50, 0), (80, 25), (50, 50), (20, 25)),
+    )
+
+    assert crop is not None
+    with Image.open(BytesIO(crop)) as image:
+        rgba = image.convert("RGBA")
+        corner = rgba.getpixel((0, 0))
+        center = rgba.getpixel((30, 25))
+        assert isinstance(corner, tuple)
+        assert isinstance(center, tuple)
+        assert corner[3] == 0
+        assert center == (42, 127, 98, 255)
+
+
+def test_slide_region_mask_uses_the_rounded_absolute_crop_origin() -> None:
+    crop = crop_slide_region(
+        _png(),
+        slide_width=1_000,
+        slide_height=500,
+        left=1,
+        top=0,
+        width=100,
+        height=50,
+        mask_polygon=((6, 0), (50, 0), (50, 50), (6, 50)),
+    )
+
+    assert crop is not None
+    with Image.open(BytesIO(crop)) as image:
+        rgba = image.convert("RGBA")
+        transparent = rgba.getpixel((0, 2))
+        painted = rgba.getpixel((1, 2))
+        assert isinstance(transparent, tuple)
+        assert isinstance(painted, tuple)
+        assert transparent[3] == 0
+        assert painted == (42, 127, 98, 255)

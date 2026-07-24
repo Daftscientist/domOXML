@@ -25,21 +25,21 @@ backend described in [`architecture.md`](architecture.md).
 
 Both HTML capture and PPTX ingestion emit a typed coverage record for every source visual.
 Representation is
-`native`, `decomposed`, `hybrid`, `layered`, `element_layer`, `approximated`, or `failed`;
+`native`, `decomposed`, `hybrid`, `layered`, `element_layer`, `rasterized`, `approximated`, or `failed`;
 editability, source retention, output count, and raster area are recorded independently. Capability
 and real-deck manifests place explicit initial reverse-ingest, forward, and regenerated-output
 bounds on every representation, editing model, retention state, output count, and raster area.
 Normalized HTML exposes the ingest report and re-ingestion independently records attached
-element-layer or failed coverage for preserved nodes.
+element-layer, rasterized, or failed coverage for preserved nodes.
 
 ## Current Shared Capability Matrix
 
-Audited on **2026-07-18**. `cap:*` refers to a manifest below `capabilities/pptx/`; “both” means the
+Audited on **2026-07-24**. `cap:*` refers to a manifest below `capabilities/pptx/`; “both” means the
 runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structural floors.
 
 | Family | Current forward path | Current reverse path | Evidence | Main remaining work |
 |---|---|---|---|---|
-| OPC packages and relationships | Native; generated/re-emitted output is blocked on content-type, relationship graph/reference, XML, and core-format validation | Native; source packages receive shared OPC validation | 21 focused package tests + capability package assertion + 21 capabilities + 5 real decks | full XSD/Open XML validation, strict packages, general alternate content, extension schemas, general extension re-emission beyond attached charts |
+| OPC packages and relationships | Native; generated/re-emitted output is blocked on content-type, relationship graph/reference, XML, and core-format validation | Native; source packages receive shared OPC validation | 21 focused package tests + capability package assertion + 23 capabilities + 6 real decks | full XSD/Open XML validation, strict packages, general alternate content, extension schemas, general extension re-emission beyond attached charts |
 | Units, page boxes, identity, and fixed layout | Native, canonical ordered scene with slide-scoped IDs/provenance | Native, canonical ordered scene with recovered IDs/provenance | `cap:interleaved-order` + `cap:node-identity` (both) + broad tests | exact group reconstruction and preservation ownership beyond charts |
 | Solid colors and alpha | Native | Native | fidelity corpus + integration | complete color models/transforms and theme-token preservation on forward output |
 | Theme colors and font schemes | Partial; attached chart re-emission restores its ambient source theme | Partial/native read | unit + chart real deck | general forward scheme references, complete style matrix, script fonts, deck-level source-theme policy |
@@ -62,7 +62,8 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Blur | Native PowerPoint effect retained beneath an isolated portable layer; LibreOffice selects the same picture alone through `mc:AlternateContent` | Native effect and fallback recovered as one hybrid; CSS plus exact typed payload | `cap:blur-effect` (both), LO + Graph evidence | compound blur ordering, image/custom geometry cases, and more renderer versions |
 | Reflection | Native PowerPoint effect retained beneath an isolated portable layer for the conservative CSS `below`/pixel-gap/alpha-gradient subset; unsupported CSS forms use the element-layer path | Native effect and fallback recovered as one hybrid; zero-blur effects use CSS reflection, independent reflection blur uses an owned mirrored layer, and both retain complete shape styling plus exact typed payload | `cap:reflection-effect` (both), LO + Graph evidence + blurred/rotated integration | other directions, compound ordering, pictures/custom geometry, and more renderer versions |
 | Soft edge | Native PowerPoint effect retained beneath one shape-bound portable layer for the strict two-axis intersecting alpha-mask subset; nondefault mask geometry uses the element-layer path | Native effect and fallback recovered as one hybrid; valid rectangular CSS, ellipse-aware radial CSS, and exact typed payload | `cap:soft-edge-effect` (both) + OfficeCLI effects real deck, LO + Graph evidence | compound ordering, pictures/custom geometry, remaining non-ellipse calibration, ellipse internal text rectangle, and more renderer versions |
-| Other effect-list constructs | Layered/gap | Preserve only | unit only | effect containers/order, preset shadow, fill overlay, visual fallback and re-emission |
+| Fill overlay | Native PowerPoint solid overlay with a shape-bound portable fallback selected for incompatible renderers for CSS multiply/screen/darken/lighten; partial geometry, stale metadata, and unsupported blends/fill families use the element-layer path | Four proven solid modes recover as typed CSS plus exact payload and one hybrid; admitted isolated square-cornered opaque `over` rectangles retain a masked owned layer and exact source in `AlternateContent`, while inseparable crops report rasterized/noneditable | `cap:fill-overlay-effect` (both) + `cap:fill-overlay-owned-fallback` (reverse, two normalized HTML cycles) + overlapping/rounded-crop regressions + Aspose real deck, LO + Graph evidence | calibrate `over`, gradient/pattern/picture overlays, compound ordering, pictures/custom geometry, and more renderer versions |
+| Other effect-list constructs | Layered/gap | Preserve only | unit only | effect containers/order, preset shadow, visual fallback and re-emission |
 | Basic text runs | Native | Native | `cap:text-rich-runs` (both) | language/script coverage and font portability |
 | Decoration, caps, and spacing | Partial/native | Partial/native | `cap:text-decorations` (both) | complete underline/strike/baseline/RTL/vertical text variants |
 | Paragraph layout and body properties | Partial/native | Partial/native with slide/layout/master placeholder body-property and paragraph-alignment inheritance; DrawingML field runs retain source order | `cap:body-props` (both) + inheritance/field units + chart real deck | tabs, remaining inheritance, vertical/RTL, overflow and exact autofit parameters |
@@ -78,7 +79,7 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Charts | Attached source re-emission only; authored charts remain a gap | Attached preserve plus renderer-backed element layer when a slide render is supplied | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart/data IR, automatic renderer selection, semantic HTML rendering, and native authoring |
 | Unknown visual extensions | Element layer on HTML input | Positioned nodes can use authoritative element crops; malformed source graphs remain visible with explicit detached-source debt | chart capability + unit/integration | automatic renderer policy, complete ownership, alpha/isolation improvements, and broader fixtures |
 | Fidelity metrics | global/regional/structural plus typed forward representation coverage | global/regional/fine-focused/structural plus typed initial-ingest coverage and explicit reverse/convergence slide scoping; raw candidates retained beside aligned comparisons | CI + tests | semantic typography/color metrics and broader adversarial reverse bounds |
-| Repeated round trips | every reverse-capable fixture rebuilds and re-ingests at least twice with representation/editability/retention/output/raster bounds | 19 bidirectional fixtures plus a three-cycle scoped reverse-first chart preservation fixture | capability runner + manifest contract tests | broader source-format preservation gates and PowerPoint-rendered convergence |
+| Repeated round trips | every reverse-capable fixture rebuilds and re-ingests at least twice with representation/editability/retention/output/raster bounds | 21 bidirectional fixtures, a three-cycle scoped reverse-first chart fixture, and a two-cycle rotated unsupported-overlay fixture | capability runner + manifest contract tests | broader source-format preservation gates and PowerPoint-rendered convergence |
 
 ## Shared Work Remaining For PPTX
 

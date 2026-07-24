@@ -330,8 +330,22 @@ class Reflection(BaseModel):
     end_alpha: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
+FillOverlayBlend = Literal["mult", "screen", "darken", "lighten"]
+
+
+class FillOverlay(BaseModel):
+    """An additional solid fill blended with the owning shape's base fill
+    (``a:fillOverlay``)."""
+
+    model_config = _FROZEN
+
+    kind: Literal["fillOverlay"] = "fillOverlay"
+    fill: SolidFill
+    blend: FillOverlayBlend
+
+
 type Effect = Annotated[
-    Shadow | Glow | Blur | SoftEdge | Reflection,
+    Shadow | Glow | Blur | SoftEdge | Reflection | FillOverlay,
     Field(discriminator="kind"),
 ]
 
@@ -647,6 +661,7 @@ class PreservedNode(CanvasNode):
     box: Box
     payload: PreservationPayload
     fallback: PictureFill | None = None
+    fallback_representation: Literal["element_layer", "rasterized"] = "element_layer"
 
 
 class ShapeNode(CanvasNode):

@@ -7,7 +7,7 @@ import base64
 from io import BytesIO
 from typing import Literal
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageDraw
 
 type ImageExt = Literal["png", "jpeg", "gif"]
 
@@ -77,6 +77,7 @@ def crop_slide_region(
     top: int,
     width: int,
     height: int,
+    mask_polygon: tuple[tuple[float, float], ...] | None = None,
 ) -> bytes | None:
     """Crop an EMU box from an authoritative full-slide render.
 
@@ -108,6 +109,19 @@ def crop_slide_region(
                 return None
             region = source.convert("RGBA").crop(clipped)
             output.paste(region, (clipped[0] - source_left, clipped[1] - source_top))
+            if mask_polygon is not None:
+                if len(mask_polygon) < 3:
+                    return None
+                mask = Image.new("L", output.size, 0)
+                mask_points = tuple(
+                    (
+                        round((point_x - left) * scale_x),
+                        round((point_y - top) * scale_y),
+                    )
+                    for point_x, point_y in mask_polygon
+                )
+                ImageDraw.Draw(mask).polygon(mask_points, fill=255)
+                output.putalpha(ImageChops.multiply(output.getchannel("A"), mask))
             buffer = BytesIO()
             output.save(buffer, "PNG")
             return buffer.getvalue()

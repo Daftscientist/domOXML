@@ -96,6 +96,7 @@ def test_every_forward_fixture_caps_lossy_representations() -> None:
         Representation.HYBRID,
         Representation.LAYERED,
         Representation.ELEMENT_LAYER,
+        Representation.RASTERIZED,
         Representation.FAILED,
     }
 

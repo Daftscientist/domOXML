@@ -58,6 +58,7 @@ def test_report_tracks_native_editable_and_layered_axes() -> None:
         (Representation.HYBRID, Editability.SEMANTIC, 2, 0),
         (Representation.LAYERED, Editability.LAYERS, 1, 100),
         (Representation.ELEMENT_LAYER, Editability.LAYERS, 1, 0),
+        (Representation.RASTERIZED, Editability.LAYERS, 1, 100),
         (Representation.FAILED, Editability.NONE, 1, 0),
     ],
 )
@@ -89,3 +90,17 @@ def test_failed_visual_can_explicitly_record_source_loss() -> None:
     )
 
     assert item.source_retention is SourceRetention.LOST
+
+
+def test_rasterized_visual_is_visible_but_not_claimed_editable() -> None:
+    item = CoverageItem(
+        element="unsafe-source-crop",
+        representation=Representation.RASTERIZED,
+        editability=Editability.NONE,
+        source_retention=SourceRetention.ATTACHED,
+        raster_area_emu2=200,
+        reason="source crop cannot prove independent ownership",
+    )
+
+    assert item.output_count == 1
+    assert CoverageReport(items=(item,)).layered_ratio == 1.0

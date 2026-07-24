@@ -107,12 +107,15 @@ Every visible source subtree is lowered using the first level that meets the fid
 | Hybrid | semantic/native content plus rasterized effect, decoration, or renderer-selective fallback layers | core content editable; visible layers movable where simultaneously emitted |
 | Layered | the smallest practical independent raster layers reproduce the source | layers independently movable and replaceable |
 | Element layer | one rasterized source subtree when finer separation is not reliable | element movable as one object |
+| Rasterized | source pixels remain visible but independent ownership cannot be proved | noneditable; source payload may still be retained |
 
 The runtime coverage record keeps representation separate from editability and preservation. Each
 source visual records its representation level, strongest retained editing model, source-retention
 state, emitted object count, raster area, and a reason for every non-native choice. `Approximated`
 and `Failed` are explicit diagnostic outcomes rather than planner levels: approximation requires a
 reviewed reason, while failure records a visible-output defect and cannot count as editable output.
+`Rasterized` is not failure: it records visible source pixels whose crop may contain inseparable
+surrounding pixels and therefore cannot claim layer editability.
 
 Approximation is not the default escape hatch. It is allowed only as a deliberate, documented
 portability mode or when the user selects it. If a native PowerPoint gradient, shadow, glow, path,
@@ -143,9 +146,12 @@ rectangles use the same two-axis mask, while normalized ellipses
 use a boundary-following closest-side radial mask. Nondefault authored mask geometry does not enter
 this hybrid path and remains visible through the general element-layer fallback.
 DrawingML's `over` fill-overlay mode is not treated as CSS `normal`: direct Graph inspection proves
-that mapping false, so it retains its source payload and takes the owned fallback path until an
-equivalent browser representation is calibrated. Its payload, rotated paint bounds, coverage, and
-fallback layer remain stable through two normalized HTML rebuild cycles.
+that mapping false. An isolated opaque rectangle can use a geometry-masked owned crop; the exact
+source shape and isolated fallback then travel together through `AlternateContent`, avoiding
+repeated screenshot resampling. Crops that cannot prove isolation remain visible with attached
+source payload but report `rasterized` and noneditable rather than falsely claiming a movable
+element layer. The admitted path's payload, rotated paint bounds, coverage, fallback bytes, and
+pixels remain stable through two normalized HTML rebuild cycles.
 Normalized fill-overlay recovery requires exact RGB and blend tokens while admitting at most one
 8-bit alpha quantum, matching Chromium computed-color serialization without accepting a visibly
 different overlay. The admitted overlay layer must cover the whole shape using the default

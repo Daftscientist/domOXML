@@ -226,6 +226,16 @@ def test_rejects_css_that_is_not_an_exact_solid_fill_overlay() -> None:
             constant,
             "rgb(20, 60, 140)",
             "multiply",
+            background_size="100% 100%",
+            background_position="10px 10px",
+        )
+        is None
+    )
+    assert (
+        parse_fill_overlay(
+            constant,
+            "rgb(20, 60, 140)",
+            "multiply",
             background_origin="content-box",
         )
         is None

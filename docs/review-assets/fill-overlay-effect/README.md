@@ -24,15 +24,18 @@ portable LibreOffice fallback.
 
 DrawingML `blend="over"` is deliberately outside this typed subset. Direct Graph inspection of a
 solid external-producer case disproved the proposed CSS `normal` mapping, despite a misleadingly
-high whole-slide score. The reader now retains that source fragment and uses the owned visible
-fallback path until equivalent browser semantics are calibrated.
+high whole-slide score. The reader now retains that source fragment and uses a masked visible
+fallback until equivalent browser semantics are calibrated.
 
 The reverse-first owned-fallback fixture exercises a regular rotated shape rather than an
 `AlternateContent` branch. Its pinned Graph render remains the authoritative PowerPoint reference
-even on runners that also have LibreOffice. The reconstructed HTML scores 1.000 global, 1.000
-regional, and 0.949 structural; direct inspection shows that the structural difference is confined
-to a one-pixel antialiasing perimeter. The next normalized HTML cycle is 1.000 on all three metrics,
-with one movable layer, attached source payload, and stable raster area.
+even on runners that also have LibreOffice. The reconstructed HTML scores 1.000 global, 0.999
+regional, and 0.957 structural; direct inspection shows that the difference is confined to the
+antialiasing perimeter. The exact source shape and alpha-masked fallback travel together through
+`AlternateContent`; the next normalized HTML cycle is 1.000 on all three metrics, with one movable
+layer, attached source payload, stable raster area, and unchanged fallback pixels. An overlapping
+visual regression instead reports the crop as rasterized/noneditable rather than claiming unsafe
+ownership.
 
 ## Atomic Source
 
@@ -67,6 +70,18 @@ with one movable layer, attached source payload, and stable raster area.
 | Graph source | Normalized HTML fallback | Diff |
 |---|---|---|
 | ![Graph unsupported over source](owned-over-source.png) | ![Owned fallback candidate](owned-over-reverse.png) | ![Owned fallback diff](owned-over-diff.png) |
+
+The rebuilt package was also rendered directly after the normalized-HTML cycle. Microsoft Graph is
+pixel-identical to the pinned source. LibreOffice scores 0.999 global, 0.994 regional, and 0.986
+structural; its residual diff is limited to renderer antialiasing.
+
+| Graph source | Rebuilt LibreOffice | Diff |
+|---|---|---|
+| ![Graph unsupported over source](owned-over-source.png) | ![Rebuilt LibreOffice fallback](owned-over-rebuilt-libreoffice.png) | ![Rebuilt LibreOffice diff](owned-over-rebuilt-libreoffice-diff.png) |
+
+| Graph source | Rebuilt Microsoft Graph | Diff |
+|---|---|---|
+| ![Graph unsupported over source](owned-over-source.png) | ![Rebuilt Microsoft Graph fallback](owned-over-rebuilt-graph.png) | ![Rebuilt Microsoft Graph diff](owned-over-rebuilt-graph-diff.png) |
 
 ## External Aspose Deck
 

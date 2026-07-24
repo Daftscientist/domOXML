@@ -706,6 +706,7 @@ def _overlay_layer_covers_shape(geometry: dict[str, tuple[str, ...]], index: int
     size = geometry["backgroundSize"][index]
     return (
         size in {"auto", "auto auto", "100% 100%"}
+        and geometry["backgroundPosition"][index] == "0% 0%"
         and geometry["backgroundOrigin"][index] == "padding-box"
         and geometry["backgroundClip"][index] == "border-box"
     )

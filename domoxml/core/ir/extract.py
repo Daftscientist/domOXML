@@ -1132,9 +1132,20 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             else:
                 fallback_fill, fallback_reason = _resolve_fill(node, rendered)
                 fallback = fallback_fill if isinstance(fallback_fill, PictureFill) else None
+                fallback_representation: Literal["element_layer", "rasterized"] = (
+                    "rasterized"
+                    if node.styles.get("domoxmlRepresentation") == "rasterized"
+                    else "element_layer"
+                )
                 contents.append(
                     identities.apply(
-                        PreservedNode(box=_box(node), payload=payload, fallback=fallback), node
+                        PreservedNode(
+                            box=_box(node),
+                            payload=payload,
+                            fallback=fallback,
+                            fallback_representation=fallback_representation,
+                        ),
+                        node,
                     )
                 )
                 consumed |= _subtree(node.index, children)
@@ -1143,11 +1154,23 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     coverage.append(
                         CoverageItem(
                             element=label,
-                            representation=Representation.ELEMENT_LAYER,
-                            editability=Editability.LAYERS,
+                            representation=(
+                                Representation.RASTERIZED
+                                if fallback_representation == "rasterized"
+                                else Representation.ELEMENT_LAYER
+                            ),
+                            editability=(
+                                Editability.NONE
+                                if fallback_representation == "rasterized"
+                                else Editability.LAYERS
+                            ),
                             source_retention=SourceRetention.ATTACHED,
                             raster_area_emu2=box.width * box.height,
-                            reason="renderer-derived fallback for attached source object",
+                            reason=(
+                                "renderer-derived fallback is not independently editable"
+                                if fallback_representation == "rasterized"
+                                else "renderer-derived fallback for attached source object"
+                            ),
                         )
                     )
                 else:

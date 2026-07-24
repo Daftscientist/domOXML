@@ -35,6 +35,7 @@ from domoxml.core.ir.model import (
     QuadTo,
     ShapeNode,
     SlideIR,
+    SolidFill,
     SourceProvenance,
     Transform,
 )
@@ -507,12 +508,58 @@ def _positioned_box(element: Element) -> Box | None:
     return Box(x=left, y=top, width=max(1, right - left), height=max(1, bottom - top))
 
 
+def _rotated_rect_polygon(element: Element) -> tuple[tuple[float, float], ...] | None:
+    """Return the rotated rectangle silhouette in slide EMUs, or ``None`` for no rotation."""
+    transform = element.find("p:spPr/a:xfrm", _NS)
+    offset = transform.find("a:off", _NS) if transform is not None else None
+    extent = transform.find("a:ext", _NS) if transform is not None else None
+    if transform is None or offset is None or extent is None:
+        return None
+    rotation = _int_attr(transform, "rot") / 60_000
+    if rotation % 180 == 0:
+        return None
+    width = max(1, _int_attr(extent, "cx"))
+    height = max(1, _int_attr(extent, "cy"))
+    center_x = _int_attr(offset, "x") + (width / 2)
+    center_y = _int_attr(offset, "y") + (height / 2)
+    radians = math.radians(rotation)
+    cosine = math.cos(radians)
+    sine = math.sin(radians)
+    return tuple(
+        (
+            center_x + (x * cosine) - (y * sine),
+            center_y + (x * sine) + (y * cosine),
+        )
+        for x, y in (
+            (-width / 2, -height / 2),
+            (width / 2, -height / 2),
+            (width / 2, height / 2),
+            (-width / 2, height / 2),
+        )
+    )
+
+
+def _can_own_source_shape_crop(shape: ShapeNode, *, is_only_visual: bool) -> bool:
+    """Whether a full-slide crop can be isolated into one independently movable shape layer."""
+    return (
+        is_only_visual
+        and shape.geom == "rect"
+        and shape.custom_geom is None
+        and isinstance(shape.fill, SolidFill)
+        and shape.fill.color.a == 1.0
+        and shape.opacity == 1.0
+        and shape.line is None
+        and not shape.effects
+    )
+
+
 def _fallback_picture(
     rendered_png: bytes | None,
     box: Box,
     *,
     slide_width: int,
     slide_height: int,
+    mask_polygon: tuple[tuple[float, float], ...] | None = None,
 ) -> PictureFill | None:
     if rendered_png is None:
         return None
@@ -524,6 +571,7 @@ def _fallback_picture(
         top=box.y,
         width=box.width,
         height=box.height,
+        mask_polygon=mask_polygon,
     )
     return PictureFill(data=crop, ext="png") if crop is not None else None
 
@@ -770,10 +818,19 @@ def _slide(
         preserved.append(frag)
 
     if tree is not None:
-        for element in tree:
+        tree_elements = tuple(tree)
+        visual_elements = tuple(
+            element
+            for element in tree_elements
+            if _local_name(element) not in {"nvGrpSpPr", "grpSpPr", "extLst"}
+        )
+        only_visual = visual_elements[0] if len(visual_elements) == 1 else None
+        for element in tree_elements:
             kind = _local_name(element)
             preserved_owner_id: str | None = None
             preserve_whole_node = True
+            fallback_representation: Literal["element_layer", "rasterized"] = "element_layer"
+            fallback_mask: tuple[tuple[float, float], ...] | None = None
             reason = f"preserved unsupported reverse slide node: {kind}"
             if kind in {"nvGrpSpPr", "grpSpPr"}:
                 continue
@@ -807,6 +864,12 @@ def _slide(
                         and isinstance(fallback_shape.fill, PictureFill)
                     ):
                         if shape_preserved:
+                            source_fallback = (
+                                fallback_shape.fill.raster_role == "pptx-source-fallback"
+                            )
+                            fallback_box = (
+                                _positioned_box(native) if source_fallback else None
+                            ) or fallback_shape.box
                             reason = (
                                 "shape has unsupported source effects; retained as one owned "
                                 "visual layer"
@@ -822,7 +885,7 @@ def _slide(
                             except (KeyError, ValueError):
                                 fallback_node = _with_pptx_identity(
                                     ShapeNode(
-                                        box=fallback_shape.box,
+                                        box=fallback_box,
                                         fill=fallback_shape.fill.model_copy(
                                             update={"raster_role": "pptx-source-fallback"}
                                         ),
@@ -837,7 +900,7 @@ def _slide(
                             else:
                                 preserved_node = _with_pptx_identity(
                                     PreservedNode(
-                                        box=fallback_shape.box,
+                                        box=fallback_box,
                                         payload=payload,
                                         fallback=fallback_shape.fill,
                                     ),
@@ -859,9 +922,7 @@ def _slide(
                                     representation=Representation.ELEMENT_LAYER,
                                     editability=Editability.LAYERS,
                                     source_retention=source_retention,
-                                    raster_area_emu2=(
-                                        fallback_shape.box.width * fallback_shape.box.height
-                                    ),
+                                    raster_area_emu2=(fallback_box.width * fallback_box.height),
                                     reason=reason,
                                 )
                             )
@@ -916,10 +977,18 @@ def _slide(
                         and fallback_png is not None
                         and all(fragment.kind == "fillOverlay" for fragment in shape_preserved)
                     ):
-                        reason = (
-                            "shape has unsupported source effects; retained as one owned "
-                            "visual layer"
-                        )
+                        if _can_own_source_shape_crop(shape, is_only_visual=element is only_visual):
+                            reason = (
+                                "shape has unsupported source effects; retained as one owned "
+                                "visual layer"
+                            )
+                            fallback_mask = _rotated_rect_polygon(element)
+                        else:
+                            fallback_representation = "rasterized"
+                            reason = (
+                                "shape has unsupported source effects; source-render crop cannot "
+                                "prove independent ownership and remains noneditable"
+                            )
                     else:
                         contents.append(shape)
                         preserved.extend(shape_preserved)
@@ -1013,6 +1082,7 @@ def _slide(
                         box,
                         slide_width=width,
                         slide_height=height,
+                        mask_polygon=fallback_mask,
                     )
                     try:
                         payload = capture_payload(
@@ -1045,6 +1115,7 @@ def _slide(
                                 box=box,
                                 payload=payload,
                                 fallback=fallback,
+                                fallback_representation=fallback_representation,
                             ),
                             element,
                             slide_part,
@@ -1056,8 +1127,16 @@ def _slide(
                     coverage.append(
                         CoverageItem(
                             element=_visual_label(slide_part, element),
-                            representation=Representation.ELEMENT_LAYER,
-                            editability=Editability.LAYERS,
+                            representation=(
+                                Representation.RASTERIZED
+                                if fallback_representation == "rasterized"
+                                else Representation.ELEMENT_LAYER
+                            ),
+                            editability=(
+                                Editability.NONE
+                                if fallback_representation == "rasterized"
+                                else Editability.LAYERS
+                            ),
                             source_retention=source_retention,
                             raster_area_emu2=box.width * box.height,
                             reason=reason,

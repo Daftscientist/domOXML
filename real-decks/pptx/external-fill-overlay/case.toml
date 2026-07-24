@@ -18,7 +18,7 @@ required_parts = [
 
 [reverse]
 min_representation = { native = 4 }
-max_representation = { native = 4, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+max_representation = { rasterized = 0, native = 4, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
 min_editability = { semantic = 4 }
 max_editability = { semantic = 4, components = 0, layers = 0, none = 0 }
 min_source_retention = { not_required = 4 }

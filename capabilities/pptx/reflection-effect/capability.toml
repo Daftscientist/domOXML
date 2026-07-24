@@ -4,7 +4,7 @@ html_file = "slide.html"
 
 [expected]
 min_representation = { native = 5, hybrid = 1 }
-max_representation = { native = 5, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, failed = 0 }
+max_representation = { rasterized = 0, native = 5, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, failed = 0 }
 min_editability = { semantic = 5, components = 1 }
 max_editability = { semantic = 5, components = 1, layers = 0, none = 0 }
 min_source_retention = { not_required = 6 }
@@ -41,7 +41,7 @@ pptx_to_html_min_structural_similarity = 0.95
 [roundtrip]
 cycles = 2
 min_representation = { native = 5, hybrid = 1 }
-max_representation = { native = 5, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, failed = 0 }
+max_representation = { rasterized = 0, native = 5, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, failed = 0 }
 min_editability = { semantic = 5, components = 1 }
 max_editability = { semantic = 5, components = 1, layers = 0, none = 0 }
 min_source_retention = { not_required = 6 }
@@ -56,7 +56,7 @@ min_convergence_structural_similarity = 0.999
 
 [reverse]
 min_representation = { native = 5, hybrid = 1 }
-max_representation = { native = 5, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, failed = 0 }
+max_representation = { rasterized = 0, native = 5, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, failed = 0 }
 min_editability = { semantic = 5, components = 1 }
 max_editability = { semantic = 5, components = 1, layers = 0, none = 0 }
 min_source_retention = { not_required = 6 }

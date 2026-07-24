@@ -41,7 +41,7 @@ min_count = 1
 
 [reverse]
 min_representation = { native = 62, approximated = 17, element_layer = 1 }
-max_representation = { native = 62, decomposed = 0, approximated = 17, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
+max_representation = { rasterized = 0, native = 62, decomposed = 0, approximated = 17, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
 min_editability = { semantic = 79, layers = 1 }
 max_editability = { semantic = 79, components = 0, layers = 1, none = 0 }
 min_source_retention = { not_required = 62, attached = 1, lost = 17 }
@@ -65,7 +65,7 @@ max_preserved = 1
 cycles = 3
 slide_indices = [1]
 min_representation = { native = 79, element_layer = 1 }
-max_representation = { native = 79, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
+max_representation = { rasterized = 0, native = 79, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
 min_editability = { semantic = 79, layers = 1 }
 max_editability = { semantic = 79, components = 0, layers = 1, none = 0 }
 min_source_retention = { not_required = 79, attached = 1 }

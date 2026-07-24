@@ -18,12 +18,12 @@ max_count = 1
 
 [visual]
 pptx_to_html_min_similarity = 0.99
-pptx_to_html_min_regional_similarity = 0.97
-pptx_to_html_min_structural_similarity = 0.945
+pptx_to_html_min_regional_similarity = 0.99
+pptx_to_html_min_structural_similarity = 0.95
 
 [reverse]
 min_representation = { element_layer = 1 }
-max_representation = { native = 0, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
+max_representation = { rasterized = 0, native = 0, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
 min_editability = { layers = 1 }
 max_editability = { semantic = 0, components = 0, layers = 1, none = 0 }
 min_source_retention = { attached = 1 }
@@ -44,7 +44,7 @@ max_preserved = 1
 [roundtrip]
 cycles = 2
 min_representation = { element_layer = 1 }
-max_representation = { native = 0, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
+max_representation = { rasterized = 0, native = 0, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 1, failed = 0 }
 min_editability = { layers = 1 }
 max_editability = { semantic = 0, components = 0, layers = 1, none = 0 }
 min_source_retention = { attached = 1 }

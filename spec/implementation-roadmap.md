@@ -7,11 +7,11 @@ new unsupported visual states.
 
 ## Current Baseline
 
-Snapshot audited on **2026-07-18** against the repository, executable manifests, and tests:
+Snapshot audited on **2026-07-24** against the repository, executable manifests, and tests:
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 749 tests are collected.
+- 753 tests are collected.
 - 23 atomic PPTX capability fixtures exist; 21 are bidirectional and two are reverse-first fixtures
   for chart preservation and owned unsupported fill-overlay fallback.
 - 9 authored HTML fidelity cases exist.
@@ -73,8 +73,8 @@ atomic/real-deck corpus.**
 - Generate schema appendices from pinned official ECMA-376 XSDs.
 - Replace element-name coverage percentages with capability-level evidence.
 - Replace `unsupported` as a visual disposition with representation and scope policies.
-- Add representation statuses: native, decomposed, hybrid, layered, element-layer, preserved, and
-  intentionally ignored.
+- Add representation statuses: native, decomposed, hybrid, layered, element-layer, rasterized,
+  approximated, failed, preserved, and intentionally ignored.
 - Record semantic editability, visual parity, preservation, and verification as separate fields.
 - Make inventory rows point to executable capability IDs as coverage grows.
 
@@ -258,8 +258,9 @@ silently lowering the expected score.
    IR node, and two-cycle convergence is exact. Fill-overlay recovery requires exact RGB and blend
    tokens while allowing at most one 8-bit alpha quantum introduced by Chromium computed-color
    serialization; partial background geometry and stale normalized metadata take the visible
-   element-layer path. Unsupported rotated `over` payload, paint bounds, and fallback ownership are
-   pinned across two PPTX-to-normalized-HTML rebuild cycles. Native reflection
+   element-layer path. Unsupported rotated `over` payload, paint bounds, isolated fallback bytes,
+   and ownership are pinned across two PPTX-to-normalized-HTML rebuild cycles; unsafe overlapping
+   crops remain visible but report rasterized/noneditable. Native reflection
    blur uses an owned mirrored CSS layer and transform-aware isolated bounds on reverse output.
    Soft-edge mask sizing, position, repeat, origin, clip, and mode are admitted only at their exact
    default geometry; other masks take the visible element-layer path. Normalized ellipses use a
@@ -268,8 +269,8 @@ silently lowering the expected score.
    rectangle debt. An Aspose-generated real deck pins all four verified overlay modes against
    PowerPoint/Graph; LibreOffice's ignored source effect and domOXML's intended portable output are
    retained as direct review evidence. DrawingML `over` is explicitly not mapped to CSS `normal`
-   after Graph inspection disproved equivalence, and remains source-preserved on the owned fallback
-   path. Reflection directions other than `below`, non-pixel gaps, preset shadow, gradient/other
+   after Graph inspection disproved equivalence, and remains source-preserved on the admitted owned
+   fallback path. Reflection directions other than `below`, non-pixel gaps, preset shadow, gradient/other
    fill-overlay families, `over` calibration, compound ordering, and effect-bearing custom geometry
    remain open.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,

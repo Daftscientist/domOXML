@@ -8,7 +8,7 @@ from io import BytesIO
 
 import pytest
 from defusedxml import ElementTree
-from PIL import Image
+from PIL import Image, ImageChops
 from pptx import Presentation as PptxPresentation
 from pptx.util import Inches
 
@@ -371,6 +371,15 @@ def test_unsupported_over_overlay_uses_owned_source_render_and_re_emits() -> Non
 
         assert 'data-domoxml-representation="element-layer"' in html.slides[0].html
         assert "data-domoxml-preserved-payload=" in html.slides[0].html
+        [fallback_asset] = [asset for asset in html.assets if asset.path.endswith(".png")]
+        with Image.open(BytesIO(fallback_asset.data)) as fallback_image:
+            alpha = fallback_image.convert("RGBA")
+            corner = alpha.getpixel((0, 0))
+            center = alpha.getpixel((alpha.width // 2, alpha.height // 2))
+            assert isinstance(corner, tuple)
+            assert isinstance(center, tuple)
+            assert corner[3] == 0
+            assert center[3] == 255
         [coverage] = html.coverage.items
         assert coverage.representation is Representation.ELEMENT_LAYER
         assert coverage.editability is Editability.LAYERS
@@ -384,11 +393,63 @@ def test_unsupported_over_overlay_uses_owned_source_render_and_re_emits() -> Non
         rebuilt = render_html_roundtrip(html)
         assert rebuilt.pptx is not None
         if previous_pngs is not None:
-            assert rebuilt.pngs == previous_pngs
+            with (
+                Image.open(BytesIO(rebuilt.pngs[0])) as current_image,
+                Image.open(BytesIO(previous_pngs[0])) as previous_image,
+            ):
+                assert ImageChops.difference(current_image, previous_image).getbbox() is None
         previous_pngs = rebuilt.pngs
         fallback_pngs = rebuilt.pngs
         current = rebuilt.pptx
-        assert b'fillOverlay blend="over"' in OpcPackage.from_bytes(current).read(slide_part)
+        rebuilt_slide = OpcPackage.from_bytes(current).read(slide_part)
+        assert b'fillOverlay blend="over"' in rebuilt_slide
+        assert b"AlternateContent" in rebuilt_slide
+
+
+def test_overlapping_unsupported_overlay_is_visible_without_false_layer_ownership() -> None:
+    overlay_shape = ShapeNode(
+        box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
+        fill=SolidFill(color=Rgba(r=20, g=60, b=140)),
+        effects=(
+            FillOverlay(
+                fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+                blend="mult",
+            ),
+        ),
+        transform=Transform(rotation_deg=30),
+    )
+    foreground = ShapeNode(
+        box=Box(x=2_000_000, y=1_000_000, width=1_000_000, height=700_000),
+        fill=SolidFill(color=Rgba(r=40, g=180, b=100)),
+    )
+    package = OpcPackage.from_bytes(
+        build_pptx(
+            [
+                SlideIR(
+                    width=12_192_000,
+                    height=6_858_000,
+                    contents=(overlay_shape, foreground),
+                )
+            ],
+            faces=[],
+        )
+    )
+    slide_part = "ppt/slides/slide1.xml"
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    parts[slide_part] = package.read(slide_part).replace(b'blend="mult"', b'blend="over"', 1)
+    rendered = BytesIO()
+    Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")
+
+    html = Presentation.from_pptx(write_package(parts), fallback_pngs=(rendered.getvalue(),))
+
+    assert 'data-domoxml-representation="rasterized"' in html.slides[0].html
+    assert "data-domoxml-preserved-payload=" in html.slides[0].html
+    [coverage] = [
+        item for item in html.coverage.items if item.representation is Representation.RASTERIZED
+    ]
+    assert coverage.editability is Editability.NONE
+    assert coverage.source_retention is SourceRetention.ATTACHED
+    assert "cannot prove independent ownership" in coverage.reason
 
 
 def test_exposes_generated_pptx_as_html() -> None:

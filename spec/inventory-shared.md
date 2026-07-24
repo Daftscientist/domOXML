@@ -25,16 +25,16 @@ backend described in [`architecture.md`](architecture.md).
 
 Both HTML capture and PPTX ingestion emit a typed coverage record for every source visual.
 Representation is
-`native`, `decomposed`, `hybrid`, `layered`, `element_layer`, `approximated`, or `failed`;
+`native`, `decomposed`, `hybrid`, `layered`, `element_layer`, `rasterized`, `approximated`, or `failed`;
 editability, source retention, output count, and raster area are recorded independently. Capability
 and real-deck manifests place explicit initial reverse-ingest, forward, and regenerated-output
 bounds on every representation, editing model, retention state, output count, and raster area.
 Normalized HTML exposes the ingest report and re-ingestion independently records attached
-element-layer or failed coverage for preserved nodes.
+element-layer, rasterized, or failed coverage for preserved nodes.
 
 ## Current Shared Capability Matrix
 
-Audited on **2026-07-18**. `cap:*` refers to a manifest below `capabilities/pptx/`; “both” means the
+Audited on **2026-07-24**. `cap:*` refers to a manifest below `capabilities/pptx/`; “both” means the
 runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structural floors.
 
 | Family | Current forward path | Current reverse path | Evidence | Main remaining work |
@@ -62,7 +62,7 @@ runner executes HTML -> PPTX -> HTML -> PPTX with configured visual and structur
 | Blur | Native PowerPoint effect retained beneath an isolated portable layer; LibreOffice selects the same picture alone through `mc:AlternateContent` | Native effect and fallback recovered as one hybrid; CSS plus exact typed payload | `cap:blur-effect` (both), LO + Graph evidence | compound blur ordering, image/custom geometry cases, and more renderer versions |
 | Reflection | Native PowerPoint effect retained beneath an isolated portable layer for the conservative CSS `below`/pixel-gap/alpha-gradient subset; unsupported CSS forms use the element-layer path | Native effect and fallback recovered as one hybrid; zero-blur effects use CSS reflection, independent reflection blur uses an owned mirrored layer, and both retain complete shape styling plus exact typed payload | `cap:reflection-effect` (both), LO + Graph evidence + blurred/rotated integration | other directions, compound ordering, pictures/custom geometry, and more renderer versions |
 | Soft edge | Native PowerPoint effect retained beneath one shape-bound portable layer for the strict two-axis intersecting alpha-mask subset; nondefault mask geometry uses the element-layer path | Native effect and fallback recovered as one hybrid; valid rectangular CSS, ellipse-aware radial CSS, and exact typed payload | `cap:soft-edge-effect` (both) + OfficeCLI effects real deck, LO + Graph evidence | compound ordering, pictures/custom geometry, remaining non-ellipse calibration, ellipse internal text rectangle, and more renderer versions |
-| Fill overlay | Native PowerPoint solid overlay with a shape-bound portable fallback selected for incompatible renderers for CSS multiply/screen/darken/lighten; partial geometry, stale metadata, and unsupported blends/fill families use the element-layer path | Four proven solid modes recover as typed CSS plus exact payload and one hybrid; `over` and non-solid fills remain attached to an owned visible layer with rotation-aware paint bounds | `cap:fill-overlay-effect` (both) + `cap:fill-overlay-owned-fallback` (reverse, two normalized HTML cycles) + Aspose real deck, LO + Graph evidence | calibrate `over`, gradient/pattern/picture overlays, compound ordering, pictures/custom geometry, and more renderer versions |
+| Fill overlay | Native PowerPoint solid overlay with a shape-bound portable fallback selected for incompatible renderers for CSS multiply/screen/darken/lighten; partial geometry, stale metadata, and unsupported blends/fill families use the element-layer path | Four proven solid modes recover as typed CSS plus exact payload and one hybrid; admitted isolated opaque `over` rectangles retain a masked owned layer and exact source in `AlternateContent`, while inseparable crops report rasterized/noneditable | `cap:fill-overlay-effect` (both) + `cap:fill-overlay-owned-fallback` (reverse, two normalized HTML cycles) + overlapping-crop regression + Aspose real deck, LO + Graph evidence | calibrate `over`, gradient/pattern/picture overlays, compound ordering, pictures/custom geometry, and more renderer versions |
 | Other effect-list constructs | Layered/gap | Preserve only | unit only | effect containers/order, preset shadow, visual fallback and re-emission |
 | Basic text runs | Native | Native | `cap:text-rich-runs` (both) | language/script coverage and font portability |
 | Decoration, caps, and spacing | Partial/native | Partial/native | `cap:text-decorations` (both) | complete underline/strike/baseline/RTL/vertical text variants |

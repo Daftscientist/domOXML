@@ -661,6 +661,7 @@ class PreservedNode(CanvasNode):
     box: Box
     payload: PreservationPayload
     fallback: PictureFill | None = None
+    fallback_representation: Literal["element_layer", "rasterized"] = "element_layer"
 
 
 class ShapeNode(CanvasNode):

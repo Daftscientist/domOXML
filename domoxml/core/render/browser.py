@@ -205,6 +205,7 @@ _SNAPSHOT_JS = """
       domoxmlOwnerNodeId: 'data-domoxml-owner-node-id',
       domoxmlLayerRole: 'data-domoxml-layer-role',
       domoxmlPreservedPayload: 'data-domoxml-preserved-payload',
+      domoxmlRepresentation: 'data-domoxml-representation',
       domoxmlConnector: 'data-domoxml-connector',
       domoxmlEffects: 'data-domoxml-effects',
       domoxmlReflectionDistance: 'data-domoxml-reflection-distance',

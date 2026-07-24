@@ -115,8 +115,8 @@ def crop_slide_region(
                 mask = Image.new("L", output.size, 0)
                 mask_points = tuple(
                     (
-                        round((point_x - left) * scale_x),
-                        round((point_y - top) * scale_y),
+                        round(point_x * scale_x) - source_left,
+                        round(point_y * scale_y) - source_top,
                     )
                     for point_x, point_y in mask_polygon
                 )

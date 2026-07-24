@@ -103,4 +103,6 @@ def test_rasterized_visual_is_visible_but_not_claimed_editable() -> None:
     )
 
     assert item.output_count == 1
-    assert CoverageReport(items=(item,)).layered_ratio == 1.0
+    report = CoverageReport(items=(item,))
+    assert report.layered_ratio == 1.0
+    assert report.editable_ratio == 0.0

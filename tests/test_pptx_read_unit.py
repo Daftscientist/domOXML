@@ -44,6 +44,7 @@ from domoxml.core.roundtrip import render_html_roundtrip
 from domoxml.slides import build_pptx, read_pptx, read_pptx_result
 from domoxml.slides.appearance_read import rgba
 from domoxml.slides.read import (
+    _can_own_source_shape_crop,
     _connector_reverse_coverage,
     _group_reverse_coverage,
     _slide_colors,
@@ -406,6 +407,19 @@ def test_unsupported_over_overlay_uses_owned_source_render_and_re_emits() -> Non
         assert b"AlternateContent" in rebuilt_slide
 
 
+def test_owned_source_crop_excludes_rounded_geometry() -> None:
+    shape = ShapeNode(
+        box=Box(x=0, y=0, width=2_000_000, height=1_000_000),
+        fill=SolidFill(color=Rgba(r=20, g=60, b=140)),
+    )
+
+    assert _can_own_source_shape_crop(shape, is_only_visual=True)
+    assert not _can_own_source_shape_crop(
+        shape.model_copy(update={"corner_radius_emu": 100_000}),
+        is_only_visual=True,
+    )
+
+
 def test_overlapping_unsupported_overlay_is_visible_without_false_layer_ownership() -> None:
     overlay_shape = ShapeNode(
         box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
@@ -450,6 +464,12 @@ def test_overlapping_unsupported_overlay_is_visible_without_false_layer_ownershi
     assert coverage.editability is Editability.NONE
     assert coverage.source_retention is SourceRetention.ATTACHED
     assert "cannot prove independent ownership" in coverage.reason
+
+    rebuilt = render_html_roundtrip(html)
+    assert rebuilt.pptx is not None
+    rebuilt_slide = OpcPackage.from_bytes(rebuilt.pptx).read(slide_part)
+    assert b'fillOverlay blend="over"' in rebuilt_slide
+    assert b"AlternateContent" not in rebuilt_slide
 
 
 def test_exposes_generated_pptx_as_html() -> None:

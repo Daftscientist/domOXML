@@ -545,6 +545,7 @@ def _can_own_source_shape_crop(shape: ShapeNode, *, is_only_visual: bool) -> boo
         is_only_visual
         and shape.geom == "rect"
         and shape.custom_geom is None
+        and shape.corner_radius_emu == 0
         and isinstance(shape.fill, SolidFill)
         and shape.fill.color.a == 1.0
         and shape.opacity == 1.0
@@ -863,7 +864,9 @@ def _slide(
                         and fallback_shape is not None
                         and isinstance(fallback_shape.fill, PictureFill)
                     ):
-                        if shape_preserved:
+                        if shape_preserved and all(
+                            fragment.kind == "fillOverlay" for fragment in shape_preserved
+                        ):
                             source_fallback = (
                                 fallback_shape.fill.raster_role == "pptx-source-fallback"
                             )

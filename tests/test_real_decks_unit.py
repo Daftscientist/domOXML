@@ -38,6 +38,7 @@ def test_repository_real_decks_have_valid_pins_and_relationships() -> None:
 
     assert {case.id for case in cases} == {
         "external-chart-preservation",
+        "external-custom-path-effects",
         "external-embedded-font",
         "external-fill-overlay",
         "external-image-crop",

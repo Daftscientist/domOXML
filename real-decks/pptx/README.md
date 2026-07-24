@@ -23,6 +23,14 @@ at commit `6ca17fd6593e0f31ed5e6fb53eb4c5896b7a6525` under MIT. Its redistribute
 four solid-fill blend modes with proven CSS equivalents. DrawingML `over` remains preserved and
 uses owned fallback until its renderer semantics have an equivalent native HTML representation.
 
+The custom-path effects case is a deterministic reduction of
+[`apache/poi`'s `customGeo.pptx`](https://github.com/apache/poi/blob/0d6d4872c491b1f230f51c6878e57407c60ae697/test-data/slideshow/customGeo.pptx)
+at commit `0d6d4872c491b1f230f51c6878e57407c60ae697` under Apache-2.0. The source
+SHA-256 is pinned separately from the reduced fixture SHA-256 in its manifest. The reduction keeps
+slide 6, then keeps `Diagram 3` and its first four no-text custom-path children while removing
+timing and other visuals. Those four producer-authored shapes retain their guide formulas and
+outer shadows. The redistributed license is in [`LICENSE.Apache-POI`](LICENSE.Apache-POI).
+
 The default PowerPoint table-style contract was cross-checked against the pinned repository's
 `src/renderer/predefinedTableStyles.ts`; domOXML's Python implementation is independently written
 and limited to the style proven by the external fixture.

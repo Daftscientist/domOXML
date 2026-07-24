@@ -12,6 +12,7 @@ from domoxml.core.ir.model import (
     ClosePath,
     CubicTo,
     CustomGeometry,
+    Glow,
     Hyperlink,
     Line,
     LineSpacing,
@@ -21,6 +22,7 @@ from domoxml.core.ir.model import (
     PreservationPayload,
     PreservedNode,
     Rgba,
+    Shadow,
     ShapeNode,
     SlideIR,
     SolidFill,
@@ -182,6 +184,43 @@ def test_custom_geometry_stroke_keeps_physical_width_in_svg_viewbox() -> None:
     assert 'stroke-linecap="square"' in html.slides[0].html
     assert 'stroke-linejoin="miter"' in html.slides[0].html
     assert 'vector-effect="non-scaling-stroke"' in html.slides[0].html
+
+
+def test_custom_geometry_emits_path_aware_shadow_and_glow_filters() -> None:
+    geometry = CustomGeometry(
+        width_emu=1_905_000,
+        height_emu=952_500,
+        path=(
+            CubicTo(
+                c1=Point(x=0, y=0),
+                c2=Point(x=1_905_000, y=0),
+                to=Point(x=1_905_000, y=952_500),
+            ),
+            ClosePath(),
+        ),
+    )
+    node = ShapeNode(
+        box=Box(x=0, y=0, width=1_905_000, height=952_500),
+        custom_geom=geometry,
+        effects=(
+            Shadow(
+                color=Rgba(r=10, g=20, b=30, a=0.4),
+                blur_emu=114_300,
+                distance_emu=95_250,
+                direction_deg=0,
+            ),
+            Glow(color=Rgba(r=68, g=114, b=196, a=0.6), radius_emu=76_200),
+        ),
+    )
+
+    html = serialize_canvas([SlideIR(width=1_905_000, height=952_500, contents=(node,))])
+
+    assert (
+        "filter:drop-shadow(10px 0px 12px rgba(10,20,30,0.5333)) "
+        "drop-shadow(0px 0px 7.2727px rgba(68,114,196,1))"
+    ) in html.slides[0].html
+    assert "data-domoxml-effects=" in html.slides[0].html
+    assert "data-domoxml-custom-geometry=" in html.slides[0].html
 
 
 def test_serialize_canvas_embeds_attached_preservation_payload() -> None:

@@ -27,6 +27,14 @@ class DeckProvenance(BaseModel):
     source_revision: str
     license: str
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    derivation: str | None = None
+
+    @model_validator(mode="after")
+    def _derived_fixture_names_its_source_digest(self) -> DeckProvenance:
+        if self.derivation is not None and self.source_sha256 is None:
+            raise ValueError("derived real-deck fixture requires source_sha256")
+        return self
 
 
 class DeckPackageExpected(BaseModel):

@@ -9,6 +9,7 @@ from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.ir.model import (
+    ArcTo,
     Arrowhead,
     Blur,
     Box,
@@ -366,6 +367,11 @@ def _custgeom_xml(cg: CustomGeometry) -> str:
                 f'<a:pt x="{cmd.c1.x}" y="{cmd.c1.y}"/>'
                 f'<a:pt x="{cmd.to.x}" y="{cmd.to.y}"/>'
                 f"</a:quadBezTo>"
+            )
+        elif isinstance(cmd, ArcTo):
+            parts.append(
+                f'<a:arcTo wR="{cmd.width_radius}" hR="{cmd.height_radius}" '
+                f'stAng="{cmd.start_angle}" swAng="{cmd.sweep_angle}"/>'
             )
         else:
             parts.append("<a:close/>")

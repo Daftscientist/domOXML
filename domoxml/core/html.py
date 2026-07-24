@@ -10,7 +10,14 @@ from urllib.parse import urlsplit
 from domoxml.core.drawingml.presets import preset_defaults, preset_vertices
 from domoxml.core.fillcrop import srcrect_to_background
 from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_css
+from domoxml.core.ir.effect_calibration import (
+    CUSTOM_GLOW_ALPHA_TO_DML,
+    CUSTOM_GLOW_RADIUS_TO_DML,
+    CUSTOM_SHADOW_ALPHA_TO_DML,
+    CUSTOM_SHADOW_BLUR_TO_DML,
+)
 from domoxml.core.ir.effect_payload import encode_effects
+from domoxml.core.ir.geometry_payload import encode_custom_geometry
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Blur,
@@ -18,6 +25,7 @@ from domoxml.core.ir.model import (
     CharBullet,
     ColorSpec,
     Connector,
+    CustomGeometry,
     Fill,
     FillOverlay,
     Glow,
@@ -121,6 +129,12 @@ def _effect_attrs(node: ShapeNode) -> str:
         return ""
     payload = escape(encode_effects(node.effects), quote=True)
     return f' data-domoxml-effects="{payload}"'
+
+
+def _custom_geometry_attrs(geometry: CustomGeometry) -> str:
+    """Typed geometry metadata carried beside renderer-facing SVG path data."""
+    payload = escape(encode_custom_geometry(geometry), quote=True)
+    return f' data-domoxml-custom-geometry="{payload}"'
 
 
 def _text_payload_attrs(node: ShapeNode) -> str:
@@ -472,6 +486,55 @@ def _append_effect_styles(
         styles.append(f"mask-image:{','.join(soft_edge_masks)}")
         styles.append("-webkit-mask-image:" + ",".join(soft_edge_masks))
         styles.append("mask-composite:intersect")
+
+
+def _custom_geometry_filter(
+    node: ShapeNode,
+    warnings: list[ConversionWarning],
+) -> str | None:
+    """Return path-aware CSS filters for the custom-geometry effects HTML can paint exactly."""
+    filters: list[str] = []
+    for effect in node.effects:
+        if isinstance(effect, Shadow):
+            if effect.inset or effect.spread_emu != 0:
+                warnings.append(
+                    ConversionWarning(
+                        message=(
+                            "custom-geometry shadow cannot use a path-aware CSS filter with inset "
+                            "or spread; exact typed effect metadata retained"
+                        )
+                    )
+                )
+                continue
+            radians = math.radians(effect.direction_deg)
+            offset_x = emu_to_px(round(math.cos(radians) * effect.distance_emu))
+            offset_y = emu_to_px(round(math.sin(radians) * effect.distance_emu))
+            blur_px = emu_to_px(effect.blur_emu) / CUSTOM_SHADOW_BLUR_TO_DML
+            color = effect.color.model_copy(
+                update={"a": min(1.0, effect.color.a / CUSTOM_SHADOW_ALPHA_TO_DML)}
+            )
+            filters.append(
+                f"drop-shadow({_number(offset_x)}px {_number(offset_y)}px "
+                f"{_number(blur_px)}px {_rgba(color)})"
+            )
+        elif isinstance(effect, Glow):
+            radius_px = emu_to_px(effect.radius_emu) / CUSTOM_GLOW_RADIUS_TO_DML
+            color = effect.color.model_copy(
+                update={"a": min(1.0, effect.color.a / CUSTOM_GLOW_ALPHA_TO_DML)}
+            )
+            filters.append(f"drop-shadow(0px 0px {_number(radius_px)}px {_rgba(color)})")
+        elif isinstance(effect, Blur):
+            filters.append(f"blur({_number(emu_to_px(effect.radius_emu))}px)")
+        else:
+            warnings.append(
+                ConversionWarning(
+                    message=(
+                        f"{effect.kind} cannot yet paint on custom-geometry HTML; "
+                        "exact typed effect metadata retained"
+                    )
+                )
+            )
+    return " ".join(filters) if filters else None
 
 
 def _fill_overlay_blend_css(effect: FillOverlay) -> str:
@@ -961,6 +1024,9 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                 f"position:absolute;left:{left};top:{top};"
                 f"width:{w_px}px;height:{h_px}px;overflow:visible"
             )
+            effect_filter = _custom_geometry_filter(node, warnings)
+            if effect_filter is not None:
+                pos_style += f";filter:{effect_filter}"
             vb_w = cg.width_emu
             vb_h = cg.height_emu
             d = commands_to_svg_d(cg.path)
@@ -994,7 +1060,8 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                     ' vector-effect="non-scaling-stroke"'
                 )
             inner = (
-                f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}{_effect_attrs(node)}'
+                f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}'
+                f"{_custom_geometry_attrs(cg)}{_effect_attrs(node)}"
                 f' viewBox="0 0 {vb_w} {vb_h}"'
                 f' style="{escape(pos_style, quote=True)}">'
                 f'<path d="{escape(d, quote=True)}" {fill_attr}{stroke_attrs}/>'

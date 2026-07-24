@@ -534,6 +534,18 @@ class QuadTo(BaseModel):
     to: Point
 
 
+class ArcTo(BaseModel):
+    """``a:arcTo`` — an axis-aligned elliptical arc from the current point."""
+
+    model_config = _FROZEN
+
+    kind: Literal["arc"] = "arc"
+    width_radius: int = Field(gt=0)
+    height_radius: int = Field(gt=0)
+    start_angle: int
+    sweep_angle: int
+
+
 class ClosePath(BaseModel):
     """``a:close`` — close the current sub-path."""
 
@@ -543,7 +555,7 @@ class ClosePath(BaseModel):
 
 
 type PathCommand = Annotated[
-    MoveTo | LineTo | CubicTo | QuadTo | ClosePath,
+    MoveTo | LineTo | CubicTo | QuadTo | ArcTo | ClosePath,
     Field(discriminator="kind"),
 ]
 

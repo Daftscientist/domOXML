@@ -15,6 +15,7 @@ from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.model import (
+    ArcTo,
     Box,
     CanvasNode,
     ClosePath,
@@ -65,6 +66,7 @@ from domoxml.slides.appearance_read import (
 from domoxml.slides.background import parse_background
 from domoxml.slides.connector_read import read_connector
 from domoxml.slides.effect_read import read_effects
+from domoxml.slides.geometry_guides import evaluate_guides, resolve_guide
 from domoxml.slides.graphic_frame import read_graphic_frame
 from domoxml.slides.inherit import (
     PlaceholderContext,
@@ -166,54 +168,68 @@ def _related_part_by_type(
         return None
 
 
-def _custGeom(element: Element) -> CustomGeometry | None:
+def _custGeom(element: Element, box: Box) -> CustomGeometry | None:
     """Parse ``a:custGeom`` from a shape's ``spPr`` and return a :class:`CustomGeometry`."""
     path_el = element.find(f"{{{_A}}}pathLst/{{{_A}}}path")
     if path_el is None:
         return None
-    width_emu_raw = path_el.get("w")
-    height_emu_raw = path_el.get("h")
-    if width_emu_raw is None or height_emu_raw is None:
-        return None
     try:
-        width_emu = int(width_emu_raw)
-        height_emu = int(height_emu_raw)
+        width_emu = int(path_el.get("w", str(box.width)))
+        height_emu = int(path_el.get("h", str(box.height)))
     except ValueError:
         return None
     if width_emu <= 0 or height_emu <= 0:
         return None
+    formulas = tuple(
+        (guide.get("name", ""), guide.get("fmla", ""))
+        for guide in element.findall(f"{{{_A}}}avLst/{{{_A}}}gd")
+        + element.findall(f"{{{_A}}}gdLst/{{{_A}}}gd")
+        if guide.get("name") and guide.get("fmla")
+    )
+    try:
+        guides = evaluate_guides(formulas, width=box.width, height=box.height)
+    except ValueError:
+        return None
+
+    def point(source: Element) -> Point:
+        return Point(
+            x=resolve_guide(source.get("x"), guides),
+            y=resolve_guide(source.get("y"), guides),
+        )
+
     commands: list[PathCommand] = []
-    for child in path_el:
-        local = child.tag.rsplit("}", 1)[-1]
-        if local == "moveTo":
-            pt = child.find(f"{{{_A}}}pt")
-            if pt is not None:
-                commands.append(MoveTo(to=Point(x=int(pt.get("x", 0)), y=int(pt.get("y", 0)))))
-        elif local == "lnTo":
-            pt = child.find(f"{{{_A}}}pt")
-            if pt is not None:
-                commands.append(LineTo(to=Point(x=int(pt.get("x", 0)), y=int(pt.get("y", 0)))))
-        elif local == "cubicBezTo":
-            pts = child.findall(f"{{{_A}}}pt")
-            if len(pts) >= 3:
+    try:
+        for child in path_el:
+            local = child.tag.rsplit("}", 1)[-1]
+            if local == "moveTo":
+                pt = child.find(f"{{{_A}}}pt")
+                if pt is not None:
+                    commands.append(MoveTo(to=point(pt)))
+            elif local == "lnTo":
+                pt = child.find(f"{{{_A}}}pt")
+                if pt is not None:
+                    commands.append(LineTo(to=point(pt)))
+            elif local == "cubicBezTo":
+                pts = child.findall(f"{{{_A}}}pt")
+                if len(pts) >= 3:
+                    commands.append(CubicTo(c1=point(pts[0]), c2=point(pts[1]), to=point(pts[2])))
+            elif local == "quadBezTo":
+                pts = child.findall(f"{{{_A}}}pt")
+                if len(pts) >= 2:
+                    commands.append(QuadTo(c1=point(pts[0]), to=point(pts[1])))
+            elif local == "arcTo":
                 commands.append(
-                    CubicTo(
-                        c1=Point(x=int(pts[0].get("x", 0)), y=int(pts[0].get("y", 0))),
-                        c2=Point(x=int(pts[1].get("x", 0)), y=int(pts[1].get("y", 0))),
-                        to=Point(x=int(pts[2].get("x", 0)), y=int(pts[2].get("y", 0))),
+                    ArcTo(
+                        width_radius=resolve_guide(child.get("wR"), guides),
+                        height_radius=resolve_guide(child.get("hR"), guides),
+                        start_angle=resolve_guide(child.get("stAng"), guides),
+                        sweep_angle=resolve_guide(child.get("swAng"), guides),
                     )
                 )
-        elif local == "quadBezTo":
-            pts = child.findall(f"{{{_A}}}pt")
-            if len(pts) >= 2:
-                commands.append(
-                    QuadTo(
-                        c1=Point(x=int(pts[0].get("x", 0)), y=int(pts[0].get("y", 0))),
-                        to=Point(x=int(pts[1].get("x", 0)), y=int(pts[1].get("y", 0))),
-                    )
-                )
-        elif local == "close":
-            commands.append(ClosePath())
+            elif local == "close":
+                commands.append(ClosePath())
+    except ValueError:
+        return None
     return CustomGeometry(width_emu=width_emu, height_emu=height_emu, path=tuple(commands))
 
 
@@ -292,7 +308,7 @@ def _shape(
         properties, lambda element: _rgba(element, colors), box=box
     )
     custgeom_el = properties.find(f"{{{_A}}}custGeom")
-    custom_geom = _custGeom(custgeom_el) if custgeom_el is not None else None
+    custom_geom = _custGeom(custgeom_el, box) if custgeom_el is not None else None
     return (
         _with_pptx_identity(
             ShapeNode(

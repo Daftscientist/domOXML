@@ -11,14 +11,14 @@ Snapshot audited on **2026-07-24** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 764 tests are collected.
-- 25 atomic PPTX capability fixtures exist; 21 are bidirectional and four are reverse-first
+- 772 tests are collected.
+- 26 atomic PPTX capability fixtures exist; 22 are bidirectional and four are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, and rasterized preset
   shadow node/slide fallbacks.
 - 9 authored HTML fidelity cases exist.
-- 6 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, attached
-  chart-graph re-emission, ellipse soft-edge radii, and four native solid fill-overlay blend modes
-  with PPTX and normalized-HTML visual gates.
+- 7 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, attached
+  chart-graph re-emission, ellipse soft-edge radii, four native solid fill-overlay blend modes, and
+  formula-backed custom paths with native outer shadows using PPTX and normalized-HTML visual gates.
 - LibreOffice global, regional, focused, and structural scores are merge-blocking for configured
   cases.
 - Microsoft Graph rendering exists as an opt-in backend, not a normal CI gate.
@@ -40,7 +40,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 25 atomic fixtures and 6 real decks pin
+  retention, output-count, and raster-area records. All 26 atomic fixtures and 7 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -278,10 +278,17 @@ silently lowering the expected score.
    overlapping translucent shape: Canvas IR owns the composite fallback at slide level, normalized
    HTML paints it once above retained objects, PowerPoint selects the original native sequence, and
    LibreOffice selects the one picture. Re-ingestion retains exact payload, z-order, fallback bytes,
-   coverage, and pixels through cycle two. Reflection directions other than `below`, non-pixel gaps,
-   typed/editable preset-shadow semantics, multiple preset shadows, unknown compound siblings,
+   coverage, and pixels through cycle two. Single-path SVG `drop-shadow()` now lowers to a native
+   custom geometry outer shadow or glow with separate Graph/LibreOffice calibration; normalized HTML
+   paints the path-aware effect, exact typed metadata survives two cycles, and unsupported SVG filter
+   chains take a visible element-layer fallback. A reduced Apache POI real-deck case pins four
+   producer-authored guide-backed paths and shadows on LibreOffice and Graph; DrawingML guide
+   formulas and elliptical arcs now normalize into typed custom geometry rather than crashing or
+   disappearing on re-ingestion. Reflection directions other than `below`, non-pixel
+   gaps, typed/editable preset-shadow semantics, multiple preset shadows, unknown compound siblings,
    smaller preset-shadow isolation, gradient/other fill-overlay families, `over` calibration,
-   compound ordering, and effect-bearing custom geometry remain open.
+   compound ordering, custom-geometry blur/reflection/soft-edge/fill-overlay families, and
+   multi-function SVG filter ordering remain open.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,

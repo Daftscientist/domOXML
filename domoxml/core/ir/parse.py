@@ -321,6 +321,37 @@ def parse_shadow(value: str | None) -> Shadow | None:
     )
 
 
+def parse_drop_shadow_filter(value: str | None) -> Shadow | None:
+    """Map one CSS ``filter: drop-shadow(...)`` function to an outer shadow.
+
+    Compound filter chains remain outside this atomic mapping because CSS filter order is
+    significant. The balanced scan allows nested ``rgb()``/``rgba()`` color functions without
+    accidentally accepting a second filter function.
+    """
+    if not value:
+        return None
+    source = value.strip()
+    prefix = "drop-shadow("
+    if not source.lower().startswith(prefix):
+        return None
+    depth = 0
+    closing_index: int | None = None
+    for index, char in enumerate(source[len(prefix) - 1 :], start=len(prefix) - 1):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                closing_index = index
+                break
+    if closing_index is None or closing_index != len(source) - 1:
+        return None
+    shadow = parse_shadow(source[len(prefix) : closing_index])
+    if shadow is None or shadow.inset or shadow.spread_emu != 0:
+        return None
+    return shadow
+
+
 def parse_blur_filter(value: str | None) -> Blur | None:
     """Map a lone CSS ``blur(<px>)`` filter to native DrawingML blur.
 

@@ -50,7 +50,7 @@ from domoxml.slides.read import (
     _slide_colors,
     _with_pptx_identity,
 )
-from domoxml.types import Editability, Representation, SourceRetention
+from domoxml.types import Editability, HtmlPresentation, Representation, SourceRetention
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -420,7 +420,7 @@ def test_owned_source_crop_excludes_rounded_geometry() -> None:
     )
 
 
-def test_overlapping_unsupported_overlay_is_visible_without_false_layer_ownership() -> None:
+def _overlapping_unsupported_overlay_html() -> tuple[HtmlPresentation, str]:
     overlay_shape = ShapeNode(
         box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
         fill=SolidFill(color=Rgba(r=20, g=60, b=140)),
@@ -454,7 +454,14 @@ def test_overlapping_unsupported_overlay_is_visible_without_false_layer_ownershi
     rendered = BytesIO()
     Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")
 
-    html = Presentation.from_pptx(write_package(parts), fallback_pngs=(rendered.getvalue(),))
+    return (
+        Presentation.from_pptx(write_package(parts), fallback_pngs=(rendered.getvalue(),)),
+        slide_part,
+    )
+
+
+def test_overlapping_unsupported_overlay_is_visible_without_false_layer_ownership() -> None:
+    html, _ = _overlapping_unsupported_overlay_html()
 
     assert 'data-domoxml-representation="rasterized"' in html.slides[0].html
     assert "data-domoxml-preserved-payload=" in html.slides[0].html
@@ -464,6 +471,11 @@ def test_overlapping_unsupported_overlay_is_visible_without_false_layer_ownershi
     assert coverage.editability is Editability.NONE
     assert coverage.source_retention is SourceRetention.ATTACHED
     assert "cannot prove independent ownership" in coverage.reason
+
+
+@pytest.mark.integration
+def test_overlapping_unsupported_overlay_re_emits_native_xml_without_portable_fallback() -> None:
+    html, slide_part = _overlapping_unsupported_overlay_html()
 
     rebuilt = render_html_roundtrip(html)
     assert rebuilt.pptx is not None

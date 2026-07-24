@@ -507,6 +507,36 @@ def test_malformed_slide_fallback_marker_stays_source_owned() -> None:
     assert coverage.source_retention is SourceRetention.ATTACHED
 
 
+def test_slide_fallback_with_extra_fallback_visual_stays_source_owned() -> None:
+    rendered = BytesIO()
+    Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")
+    result = read_pptx_result(
+        _preset_shadow_source(with_sibling=True),
+        fallback_pngs=(rendered.getvalue(),),
+    )
+    rebuilt = build_pptx(list(result.slides), faces=[])
+    package = OpcPackage.from_bytes(rebuilt)
+    slide_part = "ppt/slides/slide1.xml"
+    root = ElementTree.fromstring(package.read(slide_part))
+    fallback_branch = root.find(".//mc:AlternateContent/mc:Fallback", {"mc": _MC})
+    extra_visual = root.find(".//mc:Choice/p:sp", {"mc": _MC, "p": _P})
+    assert fallback_branch is not None
+    assert extra_visual is not None
+    fallback_branch.append(ElementTree.fromstring(ElementTree.tostring(extra_visual)))
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    parts[slide_part] = ElementTree.tostring(root)
+
+    recovered = read_pptx_result(write_package(parts))
+
+    assert recovered.slides[0].renderer_fallback is None
+    [preserved] = [node for node in recovered.slides[0].contents if isinstance(node, PreservedNode)]
+    assert preserved.payload.kind == "AlternateContent"
+    assert preserved.fallback_representation == "rasterized"
+    [coverage] = recovered.coverage.items
+    assert coverage.representation is Representation.RASTERIZED
+    assert coverage.source_retention is SourceRetention.ATTACHED
+
+
 def test_legacy_node_level_full_slide_fallback_rejects_siblings() -> None:
     rendered = BytesIO()
     Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")

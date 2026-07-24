@@ -90,6 +90,7 @@ from domoxml.types import (
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 _NS = {"a": _A, "p": _P, "r": _R, "dx": IDENTITY_NAMESPACE}
 _RID = f"{{{_R}}}id"
 _LINK = f"{{{_R}}}link"
@@ -830,17 +831,16 @@ def _slide(
         )
         if len(initial_visuals) == 1 and _local_name(initial_visuals[0]) == "AlternateContent":
             alternate = initial_visuals[0]
-            choice = next(
-                (child for child in alternate if _local_name(child) == "Choice"),
-                None,
+            alternate_children = tuple(alternate)
+            exact_branches = (
+                len(alternate_children) == 2
+                and alternate_children[0].tag == f"{{{_MC}}}Choice"
+                and alternate_children[1].tag == f"{{{_MC}}}Fallback"
             )
-            fallback_branch = next(
-                (child for child in alternate if _local_name(child) == "Fallback"),
-                None,
-            )
-            fallback_element = (
-                next(iter(fallback_branch), None) if fallback_branch is not None else None
-            )
+            choice = alternate_children[0] if exact_branches else None
+            fallback_branch = alternate_children[1] if exact_branches else None
+            fallback_children = tuple(fallback_branch) if fallback_branch is not None else ()
+            fallback_element = fallback_children[0] if len(fallback_children) == 1 else None
             fallback_shape = (
                 _picture_shape(fallback_element, package, slide_part)
                 if fallback_element is not None and _local_name(fallback_element) == "pic"

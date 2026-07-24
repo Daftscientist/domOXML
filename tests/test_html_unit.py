@@ -246,6 +246,7 @@ def test_serialize_canvas_places_slide_fallback_above_retained_contents() -> Non
                 height=1_000,
                 contents=(preserved, sibling),
                 renderer_fallback=PictureFill(data=b"slide-png", ext="png"),
+                renderer_fallback_owner_node_id="shadow-source",
             )
         ]
     )
@@ -255,6 +256,7 @@ def test_serialize_canvas_places_slide_fallback_above_retained_contents() -> Non
         'data-domoxml-slide-fallback="rasterized"'
     )
     assert 'class="domoxml-slide-fallback"' in html
+    assert 'data-domoxml-owner-node-id="shadow-source"' in html
     assert "z-index:2147483647" in html
     assert result.assets[-1].data == b"slide-png"
 

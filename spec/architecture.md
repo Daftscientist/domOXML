@@ -83,7 +83,10 @@ capture and PPTX ingestion emit a per-source-visual coverage report; normalized 
 report on its public presentation result alongside warnings and preserved source fragments.
 Canvas IR can also carry one explicit full-slide `renderer_fallback`. Native and preserved contents
 remain in canonical z-order beneath it; this lets incompatible output adapters select the
-already-composited pixels once without pretending that the picture belongs to any individual node.
+already-composited pixels once without attaching the picture to an individual node's stack
+position. A separate owner-node ID links coverage and source retention to the exact preserved node
+whose unsupported paint required the slide fallback; unrelated preserved nodes remain explicit
+coverage debt.
 
 Shared primitives include:
 

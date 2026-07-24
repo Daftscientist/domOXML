@@ -791,8 +791,7 @@ def _slide(
     preserved: list[PreservedFragment] = []
     coverage: list[CoverageItem] = []
     renderer_fallback: PictureFill | None = None
-    renderer_fallback_has_owner = False
-    renderer_fallback_retention = SourceRetention.ATTACHED
+    renderer_fallback_owner_node_id: str | None = None
 
     # --- Slide-level: background (p:cSld/p:bg) ---
     background = parse_background(
@@ -1141,7 +1140,6 @@ def _slide(
                         and preserved_kinds == {"prstShdw"}
                         and renderer_fallback is not None
                     ):
-                        renderer_fallback_has_owner = True
                         reason = (
                             "preset shadow retained as exact native source under one slide-level "
                             "renderer fallback"
@@ -1157,7 +1155,6 @@ def _slide(
                             )
                         except (KeyError, ValueError):
                             contents.append(shape)
-                            renderer_fallback_retention = SourceRetention.DETACHED
                             owner_node_id = shape.node_id
                             reason += "; dependent OPC graph could not be attached"
                         else:
@@ -1168,6 +1165,7 @@ def _slide(
                             )
                             contents.append(preserved_node)
                             owner_node_id = preserved_node.node_id
+                            renderer_fallback_owner_node_id = preserved_node.node_id
                         warning, fragment = _preserve(slide_part, element, reason)
                         warnings.append(warning)
                         preserved.append(
@@ -1377,8 +1375,8 @@ def _slide(
                 representation=Representation.RASTERIZED,
                 editability=Editability.NONE,
                 source_retention=(
-                    renderer_fallback_retention
-                    if renderer_fallback_has_owner
+                    SourceRetention.ATTACHED
+                    if renderer_fallback_owner_node_id is not None
                     else SourceRetention.DETACHED
                 ),
                 raster_area_emu2=width * height,
@@ -1393,6 +1391,7 @@ def _slide(
             transition=transition,
             background=background,
             renderer_fallback=renderer_fallback,
+            renderer_fallback_owner_node_id=renderer_fallback_owner_node_id,
         ),
         tuple(warnings),
         tuple(preserved),

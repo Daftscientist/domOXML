@@ -886,7 +886,9 @@ class SlideIR(BaseModel):
     :attr:`background` carries the optional native slide background; ``None`` means no
     explicit background (the slide uses the master/layout background or is transparent).
     :attr:`renderer_fallback` is one authoritative full-slide picture shown only at format
-    boundaries that cannot paint the retained native contents faithfully."""
+    boundaries that cannot paint the retained native contents faithfully.
+    :attr:`renderer_fallback_owner_node_id` links that picture to the exact retained source node
+    it covers; ``None`` means the fallback has no attached source owner."""
 
     model_config = _FROZEN
 
@@ -896,6 +898,7 @@ class SlideIR(BaseModel):
     transition: SlideTransition | None = None
     background: SlideBackground | None = None
     renderer_fallback: PictureFill | None = None
+    renderer_fallback_owner_node_id: str | None = Field(default=None, min_length=1, max_length=512)
 
     def __init__(
         self,
@@ -908,6 +911,7 @@ class SlideIR(BaseModel):
         transition: SlideTransition | None = None,
         background: SlideBackground | None = None,
         renderer_fallback: PictureFill | None = None,
+        renderer_fallback_owner_node_id: str | None = None,
     ) -> None:
         if contents is not None and (shapes is not None or nodes is not None):
             raise ValueError("pass contents or legacy shapes/nodes, not both")
@@ -921,6 +925,7 @@ class SlideIR(BaseModel):
             transition=transition,
             background=background,
             renderer_fallback=renderer_fallback,
+            renderer_fallback_owner_node_id=renderer_fallback_owner_node_id,
         )
         object.__setattr__(self, "contents", _normalise_node_ids(self.contents))
 

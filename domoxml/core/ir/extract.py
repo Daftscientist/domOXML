@@ -1112,12 +1112,15 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         None,
     )
     renderer_fallback: PictureFill | None = None
+    renderer_fallback_owner_node_id: str | None = None
+    renderer_fallback_owner_found = False
     if fallback_node is not None:
         fallback_fill, fallback_reason = _resolve_fill(fallback_node, rendered)
         if isinstance(fallback_fill, PictureFill):
             renderer_fallback = fallback_fill.model_copy(
                 update={"raster_role": "pptx-slide-rasterized"}
             )
+            renderer_fallback_owner_node_id = fallback_node.styles.get("domoxmlOwnerNodeId")
             consumed |= _subtree(fallback_node.index, children)
         else:
             reason = fallback_reason or "slide renderer fallback image could not be recovered"
@@ -1156,17 +1159,22 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     if node.styles.get("domoxmlRepresentation") == "rasterized"
                     else "element_layer"
                 )
-                contents.append(
-                    identities.apply(
-                        PreservedNode(
-                            box=_box(node),
-                            payload=payload,
-                            fallback=fallback,
-                            fallback_representation=fallback_representation,
-                        ),
-                        node,
-                    )
+                preserved_node = identities.apply(
+                    PreservedNode(
+                        box=_box(node),
+                        payload=payload,
+                        fallback=fallback,
+                        fallback_representation=fallback_representation,
+                    ),
+                    node,
                 )
+                contents.append(preserved_node)
+                owned_by_renderer_fallback = (
+                    renderer_fallback is not None
+                    and renderer_fallback_owner_node_id is not None
+                    and preserved_node.node_id == renderer_fallback_owner_node_id
+                )
+                renderer_fallback_owner_found |= owned_by_renderer_fallback
                 consumed |= _subtree(node.index, children)
                 if fallback is not None:
                     box = _box(node)
@@ -1192,7 +1200,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             ),
                         )
                     )
-                elif renderer_fallback is None:
+                elif not owned_by_renderer_fallback:
                     reason = fallback_reason or "attached source object has no visual fallback"
                     coverage.append(
                         CoverageItem(
@@ -1609,18 +1617,21 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
 
     width = px_to_emu(rendered.width)
     height = px_to_emu(rendered.height)
+    attached_owner_node_id: str | None = None
     if renderer_fallback is not None:
-        fallback_retention = (
-            SourceRetention.ATTACHED
-            if any(isinstance(node, PreservedNode) for node in contents)
-            else SourceRetention.DETACHED
+        attached_owner_node_id = (
+            renderer_fallback_owner_node_id if renderer_fallback_owner_found else None
         )
         coverage.append(
             CoverageItem(
                 element="slide:renderer-fallback",
                 representation=Representation.RASTERIZED,
                 editability=Editability.NONE,
-                source_retention=fallback_retention,
+                source_retention=(
+                    SourceRetention.ATTACHED
+                    if attached_owner_node_id is not None
+                    else SourceRetention.DETACHED
+                ),
                 raster_area_emu2=width * height,
                 reason=(
                     "authoritative full-slide renderer fallback above retained native contents"
@@ -1634,5 +1645,6 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         transition=transition,
         background=background,
         renderer_fallback=renderer_fallback,
+        renderer_fallback_owner_node_id=attached_owner_node_id,
     )
     return ExtractResult(slide=slide, coverage=tuple(coverage), warnings=tuple(warnings))

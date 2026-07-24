@@ -296,6 +296,7 @@ async def test_browser_capture_restores_slide_fallback_above_native_contents() -
                     height=6_858_000,
                     contents=(preserved, sibling),
                     renderer_fallback=PictureFill(data=image.getvalue(), ext="png"),
+                    renderer_fallback_owner_node_id="shadow-source",
                 )
             ]
         )
@@ -305,11 +306,55 @@ async def test_browser_capture_restores_slide_fallback_above_native_contents() -
 
     assert result.slide.renderer_fallback is not None
     assert result.slide.renderer_fallback.data == image.getvalue()
+    assert result.slide.renderer_fallback_owner_node_id == "shadow-source"
     assert [node.node_id for node in result.slide.contents] == ["shadow-source", "sibling"]
     assert [item.representation for item in result.coverage] == [
         Representation.NATIVE,
         Representation.RASTERIZED,
     ]
+    assert result.coverage[-1].source_retention is SourceRetention.ATTACHED
+
+
+async def test_slide_fallback_does_not_claim_unrelated_preserved_source() -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    image = BytesIO()
+    Image.new("RGB", (1280, 720), "#315C7B").save(image, "PNG")
+    owned = PreservedNode(
+        node_id="shadow-source",
+        box=Box(x=914_400, y=914_400, width=1_828_800, height=914_400),
+        payload=PreservationPayload(kind="sp", root_xml="<p:sp/>"),
+    )
+    unrelated = PreservedNode(
+        node_id="chart-source",
+        box=Box(x=3_000_000, y=1_000_000, width=2_000_000, height=2_000_000),
+        payload=PreservationPayload(kind="graphicFrame", root_xml="<p:graphicFrame/>"),
+    )
+    serialized = inline_assets(
+        serialize_canvas(
+            [
+                SlideIR(
+                    width=12_192_000,
+                    height=6_858_000,
+                    contents=(owned, unrelated),
+                    renderer_fallback=PictureFill(data=image.getvalue(), ext="png"),
+                    renderer_fallback_owner_node_id="shadow-source",
+                )
+            ]
+        )
+    )
+
+    result = await _render_and_extract_result(serialized.slides[0].html)
+
+    assert result.slide.renderer_fallback_owner_node_id == "shadow-source"
+    assert [item.representation for item in result.coverage] == [
+        Representation.FAILED,
+        Representation.RASTERIZED,
+    ]
+    assert result.coverage[0].source_retention is SourceRetention.ATTACHED
+    assert result.coverage[0].output_count == 0
     assert result.coverage[-1].source_retention is SourceRetention.ATTACHED
 
 

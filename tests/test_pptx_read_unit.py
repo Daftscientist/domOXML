@@ -450,6 +450,7 @@ def test_preset_shadow_multi_visual_uses_slide_level_fallback() -> None:
     assert slide.renderer_fallback is not None
     fallback_bytes = slide.renderer_fallback.data
     [preserved] = [node for node in slide.contents if isinstance(node, PreservedNode)]
+    assert slide.renderer_fallback_owner_node_id == preserved.node_id
     assert preserved.fallback is None
     assert 'prst="shdw3"' in preserved.payload.root_xml
     assert [item.representation for item in result.coverage.items] == [
@@ -470,6 +471,10 @@ def test_preset_shadow_multi_visual_uses_slide_level_fallback() -> None:
     assert recovered_slide.renderer_fallback is not None
     assert recovered_slide.renderer_fallback.data == fallback_bytes
     assert len(recovered_slide.contents) == 2
+    [recovered_preserved] = [
+        node for node in recovered_slide.contents if isinstance(node, PreservedNode)
+    ]
+    assert recovered_slide.renderer_fallback_owner_node_id == recovered_preserved.node_id
     assert [item.representation for item in recovered.coverage.items] == [
         Representation.NATIVE,
         Representation.RASTERIZED,

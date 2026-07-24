@@ -1242,9 +1242,13 @@ def _slide_renderer_fallback_html(
         "position:absolute;left:0;top:0;width:100%;height:100%;object-fit:fill;"
         "z-index:2147483647;pointer-events:none"
     )
+    owner_attr = ""
+    if slide.renderer_fallback_owner_node_id is not None:
+        owner_id = escape(slide.renderer_fallback_owner_node_id, quote=True)
+        owner_attr = f' data-domoxml-owner-node-id="{owner_id}"'
     return (
         '<img class="domoxml-slide-fallback" data-domoxml-slide-fallback="rasterized" '
-        f'src="../{asset.path}" alt="" aria-hidden="true" style="{style}"/>'
+        f'src="../{asset.path}" alt="" aria-hidden="true"{owner_attr} style="{style}"/>'
     )
 
 

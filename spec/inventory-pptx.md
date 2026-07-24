@@ -25,7 +25,7 @@ Audited on **2026-07-24**.
 | Animations/timing | Gap | Preserve only | unit only | timing IR/input contract, HTML state mapping, visual playback/layer policy, re-emission |
 | Speaker notes | Gap; no public argument | Gap | none | `Slide` notes argument, notes parts/relationships, normalized HTML metadata, round trip |
 | Embedded fonts | Partial/native | Partial/native | unit/integration + real deck | complete face slots, substitutions/licensing, malformed data and renderer baselines |
-| Pictures and raster fallback markers | Native; isolated blur/reflection/soft-edge/fill-overlay fallbacks are renderer-selected through `mc:AlternateContent` | Native; authoritative isolated crops attach to preserved positioned nodes, unsafe crops report rasterized/noneditable, and portable effect fallbacks recover beside their semantic owner | capabilities/integration + `cap:blur-effect` + `cap:reflection-effect` + `cap:soft-edge-effect` + `cap:fill-overlay-effect` + `cap:fill-overlay-owned-fallback` + `cap:chart-preservation` | automatic renderer policy beyond proven effects, stable group ownership and accessibility fields |
+| Pictures and raster fallback markers | Native; isolated blur/reflection/soft-edge/fill-overlay and sole-visual full-slide preset-shadow fallbacks are renderer-selected through `mc:AlternateContent` | Native; authoritative isolated crops attach to preserved positioned nodes, safe composite-only fallbacks report rasterized/noneditable, and portable effect fallbacks recover beside their semantic owner | capabilities/integration + `cap:blur-effect` + `cap:reflection-effect` + `cap:soft-edge-effect` + `cap:fill-overlay-effect` + `cap:fill-overlay-owned-fallback` + `cap:preset-shadow-raster-fallback` + `cap:chart-preservation` | automatic renderer policy beyond proven effects, multi-visual slide-level or smaller preset-shadow isolation, stable group ownership and accessibility fields |
 | SVG extension (`asvg:svgBlip`) | Native write | Native read and exact re-emission for pure pictures | `cap:svg-vector` (both) | cropped/effect-bearing SVG pictures, external assets, and adversarial SVG content |
 | Native tables in graphic frames | Native subset | Native subset; default style reference/flags survive IR and normalized HTML | `cap:table` (both) + LO/Graph real deck | arbitrary style definitions/inheritance and richer graphic-frame ordering |
 | Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph plus caller-rendered normalized-HTML element layer | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart IR, automatic renderer selection, semantic HTML rendering, and native authoring |
@@ -37,7 +37,7 @@ Audited on **2026-07-24**.
 | 3D/model extensions | Gap | Positioned fallback contract available where bounds and graph capture succeed | limited unit coverage | package preservation, visual fixture and representative corpus |
 | Accessibility and alternative text | Gap/partial incidental | Partial incidental | no capability fixture | first-class IR/API, `cNvPr` metadata and HTML semantics |
 | Comments/review history | Intentionally ignored | Intentionally ignored | policy | ensure ignored parts never damage visible/package conversion |
-| Unknown slide/extension nodes | no authoring classification contract | Per-visual `element_layer` only where ownership is proved; inseparable visible crops report `rasterized`, while missing renders report explicit `failed`/retention debt | chart capability + focused coverage tests | automatic renderer policy, SmartArt/OLE/3D corpus, group ownership, and attached re-emission proof beyond charts |
+| Unknown slide/extension nodes | no authoring classification contract | Per-visual `element_layer` only where ownership is proved; safe composite-only fallbacks report `rasterized`, while unsafe z-order, missing renders, and retention debt remain explicit | chart + preset-shadow capabilities + focused coverage tests | automatic renderer policy, SmartArt/OLE/3D corpus, group ownership, and attached re-emission proof beyond charts |
 
 ## Atomic Executable Coverage
 
@@ -57,6 +57,7 @@ Audited on **2026-07-24**.
 | `node-identity` | both | stable IDs, source provenance, ownership, and private OOXML extension |
 | `pattern-fills` | both | DrawingML pattern mapping |
 | `picture-crop` | both | picture crop and reverse CSS |
+| `preset-shadow-raster-fallback` | reverse | sole-visual perspective preset shadow remains visible through one measured full-slide raster fallback, retains exact native source, and converges after the fallback boundary |
 | `preset-shapes` | both | supported preset geometry subset |
 | `reflection-effect` | both | native PowerPoint reflection plus isolated LibreOffice fallback, exact effect payload, stacking, and convergence |
 | `soft-edge-effect` | both | strict CSS feather mask, ellipse-aware reverse feather, native PowerPoint soft edge plus shape-bound fallback, exact payload, stacking, and convergence |

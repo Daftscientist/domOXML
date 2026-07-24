@@ -831,6 +831,7 @@ def _slide(
             preserved_owner_id: str | None = None
             preserve_whole_node = True
             fallback_representation: Literal["element_layer", "rasterized"] = "element_layer"
+            fallback_box_override: Box | None = None
             fallback_mask: tuple[tuple[float, float], ...] | None = None
             reason = f"preserved unsupported reverse slide node: {kind}"
             if kind in {"nvGrpSpPr", "grpSpPr"}:
@@ -864,18 +865,32 @@ def _slide(
                         and fallback_shape is not None
                         and isinstance(fallback_shape.fill, PictureFill)
                     ):
-                        if shape_preserved and all(
-                            fragment.kind == "fillOverlay" for fragment in shape_preserved
-                        ):
-                            source_fallback = (
-                                fallback_shape.fill.raster_role == "pptx-source-fallback"
+                        preserved_kinds = {fragment.kind for fragment in shape_preserved}
+                        fallback_role = fallback_shape.fill.raster_role
+                        recover_owned = preserved_kinds == {"fillOverlay"}
+                        rasterized_candidate = (
+                            fallback_role == "pptx-source-rasterized"
+                            and preserved_kinds == {"prstShdw"}
+                        )
+                        recover_rasterized = rasterized_candidate and element is only_visual
+                        if shape_preserved and (recover_owned or recover_rasterized):
+                            source_fallback = fallback_role == "pptx-source-fallback"
+                            fallback_representation = (
+                                "rasterized" if recover_rasterized else "element_layer"
                             )
                             fallback_box = (
                                 _positioned_box(native) if source_fallback else None
                             ) or fallback_shape.box
                             reason = (
-                                "shape has unsupported source effects; retained as one owned "
-                                "visual layer"
+                                (
+                                    "preset shadow has no exact CSS mapping; retained as a "
+                                    "full-slide rasterized fallback"
+                                )
+                                if recover_rasterized
+                                else (
+                                    "shape has unsupported source effects; retained as one owned "
+                                    "visual layer"
+                                )
                             )
                             try:
                                 payload = capture_payload(
@@ -890,7 +905,7 @@ def _slide(
                                     ShapeNode(
                                         box=fallback_box,
                                         fill=fallback_shape.fill.model_copy(
-                                            update={"raster_role": "pptx-source-fallback"}
+                                            update={"raster_role": fallback_role}
                                         ),
                                     ),
                                     native,
@@ -906,6 +921,7 @@ def _slide(
                                         box=fallback_box,
                                         payload=payload,
                                         fallback=fallback_shape.fill,
+                                        fallback_representation=fallback_representation,
                                     ),
                                     native,
                                     slide_part,
@@ -922,11 +938,37 @@ def _slide(
                             coverage.append(
                                 CoverageItem(
                                     element=_visual_label(slide_part, native),
-                                    representation=Representation.ELEMENT_LAYER,
-                                    editability=Editability.LAYERS,
+                                    representation=(
+                                        Representation.RASTERIZED
+                                        if recover_rasterized
+                                        else Representation.ELEMENT_LAYER
+                                    ),
+                                    editability=(
+                                        Editability.NONE
+                                        if recover_rasterized
+                                        else Editability.LAYERS
+                                    ),
                                     source_retention=source_retention,
                                     raster_area_emu2=(fallback_box.width * fallback_box.height),
                                     reason=reason,
+                                )
+                            )
+                            continue
+                        if rasterized_candidate:
+                            contents.append(shape)
+                            warnings.extend(shape_warns)
+                            reason = (
+                                "full-slide preset-shadow fallback requires a sole visual; "
+                                "native shape retained without the detached source-only effect"
+                            )
+                            warning, fragment = _preserve(slide_part, element, reason)
+                            warnings.append(warning)
+                            preserved.append(fragment)
+                            coverage.append(
+                                _shape_reverse_coverage(
+                                    slide_part,
+                                    native,
+                                    has_preserved_effects=True,
                                 )
                             )
                             continue
@@ -975,10 +1017,11 @@ def _slide(
                 )
                 if shape is not None:
                     warnings.extend(shape_warns)
+                    preserved_kinds = {fragment.kind for fragment in shape_preserved}
                     if (
                         shape_preserved
                         and fallback_png is not None
-                        and all(fragment.kind == "fillOverlay" for fragment in shape_preserved)
+                        and preserved_kinds == {"fillOverlay"}
                     ):
                         if _can_own_source_shape_crop(shape, is_only_visual=element is only_visual):
                             reason = (
@@ -992,6 +1035,18 @@ def _slide(
                                 "shape has unsupported source effects; source-render crop cannot "
                                 "prove independent ownership and remains noneditable"
                             )
+                    elif (
+                        shape_preserved
+                        and fallback_png is not None
+                        and preserved_kinds == {"prstShdw"}
+                        and element is only_visual
+                    ):
+                        fallback_representation = "rasterized"
+                        fallback_box_override = Box(x=0, y=0, width=width, height=height)
+                        reason = (
+                            "preset shadow has no exact CSS mapping; retained as a full-slide "
+                            "rasterized fallback"
+                        )
                     else:
                         contents.append(shape)
                         preserved.extend(shape_preserved)
@@ -1076,7 +1131,7 @@ def _slide(
             else:
                 reason = f"preserved unsupported reverse slide node: {kind}"
             if preserve_whole_node:
-                box = _positioned_box(element)
+                box = fallback_box_override or _positioned_box(element)
                 source_retention = SourceRetention.DETACHED
                 has_visual_layer = False
                 if box is not None:
@@ -1222,8 +1277,9 @@ def read_pptx_result(
     """Read a PPTX package into ordered canvas slides plus reverse diagnostics.
 
     ``fallback_pngs`` may supply one authoritative full-slide render per source slide. Positioned
-    source objects without a native reverse adapter receive a minimal element crop while retaining
-    their exact source payload for PPTX re-emission.
+    source objects without a native reverse adapter receive the smallest reliable crop, or an
+    explicitly rasterized full-slide fallback when independent ownership cannot be proved, while
+    retaining their exact source payload for PPTX re-emission.
     """
     package = OpcPackage.from_bytes(pptx)
     presentation_part = package.related_part_by_type(None, _OFFICE_DOCUMENT_REL)

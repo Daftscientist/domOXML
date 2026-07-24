@@ -54,6 +54,7 @@ from domoxml.slides.read import (
 from domoxml.types import Editability, HtmlPresentation, Representation, SourceRetention
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -436,7 +437,7 @@ def test_preset_shadow_uses_full_slide_rasterized_fallback_and_re_emits() -> Non
     assert recovered_coverage.raster_area_emu2 == 12_192_000 * 6_858_000
 
 
-def test_preset_shadow_full_slide_fallback_requires_a_sole_visual() -> None:
+def test_preset_shadow_multi_visual_uses_slide_level_fallback() -> None:
     rendered = BytesIO()
     Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")
 
@@ -445,14 +446,70 @@ def test_preset_shadow_full_slide_fallback_requires_a_sole_visual() -> None:
         fallback_pngs=(rendered.getvalue(),),
     )
 
-    assert not any(
-        isinstance(node, PreservedNode) and node.fallback_representation == "rasterized"
-        for node in result.slides[0].contents
-    )
+    slide = result.slides[0]
+    assert slide.renderer_fallback is not None
+    fallback_bytes = slide.renderer_fallback.data
+    [preserved] = [node for node in slide.contents if isinstance(node, PreservedNode)]
+    assert preserved.fallback is None
+    assert 'prst="shdw3"' in preserved.payload.root_xml
     assert [item.representation for item in result.coverage.items] == [
-        Representation.APPROXIMATED,
         Representation.NATIVE,
+        Representation.RASTERIZED,
     ]
+    assert result.coverage.items[-1].source_retention is SourceRetention.ATTACHED
+    assert result.coverage.items[-1].raster_area_emu2 == 12_192_000 * 6_858_000
+
+    rebuilt = build_pptx(list(result.slides), faces=[])
+    rebuilt_slide = OpcPackage.from_bytes(rebuilt).read("ppt/slides/slide1.xml")
+    assert b'prstShdw prst="shdw3"' in rebuilt_slide
+    assert rebuilt_slide.count(b"AlternateContent") == 2
+    assert b"domoxml-raster:pptx-slide-rasterized" in rebuilt_slide
+
+    recovered = read_pptx_result(rebuilt)
+    recovered_slide = recovered.slides[0]
+    assert recovered_slide.renderer_fallback is not None
+    assert recovered_slide.renderer_fallback.data == fallback_bytes
+    assert len(recovered_slide.contents) == 2
+    assert [item.representation for item in recovered.coverage.items] == [
+        Representation.NATIVE,
+        Representation.RASTERIZED,
+    ]
+
+
+def test_malformed_slide_fallback_marker_stays_source_owned() -> None:
+    rendered = BytesIO()
+    Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")
+    result = read_pptx_result(
+        _preset_shadow_source(with_sibling=True),
+        fallback_pngs=(rendered.getvalue(),),
+    )
+    rebuilt = build_pptx(list(result.slides), faces=[])
+    package = OpcPackage.from_bytes(rebuilt)
+    slide_part = "ppt/slides/slide1.xml"
+    root = ElementTree.fromstring(package.read(slide_part))
+    offset = root.find(
+        ".//mc:Fallback/p:pic/p:spPr/a:xfrm/a:off",
+        {"mc": _MC, "p": _P, "a": _A},
+    )
+    assert offset is not None
+    offset.set("x", "1")
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    parts[slide_part] = ElementTree.tostring(root)
+
+    recovered = read_pptx_result(write_package(parts))
+
+    assert recovered.slides[0].renderer_fallback is None
+    [preserved] = [node for node in recovered.slides[0].contents if isinstance(node, PreservedNode)]
+    assert preserved.payload.kind == "AlternateContent"
+    assert preserved.fallback_representation == "rasterized"
+    [coverage] = recovered.coverage.items
+    assert coverage.representation is Representation.RASTERIZED
+    assert coverage.source_retention is SourceRetention.ATTACHED
+
+
+def test_legacy_node_level_full_slide_fallback_rejects_siblings() -> None:
+    rendered = BytesIO()
+    Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")
 
     safe_result = read_pptx_result(
         _preset_shadow_source(),

@@ -789,6 +789,9 @@ def _slide(
     warnings: list[ConversionWarning] = []
     preserved: list[PreservedFragment] = []
     coverage: list[CoverageItem] = []
+    renderer_fallback: PictureFill | None = None
+    renderer_fallback_has_owner = False
+    renderer_fallback_retention = SourceRetention.ATTACHED
 
     # --- Slide-level: background (p:cSld/p:bg) ---
     background = parse_background(
@@ -820,11 +823,67 @@ def _slide(
 
     if tree is not None:
         tree_elements = tuple(tree)
+        initial_visuals = tuple(
+            element
+            for element in tree_elements
+            if _local_name(element) not in {"nvGrpSpPr", "grpSpPr", "extLst"}
+        )
+        if len(initial_visuals) == 1 and _local_name(initial_visuals[0]) == "AlternateContent":
+            alternate = initial_visuals[0]
+            choice = next(
+                (child for child in alternate if _local_name(child) == "Choice"),
+                None,
+            )
+            fallback_branch = next(
+                (child for child in alternate if _local_name(child) == "Fallback"),
+                None,
+            )
+            fallback_element = (
+                next(iter(fallback_branch), None) if fallback_branch is not None else None
+            )
+            fallback_shape = (
+                _picture_shape(fallback_element, package, slide_part)
+                if fallback_element is not None and _local_name(fallback_element) == "pic"
+                else None
+            )
+            if (
+                choice is not None
+                and fallback_shape is not None
+                and isinstance(fallback_shape.fill, PictureFill)
+                and fallback_shape.fill.raster_role == "pptx-slide-rasterized"
+                and fallback_shape.box == Box(x=0, y=0, width=width, height=height)
+            ):
+                renderer_fallback = fallback_shape.fill
+                flattened: list[Element] = []
+                for child in tree_elements:
+                    if child is alternate:
+                        flattened.extend(choice)
+                    else:
+                        flattened.append(child)
+                tree_elements = tuple(flattened)
         visual_elements = tuple(
             element
             for element in tree_elements
             if _local_name(element) not in {"nvGrpSpPr", "grpSpPr", "extLst"}
         )
+        preset_shadow_visuals = tuple(
+            element
+            for element in visual_elements
+            if _local_name(element) == "sp"
+            and element.find("p:spPr/a:effectLst/a:prstShdw", _NS) is not None
+        )
+        if (
+            renderer_fallback is None
+            and fallback_png is not None
+            and len(visual_elements) > 1
+            and len(preset_shadow_visuals) == 1
+        ):
+            renderer_fallback = _fallback_picture(
+                fallback_png,
+                Box(x=0, y=0, width=width, height=height),
+                slide_width=width,
+                slide_height=height,
+            )
         only_visual = visual_elements[0] if len(visual_elements) == 1 else None
         for element in tree_elements:
             kind = _local_name(element)
@@ -867,6 +926,65 @@ def _slide(
                     ):
                         preserved_kinds = {fragment.kind for fragment in shape_preserved}
                         fallback_role = fallback_shape.fill.raster_role
+                        if fallback_role == "pptx-slide-rasterized":
+                            reason = (
+                                "tagged slide fallback was not an exact whole-slide branch; "
+                                "retained as one rasterized source visual"
+                            )
+                            try:
+                                payload = capture_payload(
+                                    package,
+                                    slide_part,
+                                    element,
+                                    kind="AlternateContent",
+                                    ambient_theme_part=inherit_ctx.theme_part,
+                                )
+                            except (KeyError, ValueError):
+                                fallback_node = _with_pptx_identity(
+                                    ShapeNode(
+                                        box=fallback_shape.box,
+                                        fill=fallback_shape.fill,
+                                    ),
+                                    native,
+                                    slide_part,
+                                )
+                                contents.append(fallback_node)
+                                source_retention = SourceRetention.DETACHED
+                                owner_node_id = fallback_node.node_id
+                                reason += "; dependent OPC graph could not be attached"
+                            else:
+                                preserved_node = _with_pptx_identity(
+                                    PreservedNode(
+                                        box=fallback_shape.box,
+                                        payload=payload,
+                                        fallback=fallback_shape.fill,
+                                        fallback_representation="rasterized",
+                                    ),
+                                    native,
+                                    slide_part,
+                                )
+                                contents.append(preserved_node)
+                                source_retention = SourceRetention.ATTACHED
+                                owner_node_id = preserved_node.node_id
+                            warnings.extend(shape_warns)
+                            warning, fragment = _preserve(slide_part, element, reason)
+                            warnings.append(warning)
+                            preserved.append(
+                                fragment.model_copy(update={"owner_node_id": owner_node_id})
+                            )
+                            coverage.append(
+                                CoverageItem(
+                                    element=_visual_label(slide_part, native),
+                                    representation=Representation.RASTERIZED,
+                                    editability=Editability.NONE,
+                                    source_retention=source_retention,
+                                    raster_area_emu2=(
+                                        fallback_shape.box.width * fallback_shape.box.height
+                                    ),
+                                    reason=reason,
+                                )
+                            )
+                            continue
                         recover_owned = preserved_kinds == {"fillOverlay"}
                         rasterized_candidate = (
                             fallback_role == "pptx-source-rasterized"
@@ -1018,6 +1136,44 @@ def _slide(
                 if shape is not None:
                     warnings.extend(shape_warns)
                     preserved_kinds = {fragment.kind for fragment in shape_preserved}
+                    if (
+                        shape_preserved
+                        and preserved_kinds == {"prstShdw"}
+                        and renderer_fallback is not None
+                    ):
+                        renderer_fallback_has_owner = True
+                        reason = (
+                            "preset shadow retained as exact native source under one slide-level "
+                            "renderer fallback"
+                        )
+                        box = _positioned_box(element) or shape.box
+                        try:
+                            payload = capture_payload(
+                                package,
+                                slide_part,
+                                element,
+                                kind=kind,
+                                ambient_theme_part=inherit_ctx.theme_part,
+                            )
+                        except (KeyError, ValueError):
+                            contents.append(shape)
+                            renderer_fallback_retention = SourceRetention.DETACHED
+                            owner_node_id = shape.node_id
+                            reason += "; dependent OPC graph could not be attached"
+                        else:
+                            preserved_node = _with_pptx_identity(
+                                PreservedNode(box=box, payload=payload),
+                                element,
+                                slide_part,
+                            )
+                            contents.append(preserved_node)
+                            owner_node_id = preserved_node.node_id
+                        warning, fragment = _preserve(slide_part, element, reason)
+                        warnings.append(warning)
+                        preserved.append(
+                            fragment.model_copy(update={"owner_node_id": owner_node_id})
+                        )
+                        continue
                     if (
                         shape_preserved
                         and fallback_png is not None
@@ -1214,6 +1370,21 @@ def _slide(
                 fragment = fragment.model_copy(update={"owner_node_id": preserved_owner_id})
             warnings.append(warning)
             preserved.append(fragment)
+    if renderer_fallback is not None:
+        coverage.append(
+            CoverageItem(
+                element=f"{slide_part}:renderer-fallback",
+                representation=Representation.RASTERIZED,
+                editability=Editability.NONE,
+                source_retention=(
+                    renderer_fallback_retention
+                    if renderer_fallback_has_owner
+                    else SourceRetention.DETACHED
+                ),
+                raster_area_emu2=width * height,
+                reason="one slide-level renderer fallback above retained native contents",
+            )
+        )
     return (
         SlideIR(
             width=width,
@@ -1221,6 +1392,7 @@ def _slide(
             contents=tuple(contents),
             transition=transition,
             background=background,
+            renderer_fallback=renderer_fallback,
         ),
         tuple(warnings),
         tuple(preserved),

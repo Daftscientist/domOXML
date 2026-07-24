@@ -1103,6 +1103,25 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     slide_root, transition, background = extract_slide_properties(
         rendered.nodes, lambda node: _resolve_fill(node, rendered)
     )
+    fallback_node = next(
+        (
+            node
+            for node in rendered.nodes
+            if node.styles.get("domoxmlSlideFallback") == "rasterized"
+        ),
+        None,
+    )
+    renderer_fallback: PictureFill | None = None
+    if fallback_node is not None:
+        fallback_fill, fallback_reason = _resolve_fill(fallback_node, rendered)
+        if isinstance(fallback_fill, PictureFill):
+            renderer_fallback = fallback_fill.model_copy(
+                update={"raster_role": "pptx-slide-rasterized"}
+            )
+            consumed |= _subtree(fallback_node.index, children)
+        else:
+            reason = fallback_reason or "slide renderer fallback image could not be recovered"
+            warnings.append(ConversionWarning(message=reason, element=_label(fallback_node)))
 
     for node in rendered.nodes:
         if node.index in consumed or node.width <= 0 or node.height <= 0:
@@ -1173,7 +1192,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             ),
                         )
                     )
-                else:
+                elif renderer_fallback is None:
                     reason = fallback_reason or "attached source object has no visual fallback"
                     coverage.append(
                         CoverageItem(
@@ -1588,11 +1607,32 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if line_warning is not None:
             warnings.append(line_warning.model_copy(update={"element": _label(node)}))
 
+    width = px_to_emu(rendered.width)
+    height = px_to_emu(rendered.height)
+    if renderer_fallback is not None:
+        fallback_retention = (
+            SourceRetention.ATTACHED
+            if any(isinstance(node, PreservedNode) for node in contents)
+            else SourceRetention.DETACHED
+        )
+        coverage.append(
+            CoverageItem(
+                element="slide:renderer-fallback",
+                representation=Representation.RASTERIZED,
+                editability=Editability.NONE,
+                source_retention=fallback_retention,
+                raster_area_emu2=width * height,
+                reason=(
+                    "authoritative full-slide renderer fallback above retained native contents"
+                ),
+            )
+        )
     slide = SlideIR(
-        width=px_to_emu(rendered.width),
-        height=px_to_emu(rendered.height),
+        width=width,
+        height=height,
         contents=tuple(contents),
         transition=transition,
         background=background,
+        renderer_fallback=renderer_fallback,
     )
     return ExtractResult(slide=slide, coverage=tuple(coverage), warnings=tuple(warnings))

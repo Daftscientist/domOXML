@@ -12,6 +12,7 @@ from domoxml.core.drawingml import can_emit_picture, line_xml, picture_xml, shap
 from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.fonts import FontFace, load_faces
 from domoxml.core.ir.model import (
+    Box,
     Connector,
     FillOverlay,
     Hyperlink,
@@ -301,6 +302,12 @@ def _slide(
     if slide.background is not None and isinstance(slide.background.fill, PictureFill):
         pic = slide.background.fill
         bg_blip_rid = register_media(pic.data, pic.ext)
+    slide_fallback_rid: str | None = None
+    if slide.renderer_fallback is not None:
+        slide_fallback_rid = register_media(
+            slide.renderer_fallback.data,
+            slide.renderer_fallback.ext,
+        )
 
     for position, node in enumerate(slide.contents):
         if isinstance(node, ShapeNode) and isinstance(node.fill, PictureFill):
@@ -472,6 +479,26 @@ def _slide(
                     "</mc:AlternateContent>"
                 )
     contents = "".join(content_parts)
+    if slide.renderer_fallback is not None and slide_fallback_rid is not None:
+        fallback_node = ShapeNode(
+            box=Box(x=0, y=0, width=slide.width, height=slide.height),
+            fill=slide.renderer_fallback.model_copy(
+                update={"raster_role": "pptx-slide-rasterized"}
+            ),
+        )
+        fallback_xml = picture_xml(
+            fallback_node,
+            shape_id=(3 * len(slide.contents)) + 2,
+            blip_rid=slide_fallback_rid,
+        )
+        contents = (
+            "<mc:AlternateContent "
+            'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+            'xmlns:p16="http://schemas.microsoft.com/office/powerpoint/2015/main">'
+            f'<mc:Choice Requires="p16">{contents}</mc:Choice>'
+            f"<mc:Fallback>{fallback_xml}</mc:Fallback>"
+            "</mc:AlternateContent>"
+        )
     bg_xml = background_xml(slide.background, bg_blip_rid) if slide.background is not None else ""
     transition = transition_xml(slide.transition)
     slide_xml = (

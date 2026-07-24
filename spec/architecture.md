@@ -81,6 +81,9 @@ stacking/group ownership and preservation ownership beyond positioned nodes with
 graphs still need to be completed in addition to the existing geometry and appearance. Both HTML
 capture and PPTX ingestion emit a per-source-visual coverage report; normalized HTML carries the
 report on its public presentation result alongside warnings and preserved source fragments.
+Canvas IR can also carry one explicit full-slide `renderer_fallback`. Native and preserved contents
+remain in canonical z-order beneath it; this lets incompatible output adapters select the
+already-composited pixels once without pretending that the picture belongs to any individual node.
 
 Shared primitives include:
 
@@ -159,10 +162,14 @@ native shape and uses the authoritative full-slide render as a deliberately none
 `rasterized` fallback. Source export selects the native shape in PowerPoint and the tagged picture
 in incompatible renderers.
 The fallback measures the full slide as raster area because a single composite render cannot prove
-a smaller independently owned boundary; re-ingestion carries the complete `AlternateContent`
-payload and unchanged fallback bytes so later normalized HTML cycles converge. Multi-visual slides
-do not attach that composite raster to one shape's stack position; they remain an explicit
-approximation gap until a slide-level branch or independently isolated layer exists.
+a smaller independently owned boundary; re-ingestion carries exact source payload and unchanged
+fallback bytes so later normalized HTML cycles converge. When one preset-shadow shape shares a
+slide with otherwise supported siblings, the composite picture is owned by the slide instead of
+that shape. Normalized HTML keeps the native objects beneath one final image; PPTX wraps the whole
+native sequence in one `mc:Choice` and selects the picture once in `mc:Fallback`. This preserves
+native PowerPoint z-order and prevents incompatible renderers from double-painting translucent
+siblings. Multiple preset shadows, unknown compound siblings, typed preset semantics, and smaller
+independently isolated boundaries remain open.
 Normalized fill-overlay recovery requires exact RGB and blend tokens while admitting at most one
 8-bit alpha quantum, matching Chromium computed-color serialization without accepting a visibly
 different overlay. The admitted overlay layer must cover the whole shape using the default

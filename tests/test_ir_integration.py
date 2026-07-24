@@ -270,6 +270,49 @@ async def test_browser_capture_restores_preserved_visual_fallback_and_coverage()
     assert coverage.source_retention is SourceRetention.ATTACHED
 
 
+async def test_browser_capture_restores_slide_fallback_above_native_contents() -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    image = BytesIO()
+    Image.new("RGB", (1280, 720), "#315C7B").save(image, "PNG")
+    payload = PreservationPayload(kind="sp", root_xml="<p:sp/>")
+    preserved = PreservedNode(
+        node_id="shadow-source",
+        box=Box(x=914_400, y=914_400, width=1_828_800, height=914_400),
+        payload=payload,
+    )
+    sibling = ShapeNode(
+        node_id="sibling",
+        box=Box(x=2_000_000, y=1_500_000, width=2_500_000, height=1_500_000),
+        fill=SolidFill(color=Rgba(r=239, g=68, b=68, a=0.55)),
+    )
+    serialized = inline_assets(
+        serialize_canvas(
+            [
+                SlideIR(
+                    width=12_192_000,
+                    height=6_858_000,
+                    contents=(preserved, sibling),
+                    renderer_fallback=PictureFill(data=image.getvalue(), ext="png"),
+                )
+            ]
+        )
+    )
+
+    result = await _render_and_extract_result(serialized.slides[0].html)
+
+    assert result.slide.renderer_fallback is not None
+    assert result.slide.renderer_fallback.data == image.getvalue()
+    assert [node.node_id for node in result.slide.contents] == ["shadow-source", "sibling"]
+    assert [item.representation for item in result.coverage] == [
+        Representation.NATIVE,
+        Representation.RASTERIZED,
+    ]
+    assert result.coverage[-1].source_retention is SourceRetention.ATTACHED
+
+
 async def test_serialized_text_payload_keeps_the_exact_source_box() -> None:
     body = TextBody(paragraphs=(TextParagraph(runs=()),))
     node = ShapeNode(

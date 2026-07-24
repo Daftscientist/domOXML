@@ -1,0 +1,64 @@
+id = "preset-shadow-slide-fallback"
+direction = "reverse"
+pptx_file = "source.pptx"
+reverse_render_files = ["source-graph.png"]
+
+[expected]
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:AlternateContent/mc:Choice/p:sp/p:spPr/a:effectLst/a:prstShdw[@prst='shdw3'][@dist='550000'][@dir='2700000']"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:AlternateContent/mc:Choice/p:sp"
+min_count = 2
+max_count = 2
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:AlternateContent/mc:Fallback/p:pic/p:nvPicPr/p:cNvPr[@descr='domoxml-raster:pptx-slide-rasterized']"
+min_count = 1
+max_count = 1
+
+[visual]
+pptx_to_html_min_similarity = 0.999
+pptx_to_html_min_regional_similarity = 0.999
+pptx_to_html_min_structural_similarity = 0.90
+
+[reverse]
+min_representation = { rasterized = 1, native = 1 }
+max_representation = { rasterized = 1, native = 1, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { none = 1, semantic = 1 }
+max_editability = { semantic = 1, components = 0, layers = 0, none = 1 }
+min_source_retention = { attached = 1, not_required = 1 }
+max_source_retention = { not_required = 1, attached = 1, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 2
+max_output_count = 2
+min_raster_area_emu2 = 83612736000000
+max_raster_area_emu2 = 83612736000000
+expected_slides = 1
+min_assets = 1
+html_contains = [
+  'data-domoxml-preserved-payload=',
+  'data-domoxml-slide-fallback="rasterized"',
+]
+max_warnings = 2
+max_preserved = 1
+
+[roundtrip]
+cycles = 2
+min_representation = { rasterized = 1, native = 1 }
+max_representation = { rasterized = 1, native = 1, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { none = 1, semantic = 1 }
+max_editability = { semantic = 1, components = 0, layers = 0, none = 1 }
+min_source_retention = { attached = 1, not_required = 1 }
+max_source_retention = { not_required = 1, attached = 1, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 2
+max_output_count = 2
+min_raster_area_emu2 = 83612736000000
+max_raster_area_emu2 = 83612736000000
+min_convergence_similarity = 0.999
+min_convergence_regional_similarity = 0.999
+min_convergence_structural_similarity = 0.999

@@ -11,10 +11,10 @@ Snapshot audited on **2026-07-24** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 758 tests are collected.
-- 24 atomic PPTX capability fixtures exist; 21 are bidirectional and three are reverse-first
+- 762 tests are collected.
+- 25 atomic PPTX capability fixtures exist; 21 are bidirectional and four are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, and rasterized preset
-  shadow fallback.
+  shadow node/slide fallbacks.
 - 9 authored HTML fidelity cases exist.
 - 6 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, attached
   chart-graph re-emission, ellipse soft-edge radii, and four native solid fill-overlay blend modes
@@ -40,7 +40,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 24 atomic fixtures and 6 real decks pin
+  retention, output-count, and raster-area records. All 25 atomic fixtures and 6 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -274,11 +274,14 @@ silently lowering the expected score.
    fallback path. A reverse-first perspective preset-shadow fixture now retains exact native source
    for PowerPoint and, on a sole-visual slide, selects one full-slide raster fallback for renderers
    that omit `a:prstShdw`; coverage reports that full area as rasterized/noneditable and the second
-   normalized HTML cycle is exact. Multi-visual preset-shadow fallback remains explicit rather than
-   attaching a composite raster at an unsafe z-order. Reflection directions other than `below`,
-   non-pixel gaps, typed/editable preset-shadow semantics, slide-level or smaller preset-shadow
-   isolation, gradient/other fill-overlay families, `over` calibration, compound ordering, and
-   effect-bearing custom geometry remain open.
+   normalized HTML cycle is exact. A second reverse fixture combines that shadow with a later
+   overlapping translucent shape: Canvas IR owns the composite fallback at slide level, normalized
+   HTML paints it once above retained objects, PowerPoint selects the original native sequence, and
+   LibreOffice selects the one picture. Re-ingestion retains exact payload, z-order, fallback bytes,
+   coverage, and pixels through cycle two. Reflection directions other than `below`, non-pixel gaps,
+   typed/editable preset-shadow semantics, multiple preset shadows, unknown compound siblings,
+   smaller preset-shadow isolation, gradient/other fill-overlay families, `over` calibration,
+   compound ordering, and effect-bearing custom geometry remain open.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,

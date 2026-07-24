@@ -1228,6 +1228,26 @@ def _slide_background_css(background: SlideBackground | None, assets: dict[str, 
         return f"{prop}:{value}"
 
 
+def _slide_renderer_fallback_html(
+    slide: SlideIR,
+    assets: dict[str, HtmlAsset],
+) -> str:
+    """Serialize one authoritative full-slide renderer fallback above retained native contents."""
+    fallback = slide.renderer_fallback
+    if fallback is None:
+        return ""
+    asset = _asset(fallback)
+    assets.setdefault(asset.path, asset)
+    style = (
+        "position:absolute;left:0;top:0;width:100%;height:100%;object-fit:fill;"
+        "z-index:2147483647;pointer-events:none"
+    )
+    return (
+        '<img class="domoxml-slide-fallback" data-domoxml-slide-fallback="rasterized" '
+        f'src="../{asset.path}" alt="" aria-hidden="true" style="{style}"/>'
+    )
+
+
 def serialize_canvas(
     slides: list[SlideIR],
     *,
@@ -1242,6 +1262,7 @@ def serialize_canvas(
     emitted_warnings: list[ConversionWarning] = list(warnings)
     for slide in slides:
         shapes = "".join(_node_html(node, assets, emitted_warnings) for node in slide.contents)
+        shapes += _slide_renderer_fallback_html(slide, assets)
         width_px = round(emu_to_px(slide.width))
         height_px = round(emu_to_px(slide.height))
         transition_attrs = _slide_transition_attrs(slide.transition)

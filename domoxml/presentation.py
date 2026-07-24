@@ -66,7 +66,7 @@ class Presentation:
         """Read a ``.pptx`` into deterministic per-slide HTML/CSS.
 
         Pass one authoritative render per slide in ``fallback_pngs`` to keep unsupported
-        positioned source visuals visible as owned element layers.
+        source visuals visible through explicit element-layer or rasterized fallbacks.
         """
         return pptx_to_html(source, fallback_pngs=fallback_pngs)
 

@@ -6,6 +6,8 @@ import posixpath
 import warnings
 from xml.sax.saxutils import escape
 
+from defusedxml import ElementTree
+
 from domoxml.core.drawingml import can_emit_picture, line_xml, picture_xml, shape_xml, table_xml
 from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.fonts import FontFace, load_faces
@@ -51,6 +53,16 @@ _SLOT_ORDER = ("regular", "bold", "italic", "boldItalic")
 def _attr(value: str) -> str:
     """Escape a string for an XML attribute (double-quoted)."""
     return escape(value, {'"': "&quot;"})
+
+
+def _uses_pptx_source_fallback(node: PreservedNode) -> bool:
+    """Whether source export should pair the retained native shape with its picture fallback."""
+    if node.fallback_representation == "element_layer":
+        return True
+    if node.fallback_representation != "rasterized":
+        return False
+    root = ElementTree.fromstring(node.payload.root_xml)
+    return any(element.tag.rsplit("}", 1)[-1] == "prstShdw" for element in root.iter())
 
 
 def _override(part: str, content_type: str) -> str:
@@ -303,8 +315,8 @@ def _slide(
         if (
             isinstance(node, PreservedNode)
             and node.fallback is not None
-            and node.fallback_representation == "element_layer"
             and node.payload.kind == "sp"
+            and _uses_pptx_source_fallback(node)
         ):
             fallback_rids[position] = register_media(node.fallback.data, node.fallback.ext)
 
@@ -437,9 +449,14 @@ def _slide(
             if node.payload.kind != "sp" or node.fallback is None or fallback_rid is None:
                 content_parts.append(native_xml)
             else:
+                raster_role = (
+                    "pptx-source-rasterized"
+                    if node.fallback_representation == "rasterized"
+                    else "pptx-source-fallback"
+                )
                 fallback_node = ShapeNode(
                     box=node.box,
-                    fill=node.fallback.model_copy(update={"raster_role": "pptx-source-fallback"}),
+                    fill=node.fallback.model_copy(update={"raster_role": raster_role}),
                 )
                 fallback_xml = picture_xml(
                     fallback_node,

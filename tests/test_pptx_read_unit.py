@@ -342,7 +342,7 @@ def test_portable_fallback_reports_and_retains_unsupported_choice_effects() -> N
     assert b"fillOverlay" in OpcPackage.from_bytes(rebuilt).read(slide_part)
 
 
-def _preset_shadow_source() -> bytes:
+def _preset_shadow_source(*, with_sibling: bool = False) -> bytes:
     shape = ShapeNode(
         box=Box(x=3_000_000, y=2_000_000, width=6_000_000, height=2_500_000),
         fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
@@ -355,8 +355,13 @@ def _preset_shadow_source() -> bytes:
             ),
         ),
     )
+    sibling = ShapeNode(
+        box=Box(x=7_000_000, y=3_000_000, width=3_000_000, height=1_500_000),
+        fill=SolidFill(color=Rgba(r=239, g=68, b=68, a=0.55)),
+    )
+    contents = (shape, sibling) if with_sibling else (shape,)
     package = OpcPackage.from_bytes(
-        build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+        build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=contents)], faces=[])
     )
     slide_part = "ppt/slides/slide1.xml"
     parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
@@ -372,6 +377,22 @@ def _preset_shadow_source() -> bytes:
     preset_shadow.extend(tuple(outer_shadow))
     effect_list.insert(list(effect_list).index(outer_shadow), preset_shadow)
     effect_list.remove(outer_shadow)
+    parts[slide_part] = ElementTree.tostring(root)
+    return write_package(parts)
+
+
+def _append_preset_shadow_sibling(pptx: bytes) -> bytes:
+    package = OpcPackage.from_bytes(pptx)
+    sibling_package = OpcPackage.from_bytes(_preset_shadow_source(with_sibling=True))
+    slide_part = "ppt/slides/slide1.xml"
+    root = ElementTree.fromstring(package.read(slide_part))
+    sibling_root = ElementTree.fromstring(sibling_package.read(slide_part))
+    tree = root.find("p:cSld/p:spTree", {"p": _P})
+    sibling_shapes = sibling_root.findall("p:cSld/p:spTree/p:sp", {"p": _P})
+    assert tree is not None
+    assert len(sibling_shapes) == 2
+    tree.append(sibling_shapes[1])
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
     parts[slide_part] = ElementTree.tostring(root)
     return write_package(parts)
 
@@ -413,6 +434,54 @@ def test_preset_shadow_uses_full_slide_rasterized_fallback_and_re_emits() -> Non
     assert recovered_coverage.editability is Editability.NONE
     assert recovered_coverage.source_retention is SourceRetention.ATTACHED
     assert recovered_coverage.raster_area_emu2 == 12_192_000 * 6_858_000
+
+
+def test_preset_shadow_full_slide_fallback_requires_a_sole_visual() -> None:
+    rendered = BytesIO()
+    Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")
+
+    result = read_pptx_result(
+        _preset_shadow_source(with_sibling=True),
+        fallback_pngs=(rendered.getvalue(),),
+    )
+
+    assert not any(
+        isinstance(node, PreservedNode) and node.fallback_representation == "rasterized"
+        for node in result.slides[0].contents
+    )
+    assert [item.representation for item in result.coverage.items] == [
+        Representation.APPROXIMATED,
+        Representation.NATIVE,
+    ]
+
+    safe_result = read_pptx_result(
+        _preset_shadow_source(),
+        fallback_pngs=(rendered.getvalue(),),
+    )
+    [fallback] = [
+        node for node in safe_result.slides[0].contents if isinstance(node, PreservedNode)
+    ]
+    unsafe_rebuilt = _append_preset_shadow_sibling(build_pptx(list(safe_result.slides), faces=[]))
+    unsafe_recovered = read_pptx_result(unsafe_rebuilt)
+    assert not any(
+        isinstance(node, PreservedNode) and node.fallback_representation == "rasterized"
+        for node in unsafe_recovered.slides[0].contents
+    )
+    assert [item.representation for item in unsafe_recovered.coverage.items] == [
+        Representation.APPROXIMATED,
+        Representation.NATIVE,
+    ]
+
+    sibling = ShapeNode(
+        box=Box(x=7_000_000, y=3_000_000, width=3_000_000, height=1_500_000),
+        fill=SolidFill(color=Rgba(r=239, g=68, b=68, a=0.55)),
+    )
+    edited = safe_result.slides[0].model_copy(update={"contents": (fallback, sibling)})
+    rebuilt_slide = OpcPackage.from_bytes(build_pptx([edited], faces=[])).read(
+        "ppt/slides/slide1.xml"
+    )
+    assert b'prstShdw prst="shdw3"' in rebuilt_slide
+    assert b"pptx-source-rasterized" not in rebuilt_slide
 
 
 @pytest.mark.integration

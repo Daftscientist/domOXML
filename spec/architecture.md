@@ -154,12 +154,15 @@ falsely claiming a movable element layer. The admitted path's payload, rotated p
 coverage, fallback bytes, and pixels remain stable through two normalized HTML rebuild cycles.
 Preset shadows remain distinct from CSS box shadows: the 20 DrawingML presets include perspective,
 double, and detached geometries, and direct renderer calibration shows LibreOffice omits all of
-them. Until a preset has an exact typed mapping, PPTX ingestion retains the native shape and uses
-the authoritative full-slide render as a deliberately noneditable `rasterized` fallback. Source
-export selects the native shape in PowerPoint and the tagged picture in incompatible renderers.
+them. For a sole-visual slide, until a preset has an exact typed mapping, PPTX ingestion retains the
+native shape and uses the authoritative full-slide render as a deliberately noneditable
+`rasterized` fallback. Source export selects the native shape in PowerPoint and the tagged picture
+in incompatible renderers.
 The fallback measures the full slide as raster area because a single composite render cannot prove
 a smaller independently owned boundary; re-ingestion carries the complete `AlternateContent`
-payload and unchanged fallback bytes so later normalized HTML cycles converge.
+payload and unchanged fallback bytes so later normalized HTML cycles converge. Multi-visual slides
+do not attach that composite raster to one shape's stack position; they remain an explicit
+approximation gap until a slide-level branch or independently isolated layer exists.
 Normalized fill-overlay recovery requires exact RGB and blend tokens while admitting at most one
 8-bit alpha quantum, matching Chromium computed-color serialization without accepting a visibly
 different overlay. The admitted overlay layer must cover the whole shape using the default

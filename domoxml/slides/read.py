@@ -868,10 +868,11 @@ def _slide(
                         preserved_kinds = {fragment.kind for fragment in shape_preserved}
                         fallback_role = fallback_shape.fill.raster_role
                         recover_owned = preserved_kinds == {"fillOverlay"}
-                        recover_rasterized = (
+                        rasterized_candidate = (
                             fallback_role == "pptx-source-rasterized"
                             and preserved_kinds == {"prstShdw"}
                         )
+                        recover_rasterized = rasterized_candidate and element is only_visual
                         if shape_preserved and (recover_owned or recover_rasterized):
                             source_fallback = fallback_role == "pptx-source-fallback"
                             fallback_representation = (
@@ -953,6 +954,24 @@ def _slide(
                                 )
                             )
                             continue
+                        if rasterized_candidate:
+                            contents.append(shape)
+                            warnings.extend(shape_warns)
+                            reason = (
+                                "full-slide preset-shadow fallback requires a sole visual; "
+                                "native shape retained without the detached source-only effect"
+                            )
+                            warning, fragment = _preserve(slide_part, element, reason)
+                            warnings.append(warning)
+                            preserved.append(fragment)
+                            coverage.append(
+                                _shape_reverse_coverage(
+                                    slide_part,
+                                    native,
+                                    has_preserved_effects=True,
+                                )
+                            )
+                            continue
                         portable_fallback = PortableFallback(
                             box=fallback_shape.box,
                             picture=fallback_shape.fill,
@@ -1020,6 +1039,7 @@ def _slide(
                         shape_preserved
                         and fallback_png is not None
                         and preserved_kinds == {"prstShdw"}
+                        and element is only_visual
                     ):
                         fallback_representation = "rasterized"
                         fallback_box_override = Box(x=0, y=0, width=width, height=height)

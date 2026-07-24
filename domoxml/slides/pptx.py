@@ -55,11 +55,11 @@ def _attr(value: str) -> str:
     return escape(value, {'"': "&quot;"})
 
 
-def _uses_pptx_source_fallback(node: PreservedNode) -> bool:
+def _uses_pptx_source_fallback(node: PreservedNode, *, is_only_visual: bool) -> bool:
     """Whether source export should pair the retained native shape with its picture fallback."""
     if node.fallback_representation == "element_layer":
         return True
-    if node.fallback_representation != "rasterized":
+    if node.fallback_representation != "rasterized" or not is_only_visual:
         return False
     root = ElementTree.fromstring(node.payload.root_xml)
     return any(element.tag.rsplit("}", 1)[-1] == "prstShdw" for element in root.iter())
@@ -316,7 +316,7 @@ def _slide(
             isinstance(node, PreservedNode)
             and node.fallback is not None
             and node.payload.kind == "sp"
-            and _uses_pptx_source_fallback(node)
+            and _uses_pptx_source_fallback(node, is_only_visual=len(slide.contents) == 1)
         ):
             fallback_rids[position] = register_media(node.fallback.data, node.fallback.ext)
 

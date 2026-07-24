@@ -11,7 +11,7 @@ Snapshot audited on **2026-07-24** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 757 tests are collected.
+- 758 tests are collected.
 - 24 atomic PPTX capability fixtures exist; 21 are bidirectional and three are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, and rasterized preset
   shadow fallback.
@@ -272,11 +272,13 @@ silently lowering the expected score.
    retained as direct review evidence. DrawingML `over` is explicitly not mapped to CSS `normal`
    after Graph inspection disproved equivalence, and remains source-preserved on the admitted owned
    fallback path. A reverse-first perspective preset-shadow fixture now retains exact native source
-   for PowerPoint and selects one full-slide raster fallback for renderers that omit `a:prstShdw`;
-   coverage reports that full area as rasterized/noneditable and the second normalized HTML cycle
-   is exact. Reflection directions other than `below`, non-pixel gaps, typed/editable preset-shadow
-   semantics, smaller preset-shadow isolation, gradient/other fill-overlay families, `over`
-   calibration, compound ordering, and effect-bearing custom geometry remain open.
+   for PowerPoint and, on a sole-visual slide, selects one full-slide raster fallback for renderers
+   that omit `a:prstShdw`; coverage reports that full area as rasterized/noneditable and the second
+   normalized HTML cycle is exact. Multi-visual preset-shadow fallback remains explicit rather than
+   attaching a composite raster at an unsafe z-order. Reflection directions other than `below`,
+   non-pixel gaps, typed/editable preset-shadow semantics, slide-level or smaller preset-shadow
+   isolation, gradient/other fill-overlay families, `over` calibration, compound ordering, and
+   effect-bearing custom geometry remain open.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,

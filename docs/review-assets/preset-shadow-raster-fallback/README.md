@@ -4,11 +4,12 @@ The reverse-first fixture contains PowerPoint preset shadow `shdw3`, a perspecti
 no exact CSS equivalent. PowerPoint/Graph renders the full perspective shadow; LibreOffice omits
 every tested `a:prstShdw` preset from the native source.
 
-domOXML retains the exact native shape and effect for PowerPoint and records one full-slide
-renderer fallback as `rasterized`/noneditable with attached source. The rebuilt package selects the
-native shape in PowerPoint and the tagged picture in incompatible renderers. Re-ingestion retains
-the complete `AlternateContent` payload and unchanged fallback bytes, so the next normalized HTML
-cycle is pixel-identical.
+Because the shape is the slide's sole visual, domOXML retains the exact native shape and effect for
+PowerPoint and safely records one full-slide renderer fallback as `rasterized`/noneditable with
+attached source. The rebuilt package selects the native shape in PowerPoint and the tagged picture
+in incompatible renderers. Re-ingestion retains the complete `AlternateContent` payload and
+unchanged fallback bytes, so the next normalized HTML cycle is pixel-identical. Multi-visual slides
+do not attach a composite full-slide raster at one shape's z-order.
 
 | Boundary | Global | Regional | Focused | Structural |
 |---|---:|---:|---:|---:|

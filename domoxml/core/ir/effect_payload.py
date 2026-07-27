@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from domoxml.core.ir.model import Effect
+from domoxml.core.ir.model import Effect, Shadow
 
 
 class EffectPayload(BaseModel):
@@ -18,6 +18,15 @@ class EffectPayload(BaseModel):
     effects: tuple[Effect, ...]
     container: Literal["list", "sibling"] = "list"
     source_ref: Literal["fill", "fillLine"] = "fill"
+
+    @model_validator(mode="after")
+    def _sibling_graph_is_supported(self) -> EffectPayload:
+        if self.container == "sibling" and (
+            len(self.effects) < 2
+            or any(not isinstance(effect, Shadow) or effect.inset for effect in self.effects)
+        ):
+            raise ValueError("sibling effect graph requires multiple outer shadows")
+        return self
 
 
 def encode_effects(

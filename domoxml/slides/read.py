@@ -1105,7 +1105,7 @@ def _slide(
                             contents.append(shape)
                             warnings.extend(shape_warns)
                             reason = (
-                                "full-slide preset-shadow fallback requires a sole visual; "
+                                "full-slide source-effect fallback requires a sole visual; "
                                 "native shape retained without the detached source-only effect"
                             )
                             warning, fragment = _preserve(slide_part, element, reason)

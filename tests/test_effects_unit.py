@@ -1058,3 +1058,23 @@ def test_normalized_html_retains_sibling_effect_container_metadata() -> None:
     assert decoded.source_ref == "fill"
     assert decoded.effects == effects
     assert html.slides[0].html.count("rgba(") >= 3
+
+
+def test_effect_payload_rejects_unsupported_sibling_graphs() -> None:
+    outer = Shadow(
+        color=Rgba(r=15, g=23, b=42, a=0.55),
+        blur_emu=px_to_emu(20),
+        distance_emu=px_to_emu(24),
+        direction_deg=45,
+    )
+    invalid_effect_sets = (
+        (),
+        (outer,),
+        (outer, outer.model_copy(update={"inset": True})),
+        (outer, Glow(color=Rgba(r=225, g=29, b=72), radius_emu=px_to_emu(12))),
+    )
+
+    for effects in invalid_effect_sets:
+        list_payload = encode_effects(effects)
+        sibling_payload = list_payload.replace('"container":"list"', '"container":"sibling"')
+        assert decode_effect_payload(sibling_payload) is None

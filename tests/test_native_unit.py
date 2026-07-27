@@ -10,12 +10,13 @@ import io
 from PIL import Image
 
 from domoxml.core.ir import extract_slide
-from domoxml.core.ir.effect_payload import encode_effects
+from domoxml.core.ir.effect_payload import decode_effect_payload, encode_effects
 from domoxml.core.ir.model import (
     Blur,
     Box,
     Connector,
     FillOverlay,
+    Glow,
     GradientFill,
     PictureFill,
     Rgba,
@@ -35,6 +36,7 @@ from domoxml.core.ir.parse import (
     parse_soft_edge_mask,
 )
 from domoxml.core.ir.text_payload import encode_text_body
+from domoxml.core.opc import OpcPackage
 from domoxml.core.render.browser import (
     RenderedNode,
     RenderedRaster,
@@ -43,6 +45,7 @@ from domoxml.core.render.browser import (
     _raster_bounds,
 )
 from domoxml.core.units import px_to_emu
+from domoxml.slides import build_pptx
 from domoxml.types import Editability, Representation, SourceRetention
 
 
@@ -151,6 +154,34 @@ def test_normalized_effect_payload_wins_over_renderer_css_inference() -> None:
     assert result.slide.shapes[0].effects == effects
     assert result.slide.shapes[0].effect_container == "sibling"
     assert result.slide.shapes[0].effect_source_ref == "fillLine"
+
+
+def test_invalid_sibling_payload_falls_back_to_css_without_export_failure() -> None:
+    invalid = encode_effects((Glow(color=Rgba(r=4, g=5, b=6, a=0.5), radius_emu=60_000),)).replace(
+        '"container":"list"', '"container":"sibling"'
+    )
+    assert decode_effect_payload(invalid) is None
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "backgroundColor": "rgb(255, 255, 255)",
+            "boxShadow": "rgb(255, 0, 0) 1px 1px 1px 0px",
+            "domoxmlEffects": invalid,
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    [shape] = result.slide.shapes
+    assert shape.effect_container == "list"
+    assert len(shape.effects) == 1 and isinstance(shape.effects[0], Shadow)
+    pptx = build_pptx([result.slide], faces=[])
+    assert b"<a:effectLst>" in OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml")
 
 
 def test_normalized_text_payload_wins_over_renderer_alignment_inference() -> None:

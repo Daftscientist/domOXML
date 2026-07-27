@@ -12,9 +12,9 @@ Snapshot audited on **2026-07-27** against the repository, executable manifests,
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
 - 792 tests are collected.
-- 28 atomic PPTX capability fixtures exist; 24 are bidirectional and four are reverse-first
-  fixtures for chart preservation, owned unsupported fill-overlay fallback, and rasterized preset
-  shadow node/slide fallbacks.
+- 29 atomic PPTX capability fixtures exist; 24 are bidirectional and five are reverse-first
+  fixtures for chart preservation, owned unsupported fill-overlay fallback, rasterized preset
+  shadow node/slide fallbacks, and named nested effect-graph preservation.
 - 9 authored HTML fidelity cases exist.
 - 7 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, attached
   chart-graph re-emission, ellipse soft-edge radii, four native solid fill-overlay blend modes, and
@@ -40,7 +40,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 28 atomic fixtures and 7 real decks pin
+  retention, output-count, and raster-area records. All 29 atomic fixtures and 7 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -298,9 +298,12 @@ silently lowering the expected score.
    metadata; arbitrary/nested graphs remain attached as one exact source payload under a
    renderer-backed fallback. A bidirectional fixture pins both shadow branches with Graph and
    LibreOffice evidence, exact graph structure/coverage, omission-sensitive focused floors, and
-   exact second-cycle convergence. Heterogeneous/tree graphs, duplicate non-shadow effects,
-   custom-geometry blur/reflection/soft-edge/fill-overlay families, and multi-function SVG filter
-   ordering remain open.
+   exact second-cycle convergence. A reverse-first named tree graph now proves exact nested
+   container/effect retention, one owned renderer fallback, valid regenerated packages, exact
+   PowerPoint output, and exact second-cycle convergence. Typed/editable mappings for heterogeneous
+   tree graphs, duplicate non-shadow effects, smaller graph isolation, custom-geometry
+   blur/reflection/soft-edge/fill-overlay families, and multi-function SVG filter ordering remain
+   open.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,

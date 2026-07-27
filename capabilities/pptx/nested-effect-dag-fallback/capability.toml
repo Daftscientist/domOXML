@@ -1,0 +1,72 @@
+id = "nested-effect-dag-fallback"
+direction = "reverse"
+pptx_file = "source.pptx"
+reverse_render_files = ["source-graph.png"]
+
+[expected]
+required_parts = [
+  "[Content_Types].xml",
+  "ppt/presentation.xml",
+  "ppt/slides/slide1.xml",
+  "ppt/slides/_rels/slide1.xml.rels",
+]
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:sp/p:spPr/a:effectDag[@type='tree'][@name='domoxml-adversarial-root'][count(*)=1]/a:cont[@type='sib'][@name='shadow-branch'][count(*)=2][*[1][self::a:outerShdw[@blurRad='381000'][@dist='600000'][@dir='2700000']]][*[2][self::a:effect[@ref='fill']]]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']//a:effectDag/a:cont/a:outerShdw/a:srgbClr[@val='E11D48']/a:alpha[@val='85000']"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Fallback/p:pic/p:nvPicPr/p:cNvPr[contains(@descr, 'domoxml-raster:pptx-source-rasterized')]"
+min_count = 1
+max_count = 1
+
+[visual]
+pptx_to_html_min_similarity = 0.999
+pptx_to_html_min_regional_similarity = 0.999
+pptx_to_html_min_focused_similarity = 0.995
+pptx_to_html_min_structural_similarity = 0.960
+
+[reverse]
+min_representation = { rasterized = 1, native = 1 }
+max_representation = { rasterized = 1, native = 1, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 1, none = 1 }
+max_editability = { semantic = 1, components = 0, layers = 0, none = 1 }
+min_source_retention = { not_required = 1, attached = 1 }
+max_source_retention = { not_required = 1, attached = 1, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 2
+max_output_count = 2
+min_raster_area_emu2 = 83612736000000
+max_raster_area_emu2 = 83612736000000
+expected_slides = 1
+min_assets = 1
+html_contains = [
+  'data-domoxml-preserved-payload=',
+  'data-domoxml-representation="rasterized"',
+]
+max_warnings = 2
+max_preserved = 1
+
+[roundtrip]
+cycles = 2
+min_representation = { rasterized = 1 }
+max_representation = { rasterized = 1, native = 0, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { none = 1 }
+max_editability = { semantic = 0, components = 0, layers = 0, none = 1 }
+min_source_retention = { attached = 1 }
+max_source_retention = { not_required = 0, attached = 1, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 1
+max_output_count = 1
+min_raster_area_emu2 = 83612736000000
+max_raster_area_emu2 = 83612736000000
+min_convergence_similarity = 0.999
+min_convergence_regional_similarity = 0.999
+min_convergence_structural_similarity = 0.999

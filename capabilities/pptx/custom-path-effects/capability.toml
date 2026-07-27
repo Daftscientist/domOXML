@@ -70,6 +70,7 @@ max_raster_area_emu2 = 0
 expected_slides = 1
 html_contains = [
   "<path d=",
+  "data-domoxml-custom-geometry=",
   "data-domoxml-effects=",
   "filter:drop-shadow(",
 ]

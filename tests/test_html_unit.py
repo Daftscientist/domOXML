@@ -21,6 +21,7 @@ from domoxml.core.ir.model import (
     PreservationPart,
     PreservationPayload,
     PreservedNode,
+    Reflection,
     Rgba,
     Shadow,
     ShapeNode,
@@ -221,6 +222,33 @@ def test_custom_geometry_emits_path_aware_shadow_and_glow_filters() -> None:
     ) in html.slides[0].html
     assert "data-domoxml-effects=" in html.slides[0].html
     assert "data-domoxml-custom-geometry=" in html.slides[0].html
+
+
+def test_custom_geometry_unsupported_effect_warnings_name_the_shape() -> None:
+    geometry = CustomGeometry(
+        width_emu=100,
+        height_emu=100,
+        path=(CubicTo(c1=Point(x=0, y=0), c2=Point(x=100, y=0), to=Point(x=100, y=100)),),
+    )
+    node = ShapeNode(
+        node_id="custom-path-7",
+        box=Box(x=0, y=0, width=100, height=100),
+        custom_geom=geometry,
+        effects=(
+            Shadow(
+                color=Rgba(r=0, g=0, b=0),
+                blur_emu=10,
+                distance_emu=20,
+                spread_emu=5,
+            ),
+            Reflection(),
+        ),
+    )
+
+    html = serialize_canvas([SlideIR(width=100, height=100, contents=(node,))])
+
+    assert len(html.warnings) == 2
+    assert {warning.element for warning in html.warnings} == {"custom-path-7"}
 
 
 def test_serialize_canvas_embeds_attached_preservation_payload() -> None:

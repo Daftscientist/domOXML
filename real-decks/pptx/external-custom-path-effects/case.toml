@@ -7,6 +7,7 @@ source_revision = "0d6d4872c491b1f230f51c6878e57407c60ae697"
 license = "Apache-2.0"
 sha256 = "060716dcb2bc1c1430eb800aa40e63f666dff9cfaaf8e438fb6f13c967bd8a3e"
 source_sha256 = "9baa7f4554cbaddfcebcc431432268ea34f20c02787172bb0a7d12d640e7e84f"
+source_verification_file = "source-verification.toml"
 derivation = "Slide 6 only; retain Diagram 3 and its first four no-text custom-path children; remove timing and all other visual nodes."
 
 [package]
@@ -32,16 +33,8 @@ max_raster_area_emu2 = 0
 min_assets = 0
 max_warnings = 0
 preserved_count = 0
-html_contains = [
-  "data-domoxml-custom-geometry=",
-  "data-domoxml-effects=",
-  "drop-shadow(0px 2.4144px 0px",
-]
-roundtrip_xml_contains = [
-  "<a:custGeom>",
-  '<a:outerShdw blurRad="0" dist="22997" dir="5400000"',
-  '<a:pt x="0" y="310602"/>',
-]
+html_count = { "data-domoxml-custom-geometry=" = 4, "data-domoxml-effects=" = 4, "drop-shadow(0px 2.4144px 0px" = 4 }
+roundtrip_xml_count = { "<a:custGeom>" = 4, "<a:gdLst/>" = 4, '<a:outerShdw blurRad="0" dist="22997" dir="5400000"' = 4 }
 
 [[visual]]
 slide = 0

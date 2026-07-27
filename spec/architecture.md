@@ -246,6 +246,11 @@ silently by a future output path. This is a deterministic structural contract, n
 ECMA-376 XSD validation; Strict packages, AlternateContent, extension schemas, and tolerated
 producer deviations remain corpus and schema work.
 
+Derived real-deck fixtures must bind their local artifact digest to a committed upstream
+verification receipt containing the exact source URL, revision, and digest. Real-deck manifests can
+also require exact token counts in normalized HTML and rebuilt OOXML; generic presence checks are
+insufficient when a regression case claims multiple independently editable visuals or payloads.
+
 DOCX will add flow-specific sections, styles, headers/footers, fields, pagination, footnotes, and
 WordprocessingML bindings. XLSX will add workbooks, sheets, cells, formulas, conditional formats,
 and SpreadsheetML bindings. Their difficulty is not zero, but neither should recreate shared OOXML

@@ -29,7 +29,9 @@ at commit `0d6d4872c491b1f230f51c6878e57407c60ae697` under Apache-2.0. The sourc
 SHA-256 is pinned separately from the reduced fixture SHA-256 in its manifest. The reduction keeps
 slide 6, then keeps `Diagram 3` and its first four no-text custom-path children while removing
 timing and other visuals. Those four producer-authored shapes retain their guide formulas and
-outer shadows. The redistributed license is in [`LICENSE.Apache-POI`](LICENSE.Apache-POI).
+outer shadows. The redistributed license is in [`LICENSE.Apache-POI`](LICENSE.Apache-POI), and
+the required upstream attributions are in [`NOTICE.Apache-POI`](NOTICE.Apache-POI). Downstream
+redistributions of this fixture must retain both files.
 
 The default PowerPoint table-style contract was cross-checked against the pinned repository's
 `src/renderer/predefinedTableStyles.ts`; domOXML's Python implementation is independently written

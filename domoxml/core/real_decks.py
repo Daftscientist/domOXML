@@ -6,9 +6,9 @@ import hashlib
 import re
 import tomllib
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, model_validator
 
 from domoxml.core.capabilities import CapabilityCoverageBounds, validate_coverage
 from domoxml.core.opc import OpcPackage, validate_opc_package
@@ -28,13 +28,42 @@ class DeckProvenance(BaseModel):
     license: str
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    source_verification_file: str | None = None
+    source_verification: SourceVerification | None = Field(default=None, exclude=True)
     derivation: str | None = None
 
     @model_validator(mode="after")
     def _derived_fixture_names_its_source_digest(self) -> DeckProvenance:
-        if self.derivation is not None and self.source_sha256 is None:
-            raise ValueError("derived real-deck fixture requires source_sha256")
+        if self.derivation is None:
+            return self
+        if self.source_sha256 is None or self.source_verification_file is None:
+            raise ValueError(
+                "derived real-deck fixture requires source_sha256 and source_verification_file"
+            )
+        if self.source_verification is None:
+            raise ValueError("derived real-deck fixture source digest is unchecked")
+        expected = (self.source_url, self.source_revision, self.source_sha256)
+        verified = (
+            self.source_verification.source_url,
+            self.source_verification.source_revision,
+            self.source_verification.sha256,
+        )
+        if verified != expected:
+            raise ValueError(
+                "derived real-deck fixture source verification does not match provenance"
+            )
         return self
+
+
+class SourceVerification(BaseModel):
+    """Committed result of hashing one pinned upstream source artifact."""
+
+    model_config = ConfigDict(frozen=True)
+
+    method: Literal["sha256"]
+    source_url: str
+    source_revision: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class DeckPackageExpected(BaseModel):
@@ -67,7 +96,9 @@ class DeckReverseExpected(CapabilityCoverageBounds):
     preserved_count: int = Field(default=0, ge=0)
     preserved: tuple[PreservedExpected, ...] = ()
     html_contains: tuple[str, ...] = ()
+    html_count: dict[str, NonNegativeInt] = Field(default_factory=dict)
     roundtrip_xml_contains: tuple[str, ...] = ()
+    roundtrip_xml_count: dict[str, NonNegativeInt] = Field(default_factory=dict)
     roundtrip_required_parts: tuple[str, ...] = ()
 
 
@@ -115,6 +146,20 @@ def _load_case(path: Path) -> RealDeckCase:
     pptx_file = raw.pop("pptx_file", None)
     if not isinstance(pptx_file, str):
         raise ValueError(f"{path}: pptx_file must be a string")
+    provenance = raw.get("provenance")
+    if not isinstance(provenance, dict):
+        raise ValueError(f"{path}: provenance must be a table")
+    provenance = cast(dict[str, object], provenance)
+    verification_file = provenance.get("source_verification_file")
+    if verification_file is not None:
+        if (
+            not isinstance(verification_file, str)
+            or Path(verification_file).name != verification_file
+        ):
+            raise ValueError(f"{path}: source_verification_file must name a sibling file")
+        verification_path = path.parent / verification_file
+        with verification_path.open("rb") as handle:
+            provenance["source_verification"] = tomllib.load(handle)
     raw["pptx"] = (path.parent / pptx_file).read_bytes()
     return RealDeckCase.model_validate(raw)
 
@@ -177,6 +222,12 @@ def validate_real_deck(case: RealDeckCase, html: HtmlPresentation) -> tuple[str,
     for token in case.reverse.html_contains:
         if token not in document:
             errors.append(f"reverse HTML missing {token!r}")
+    for token, expected_count in case.reverse.html_count.items():
+        actual_count = document.count(token)
+        if actual_count != expected_count:
+            errors.append(
+                f"reverse HTML count for {token!r} is {actual_count} != expected {expected_count}"
+            )
     return tuple(errors)
 
 
@@ -201,4 +252,10 @@ def validate_real_deck_roundtrip(case: RealDeckCase, pptx: bytes) -> tuple[str, 
     for token in case.reverse.roundtrip_xml_contains:
         if token not in xml:
             errors.append(f"roundtrip XML missing {token!r}")
+    for token, expected_count in case.reverse.roundtrip_xml_count.items():
+        actual_count = xml.count(token)
+        if actual_count != expected_count:
+            errors.append(
+                f"roundtrip XML count for {token!r} is {actual_count} != expected {expected_count}"
+            )
     return tuple(errors)

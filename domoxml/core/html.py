@@ -502,7 +502,8 @@ def _custom_geometry_filter(
                         message=(
                             "custom-geometry shadow cannot use a path-aware CSS filter with inset "
                             "or spread; exact typed effect metadata retained"
-                        )
+                        ),
+                        element=node.node_id or "custom-geometry",
                     )
                 )
                 continue
@@ -531,7 +532,8 @@ def _custom_geometry_filter(
                     message=(
                         f"{effect.kind} cannot yet paint on custom-geometry HTML; "
                         "exact typed effect metadata retained"
-                    )
+                    ),
+                    element=node.node_id or "custom-geometry",
                 )
             )
     return " ".join(filters) if filters else None

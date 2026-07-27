@@ -1,0 +1,4 @@
+method = "sha256"
+source_url = "https://github.com/apache/poi/blob/0d6d4872c491b1f230f51c6878e57407c60ae697/test-data/slideshow/customGeo.pptx"
+source_revision = "0d6d4872c491b1f230f51c6878e57407c60ae697"
+sha256 = "9baa7f4554cbaddfcebcc431432268ea34f20c02787172bb0a7d12d640e7e84f"

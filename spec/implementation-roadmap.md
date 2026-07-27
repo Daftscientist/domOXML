@@ -11,7 +11,7 @@ Snapshot audited on **2026-07-24** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 772 tests are collected.
+- 776 tests are collected.
 - 26 atomic PPTX capability fixtures exist; 22 are bidirectional and four are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, and rasterized preset
   shadow node/slide fallbacks.
@@ -284,7 +284,9 @@ silently lowering the expected score.
    chains take a visible element-layer fallback. A reduced Apache POI real-deck case pins four
    producer-authored guide-backed paths and shadows on LibreOffice and Graph; DrawingML guide
    formulas and elliptical arcs now normalize into typed custom geometry rather than crashing or
-   disappearing on re-ingestion. Reflection directions other than `below`, non-pixel
+   disappearing on re-ingestion. Its upstream digest is checked through a committed
+   URL/revision-bound receipt, and exact-count gates require all four custom geometries, guide lists,
+   outer shadows, and normalized effect payloads. Reflection directions other than `below`, non-pixel
    gaps, typed/editable preset-shadow semantics, multiple preset shadows, unknown compound siblings,
    smaller preset-shadow isolation, gradient/other fill-overlay families, `over` calibration,
    compound ordering, custom-geometry blur/reflection/soft-edge/fill-overlay families, and

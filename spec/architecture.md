@@ -157,7 +157,12 @@ reverses the shadow sequence and appends one final `a:effect` reference to `fill
 Normalized HTML retains the container kind and explicit source reference beside the visible
 multi-layer CSS. PowerPoint selects the editable native `a:effectDag`; LibreOffice, whose graph
 rendering is incompatible, selects one isolated paint-bound picture instead. PPTX ingest admits
-only this proven flat graph shape.
+only this proven flat graph shape. Separate bidirectional fixtures pin both `fill` and `fillLine`;
+the latter combines a native stroke with two shadows so removing or changing the source reference
+is visually detectable. Isolated capture makes the page canvas and every ancestor backdrop
+transparent while retaining the selected subtree, then restores all temporary root and visibility
+styles. The portable layer therefore preserves alpha and cannot acquire a white rectangle when a
+normalized HTML slide is compiled again.
 Arbitrary or nested effect graphs remain one attached source payload and, when an authoritative
 slide render is supplied, receive the existing source-owned renderer fallback rather than losing
 visible paint. The reverse-first named tree-graph capability pins the exact container hierarchy,

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from io import BytesIO
+
 import pytest
+from PIL import Image
 
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import ExtractResult, extract_slide
@@ -106,6 +109,34 @@ async def test_extracts_css_reflection_with_complete_isolated_paint_bounds() -> 
     [coverage] = [item for item in result.coverage if item.representation is Representation.HYBRID]
     assert coverage.editability is Editability.COMPONENTS
     assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(192)
+
+
+async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:
+    result = await _render_and_extract_result(
+        '<div style="position:relative;width:1280px;height:720px;background:#f7f8fb">'
+        '<div style="position:absolute;left:340px;top:214px;width:600px;height:268px;'
+        "box-sizing:border-box;background:#2563eb;border:4px solid #facc15;"
+        "border-radius:18px;box-shadow:18px 22px 24px rgba(15,23,42,.55),"
+        '-26px 24px 30px 2px rgba(225,29,72,.65)"></div></div>'
+    )
+
+    [shape] = [
+        shape
+        for shape in result.slide.shapes
+        if shape.effect_container == "sibling" and shape.portable_fallback is not None
+    ]
+    assert shape.portable_fallback is not None
+    with Image.open(BytesIO(shape.portable_fallback.picture.data)) as fallback:
+        rgba = fallback.convert("RGBA")
+        alpha = rgba.getchannel("A").tobytes()
+        corners = (
+            alpha[0],
+            alpha[rgba.width - 1],
+            alpha[(rgba.height - 1) * rgba.width],
+            alpha[-1],
+        )
+        assert all(value == 0 for value in corners)
+        assert alpha[(rgba.height // 2) * rgba.width + rgba.width // 2] == 255
 
 
 async def test_extracts_css_soft_edge_with_shape_bound_fallback() -> None:

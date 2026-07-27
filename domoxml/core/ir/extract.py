@@ -1578,8 +1578,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if portable_effects:
             fallback_shape = _raster_shape(node, rendered)
             if fallback_shape is not None and isinstance(fallback_shape.fill, PictureFill):
-                only_blur = all(isinstance(effect, Blur) for effect in portable_effects)
-                effect_names = ", ".join(effect.kind for effect in portable_effects)
+                only_blur = len(effects) == 1 and isinstance(effects[0], Blur)
+                effect_names = ", ".join(effect.kind for effect in effects)
                 portable_fallback = PortableFallback(
                     box=fallback_shape.box,
                     picture=fallback_shape.fill.model_copy(
@@ -1652,7 +1652,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 )
             )
         elif portable_fallback is not None:
-            effect_names = ", ".join(effect.kind for effect in portable_effects)
+            effect_names = ", ".join(effect.kind for effect in effects)
             coverage.append(
                 CoverageItem(
                     element=_label(node),

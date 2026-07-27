@@ -488,6 +488,44 @@ def test_fill_overlay_xml_emitted() -> None:
     )
 
 
+def test_effect_list_xml_uses_schema_order_instead_of_ir_tuple_order() -> None:
+    effects = (
+        SoftEdge(radius_emu=8_000),
+        Reflection(distance_emu=7_000),
+        Shadow(
+            color=Rgba(r=0, g=0, b=0, a=0.4),
+            blur_emu=6_000,
+            distance_emu=5_000,
+        ),
+        Glow(color=Rgba(r=0, g=128, b=255, a=0.6), radius_emu=4_000),
+        FillOverlay(
+            fill=SolidFill(color=Rgba(r=255, g=255, b=255, a=0.2)),
+            blend="screen",
+        ),
+        Blur(radius_emu=3_000),
+    )
+
+    xml = _effects_xml(_node(effects=effects))
+
+    positions = [
+        xml.index(f"<a:{tag}")
+        for tag in ("blur", "fillOverlay", "glow", "outerShdw", "reflection", "softEdge")
+    ]
+    assert positions == sorted(positions)
+
+
+def test_duplicate_effect_list_children_require_effect_dag() -> None:
+    node = _node(
+        effects=(
+            Blur(radius_emu=3_000),
+            Blur(radius_emu=4_000),
+        )
+    )
+
+    with pytest.raises(ValueError, match="require an effectDag representation"):
+        _effects_xml(node)
+
+
 # -----------------------------------------------------------------------
 # Reverse: parse_effects_xml — all 8 effect kinds
 # -----------------------------------------------------------------------

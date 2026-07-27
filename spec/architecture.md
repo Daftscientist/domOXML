@@ -316,8 +316,10 @@ cannot approve parity evidence that is visibly wrong.
 Each atomic capability manifest independently bounds the forward and regenerated-PPTX boundaries.
 Reverse-capable manifests additionally bound the initial PPTX-ingest boundary. All bounds cover
 representation, editability, source retention, emitted object count, and raster area. These
-fixtures also declare the number of rebuild/re-ingest cycles and global, regional, and structural
-convergence floors. Slide scoping must be explicit when one fixture owns only part of a
+fixtures also declare the number of rebuild/re-ingest cycles and global, regional, focused, and
+structural convergence floors where the fixture exposes them. OOXML XPath assertions support both
+minimum and maximum counts; extra nodes cannot pass through a silently ignored upper bound. Slide
+scoping must be explicit when one fixture owns only part of a
 multi-feature source deck; unscoped slides are not thereby claimed as covered.
 
 ## Documentation Authority

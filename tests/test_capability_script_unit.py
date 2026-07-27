@@ -250,7 +250,7 @@ def test_forward_visual_gate_checks_global_and_regional_similarity(tmp_path: Pat
     assert (tmp_path / "text-rich-runs-slide0-libreoffice-diff.png").is_file()
 
 
-def test_structural_similarity_is_enforced_in_both_visual_directions() -> None:
+def test_focused_and_structural_similarity_are_enforced_in_both_visual_directions() -> None:
     reference = _png_with_foreground(include_foreground=True)
     candidate = _png_with_foreground(include_foreground=False)
     fixture = CapabilityFixture(
@@ -258,7 +258,9 @@ def test_structural_similarity_is_enforced_in_both_visual_directions() -> None:
         direction=CapabilityDirection.BOTH,
         html="<div>fixture</div>",
         visual=CapabilityVisual(
+            source_to_pptx_min_focused_similarity=0.99,
             source_to_pptx_min_structural_similarity=0.99,
+            pptx_to_html_min_focused_similarity=0.99,
             pptx_to_html_min_structural_similarity=0.99,
         ),
     )
@@ -266,10 +268,12 @@ def test_structural_similarity_is_enforced_in_both_visual_directions() -> None:
     forward_errors = _validate_forward_visual(fixture, _render_result(reference), [candidate])
     reverse_errors = _validate_reverse_visual(fixture, (reference,), _render_result(candidate))
 
-    assert len(forward_errors) == 1
-    assert "structural similarity" in forward_errors[0]
-    assert len(reverse_errors) == 1
-    assert "structural similarity" in reverse_errors[0]
+    assert len(forward_errors) == 2
+    assert "focused similarity" in forward_errors[0]
+    assert "structural similarity" in forward_errors[1]
+    assert len(reverse_errors) == 2
+    assert "focused similarity" in reverse_errors[0]
+    assert "structural similarity" in reverse_errors[1]
 
 
 def test_convergence_visual_gate_checks_every_quality_score(tmp_path: Path) -> None:
@@ -284,13 +288,14 @@ def test_convergence_visual_gate_checks_every_quality_score(tmp_path: Path) -> N
             cycles=2,
             min_convergence_similarity=0.99,
             min_convergence_regional_similarity=0.99,
+            min_convergence_focused_similarity=0.99,
             min_convergence_structural_similarity=0.99,
         ),
     )
 
     errors = _validate_convergence_visual(fixture, previous, candidate, 2, tmp_path)
 
-    assert len(errors) == 3
+    assert len(errors) == 4
     assert all("convergence" in error for error in errors)
     assert (tmp_path / "convergence-cycle2-slide0-previous.png").is_file()
     assert (tmp_path / "convergence-cycle2-slide0-current-raw.png").is_file()

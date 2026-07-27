@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from pytest import MonkeyPatch
 
 from scripts import fidelity_check
@@ -55,6 +56,43 @@ def test_required_backend_fails_closed_and_writes_summary(
     summary = json.loads((out / "summary.json").read_text())
     assert summary["scores"] == []
     assert summary["skipped"] == ["libreoffice: renderer unavailable"]
+
+
+def test_render_case_retries_one_transient_browser_failure(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    case = fidelity_check.load_corpus(_corpus(tmp_path))[0]
+    attempts = 0
+
+    def render(_case: object) -> tuple[tuple[bytes, ...], bytes]:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("Page.captureScreenshot: Unable to capture screenshot")
+        return ((b"source",), b"pptx")
+
+    monkeypatch.setattr(fidelity_check, "_render_case", render)
+
+    assert fidelity_check._render_case_with_retry(case) == ((b"source",), b"pptx")
+    assert attempts == 2
+
+
+def test_render_case_does_not_retry_non_transient_failure(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    case = fidelity_check.load_corpus(_corpus(tmp_path))[0]
+    attempts = 0
+
+    def render(_case: object) -> tuple[tuple[bytes, ...], bytes]:
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("invalid PPTX package")
+
+    monkeypatch.setattr(fidelity_check, "_render_case", render)
+
+    with pytest.raises(RuntimeError, match="invalid PPTX package"):
+        fidelity_check._render_case_with_retry(case)
+    assert attempts == 1
 
 
 def test_markdown_summary_contains_both_fidelity_gates(tmp_path: Path) -> None:

@@ -151,6 +151,16 @@ the shape paint box, expanded to its axis-aligned painted bounds after rotation.
 rectangles use the same two-axis mask, while normalized ellipses
 use a boundary-following closest-side radial mask. Nondefault authored mask geometry does not enter
 this hybrid path and remains visible through the general element-layer fallback.
+Multiple outer `box-shadow` layers use a typed flat sibling effect graph. CSS declares those
+layers front-to-back, while DrawingML paints sibling graph children back-to-front, so PPTX export
+reverses the shadow sequence and appends one final `a:effect` reference to `fill` or `fillLine`.
+Normalized HTML retains the container kind and explicit source reference beside the visible
+multi-layer CSS. PowerPoint selects the editable native `a:effectDag`; LibreOffice, whose graph
+rendering is incompatible, selects one isolated paint-bound picture instead. PPTX ingest admits
+only this proven flat graph shape.
+Arbitrary or nested effect graphs remain one attached source payload and, when an authoritative
+slide render is supplied, receive the existing source-owned renderer fallback rather than losing
+visible paint.
 Single-path SVG custom geometry admits one CSS `drop-shadow()` as a native path-aware outer shadow
 or glow. Shared renderer-calibrated radius/alpha factors are inverted by normalized HTML, which
 paints the effect with CSS `drop-shadow()` while retaining the exact typed effect payload. DrawingML

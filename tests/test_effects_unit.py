@@ -25,14 +25,16 @@ Edge cases:
 from __future__ import annotations
 
 import math
+import re
 import warnings as warnings_module
+from html import unescape
 from xml.etree.ElementTree import Element, fromstring
 
 import pytest
 
 from domoxml.core.drawingml.shape import _effects_xml
 from domoxml.core.html import serialize_canvas
-from domoxml.core.ir.effect_payload import decode_effects, encode_effects
+from domoxml.core.ir.effect_payload import decode_effect_payload, decode_effects, encode_effects
 from domoxml.core.ir.extract import _shadow_to_effect
 from domoxml.core.ir.model import (
     Blur,
@@ -56,6 +58,7 @@ from domoxml.core.ir.parse import (
     parse_drop_shadow_filter,
     parse_fill_overlay,
     parse_shadow,
+    parse_shadows,
     parse_soft_edge_mask,
 )
 from domoxml.core.units import px_to_emu
@@ -309,6 +312,17 @@ def test_parse_shadow_inset_flag() -> None:
     assert shadow.spread_emu == px_to_emu(1)
 
 
+def test_parse_shadows_retains_every_css_layer_in_paint_order() -> None:
+    shadows = parse_shadows(
+        "18px 22px 24px 0 rgba(15,23,42,.55), -28px 30px 32px 3px rgba(225,29,72,.65)"
+    )
+
+    assert len(shadows) == 2
+    assert [shadow.color.hex for shadow in shadows] == ["0F172A", "E11D48"]
+    assert shadows[0].distance_emu == px_to_emu(math.hypot(18, 22))
+    assert shadows[1].spread_emu == px_to_emu(3)
+
+
 def test_parse_single_drop_shadow_filter() -> None:
     shadow = parse_drop_shadow_filter("drop-shadow(rgba(10, 20, 30, 0.4) 6px 8px 12px)")
 
@@ -524,6 +538,33 @@ def test_duplicate_effect_list_children_require_effect_dag() -> None:
 
     with pytest.raises(ValueError, match="require an effectDag representation"):
         _effects_xml(node)
+
+
+def test_sibling_shadow_container_emits_effect_dag_back_to_front() -> None:
+    front = Shadow(
+        color=Rgba(r=15, g=23, b=42, a=0.55),
+        blur_emu=190_500,
+        distance_emu=260_000,
+        direction_deg=45,
+    )
+    back = Shadow(
+        color=Rgba(r=225, g=29, b=72, a=0.65),
+        blur_emu=285_750,
+        distance_emu=430_000,
+        direction_deg=135,
+    )
+    node = ShapeNode(
+        box=Box(x=0, y=0, width=9_525_000, height=4_762_500),
+        fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+        effects=(front, back),
+        effect_container="sibling",
+    )
+
+    xml = _effects_xml(node)
+
+    assert xml.startswith('<a:effectDag type="sib">')
+    assert xml.index('val="E11D48"') < xml.index('val="0F172A"')
+    assert xml.endswith('<a:effect ref="fill"/></a:effectDag>')
 
 
 # -----------------------------------------------------------------------
@@ -758,6 +799,46 @@ def test_reverse_multiple_effects_ordered() -> None:
     assert isinstance(effects[2], Blur)
 
 
+def test_reverse_sibling_shadow_graph_restores_css_paint_order() -> None:
+    props = _shape_props(
+        '<a:effectDag type="sib">'
+        '<a:outerShdw blurRad="285750" dist="430000" dir="8100000">'
+        '<a:srgbClr val="E11D48"><a:alpha val="65000"/></a:srgbClr>'
+        "</a:outerShdw>"
+        '<a:outerShdw blurRad="190500" dist="260000" dir="2700000">'
+        '<a:srgbClr val="0F172A"><a:alpha val="55000"/></a:srgbClr>'
+        "</a:outerShdw>"
+        '<a:effect ref="fill"/>'
+        "</a:effectDag>"
+    )
+
+    effects, warnings, preserved = parse_effects_xml(props, {})
+
+    assert [effect.color.hex for effect in effects if isinstance(effect, Shadow)] == [
+        "0F172A",
+        "E11D48",
+    ]
+    assert warnings == ()
+    assert preserved == ()
+
+
+def test_reverse_nested_effect_graph_is_preserved_whole() -> None:
+    props = _shape_props(
+        '<a:effectDag type="tree" name="unsupported">'
+        '<a:cont type="sib"><a:blur rad="95250"/></a:cont>'
+        "</a:effectDag>"
+    )
+
+    effects, warnings, preserved = parse_effects_xml(props, {})
+
+    assert effects == ()
+    assert len(warnings) == 1
+    assert "effectDag" in warnings[0].message
+    assert len(preserved) == 1
+    assert preserved[0].kind == "effectDag"
+    assert "<" in preserved[0].xml and "effectDag" in preserved[0].xml
+
+
 # -----------------------------------------------------------------------
 # Reverse → HTML CSS emission
 # -----------------------------------------------------------------------
@@ -949,3 +1030,51 @@ def test_normalized_html_carries_exact_versioned_effect_payload() -> None:
     assert "data-domoxml-effects=" in html.slides[0].html
     assert decode_effects(payload) == effects
     assert decode_effects("not-json") is None
+
+
+def test_normalized_html_retains_sibling_effect_container_metadata() -> None:
+    effects = (
+        Shadow(
+            color=Rgba(r=15, g=23, b=42, a=0.55),
+            blur_emu=px_to_emu(20),
+            distance_emu=px_to_emu(24),
+            direction_deg=45,
+        ),
+        Shadow(
+            color=Rgba(r=225, g=29, b=72, a=0.65),
+            blur_emu=px_to_emu(30),
+            distance_emu=px_to_emu(36),
+            direction_deg=135,
+        ),
+    )
+    slide = _slide_with(*effects)
+    shape = slide.shapes[0].model_copy(update={"effect_container": "sibling"})
+
+    html = serialize_canvas([slide.model_copy(update={"contents": (shape,)})])
+    match = re.search(r'data-domoxml-effects="([^"]+)"', html.slides[0].html)
+    decoded = decode_effect_payload(unescape(match.group(1)) if match is not None else None)
+
+    assert decoded is not None and decoded.container == "sibling"
+    assert decoded.source_ref == "fill"
+    assert decoded.effects == effects
+    assert html.slides[0].html.count("rgba(") >= 3
+
+
+def test_effect_payload_rejects_unsupported_sibling_graphs() -> None:
+    outer = Shadow(
+        color=Rgba(r=15, g=23, b=42, a=0.55),
+        blur_emu=px_to_emu(20),
+        distance_emu=px_to_emu(24),
+        direction_deg=45,
+    )
+    invalid_effect_sets = (
+        (),
+        (outer,),
+        (outer, outer.model_copy(update={"inset": True})),
+        (outer, Glow(color=Rgba(r=225, g=29, b=72), radius_emu=px_to_emu(12))),
+    )
+
+    for effects in invalid_effect_sets:
+        list_payload = encode_effects(effects)
+        sibling_payload = list_payload.replace('"container":"list"', '"container":"sibling"')
+        assert decode_effect_payload(sibling_payload) is None

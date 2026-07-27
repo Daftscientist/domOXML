@@ -311,9 +311,20 @@ def _inner_shadow_xml(shadow: Shadow) -> str:
 
 
 def _effects_xml(node: ShapeNode) -> str:
-    """Emit ``<a:effectLst>`` for all effects on the node, or an empty string."""
+    """Emit the node's DrawingML effect container, or an empty string."""
     if not node.effects:
         return ""
+    if node.effect_container == "sibling":
+        shadows = tuple(effect for effect in node.effects if isinstance(effect, Shadow))
+        if (
+            len(shadows) != len(node.effects)
+            or len(shadows) < 2
+            or any(shadow.inset for shadow in shadows)
+        ):
+            raise ValueError("sibling effectDag currently requires multiple outer shadows")
+        parts = [_outer_shadow_xml(shadow, node) for shadow in reversed(shadows)]
+        parts.append(f'<a:effect ref="{node.effect_source_ref}"/>')
+        return f'<a:effectDag type="sib">{"".join(parts)}</a:effectDag>'
     positions = tuple(_effect_list_position(effect) for effect in node.effects)
     if len(set(positions)) != len(positions):
         raise ValueError("duplicate effect-list children require an effectDag representation")

@@ -11,8 +11,8 @@ Snapshot audited on **2026-07-27** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 781 tests are collected.
-- 27 atomic PPTX capability fixtures exist; 23 are bidirectional and four are reverse-first
+- 792 tests are collected.
+- 28 atomic PPTX capability fixtures exist; 24 are bidirectional and four are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, and rasterized preset
   shadow node/slide fallbacks.
 - 9 authored HTML fidelity cases exist.
@@ -40,7 +40,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 27 atomic fixtures and 7 real decks pin
+  retention, output-count, and raster-area records. All 28 atomic fixtures and 7 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -291,9 +291,16 @@ silently lowering the expected score.
    smaller preset-shadow isolation, gradient/other fill-overlay families, `over` calibration,
    `CT_EffectList` now serializes its supported unique effects in schema order rather than IR tuple
    order; an authored blur-plus-outer-shadow fixture pins the native list, isolated portable layer,
-   exact maximum XPath counts, focused omission floors, and two-cycle convergence. Arbitrary or
-   duplicate effects requiring `effectDag`, custom-geometry blur/reflection/soft-edge/fill-overlay
-   families, and multi-function SVG filter ordering remain open.
+   exact maximum XPath counts, focused omission floors, and two-cycle convergence. Multiple CSS
+   outer shadows now lower to one typed flat sibling `effectDag`: PPTX reverses CSS paint order,
+   appends the source reference, selects the editable native graph in PowerPoint, and selects one
+   isolated portable layer in LibreOffice. Reverse ingestion restores CSS order and container
+   metadata; arbitrary/nested graphs remain attached as one exact source payload under a
+   renderer-backed fallback. A bidirectional fixture pins both shadow branches with Graph and
+   LibreOffice evidence, exact graph structure/coverage, omission-sensitive focused floors, and
+   exact second-cycle convergence. Heterogeneous/tree graphs, duplicate non-shadow effects,
+   custom-geometry blur/reflection/soft-edge/fill-overlay families, and multi-function SVG filter
+   ordering remain open.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,

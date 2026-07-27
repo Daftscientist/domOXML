@@ -127,7 +127,14 @@ def _effect_attrs(node: ShapeNode) -> str:
     """Typed effect metadata carried beside renderer-facing CSS."""
     if not node.effects:
         return ""
-    payload = escape(encode_effects(node.effects), quote=True)
+    payload = escape(
+        encode_effects(
+            node.effects,
+            container=node.effect_container,
+            source_ref=node.effect_source_ref,
+        ),
+        quote=True,
+    )
     return f' data-domoxml-effects="{payload}"'
 
 

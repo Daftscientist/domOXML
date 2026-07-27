@@ -65,7 +65,7 @@ from domoxml.slides.appearance_read import (
 )
 from domoxml.slides.background import parse_background
 from domoxml.slides.connector_read import read_connector
-from domoxml.slides.effect_read import read_effects
+from domoxml.slides.effect_read import effect_container_kind, effect_source_ref, read_effects
 from domoxml.slides.geometry_guides import evaluate_guides, resolve_guide
 from domoxml.slides.graphic_frame import read_graphic_frame
 from domoxml.slides.inherit import (
@@ -318,6 +318,8 @@ def _shape(
                 fill=_fill(properties, package, slide_part, colors),
                 line=_line(properties, colors),
                 effects=shape_effects,
+                effect_container=effect_container_kind(properties),
+                effect_source_ref=effect_source_ref(properties),
                 corner_radius_emu=corner,
                 transform=_xfrm_transform(xfrm),
                 text=read_text_body(
@@ -568,6 +570,19 @@ def _can_own_source_shape_crop(shape: ShapeNode, *, is_only_visual: bool) -> boo
         and shape.opacity == 1.0
         and shape.line is None
         and not shape.effects
+    )
+
+
+def _has_source_only_effect(element: Element) -> bool:
+    """Whether a shape has an effect container that must retain source markup."""
+    properties = element.find("p:spPr", _NS)
+    if properties is None:
+        return False
+    if properties.find("a:effectLst/a:prstShdw", _NS) is not None:
+        return True
+    return (
+        properties.find("a:effectDag", _NS) is not None
+        and effect_container_kind(properties) != "sibling"
     )
 
 
@@ -881,17 +896,16 @@ def _slide(
             for element in tree_elements
             if _local_name(element) not in {"nvGrpSpPr", "grpSpPr", "extLst"}
         )
-        preset_shadow_visuals = tuple(
+        source_only_effect_visuals = tuple(
             element
             for element in visual_elements
-            if _local_name(element) == "sp"
-            and element.find("p:spPr/a:effectLst/a:prstShdw", _NS) is not None
+            if _local_name(element) == "sp" and _has_source_only_effect(element)
         )
         if (
             renderer_fallback is None
             and fallback_png is not None
             and len(visual_elements) > 1
-            and len(preset_shadow_visuals) == 1
+            and len(source_only_effect_visuals) == 1
         ):
             renderer_fallback = _fallback_picture(
                 fallback_png,
@@ -1003,7 +1017,7 @@ def _slide(
                         recover_owned = preserved_kinds == {"fillOverlay"}
                         rasterized_candidate = (
                             fallback_role == "pptx-source-rasterized"
-                            and preserved_kinds == {"prstShdw"}
+                            and preserved_kinds in ({"prstShdw"}, {"effectDag"})
                         )
                         recover_rasterized = rasterized_candidate and element is only_visual
                         if shape_preserved and (recover_owned or recover_rasterized):
@@ -1016,7 +1030,7 @@ def _slide(
                             ) or fallback_shape.box
                             reason = (
                                 (
-                                    "preset shadow has no exact CSS mapping; retained as a "
+                                    "source effect has no exact CSS mapping; retained as a "
                                     "full-slide rasterized fallback"
                                 )
                                 if recover_rasterized
@@ -1153,12 +1167,12 @@ def _slide(
                     preserved_kinds = {fragment.kind for fragment in shape_preserved}
                     if (
                         shape_preserved
-                        and preserved_kinds == {"prstShdw"}
+                        and preserved_kinds in ({"prstShdw"}, {"effectDag"})
                         and renderer_fallback is not None
                     ):
                         reason = (
-                            "preset shadow retained as exact native source under one slide-level "
-                            "renderer fallback"
+                            "source-only effect retained as exact native markup under one "
+                            "slide-level renderer fallback"
                         )
                         box = _positioned_box(element) or shape.box
                         try:
@@ -1208,13 +1222,13 @@ def _slide(
                     elif (
                         shape_preserved
                         and fallback_png is not None
-                        and preserved_kinds == {"prstShdw"}
+                        and preserved_kinds in ({"prstShdw"}, {"effectDag"})
                         and element is only_visual
                     ):
                         fallback_representation = "rasterized"
                         fallback_box_override = Box(x=0, y=0, width=width, height=height)
                         reason = (
-                            "preset shadow has no exact CSS mapping; retained as a full-slide "
+                            "source effect has no exact CSS mapping; retained as a full-slide "
                             "rasterized fallback"
                         )
                     else:

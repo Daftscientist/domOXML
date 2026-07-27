@@ -16,7 +16,6 @@ from domoxml.core.ir.model import (
     Box,
     Connector,
     FillOverlay,
-    Glow,
     GradientFill,
     PictureFill,
     Rgba,
@@ -122,7 +121,12 @@ def test_normalized_effect_payload_wins_over_renderer_css_inference() -> None:
             direction_deg=33,
             spread_emu=7_500,
         ),
-        Glow(color=Rgba(r=4, g=5, b=6, a=0.5), radius_emu=60_000),
+        Shadow(
+            color=Rgba(r=4, g=5, b=6, a=0.5),
+            blur_emu=60_000,
+            distance_emu=30_000,
+            direction_deg=140,
+        ),
     )
     node = RenderedNode(
         tag="div",
@@ -134,13 +138,19 @@ def test_normalized_effect_payload_wins_over_renderer_css_inference() -> None:
         styles={
             "backgroundColor": "rgb(255, 255, 255)",
             "boxShadow": "rgb(255, 0, 0) 1px 1px 1px 0px",
-            "domoxmlEffects": encode_effects(effects),
+            "domoxmlEffects": encode_effects(
+                effects,
+                container="sibling",
+                source_ref="fillLine",
+            ),
         },
     )
 
     result = extract_slide(_slide(node))
 
     assert result.slide.shapes[0].effects == effects
+    assert result.slide.shapes[0].effect_container == "sibling"
+    assert result.slide.shapes[0].effect_source_ref == "fillLine"
 
 
 def test_normalized_text_payload_wins_over_renderer_alignment_inference() -> None:
@@ -712,6 +722,63 @@ def test_browser_requests_isolated_renderer_fallback_for_native_css_blur() -> No
     )
 
     assert _needs_isolated_raster(node)
+
+
+def test_browser_multi_shadow_fallback_bounds_include_every_layer() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=50,
+        y=50,
+        width=100,
+        height=60,
+        styles={
+            "boxShadow": ("rgb(15, 23, 42) 10px 12px 8px 0px, rgb(225, 29, 72) -20px 14px 12px 3px")
+        },
+    )
+
+    assert _needs_isolated_raster(node)
+    assert _raster_bounds(node, slide_width=200, slide_height=180) == (3, 37, 176, 151)
+
+
+def test_multiple_css_shadows_become_a_hybrid_sibling_effect_graph() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=50,
+        y=50,
+        width=100,
+        height=60,
+        index=0,
+        styles={
+            "backgroundColor": "rgb(37, 99, 235)",
+            "boxShadow": (
+                "rgba(15, 23, 42, 0.55) 10px 12px 8px 0px, "
+                "rgba(225, 29, 72, 0.65) -20px 14px 12px 3px"
+            ),
+        },
+    )
+    raster = RenderedRaster(png=_png(173, 114), x=3, y=37, width=173, height=114)
+    rendered = _slide(node).model_copy(update={"rasters": {0: raster}})
+
+    result = extract_slide(rendered)
+
+    [shape] = result.slide.shapes
+    assert shape.effect_container == "sibling"
+    assert len(shape.effects) == 2
+    assert all(isinstance(effect, Shadow) for effect in shape.effects)
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(3),
+        y=px_to_emu(37),
+        width=px_to_emu(173),
+        height=px_to_emu(114),
+    )
+    assert shape.portable_fallback.picture.data == raster.png
+    [coverage] = result.coverage
+    assert coverage.representation is Representation.HYBRID
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.output_count == 2
+    assert "native shadow, shadow" in (coverage.reason or "")
+    assert any("a:effectDag" in warning.message for warning in result.warnings)
 
 
 def test_browser_requests_isolated_renderer_fallback_for_css_mask() -> None:

@@ -296,6 +296,71 @@ def test_portable_fill_overlay_fallback_uses_alternate_content_and_round_trips()
     assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
 
 
+def test_sibling_shadow_graph_uses_native_choice_and_round_trips() -> None:
+    fallback_box = Box(x=700_000, y=600_000, width=3_000_000, height=1_900_000)
+    front = Shadow(
+        color=Rgba(r=15, g=23, b=42, a=0.55),
+        blur_emu=190_500,
+        distance_emu=260_000,
+        direction_deg=45,
+    )
+    back = Shadow(
+        color=Rgba(r=225, g=29, b=72, a=0.65),
+        blur_emu=285_750,
+        distance_emu=430_000,
+        direction_deg=135,
+    )
+    shape = ShapeNode(
+        box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
+        fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+        line=Line(color=Rgba(r=250, g=204, b=21), width_emu=19_050),
+        effects=(front, back),
+        effect_container="sibling",
+        effect_source_ref="fill",
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-effect-dag-png",
+                ext="png",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx(
+        [SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))],
+        faces=[],
+    )
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert '<a:effectDag type="sib">' in slide_xml
+    assert slide_xml.index('val="E11D48"') < slide_xml.index('val="0F172A"')
+    assert '<a:effect ref="fill"/></a:effectDag>' in slide_xml
+    assert '<mc:Choice Requires="p16"><p:sp>' in slide_xml
+    choice = slide_xml.split('<mc:Choice Requires="p16">', 1)[1].split("</mc:Choice>", 1)[0]
+    assert "<p:pic>" not in choice
+    assert "<mc:Fallback><p:pic>" in slide_xml
+
+    result = read_pptx_result(pptx)
+
+    [recovered] = result.slides[0].shapes
+    assert recovered.effects == (front, back)
+    assert recovered.effect_container == "sibling"
+    assert recovered.effect_source_ref == "fill"
+    assert recovered.line is not None
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == fallback_box
+    assert recovered.portable_fallback.picture.data == b"isolated-effect-dag-png"
+    assert result.coverage.count(Representation.HYBRID) == 1
+    assert result.coverage.count_editability(Editability.COMPONENTS) == 1
+    assert result.coverage.output_count == 2
+
+    rebuilt = build_pptx(list(result.slides), faces=[])
+    rebuilt_slide = OpcPackage.from_bytes(rebuilt).read("ppt/slides/slide1.xml")
+    assert b'<a:effect ref="fill"/></a:effectDag>' in rebuilt_slide
+    assert b'<a:effect ref="fillLine"/>' not in rebuilt_slide
+
+
 def test_portable_fallback_reports_and_retains_unsupported_choice_effects() -> None:
     shape = ShapeNode(
         box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
@@ -380,6 +445,62 @@ def _preset_shadow_source(*, with_sibling: bool = False) -> bytes:
     effect_list.remove(outer_shadow)
     parts[slide_part] = ElementTree.tostring(root)
     return write_package(parts)
+
+
+def _nested_effect_dag_source() -> bytes:
+    shape = ShapeNode(
+        box=Box(x=3_000_000, y=2_000_000, width=6_000_000, height=2_500_000),
+        fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+    )
+    package = OpcPackage.from_bytes(
+        build_pptx(
+            [SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))],
+            faces=[],
+        )
+    )
+    slide_part = "ppt/slides/slide1.xml"
+    root = ElementTree.fromstring(package.read(slide_part))
+    shape_properties = root.find(".//p:sp/p:spPr", {"p": _P})
+    assert shape_properties is not None
+    shape_properties.append(
+        ElementTree.fromstring(
+            f'<a:effectDag xmlns:a="{_A}" type="tree" name="unsupported">'
+            '<a:cont type="sib" name="nested">'
+            '<a:blur rad="95250"/><a:effect ref="fill"/>'
+            "</a:cont>"
+            "</a:effectDag>"
+        )
+    )
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    parts[slide_part] = ElementTree.tostring(root)
+    return write_package(parts)
+
+
+def test_nested_effect_dag_uses_full_slide_fallback_and_re_emits() -> None:
+    rendered = BytesIO()
+    Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")
+
+    result = read_pptx_result(
+        _nested_effect_dag_source(),
+        fallback_pngs=(rendered.getvalue(),),
+    )
+
+    [preserved] = [node for node in result.slides[0].contents if isinstance(node, PreservedNode)]
+    assert preserved.box == Box(x=0, y=0, width=12_192_000, height=6_858_000)
+    assert preserved.fallback is not None
+    assert preserved.fallback_representation == "rasterized"
+    assert "effectDag" in preserved.payload.root_xml
+    [coverage] = result.coverage.items
+    assert coverage.representation is Representation.RASTERIZED
+    assert coverage.editability is Editability.NONE
+    assert coverage.source_retention is SourceRetention.ATTACHED
+    assert coverage.raster_area_emu2 == 12_192_000 * 6_858_000
+
+    rebuilt = build_pptx(list(result.slides), faces=[])
+    rebuilt_slide = OpcPackage.from_bytes(rebuilt).read("ppt/slides/slide1.xml")
+    assert b"effectDag" in rebuilt_slide
+    assert b"AlternateContent" in rebuilt_slide
+    assert b"domoxml-raster:pptx-source-rasterized" in rebuilt_slide
 
 
 def _append_preset_shadow_sibling(pptx: bytes) -> bytes:

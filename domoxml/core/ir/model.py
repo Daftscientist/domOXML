@@ -680,8 +680,10 @@ class ShapeNode(CanvasNode):
     """One positioned element. Stacking is the order within :attr:`SlideIR.contents`.
 
     ``geom`` is a preset name; ``custom_geom`` overrides it with a free-form path when set.
-    ``effects`` is the ordered effect list (shadow/glow/blur/…); :attr:`shadow` remains as a
-    backward-compatible accessor over the first shadow in that list."""
+    ``effects`` follows CSS paint order. ``effect_container="list"`` emits the fixed DrawingML
+    effect list; ``"sibling"`` emits a flat sibling graph for repeatable effects such as multiple
+    outer shadows. ``effect_source_ref`` retains the graph's explicit source input.
+    :attr:`shadow` remains as a backward-compatible accessor over the first shadow."""
 
     model_config = _FROZEN
 
@@ -692,6 +694,8 @@ class ShapeNode(CanvasNode):
     line: Line | None = None
     side_lines: SideLines | None = None
     effects: tuple[Effect, ...] = ()
+    effect_container: Literal["list", "sibling"] = "list"
+    effect_source_ref: Literal["fill", "fillLine"] = "fill"
     portable_fallback: PortableFallback | None = None
     transform: Transform | None = None
     corner_radius_emu: int = 0

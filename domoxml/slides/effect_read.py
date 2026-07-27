@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 from xml.etree import ElementTree
 from xml.etree.ElementTree import Element
 
@@ -24,6 +25,8 @@ _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _NS = {"a": _A}
 
 type Effect = Shadow | Glow | Blur | SoftEdge | Reflection | FillOverlay
+type EffectContainerKind = Literal["list", "sibling"]
+type EffectSourceRef = Literal["fill", "fillLine"]
 type ColorParser = Callable[[Element], Rgba | None]
 
 
@@ -75,11 +78,45 @@ def _preserve(
     return (
         ConversionWarning(message=message),
         PreservedFragment(
-            part="effectLst",
+            part="effectDag" if kind == "effectDag" else "effectLst",
             kind=kind,
             xml=ElementTree.tostring(element, encoding="unicode"),
         ),
     )
+
+
+def _sibling_shadow_graph(
+    effect_dag: Element,
+) -> tuple[tuple[Element, ...], EffectSourceRef] | None:
+    children = tuple(effect_dag)
+    if effect_dag.get("type", "sib") != "sib" or len(children) < 3:
+        return None
+    source = children[-1]
+    raw_ref = source.get("ref")
+    if source.tag != f"{{{_A}}}effect" or raw_ref not in {"fill", "fillLine"}:
+        return None
+    source_ref: EffectSourceRef = "fillLine" if raw_ref == "fillLine" else "fill"
+    shadows = children[:-1]
+    if any(shadow.tag != f"{{{_A}}}outerShdw" for shadow in shadows):
+        return None
+    return shadows, source_ref
+
+
+def effect_container_kind(shape_properties: Element) -> EffectContainerKind:
+    """Return the typed effect container that can be rebuilt without source markup."""
+    effect_dag = shape_properties.find("a:effectDag", _NS)
+    return (
+        "sibling"
+        if effect_dag is not None and _sibling_shadow_graph(effect_dag) is not None
+        else "list"
+    )
+
+
+def effect_source_ref(shape_properties: Element) -> EffectSourceRef:
+    """Return the explicit source input of a supported sibling effect graph."""
+    effect_dag = shape_properties.find("a:effectDag", _NS)
+    graph = _sibling_shadow_graph(effect_dag) if effect_dag is not None else None
+    return graph[1] if graph is not None else "fill"
 
 
 def read_effects(
@@ -90,6 +127,21 @@ def read_effects(
 ) -> tuple[tuple[Effect, ...], tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
     """Parse native effects and explicitly preserve unsupported effect nodes."""
     effect_list = shape_properties.find("a:effectLst", _NS)
+    effect_dag = shape_properties.find("a:effectDag", _NS)
+    if effect_dag is not None:
+        graph = _sibling_shadow_graph(effect_dag)
+        if graph is None:
+            warning, fragment = _preserve(
+                effect_dag,
+                "effectDag",
+                "a:effectDag has no proven CSS graph mapping; preserved as one container",
+            )
+            return (), (warning,), (fragment,)
+        shadow_elements, _source_ref = graph
+        sibling_effects: tuple[Effect, ...] = tuple(
+            _shadow(child, color_for, inset=False, box=box) for child in reversed(shadow_elements)
+        )
+        return sibling_effects, (), ()
     if effect_list is None:
         return (), (), ()
     effects: list[Effect] = []

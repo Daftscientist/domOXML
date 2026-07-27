@@ -12,6 +12,8 @@ from playwright.async_api import Browser, Playwright, Route, async_playwright
 from pydantic import BaseModel, ConfigDict, Field
 
 from domoxml.core.images import crop_png
+from domoxml.core.ir.parse import parse_shadows
+from domoxml.core.units import emu_to_px
 
 # Walks the rendered DOM and, per element, captures its box, direct text, ordered inline
 # text runs, the computed styles the extractor needs, and enough structure (index/parent)
@@ -334,6 +336,33 @@ def _raster_bounds(
     right = node.x + node.width + padding
     bottom = node.y + node.height + padding
 
+    shadows = parse_shadows(node.styles.get("boxShadow"))
+    for shadow in shadows if len(shadows) > 1 else ():
+        if shadow.inset:
+            continue
+        radians = math.radians(shadow.direction_deg)
+        offset_x = emu_to_px(shadow.distance_emu) * math.cos(radians)
+        offset_y = emu_to_px(shadow.distance_emu) * math.sin(radians)
+        extent = max(
+            0.0,
+            (2 * emu_to_px(shadow.blur_emu)) + emu_to_px(shadow.spread_emu),
+        )
+        candidates = (
+            node.x + offset_x - extent,
+            node.y + offset_y - extent,
+            node.x + node.width + offset_x + extent,
+            node.y + node.height + offset_y + extent,
+        )
+        snapped = tuple(
+            float(round(value)) if abs(value - round(value)) < 0.001 else value
+            for value in candidates
+        )
+        shadow_left, shadow_top, shadow_right, shadow_bottom = snapped
+        left = min(left, shadow_left)
+        top = min(top, shadow_top)
+        right = max(right, shadow_right)
+        bottom = max(bottom, shadow_bottom)
+
     reflection = _BOX_REFLECTION_RE.match(node.styles.get("webkitBoxReflect", ""))
     reflection_blur = 0.0
     if reflection is None and node.styles.get("domoxmlReflectionDistance"):
@@ -543,9 +572,11 @@ def parse_native_transform(value: str | None) -> tuple[float, bool, bool]:
 
 def _needs_isolated_raster(node: RenderedNode) -> bool:
     styles = node.styles
+    shadows = parse_shadows(styles.get("boxShadow"))
     return (
         node.tag in {"svg", "canvas", "video", "iframe"}
         or "inset" in styles.get("boxShadow", "").lower()
+        or len(shadows) > 1
         or styles.get("clipPath", "none") not in ("none", "")
         or styles.get("mixBlendMode", "normal") not in ("normal", "")
         or styles.get("backdropFilter", "none") not in ("none", "")

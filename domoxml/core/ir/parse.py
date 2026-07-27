@@ -293,13 +293,7 @@ def _split_top_level(value: str) -> list[str]:
     return parts
 
 
-def parse_shadow(value: str | None) -> Shadow | None:
-    """Map the first layer of a CSS ``box-shadow`` to a :class:`Shadow``, or ``None`` when
-    there is no shadow. Spread radius (4th length) is stored in ``spread_emu``; it will be
-    converted to OOXML grow factors by the DrawingML writer when shape dims are known."""
-    if not value or value.strip().lower() == "none":
-        return None
-    layer = _split_top_level(value)[0]
+def _parse_shadow_layer(layer: str) -> Shadow | None:
     rgba = parse_color(layer) or Rgba(r=0, g=0, b=0, a=0.5)
     inset = "inset" in layer.lower()
     lengths = [float(m) for m in _LENGTH_RE.findall(layer)]
@@ -319,6 +313,23 @@ def parse_shadow(value: str | None) -> Shadow | None:
         inset=inset,
         spread_emu=px_to_emu(spread),
     )
+
+
+def parse_shadows(value: str | None) -> tuple[Shadow, ...]:
+    """Map every CSS ``box-shadow`` layer in paint order."""
+    if not value or value.strip().lower() == "none":
+        return ()
+    return tuple(
+        shadow
+        for layer in _split_top_level(value)
+        if (shadow := _parse_shadow_layer(layer)) is not None
+    )
+
+
+def parse_shadow(value: str | None) -> Shadow | None:
+    """Map the first CSS ``box-shadow`` layer, or ``None`` when there is no valid shadow."""
+    shadows = parse_shadows(value)
+    return shadows[0] if shadows else None
 
 
 def parse_drop_shadow_filter(value: str | None) -> Shadow | None:

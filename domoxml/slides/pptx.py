@@ -63,7 +63,9 @@ def _uses_pptx_source_fallback(node: PreservedNode, *, is_only_visual: bool) -> 
     if node.fallback_representation != "rasterized" or not is_only_visual:
         return False
     root = ElementTree.fromstring(node.payload.root_xml)
-    return any(element.tag.rsplit("}", 1)[-1] == "prstShdw" for element in root.iter())
+    return any(
+        element.tag.rsplit("}", 1)[-1] in {"prstShdw", "effectDag"} for element in root.iter()
+    )
 
 
 def _override(part: str, content_type: str) -> str:
@@ -430,8 +432,11 @@ def _slide(
                     )
                     choice_fallback = (
                         ""
-                        if node.effects
-                        and all(isinstance(effect, FillOverlay) for effect in node.effects)
+                        if node.effect_container == "sibling"
+                        or (
+                            node.effects
+                            and all(isinstance(effect, FillOverlay) for effect in node.effects)
+                        )
                         else choice_fallback_xml
                     )
                     content_parts.append(

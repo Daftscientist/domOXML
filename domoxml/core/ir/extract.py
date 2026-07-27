@@ -34,7 +34,7 @@ from domoxml.core.ir.effect_calibration import (
     CUSTOM_SHADOW_ALPHA_TO_DML,
     CUSTOM_SHADOW_BLUR_TO_DML,
 )
-from domoxml.core.ir.effect_payload import decode_effects
+from domoxml.core.ir.effect_payload import decode_effect_payload, decode_effects
 from domoxml.core.ir.geometry_payload import decode_custom_geometry
 from domoxml.core.ir.model import (
     AutoNumberBullet,
@@ -91,6 +91,7 @@ from domoxml.core.ir.parse import (
     parse_polygon,
     parse_radius_px,
     parse_shadow,
+    parse_shadows,
     parse_soft_edge_mask,
 )
 from domoxml.core.ir.pattern import match_pattern_fill
@@ -575,8 +576,10 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     reflection_value = styles.get("webkitBoxReflect", "none")
     if reflection_value not in ("none", "") and parse_box_reflection(reflection_value) is None:
         return "CSS box reflection has no native mapping"
-    shadow = parse_shadow(styles.get("boxShadow"))
-    if shadow is not None and shadow.inset:
+    shadows = parse_shadows(styles.get("boxShadow"))
+    if len(shadows) > 1 and any(shadow.inset or shadow.distance_emu == 0 for shadow in shadows):
+        return "mixed multiple box-shadow layers have no proven DrawingML effect graph"
+    if any(shadow.inset for shadow in shadows):
         return "inset box-shadow is rasterised because LibreOffice ignores a:innerShdw"
     transform_val = styles.get("transform")
     if _has_complex_transform(transform_val):
@@ -1519,8 +1522,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     "width": box.width + left_padding + right_padding,
                 }
             )
-        encoded_effects = decode_effects(node.styles.get("domoxmlEffects"))
-        shadow = parse_shadow(node.styles.get("boxShadow")) if encoded_effects is None else None
+        encoded_effect_payload = decode_effect_payload(node.styles.get("domoxmlEffects"))
+        encoded_effects = (
+            encoded_effect_payload.effects if encoded_effect_payload is not None else None
+        )
+        shadows = parse_shadows(node.styles.get("boxShadow")) if encoded_effects is None else ()
         blur = parse_blur_filter(node.styles.get("filter")) if encoded_effects is None else None
         soft_edge = (
             parse_soft_edge_mask(
@@ -1564,8 +1570,22 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 + ((soft_edge,) if soft_edge is not None else ())
                 + ((reflection,) if reflection is not None else ())
                 + ((fill_overlay[1],) if fill_overlay is not None else ())
-                + ((_shadow_to_effect(shadow, box, warnings),) if shadow is not None else ())
+                + tuple(_shadow_to_effect(shadow, box, warnings) for shadow in shadows)
             )
+        )
+        effect_container = (
+            encoded_effect_payload.container
+            if encoded_effect_payload is not None
+            else "sibling"
+            if len(shadows) > 1
+            else "list"
+        )
+        effect_source_ref = (
+            encoded_effect_payload.source_ref
+            if encoded_effect_payload is not None
+            else "fillLine"
+            if line is not None
+            else "fill"
         )
         portable_fallback: PortableFallback | None = None
         portable_effects = tuple(
@@ -1575,7 +1595,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             or (isinstance(effect, SoftEdge) and effect.radius_emu > 0)
             or (isinstance(effect, FillOverlay) and effect.fill.color.a > 0.0)
         )
-        if portable_effects:
+        if portable_effects or effect_container == "sibling":
             fallback_shape = _raster_shape(node, rendered)
             if fallback_shape is not None and isinstance(fallback_shape.fill, PictureFill):
                 only_blur = len(effects) == 1 and isinstance(effects[0], Blur)
@@ -1595,7 +1615,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 warnings.append(
                     ConversionWarning(
                         message=(
-                            (
+                            "multiple CSS shadows emitted as editable native a:effectDag "
+                            "with an isolated renderer fallback"
+                            if effect_container == "sibling"
+                            else (
                                 "CSS blur emitted as editable native a:blur with an isolated "
                                 "renderer fallback"
                             )
@@ -1618,6 +1641,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     fill=fill,
                     line=line,
                     effects=effects,
+                    effect_container=effect_container,
+                    effect_source_ref=effect_source_ref,
                     portable_fallback=portable_fallback,
                     corner_radius_emu=corner,
                     opacity=_opacity(node.styles),

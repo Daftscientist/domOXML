@@ -160,7 +160,9 @@ rendering is incompatible, selects one isolated paint-bound picture instead. PPT
 only this proven flat graph shape.
 Arbitrary or nested effect graphs remain one attached source payload and, when an authoritative
 slide render is supplied, receive the existing source-owned renderer fallback rather than losing
-visible paint.
+visible paint. The reverse-first named tree-graph capability pins the exact container hierarchy,
+source reference, full-slide ownership, package validity, PowerPoint-native output, LibreOffice
+fallback output, and convergence across two normalized HTML cycles.
 Single-path SVG custom geometry admits one CSS `drop-shadow()` as a native path-aware outer shadow
 or glow. Shared renderer-calibrated radius/alpha factors are inverted by normalized HTML, which
 paints the effect with CSS `drop-shadow()` while retaining the exact typed effect payload. DrawingML

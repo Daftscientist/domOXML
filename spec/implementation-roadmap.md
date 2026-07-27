@@ -7,12 +7,12 @@ new unsupported visual states.
 
 ## Current Baseline
 
-Snapshot audited on **2026-07-24** against the repository, executable manifests, and tests:
+Snapshot audited on **2026-07-27** against the repository, executable manifests, and tests:
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 776 tests are collected.
-- 26 atomic PPTX capability fixtures exist; 22 are bidirectional and four are reverse-first
+- 781 tests are collected.
+- 27 atomic PPTX capability fixtures exist; 23 are bidirectional and four are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, and rasterized preset
   shadow node/slide fallbacks.
 - 9 authored HTML fidelity cases exist.
@@ -40,7 +40,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 26 atomic fixtures and 7 real decks pin
+  retention, output-count, and raster-area records. All 27 atomic fixtures and 7 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -250,7 +250,7 @@ silently lowering the expected score.
    corpus.
 8. [ ] Expand effects beyond the bidirectional offset-shadow/inset-layer/glow baseline using
    PowerPoint/Graph-calibrated evidence for blur, soft edge, reflection, preset shadow, fill overlay,
-   compound ordering, and effect-bearing custom geometry. CSS blur and the conservative
+   compound lists/order, and effect-bearing custom geometry. CSS blur and the conservative
    `below <px> linear-gradient(...)` reflection subset, strict two-axis intersecting soft-edge
    mask, and solid multiply/screen/darken/lighten fill overlays now have bidirectional atomic
    fixtures. PowerPoint retains native `a:blur`, `a:reflection`, or `a:softEdge` beneath an
@@ -289,8 +289,11 @@ silently lowering the expected score.
    outer shadows, and normalized effect payloads. Reflection directions other than `below`, non-pixel
    gaps, typed/editable preset-shadow semantics, multiple preset shadows, unknown compound siblings,
    smaller preset-shadow isolation, gradient/other fill-overlay families, `over` calibration,
-   compound ordering, custom-geometry blur/reflection/soft-edge/fill-overlay families, and
-   multi-function SVG filter ordering remain open.
+   `CT_EffectList` now serializes its supported unique effects in schema order rather than IR tuple
+   order; an authored blur-plus-outer-shadow fixture pins the native list, isolated portable layer,
+   exact maximum XPath counts, focused omission floors, and two-cycle convergence. Arbitrary or
+   duplicate effects requiring `effectDag`, custom-geometry blur/reflection/soft-edge/fill-overlay
+   families, and multi-function SVG filter ordering remain open.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,

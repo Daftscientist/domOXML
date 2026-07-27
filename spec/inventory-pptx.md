@@ -9,7 +9,7 @@ evidence covers both conversion directions and the round-trip path.
 
 ## Current PresentationML Capability Matrix
 
-Audited on **2026-07-24**.
+Audited on **2026-07-27**.
 
 | Capability | HTML/CSS -> PPTX | PPTX -> HTML/CSS | Evidence | Main remaining work |
 |---|---|---|---|---|
@@ -48,6 +48,7 @@ Audited on **2026-07-24**.
 | `blur-effect` | both | native PowerPoint blur plus isolated LibreOffice fallback, exact effect payload, transform/text stacking, and convergence |
 | `bullets-spacing` | both | shared list/paragraph behavior |
 | `chart-preservation` | reverse | owned chart graph, ambient theme, identity, renderer-backed HTML element layer, and exact PPTX re-emission |
+| `compound-effect-list` | both | CSS blur plus offset shadow serialize in schema order, retain one isolated portable layer, enforce focused omission floors, and converge after two cycles |
 | `custom-path` | both | native custom geometry and connector structure survive normalized HTML and PPTX re-emission |
 | `custom-path-effects` | both | single-path SVG offset shadow and glow lower to native effects, paint path-aware normalized HTML, reject omission by visual floors, and converge after two cycles |
 | `effects` | both | native outer shadow/glow plus portable inset layer; broader effect-list family remains |

@@ -53,11 +53,18 @@ class CapabilityDirection(StrEnum):
 class XmlExpectation(BaseModel):
     """An XPath assertion against one OOXML package part."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     part: str
     xpath: str
     min_count: int = Field(default=1, ge=0)
+    max_count: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _count_bounds_are_coherent(self) -> XmlExpectation:
+        if self.max_count is not None and self.min_count > self.max_count:
+            raise ValueError("minimum XML count cannot exceed its maximum")
+        return self
 
 
 def _empty_representation_counts() -> dict[Representation, int]:
@@ -139,6 +146,7 @@ class CapabilityRoundtripExpected(CapabilityCoverageBounds):
     slide_indices: tuple[int, ...] = ()
     min_convergence_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     min_convergence_regional_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_convergence_focused_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     min_convergence_structural_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
@@ -146,6 +154,7 @@ class CapabilityRoundtripExpected(CapabilityCoverageBounds):
         convergence_thresholds = (
             self.min_convergence_similarity,
             self.min_convergence_regional_similarity,
+            self.min_convergence_focused_similarity,
             self.min_convergence_structural_similarity,
         )
         if any(threshold is not None for threshold in convergence_thresholds) and self.cycles < 2:
@@ -164,9 +173,11 @@ class CapabilityVisual(BaseModel):
 
     source_to_pptx_min_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     source_to_pptx_min_regional_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+    source_to_pptx_min_focused_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     source_to_pptx_min_structural_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     pptx_to_html_min_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     pptx_to_html_min_regional_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+    pptx_to_html_min_focused_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     pptx_to_html_min_structural_similarity: float | None = Field(default=None, ge=0.0, le=1.0)
     pptx_to_html_slide_indices: tuple[int, ...] = ()
 
@@ -221,6 +232,7 @@ class CapabilityFixture(BaseModel):
             for threshold in (
                 self.visual.pptx_to_html_min_similarity,
                 self.visual.pptx_to_html_min_regional_similarity,
+                self.visual.pptx_to_html_min_focused_similarity,
                 self.visual.pptx_to_html_min_structural_similarity,
             )
         )
@@ -343,6 +355,11 @@ def _validate_xml(fixture: CapabilityFixture, pptx: bytes | None) -> list[str]:
                 errors.append(
                     f"{expected.part}: xpath {expected.xpath!r} count {count} "
                     f"< expected {expected.min_count}"
+                )
+            if expected.max_count is not None and count > expected.max_count:
+                errors.append(
+                    f"{expected.part}: xpath {expected.xpath!r} count {count} "
+                    f"> expected {expected.max_count}"
                 )
     return errors
 

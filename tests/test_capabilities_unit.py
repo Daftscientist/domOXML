@@ -12,6 +12,7 @@ from domoxml.core.capabilities import (
     CapabilityExpected,
     CapabilityFixture,
     CapabilityRoundtripExpected,
+    XmlExpectation,
     load_capabilities,
     validate_capability,
     validate_reverse_capability,
@@ -51,6 +52,22 @@ def test_convergence_thresholds_require_multiple_roundtrip_cycles() -> None:
         CapabilityRoundtripExpected(min_convergence_similarity=0.99)
 
     assert CapabilityRoundtripExpected(cycles=1).cycles == 1
+
+
+def test_xml_expectation_rejects_inverted_count_bounds() -> None:
+    with pytest.raises(ValidationError, match="minimum XML count cannot exceed its maximum"):
+        XmlExpectation(part="ppt/slides/slide1.xml", xpath=".//p:sp", min_count=2, max_count=1)
+
+
+def test_xml_expectation_rejects_unknown_gate_fields() -> None:
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        XmlExpectation.model_validate(
+            {
+                "part": "ppt/slides/slide1.xml",
+                "xpath": ".//p:sp",
+                "minimum_count": 1,
+            }
+        )
 
 
 def test_loads_seed_capability_fixture() -> None:
@@ -197,6 +214,44 @@ def test_validates_native_coverage_and_ooxml_xpath() -> None:
         "native count 1 < expected minimum 3",
     )
     assert validate_roundtrip_capability(fixture, below_source_minimum) == ()
+
+
+def test_ooxml_xpath_maximum_is_enforced() -> None:
+    fixture = CapabilityFixture(
+        id="xml-maximum",
+        direction=CapabilityDirection.FORWARD,
+        html="<p>x</p>",
+        expected=CapabilityExpected(
+            xml=(
+                XmlExpectation(
+                    part="ppt/slides/slide1.xml",
+                    xpath=".//p:sp",
+                    min_count=0,
+                    max_count=0,
+                ),
+            )
+        ),
+    )
+    pptx = build_pptx(
+        [
+            SlideIR(
+                width=12_192_000,
+                height=6_858_000,
+                shapes=(ShapeNode(box=Box(x=0, y=0, width=1_000, height=1_000)),),
+            )
+        ],
+        faces=[],
+    )
+    result = RenderResult(
+        pptx=pptx,
+        pngs=(),
+        html=None,
+        coverage=CoverageReport(items=()),
+        warnings=(),
+    )
+
+    [error] = validate_capability(fixture, result)
+    assert "count 1 > expected 0" in error
 
 
 def test_roundtrip_validation_still_enforces_loss_ceiling() -> None:

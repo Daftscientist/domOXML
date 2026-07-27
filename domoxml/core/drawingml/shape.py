@@ -18,6 +18,7 @@ from domoxml.core.ir.model import (
     ColorTransform,
     CubicTo,
     CustomGeometry,
+    Effect,
     Fill,
     Glow,
     GradientFill,
@@ -313,8 +314,11 @@ def _effects_xml(node: ShapeNode) -> str:
     """Emit ``<a:effectLst>`` for all effects on the node, or an empty string."""
     if not node.effects:
         return ""
+    positions = tuple(_effect_list_position(effect) for effect in node.effects)
+    if len(set(positions)) != len(positions):
+        raise ValueError("duplicate effect-list children require an effectDag representation")
     parts: list[str] = []
-    for effect in node.effects:
+    for effect in sorted(node.effects, key=_effect_list_position):
         if isinstance(effect, Shadow):
             if effect.inset:
                 parts.append(_inner_shadow_xml(effect))
@@ -343,6 +347,19 @@ def _effects_xml(node: ShapeNode) -> str:
     if not parts:
         return ""
     return f"<a:effectLst>{''.join(parts)}</a:effectLst>"
+
+
+def _effect_list_position(effect: Effect) -> int:
+    """Return the fixed ``CT_EffectList`` child position from ECMA-376."""
+    if isinstance(effect, Shadow):
+        return 3 if effect.inset else 4
+    return {
+        "blur": 0,
+        "fillOverlay": 1,
+        "glow": 2,
+        "reflection": 6,
+        "softEdge": 7,
+    }[effect.kind]
 
 
 def _custgeom_xml(cg: CustomGeometry) -> str:

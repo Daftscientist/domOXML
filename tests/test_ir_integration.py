@@ -16,6 +16,7 @@ from domoxml.core.ir.model import (
     PreservedNode,
     Reflection,
     Rgba,
+    Shadow,
     ShapeNode,
     SlideIR,
     SoftEdge,
@@ -443,6 +444,55 @@ async def test_browser_capture_retains_serialized_svg_picture_bytes() -> None:
     assert isinstance(recovered.fill, PictureFill)
     assert recovered.fill.svg_data == svg
     assert [item.representation for item in result.coverage] == [Representation.NATIVE]
+
+
+async def test_svg_drop_shadow_becomes_native_custom_geometry_effect() -> None:
+    html = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"
+         style="position:absolute;left:100px;top:80px;width:200px;height:100px">
+      <path d="M 10 50 C 10 10 190 10 190 50 C 190 90 10 90 10 50 Z"
+            fill="#4472c4"
+            style="filter:drop-shadow(rgba(0,0,0,0.4) 6px 8px 12px)"/>
+    </svg>
+    """
+
+    result = await _render_and_extract_result(html)
+
+    [shape] = [candidate for candidate in result.slide.shapes if candidate.custom_geom is not None]
+    assert shape.custom_geom is not None
+    [effect] = shape.effects
+    assert isinstance(effect, Shadow)
+    assert (effect.color.r, effect.color.g, effect.color.b) == (0, 0, 0)
+    assert abs(effect.color.a - 0.3) < 1e-9
+    assert effect.distance_emu == px_to_emu(10)
+    assert effect.blur_emu == px_to_emu(12)
+    assert any(item.representation is Representation.NATIVE for item in result.coverage)
+
+
+async def test_unsupported_svg_filter_uses_visible_element_layer() -> None:
+    html = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"
+         style="position:absolute;left:100px;top:80px;width:200px;height:100px">
+      <path d="M 10 50 C 10 10 190 10 190 50 C 190 90 10 90 10 50 Z"
+            fill="#4472c4" style="filter:brightness(0.8)"/>
+    </svg>
+    """
+
+    result = await _render_and_extract_result(html)
+
+    [shape] = [
+        candidate
+        for candidate in result.slide.shapes
+        if isinstance(candidate.fill, PictureFill) and candidate.custom_geom is None
+    ]
+    assert shape.custom_geom is None
+    [coverage] = [
+        item for item in result.coverage if item.representation is Representation.ELEMENT_LAYER
+    ]
+    assert coverage.representation is Representation.ELEMENT_LAYER
+    assert coverage.editability is Editability.LAYERS
+    assert coverage.output_count == 1
+    assert result.warnings and "filter" in result.warnings[0].message
 
 
 async def test_extracts_nested_inline_text_as_ordered_editable_runs() -> None:

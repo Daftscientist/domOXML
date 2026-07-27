@@ -151,6 +151,13 @@ the shape paint box, expanded to its axis-aligned painted bounds after rotation.
 rectangles use the same two-axis mask, while normalized ellipses
 use a boundary-following closest-side radial mask. Nondefault authored mask geometry does not enter
 this hybrid path and remains visible through the general element-layer fallback.
+Single-path SVG custom geometry admits one CSS `drop-shadow()` as a native path-aware outer shadow
+or glow. Shared renderer-calibrated radius/alpha factors are inverted by normalized HTML, which
+paints the effect with CSS `drop-shadow()` while retaining the exact typed effect payload. DrawingML
+guide formulas are evaluated into canonical coordinates at ingest, including formula-backed
+elliptical arcs. Normalized HTML carries the exact typed custom geometry beside the visible SVG
+path, so arc paths do not depend on the authored-SVG parser during repeated cycles. Unsupported SVG
+filter chains take a visible element-layer fallback instead of silently losing paint.
 DrawingML's `over` fill-overlay mode is not treated as CSS `normal`: direct Graph inspection proves
 that mapping false. An isolated square-cornered opaque rectangle can use a geometry-masked owned
 crop; the exact source shape and isolated fallback then travel together through
@@ -206,7 +213,8 @@ Normalized HTML is deterministic browser-renderable output. Narrow `data-domoxml
 allowed where CSS cannot carry editability, source grouping, or an Office semantic. The visible
 document must remain useful without proprietary metadata, while metadata-aware re-ingestion should
 recover the richer IR. Metadata currently retains source provenance; versioned typed payloads retain
-attached preservation graphs, effects, text-body semantics, and exact table geometry. Typed
+attached preservation graphs, effects, custom geometry, text-body semantics, and exact table
+geometry. Typed
 connector JSON retains the canonical route beside renderer-facing HTML; current PPTX ingestion
 derives that route and its endpoints from the connector transform box, so coverage reports the
 result as approximated with source detail lost. Geometry emitted to Chromium is
@@ -237,6 +245,11 @@ Capability and real-deck runners assert the same gate independently so validatio
 silently by a future output path. This is a deterministic structural contract, not a claim of full
 ECMA-376 XSD validation; Strict packages, AlternateContent, extension schemas, and tolerated
 producer deviations remain corpus and schema work.
+
+Derived real-deck fixtures must bind their local artifact digest to a committed upstream
+verification receipt containing the exact source URL, revision, and digest. Real-deck manifests can
+also require exact token counts in normalized HTML and rebuilt OOXML; generic presence checks are
+insufficient when a regression case claims multiple independently editable visuals or payloads.
 
 DOCX will add flow-specific sections, styles, headers/footers, fields, pagination, footnotes, and
 WordprocessingML bindings. XLSX will add workbooks, sheets, cells, formulas, conditional formats,

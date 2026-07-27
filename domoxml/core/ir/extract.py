@@ -28,7 +28,14 @@ from domoxml.core.images import (
     normalise_image,
 )
 from domoxml.core.ir.connector_extract import extract_connector
+from domoxml.core.ir.effect_calibration import (
+    CUSTOM_GLOW_ALPHA_TO_DML,
+    CUSTOM_GLOW_RADIUS_TO_DML,
+    CUSTOM_SHADOW_ALPHA_TO_DML,
+    CUSTOM_SHADOW_BLUR_TO_DML,
+)
 from domoxml.core.ir.effect_payload import decode_effects
+from domoxml.core.ir.geometry_payload import decode_custom_geometry
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Blur,
@@ -74,6 +81,7 @@ from domoxml.core.ir.parse import (
     parse_caps,
     parse_color,
     parse_decoration,
+    parse_drop_shadow_filter,
     parse_fill_overlay,
     parse_gradient,
     parse_length_px,
@@ -969,6 +977,23 @@ def _shadow_to_effect(shadow: Shadow, box: Box, warnings: list[ConversionWarning
     return shadow
 
 
+def _custom_drop_shadow_to_effect(shadow: Shadow) -> Shadow | Glow:
+    """Calibrate one path-aware CSS drop shadow for PowerPoint and LibreOffice."""
+    if shadow.distance_emu == 0:
+        return Glow(
+            color=shadow.color.model_copy(update={"a": shadow.color.a * CUSTOM_GLOW_ALPHA_TO_DML}),
+            radius_emu=round(shadow.blur_emu * CUSTOM_GLOW_RADIUS_TO_DML),
+        )
+    return shadow.model_copy(
+        update={
+            "blur_emu": round(shadow.blur_emu * CUSTOM_SHADOW_BLUR_TO_DML),
+            "color": shadow.color.model_copy(
+                update={"a": shadow.color.a * CUSTOM_SHADOW_ALPHA_TO_DML}
+            ),
+        }
+    )
+
+
 def _geometry(box: Box, corner_emu: int) -> Literal["rect", "roundRect", "ellipse"]:
     if corner_emu <= 0:
         return "rect"
@@ -1250,14 +1275,43 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 consumed |= _subtree(node.index, children)
                 coverage.append(_native_coverage(_label(node)))
                 continue
-            svg = extract_custom_geometry(node, rendered.nodes, children)
+            svg = extract_custom_geometry(
+                node,
+                rendered.nodes,
+                children,
+                encoded_geometry=decode_custom_geometry(node.styles.get("domoxmlCustomGeometry")),
+            )
             if svg.warning is not None:
                 warnings.append(svg.warning)
             if svg.geometry is not None:
                 fill_node = svg.style_node
                 fill, fill_reason = _resolve_fill(fill_node, rendered)
                 line, line_reason = _resolve_svg_line(fill_node.styles)
-                paint_reason = fill_reason or line_reason
+                box = _box(node)
+                encoded_effects = decode_effects(node.styles.get("domoxmlEffects"))
+                filter_value = node.styles.get("filter", "none")
+                if filter_value in ("none", ""):
+                    filter_value = fill_node.styles.get("filter", "none")
+                drop_shadow = (
+                    parse_drop_shadow_filter(filter_value) if encoded_effects is None else None
+                )
+                effect_reason: str | None = None
+                if (
+                    encoded_effects is None
+                    and filter_value not in ("none", "")
+                    and drop_shadow is None
+                ):
+                    effect_reason = "SVG CSS filter has no native custom-geometry mapping"
+                effects = (
+                    encoded_effects
+                    if encoded_effects is not None
+                    else (
+                        (_custom_drop_shadow_to_effect(drop_shadow),)
+                        if drop_shadow is not None
+                        else ()
+                    )
+                )
+                paint_reason = fill_reason or line_reason or effect_reason
                 if paint_reason is not None:
                     label = _label(node)
                     shape = _raster_shape(node, rendered)
@@ -1281,7 +1335,6 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         )
                     continue
                 # Build the ShapeNode with custom_geom
-                box = _box(node)
                 contents.append(
                     identities.apply(
                         ShapeNode(
@@ -1289,7 +1342,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             custom_geom=svg.geometry,
                             fill=fill,
                             line=line,
-                            effects=decode_effects(node.styles.get("domoxmlEffects")) or (),
+                            effects=effects,
                         ),
                         node,
                     )

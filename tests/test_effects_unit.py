@@ -53,6 +53,7 @@ from domoxml.core.ir.parse import (
     fill_overlay_base_styles,
     parse_blur_filter,
     parse_box_reflection,
+    parse_drop_shadow_filter,
     parse_fill_overlay,
     parse_shadow,
     parse_soft_edge_mask,
@@ -306,6 +307,18 @@ def test_parse_shadow_inset_flag() -> None:
     assert shadow is not None
     assert shadow.inset is True
     assert shadow.spread_emu == px_to_emu(1)
+
+
+def test_parse_single_drop_shadow_filter() -> None:
+    shadow = parse_drop_shadow_filter("drop-shadow(rgba(10, 20, 30, 0.4) 6px 8px 12px)")
+
+    assert shadow is not None
+    assert shadow.color == Rgba(r=10, g=20, b=30, a=0.4)
+    assert shadow.distance_emu == px_to_emu(10)
+    assert shadow.direction_deg == pytest.approx(53.130102)
+    assert shadow.blur_emu == px_to_emu(12)
+    assert parse_drop_shadow_filter("drop-shadow(1px 2px 3px) blur(2px)") is None
+    assert parse_drop_shadow_filter("brightness(0.8)") is None
 
 
 # -----------------------------------------------------------------------

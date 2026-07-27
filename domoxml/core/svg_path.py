@@ -21,10 +21,12 @@ cursor; implicit command repetition is handled per the SVG spec.
 
 from __future__ import annotations
 
+import math
 import re
 from typing import NamedTuple
 
 from domoxml.core.ir.model import (
+    ArcTo,
     ClosePath,
     CubicTo,
     LineTo,
@@ -317,6 +319,15 @@ def scale_path_to_emu(
             result.append(CubicTo(c1=_pt(cmd.c1), c2=_pt(cmd.c2), to=_pt(cmd.to)))
         elif isinstance(cmd, QuadTo):
             result.append(QuadTo(c1=_pt(cmd.c1), to=_pt(cmd.to)))
+        elif isinstance(cmd, ArcTo):
+            result.append(
+                ArcTo(
+                    width_radius=round(cmd.width_radius * sx),
+                    height_radius=round(cmd.height_radius * sy),
+                    start_angle=cmd.start_angle,
+                    sweep_angle=cmd.sweep_angle,
+                )
+            )
         else:
             result.append(cmd)  # ClosePath
     return result
@@ -330,15 +341,44 @@ def scale_path_to_emu(
 def commands_to_svg_d(commands: tuple[PathCommand, ...]) -> str:
     """Serialize IR path commands back to an SVG ``d`` attribute string."""
     parts: list[str] = []
+    current_x = 0.0
+    current_y = 0.0
+    subpath_x = 0.0
+    subpath_y = 0.0
     for cmd in commands:
         if isinstance(cmd, MoveTo):
             parts.append(f"M {cmd.to.x} {cmd.to.y}")
+            current_x, current_y = cmd.to.x, cmd.to.y
+            subpath_x, subpath_y = current_x, current_y
         elif isinstance(cmd, LineTo):
             parts.append(f"L {cmd.to.x} {cmd.to.y}")
+            current_x, current_y = cmd.to.x, cmd.to.y
         elif isinstance(cmd, CubicTo):
             parts.append(f"C {cmd.c1.x} {cmd.c1.y} {cmd.c2.x} {cmd.c2.y} {cmd.to.x} {cmd.to.y}")
+            current_x, current_y = cmd.to.x, cmd.to.y
         elif isinstance(cmd, QuadTo):
             parts.append(f"Q {cmd.c1.x} {cmd.c1.y} {cmd.to.x} {cmd.to.y}")
+            current_x, current_y = cmd.to.x, cmd.to.y
+        elif isinstance(cmd, ArcTo):
+            start = math.radians(cmd.start_angle / 60_000)
+            center_x = current_x - cmd.width_radius * math.cos(start)
+            center_y = current_y - cmd.height_radius * math.sin(start)
+            sweep = int(cmd.sweep_angle >= 0)
+            remaining = cmd.sweep_angle
+            angle = cmd.start_angle
+            while remaining:
+                segment = max(-10_800_000, min(10_800_000, remaining))
+                angle += segment
+                end = math.radians(angle / 60_000)
+                current_x = center_x + cmd.width_radius * math.cos(end)
+                current_y = center_y + cmd.height_radius * math.sin(end)
+                parts.append(
+                    "A "
+                    f"{cmd.width_radius} {cmd.height_radius} 0 0 {sweep} "
+                    f"{round(current_x)} {round(current_y)}"
+                )
+                remaining -= segment
         else:
             parts.append("Z")
+            current_x, current_y = subpath_x, subpath_y
     return " ".join(parts)

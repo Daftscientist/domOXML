@@ -38,6 +38,7 @@ def test_repository_real_decks_have_valid_pins_and_relationships() -> None:
 
     assert {case.id for case in cases} == {
         "external-chart-preservation",
+        "external-custom-path-effects",
         "external-embedded-font",
         "external-fill-overlay",
         "external-image-crop",
@@ -54,6 +55,22 @@ def test_repository_real_decks_have_valid_pins_and_relationships() -> None:
         assert case.reverse.max_output_count is not None
         assert case.reverse.min_raster_area_emu2 is not None
         assert case.reverse.max_raster_area_emu2 is not None
+
+
+def test_repository_derived_real_decks_have_verified_source_digests() -> None:
+    derived = [
+        case
+        for case in load_real_decks(Path("real-decks/pptx"))
+        if case.provenance.derivation is not None
+    ]
+
+    assert derived
+    for case in derived:
+        verification = case.provenance.source_verification
+        assert verification is not None
+        assert verification.source_url == case.provenance.source_url
+        assert verification.source_revision == case.provenance.source_revision
+        assert verification.sha256 == case.provenance.source_sha256
 
 
 def test_repository_real_decks_match_reverse_contracts() -> None:
@@ -122,6 +139,50 @@ def test_real_deck_roundtrip_rejects_dropped_slides() -> None:
     errors = validate_real_deck_roundtrip(expected_two_slides, case.pptx)
 
     assert "roundtrip slide count 1 != expected 2" in errors
+
+
+def test_real_deck_count_contracts_reject_missing_reverse_and_roundtrip_content() -> None:
+    case = load_real_decks(Path("real-decks/pptx"))[0]
+    html = Presentation.from_pptx(case.pptx)
+    reverse = case.reverse.model_copy(
+        update={
+            "html_count": {"token-that-is-not-present": 1},
+            "roundtrip_xml_count": {"token-that-is-not-present": 1},
+        }
+    )
+    counted = case.model_copy(update={"reverse": reverse})
+
+    assert (
+        "reverse HTML count for 'token-that-is-not-present' is 0 != expected 1"
+        in validate_real_deck(counted, html)
+    )
+    assert (
+        "roundtrip XML count for 'token-that-is-not-present' is 0 != expected 1"
+        in validate_real_deck_roundtrip(counted, case.pptx)
+    )
+
+
+def test_derived_real_deck_rejects_unchecked_or_mismatched_source_digest() -> None:
+    case = next(
+        case
+        for case in load_real_decks(Path("real-decks/pptx"))
+        if case.provenance.derivation is not None
+    )
+    raw = case.model_dump()
+    raw["pptx"] = case.pptx
+    raw["provenance"]["source_verification"] = None
+
+    with pytest.raises(ValidationError, match="source digest is unchecked"):
+        RealDeckCase.model_validate(raw)
+
+    raw["provenance"]["source_verification"] = {
+        "method": "sha256",
+        "source_url": case.provenance.source_url,
+        "source_revision": case.provenance.source_revision,
+        "sha256": "0" * 64,
+    }
+    with pytest.raises(ValidationError, match="source verification does not match provenance"):
+        RealDeckCase.model_validate(raw)
 
 
 def test_real_deck_validators_return_invalid_zip_diagnostics() -> None:

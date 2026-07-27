@@ -6,7 +6,9 @@ from __future__ import annotations
 from xml.etree import ElementTree as ET
 
 from domoxml.core.ir.model import (
+    ArcTo,
     Arrowhead,
+    Box,
     ClosePath,
     Connector,
     CubicTo,
@@ -23,6 +25,8 @@ from domoxml.core.ir.model import (
 )
 from domoxml.core.render.browser import RenderedNode
 from domoxml.core.svg_path import commands_to_svg_d, parse_svg_path, scale_path_to_emu
+from domoxml.slides.geometry_guides import evaluate_guides
+from domoxml.slides.read import _custGeom
 
 # ---------------------------------------------------------------------------
 # Group 1 - SVG d-parser
@@ -368,6 +372,81 @@ def test_commands_to_svg_d_cubicto() -> None:
 def test_commands_to_svg_d_quadto() -> None:
     d = commands_to_svg_d((QuadTo(c1=Point(x=50, y=100), to=Point(x=100, y=0)),))
     assert d == "Q 50 100 100 0"
+
+
+def test_commands_to_svg_d_drawingml_arc() -> None:
+    commands = (
+        MoveTo(to=Point(x=100, y=0)),
+        ArcTo(
+            width_radius=100,
+            height_radius=50,
+            start_angle=0,
+            sweep_angle=5_400_000,
+        ),
+    )
+
+    assert commands_to_svg_d(commands) == "M 100 0 A 100 50 0 0 1 0 50"
+
+
+def test_commands_to_svg_d_splits_full_drawingml_arc() -> None:
+    commands = (
+        MoveTo(to=Point(x=100, y=0)),
+        ArcTo(
+            width_radius=100,
+            height_radius=50,
+            start_angle=0,
+            sweep_angle=21_600_000,
+        ),
+    )
+
+    assert commands_to_svg_d(commands) == ("M 100 0 A 100 50 0 0 1 -100 0 A 100 50 0 0 1 100 0")
+
+
+def test_drawingml_guides_resolve_shape_variables_and_operations() -> None:
+    guides = evaluate_guides(
+        (
+            ("zero", "val 0"),
+            ("halfWidth", "val wd2"),
+            ("offset", "+- halfWidth 25 zero"),
+            ("scaled", "*/ offset 2 5"),
+            ("quarterTurnCos", "cos 100 cd4"),
+        ),
+        width=1_000,
+        height=400,
+    )
+
+    assert guides["halfWidth"] == 500
+    assert guides["scaled"] == 210
+    assert round(guides["quarterTurnCos"]) == 0
+
+
+def test_reverse_custom_geometry_resolves_guides_and_arc() -> None:
+    element = ET.fromstring(
+        f"""<a:custGeom xmlns:a="{_A_NS}">
+          <a:avLst/>
+          <a:gdLst>
+            <a:gd name="left" fmla="val 0"/>
+            <a:gd name="radius" fmla="val 100"/>
+            <a:gd name="quarter" fmla="val cd4"/>
+          </a:gdLst>
+          <a:pathLst>
+            <a:path>
+              <a:moveTo><a:pt x="radius" y="left"/></a:moveTo>
+              <a:arcTo wR="radius" hR="radius" stAng="left" swAng="quarter"/>
+            </a:path>
+          </a:pathLst>
+        </a:custGeom>"""
+    )
+
+    geometry = _custGeom(element, Box(x=0, y=0, width=500, height=300))
+
+    assert geometry is not None
+    assert geometry.width_emu == 500
+    assert geometry.height_emu == 300
+    assert geometry.path == (
+        MoveTo(to=Point(x=100, y=0)),
+        ArcTo(width_radius=100, height_radius=100, start_angle=0, sweep_angle=5_400_000),
+    )
 
 
 def test_round_trip_parse_emit_parse() -> None:

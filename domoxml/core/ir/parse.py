@@ -46,6 +46,11 @@ _SOFT_EDGE_FAR_INNER_END_RE = re.compile(
 )
 _SOFT_EDGE_ZERO_END_RE = re.compile(r"(?:0(?:\.0+)?(?:px|%))\s*$", re.IGNORECASE)
 _SOFT_EDGE_FULL_END_RE = re.compile(r"100(?:\.0+)?%\s*$", re.IGNORECASE)
+_SVG_FLOOD_COLOR_RE = re.compile(
+    r"rgb\(\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*\)",
+    re.IGNORECASE,
+)
+_SVG_OPACITY_RE = re.compile(r"(?:0(?:\.\d+)?|1(?:\.0+)?|\.\d+)")
 _FILL_OVERLAY_BLEND: dict[str, FillOverlayBlend] = {
     "multiply": "mult",
     "screen": "screen",
@@ -591,6 +596,67 @@ def parse_svg_soft_edge_filter(value: str | None) -> SoftEdge | None:
         return None
     sigma = float(deviation)
     return SoftEdge(radius_emu=px_to_emu(2 * sigma)) if sigma > 0 and math.isfinite(sigma) else None
+
+
+def parse_svg_fill_overlay_filter(value: str | None) -> FillOverlay | None:
+    """Map one strict clipped sRGB SVG flood blend to DrawingML fill overlay."""
+    if not value:
+        return None
+    try:
+        root = ElementTree.fromstring(value)
+    except (ElementTree.ParseError, DefusedXmlException):
+        return None
+
+    def local_name(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1].lower()
+
+    children = list(root)
+    if (
+        local_name(root.tag) != "filter"
+        or len(children) != 3
+        or set(root.attrib) != {"id", "x", "y", "width", "height", "color-interpolation-filters"}
+        or not root.get("id")
+        or root.get("x") != "0"
+        or root.get("y") != "0"
+        or root.get("width") != "100%"
+        or root.get("height") != "100%"
+        or root.get("color-interpolation-filters") != "sRGB"
+    ):
+        return None
+    flood, clip, blend = children
+    if (
+        local_name(flood.tag) != "feflood"
+        or set(flood.attrib) != {"flood-color", "flood-opacity", "result"}
+        or flood.get("result") != "overlay"
+        or local_name(clip.tag) != "fecomposite"
+        or set(clip.attrib) != {"in", "in2", "operator", "result"}
+        or clip.get("in") != "overlay"
+        or clip.get("in2") != "SourceAlpha"
+        or clip.get("operator") != "in"
+        or clip.get("result") != "overlayClip"
+        or local_name(blend.tag) != "feblend"
+        or set(blend.attrib) != {"in", "in2", "mode"}
+        or blend.get("in") != "SourceGraphic"
+        or blend.get("in2") != "overlayClip"
+    ):
+        return None
+    color_match = _SVG_FLOOD_COLOR_RE.fullmatch(flood.get("flood-color", "").strip())
+    opacity_value = flood.get("flood-opacity", "").strip()
+    mode = blend.get("mode", "").lower()
+    if (
+        color_match is None
+        or not _SVG_OPACITY_RE.fullmatch(opacity_value)
+        or mode not in _FILL_OVERLAY_BLEND
+    ):
+        return None
+    channels = tuple(int(color_match.group(index)) for index in range(1, 4))
+    opacity = float(opacity_value)
+    if any(channel > 255 for channel in channels) or not 0.0 < opacity <= 1.0:
+        return None
+    return FillOverlay(
+        fill=SolidFill(color=Rgba(r=channels[0], g=channels[1], b=channels[2], a=opacity)),
+        blend=_FILL_OVERLAY_BLEND[mode],
+    )
 
 
 # --------------------------------------------------------------------------- gradients

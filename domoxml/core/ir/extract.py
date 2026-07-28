@@ -94,6 +94,7 @@ from domoxml.core.ir.parse import (
     parse_shadow,
     parse_shadows,
     parse_soft_edge_mask,
+    parse_svg_fill_overlay_filter,
     parse_svg_soft_edge_filter,
 )
 from domoxml.core.ir.pattern import match_pattern_fill
@@ -1337,6 +1338,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     if encoded_effects is None
                     else None
                 )
+                svg_fill_overlay = (
+                    parse_svg_fill_overlay_filter(filter_styles.get("domoxmlSvgFilter"))
+                    if encoded_effects is None
+                    else None
+                )
                 reflection = (
                     parse_box_reflection(reflection_value) if encoded_effects is None else None
                 )
@@ -1347,6 +1353,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     and drop_shadow is None
                     and blur is None
                     and svg_soft_edge is None
+                    and svg_fill_overlay is None
                 ):
                     effect_reason = "SVG CSS filter has no native custom-geometry mapping"
                 if (
@@ -1356,7 +1363,9 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 ):
                     effect_reason = "SVG CSS reflection has no native custom-geometry mapping"
                 authored_filter_effects = tuple(
-                    effect for effect in (drop_shadow, blur, svg_soft_edge) if effect is not None
+                    effect
+                    for effect in (drop_shadow, blur, svg_soft_edge, svg_fill_overlay)
+                    if effect is not None
                 )
                 if reflection is not None and authored_filter_effects:
                     effect_reason = (
@@ -1373,6 +1382,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         if blur is not None
                         else (svg_soft_edge,)
                         if svg_soft_edge is not None
+                        else (svg_fill_overlay,)
+                        if svg_fill_overlay is not None
                         else (reflection,)
                         if reflection is not None
                         else ()
@@ -1384,6 +1395,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         node.styles.get("domoxmlRasterBounds")
                         or blur is not None
                         or svg_soft_edge is not None
+                        or svg_fill_overlay is not None
                         or reflection is not None
                     )
                     else None
@@ -1399,7 +1411,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     else None
                 )
                 if (
-                    blur is not None or svg_soft_edge is not None or reflection is not None
+                    blur is not None
+                    or svg_soft_edge is not None
+                    or svg_fill_overlay is not None
+                    or reflection is not None
                 ) and portable_fallback is None:
                     effect_reason = (
                         "SVG effect requires an exact owned renderer fallback, "
@@ -1429,13 +1444,18 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         )
                     continue
                 if (
-                    blur is not None or svg_soft_edge is not None or reflection is not None
+                    blur is not None
+                    or svg_soft_edge is not None
+                    or svg_fill_overlay is not None
+                    or reflection is not None
                 ) and portable_fallback is not None:
                     effect_name = (
                         "blur"
                         if blur is not None
                         else "soft edge"
                         if svg_soft_edge is not None
+                        else "fill overlay"
+                        if svg_fill_overlay is not None
                         else "reflection"
                     )
                     native_name = (
@@ -1443,6 +1463,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         if blur is not None
                         else "a:softEdge"
                         if svg_soft_edge is not None
+                        else "a:fillOverlay"
+                        if svg_fill_overlay is not None
                         else "a:reflection"
                     )
                     warnings.append(

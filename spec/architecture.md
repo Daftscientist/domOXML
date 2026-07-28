@@ -169,7 +169,11 @@ ordering remains on the general element-layer path. Custom-path soft edge uses a
 three-primitive SVG filter: Gaussian blur of `SourceAlpha`, clipping back into `SourceAlpha`, then
 application to `SourceGraphic`. Twice the authored standard deviation becomes the editable
 `a:softEdge` radius; one exact path-owned layer remains authoritative for visible paint. Changed,
-reordered, or additional SVG filter primitives stay on the element-layer path.
+reordered, or additional SVG filter primitives stay on the element-layer path. Custom-path fill
+overlay similarly admits one strict sRGB `feFlood`, `SourceAlpha` clip, and `feBlend` graph for the
+four proven solid blend modes. The flood color and opacity become editable `a:fillOverlay`
+metadata, while one exact path-owned layer preserves renderer parity and repeated-cycle ownership;
+different color spaces, partial clips, and compound graphs stay on the element-layer path.
 Solid fill overlays using multiply, screen, darken, or lighten
 use the exact native effect alone in the PowerPoint choice and the portable picture only in the
 LibreOffice fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned

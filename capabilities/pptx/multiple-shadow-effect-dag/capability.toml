@@ -11,8 +11,8 @@ min_source_retention = { not_required = 7 }
 max_source_retention = { not_required = 7, attached = 0, detached = 0, ignored = 0, lost = 0 }
 min_output_count = 8
 max_output_count = 8
-min_raster_area_emu2 = 26815591530000
-max_raster_area_emu2 = 26815591530000
+min_raster_area_emu2 = 23876625633750
+max_raster_area_emu2 = 23876625633750
 warnings = ["multiple CSS shadows emitted as editable native a:effectDag with an isolated renderer fallback"]
 
 [[expected.xml]]
@@ -70,7 +70,7 @@ max_source_retention = { not_required = 7, attached = 0, detached = 0, ignored =
 min_output_count = 8
 max_output_count = 8
 min_raster_area_emu2 = 23876625633750
-max_raster_area_emu2 = 26815591530000
+max_raster_area_emu2 = 23876625633750
 expected_slides = 1
 html_contains = [
   "data-domoxml-effects=",

@@ -29,6 +29,7 @@ from domoxml.core.images import (
 )
 from domoxml.core.ir.connector_extract import extract_connector
 from domoxml.core.ir.effect_calibration import (
+    BOX_SHADOW_BLUR_TO_DML,
     CUSTOM_GLOW_ALPHA_TO_DML,
     CUSTOM_GLOW_RADIUS_TO_DML,
     CUSTOM_SHADOW_ALPHA_TO_DML,
@@ -976,7 +977,9 @@ def _shadow_to_effect(shadow: Shadow, box: Box, warnings: list[ConversionWarning
         color = shadow.color.model_copy(update={"a": shadow.color.a * 0.6})
         return Glow(color=color, radius_emu=radius)
     if not shadow.inset:
-        return shadow.model_copy(update={"blur_emu": round(shadow.blur_emu * 0.75)})
+        return shadow.model_copy(
+            update={"blur_emu": round(shadow.blur_emu * BOX_SHADOW_BLUR_TO_DML)}
+        )
     return shadow
 
 

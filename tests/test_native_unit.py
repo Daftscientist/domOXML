@@ -768,7 +768,7 @@ def test_browser_multi_shadow_fallback_bounds_include_every_layer() -> None:
     )
 
     assert _needs_isolated_raster(node)
-    assert _raster_bounds(node, slide_width=200, slide_height=180) == (3, 37, 176, 151)
+    assert _raster_bounds(node, slide_width=200, slide_height=180) == (9, 43, 172, 145)
 
 
 def test_multiple_css_shadows_become_a_hybrid_sibling_effect_graph() -> None:

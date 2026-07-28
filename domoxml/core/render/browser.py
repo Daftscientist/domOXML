@@ -368,9 +368,12 @@ def _raster_bounds(
         radians = math.radians(shadow.direction_deg)
         offset_x = emu_to_px(shadow.distance_emu) * math.cos(radians)
         offset_y = emu_to_px(shadow.distance_emu) * math.sin(radians)
+        # Chromium expands a box-shadow blur by three standard deviations, where the
+        # standard deviation is half the blur radius. The 1.5x paint extent avoids
+        # transparent fallback padding that would inflate raster-area accounting.
         extent = max(
             0.0,
-            (2 * emu_to_px(shadow.blur_emu)) + emu_to_px(shadow.spread_emu),
+            (1.5 * emu_to_px(shadow.blur_emu)) + emu_to_px(shadow.spread_emu),
         )
         candidates = (
             node.x + offset_x - extent,

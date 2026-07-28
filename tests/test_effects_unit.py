@@ -634,6 +634,27 @@ def test_sibling_shadow_container_emits_effect_dag_back_to_front() -> None:
     assert xml.endswith('<a:effect ref="fill"/></a:effectDag>')
 
 
+def test_shape_rejects_inset_shadow_in_sibling_effect_graph() -> None:
+    with pytest.raises(ValueError, match="requires multiple outer shadows"):
+        ShapeNode(
+            box=Box(x=0, y=0, width=100_000, height=100_000),
+            effects=(
+                Shadow(
+                    color=Rgba(r=0, g=0, b=0, a=0.4),
+                    blur_emu=40_000,
+                    distance_emu=20_000,
+                    inset=True,
+                ),
+                Shadow(
+                    color=Rgba(r=0, g=0, b=0, a=0.3),
+                    blur_emu=30_000,
+                    distance_emu=10_000,
+                ),
+            ),
+            effect_container="sibling",
+        )
+
+
 # -----------------------------------------------------------------------
 # Reverse: parse_effects_xml — all 8 effect kinds
 # -----------------------------------------------------------------------

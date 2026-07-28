@@ -790,7 +790,12 @@ def parse_fill_overlay_effect(
             return None
     else:
         base_layer = layers[1].strip().lower()
-        if not (base_layer.startswith("url(") and base_layer.endswith(")")):
+        base_color = parse_color(background_color) if background_color else None
+        if (
+            not (base_layer.startswith("url(") and base_layer.endswith(")"))
+            or (background_color and base_color is None)
+            or (base_color is not None and base_color.a > 0.0)
+        ):
             return None
     geometry = _background_layer_values(
         len(layers),

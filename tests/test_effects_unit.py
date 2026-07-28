@@ -356,6 +356,14 @@ def test_parse_picture_fill_overlay_peels_one_uniform_top_layer() -> None:
         fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
         blend="mult",
     )
+    assert (
+        parse_fill_overlay_effect(
+            image,
+            "multiply,normal",
+            background_color="rgb(20,60,140)",
+        )
+        is None
+    )
     assert parse_fill_overlay(image, "rgb(20,60,140)", "multiply,normal") is None
     assert (
         parse_fill_overlay_effect(

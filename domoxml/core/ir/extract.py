@@ -1325,11 +1325,13 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 drop_shadow = (
                     parse_drop_shadow_filter(filter_value) if encoded_effects is None else None
                 )
+                blur = parse_blur_filter(filter_value) if encoded_effects is None else None
                 effect_reason: str | None = None
                 if (
                     encoded_effects is None
                     and filter_value not in ("none", "")
                     and drop_shadow is None
+                    and blur is None
                 ):
                     effect_reason = "SVG CSS filter has no native custom-geometry mapping"
                 effects = (
@@ -1338,12 +1340,14 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     else (
                         (_custom_drop_shadow_to_effect(drop_shadow),)
                         if drop_shadow is not None
+                        else (blur,)
+                        if blur is not None
                         else ()
                     )
                 )
                 fallback_shape = (
                     _raster_shape(node, rendered)
-                    if node.styles.get("domoxmlRasterBounds")
+                    if node.styles.get("domoxmlRasterBounds") or blur is not None
                     else None
                 )
                 portable_fallback = (
@@ -1379,6 +1383,16 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             )
                         )
                     continue
+                if blur is not None and portable_fallback is not None:
+                    warnings.append(
+                        ConversionWarning(
+                            message=(
+                                "SVG blur emitted as editable native a:blur with an exact "
+                                "custom-geometry-owned renderer fallback"
+                            ),
+                            element=_label(node),
+                        )
+                    )
                 # Build the ShapeNode with custom_geom
                 contents.append(
                     identities.apply(

@@ -600,6 +600,7 @@ def test_unmappable_custom_svg_paint_uses_element_layer_instead_of_omitting_it()
         src="0 0 10 10",
         index=0,
         parent=-1,
+        styles={"filter": "blur(1px)"},
     )
     path = RenderedNode(
         tag="path",
@@ -618,6 +619,7 @@ def test_unmappable_custom_svg_paint_uses_element_layer_instead_of_omitting_it()
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
     assert "SVG custom geometry paint" in result.coverage[0].reason
+    assert not any("editable native a:blur" in warning.message for warning in result.warnings)
 
 
 def test_custom_svg_solid_fill_and_stroke_map_to_native_shape_paint() -> None:

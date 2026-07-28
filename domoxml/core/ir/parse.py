@@ -10,6 +10,9 @@ import math
 import re
 from typing import Literal
 
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
+
 from domoxml.core.ir.model import (
     Blur,
     FillOverlay,
@@ -538,6 +541,56 @@ def parse_soft_edge_mask(
     if horizontal is None or vertical is None or horizontal != vertical:
         return None
     return SoftEdge(radius_emu=px_to_emu(horizontal))
+
+
+def parse_svg_soft_edge_filter(value: str | None) -> SoftEdge | None:
+    """Map the strict clipped-Gaussian SVG feather pipeline to DrawingML soft edge."""
+    if not value:
+        return None
+    try:
+        root = ElementTree.fromstring(value)
+    except (ElementTree.ParseError, DefusedXmlException):
+        return None
+
+    def local_name(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1].lower()
+
+    children = list(root)
+    if (
+        local_name(root.tag) != "filter"
+        or len(children) != 3
+        or set(root.attrib) != {"id", "x", "y", "width", "height"}
+        or not root.get("id")
+        or root.get("x") != "0"
+        or root.get("y") != "0"
+        or root.get("width") != "100%"
+        or root.get("height") != "100%"
+    ):
+        return None
+    blur, clip, color = children
+    if (
+        local_name(blur.tag) != "fegaussianblur"
+        or set(blur.attrib) != {"in", "stdDeviation", "result"}
+        or blur.get("in") != "SourceAlpha"
+        or blur.get("result") != "softBlur"
+        or local_name(clip.tag) != "fecomposite"
+        or set(clip.attrib) != {"in", "in2", "operator", "result"}
+        or clip.get("in") != "softBlur"
+        or clip.get("in2") != "SourceAlpha"
+        or clip.get("operator") != "in"
+        or clip.get("result") != "softClip"
+        or local_name(color.tag) != "fecomposite"
+        or set(color.attrib) != {"in", "in2", "operator"}
+        or color.get("in") != "SourceGraphic"
+        or color.get("in2") != "softClip"
+        or color.get("operator") != "in"
+    ):
+        return None
+    deviation = blur.get("stdDeviation", "").strip()
+    if not re.fullmatch(r"(?:\d+(?:\.\d+)?|\.\d+)", deviation):
+        return None
+    sigma = float(deviation)
+    return SoftEdge(radius_emu=px_to_emu(2 * sigma)) if sigma > 0 and math.isfinite(sigma) else None
 
 
 # --------------------------------------------------------------------------- gradients

@@ -163,6 +163,23 @@ _SNAPSHOT_JS = """
     el.dataset.domoxmlCaptureIndex = String(index);
     const styles = pick(getComputedStyle(el));
     const tag = el.tagName.toLowerCase();
+    if (tag === 'path' || tag === 'svg') {
+      const filterRef = el.getAttribute('filter') || el.style.filter || styles.filter || '';
+      const filterMatch = filterRef.match(/^url\\(\\s*['"]?#([^'")]+)['"]?\\s*\\)$/i);
+      const svgRoot = tag === 'svg' ? el : el.ownerSVGElement;
+      if (filterMatch && svgRoot) {
+        const filterNode = Array.from(svgRoot.querySelectorAll('filter'))
+          .find((candidate) => candidate.id === filterMatch[1]);
+        if (filterNode) {
+          const cleanFilter = filterNode.cloneNode(true);
+          cleanFilter.removeAttribute('data-domoxml-capture-index');
+          for (const child of cleanFilter.querySelectorAll('[data-domoxml-capture-index]')) {
+            child.removeAttribute('data-domoxml-capture-index');
+          }
+          styles.domoxmlSvgFilter = cleanFilter.outerHTML;
+        }
+      }
+    }
     if (styles.transform && styles.transform !== 'none') {
       styles.domoxmlLayoutWidth = String(el.offsetWidth);
       styles.domoxmlLayoutHeight = String(el.offsetHeight);

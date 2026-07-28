@@ -744,11 +744,61 @@ def parse_fill_overlay(
     background_clip: str | None = None,
 ) -> tuple[SolidFill, FillOverlay] | None:
     """Parse one uniform CSS gradient with a proven DrawingML blend equivalent."""
-    blend = (blend_mode or "normal").strip().lower()
-    if "," in blend or blend not in _FILL_OVERLAY_BLEND:
+    if len(_split_top_level(background_image or "")) != 1:
         return None
+    effect = parse_fill_overlay_effect(
+        background_image,
+        blend_mode,
+        background_color=background_color,
+        background_size=background_size,
+        background_position=background_position,
+        background_repeat=background_repeat,
+        background_origin=background_origin,
+        background_clip=background_clip,
+    )
+    base_color = parse_color(background_color)
+    if effect is None or base_color is None or base_color.a <= 0.0:
+        return None
+    return SolidFill(color=base_color), effect
+
+
+def parse_fill_overlay_effect(
+    background_image: str | None,
+    blend_mode: str | None,
+    *,
+    background_color: str | None = None,
+    background_size: str | None = None,
+    background_position: str | None = None,
+    background_repeat: str | None = None,
+    background_origin: str | None = None,
+    background_clip: str | None = None,
+) -> FillOverlay | None:
+    """Parse a uniform overlay over one solid-color or picture base."""
+    layers = _split_top_level(background_image or "")
+    modes = [part.strip().lower() for part in _split_top_level(blend_mode or "")]
+    if (
+        not layers
+        or len(layers) > 2
+        or len(modes) != len(layers)
+        or modes[0] not in _FILL_OVERLAY_BLEND
+        or any(mode != "normal" for mode in modes[1:])
+    ):
+        return None
+    if len(layers) == 1:
+        base_color = parse_color(background_color)
+        if base_color is None or base_color.a <= 0.0:
+            return None
+    else:
+        base_layer = layers[1].strip().lower()
+        base_color = parse_color(background_color) if background_color else None
+        if (
+            not (base_layer.startswith("url(") and base_layer.endswith(")"))
+            or (background_color and base_color is None)
+            or (base_color is not None and base_color.a > 0.0)
+        ):
+            return None
     geometry = _background_layer_values(
-        1,
+        len(layers),
         background_size=background_size,
         background_position=background_position,
         background_repeat=background_repeat,
@@ -757,19 +807,15 @@ def parse_fill_overlay(
     )
     if geometry is None or not _overlay_layer_covers_shape(geometry, 0):
         return None
-    base_color = parse_color(background_color)
-    overlay = parse_gradient(background_image)
-    if base_color is None or base_color.a <= 0.0 or overlay is None:
+    overlay = parse_gradient(layers[0])
+    if overlay is None:
         return None
     overlay_color = overlay.stops[0].color
     if any(stop.color != overlay_color for stop in overlay.stops[1:]):
         return None
-    return (
-        SolidFill(color=base_color),
-        FillOverlay(
-            fill=SolidFill(color=overlay_color),
-            blend=_FILL_OVERLAY_BLEND[blend],
-        ),
+    return FillOverlay(
+        fill=SolidFill(color=overlay_color),
+        blend=_FILL_OVERLAY_BLEND[modes[0]],
     )
 
 

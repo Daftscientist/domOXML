@@ -70,6 +70,7 @@ Audited on **2026-07-28**.
 | `node-identity` | both | stable IDs, source provenance, ownership, and private OOXML extension |
 | `pattern-fills` | both | DrawingML pattern mapping |
 | `picture-crop` | both | picture crop and reverse CSS |
+| `picture-fill-overlay` | both | one uniform solid overlay over one picture background lowers to native editable `a:fillOverlay` plus exact fallback, retains base image/crop and accounting, rejects active lower blends/partial geometry, and converges after two cycles |
 | `preset-shadow-raster-fallback` | reverse | sole-visual perspective preset shadow remains visible through one measured full-slide raster fallback, retains exact native source, and converges after the fallback boundary |
 | `preset-shadow-slide-fallback` | reverse | perspective shadow plus overlapping translucent sibling retain native z-order under one slide-owned renderer fallback and converge after two normalized HTML cycles |
 | `preset-shapes` | both | supported preset geometry subset |

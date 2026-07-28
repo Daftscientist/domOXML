@@ -8,6 +8,7 @@ from collections.abc import Callable
 from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml.identity import node_identity_xml
+from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
 from domoxml.core.ir.model import (
     ArcTo,
     Arrowhead,
@@ -18,7 +19,6 @@ from domoxml.core.ir.model import (
     ColorTransform,
     CubicTo,
     CustomGeometry,
-    Effect,
     Fill,
     Glow,
     GradientFill,
@@ -325,11 +325,12 @@ def _effects_xml(node: ShapeNode) -> str:
         parts = [_outer_shadow_xml(shadow, node) for shadow in reversed(shadows)]
         parts.append(f'<a:effect ref="{node.effect_source_ref}"/>')
         return f'<a:effectDag type="sib">{"".join(parts)}</a:effectDag>'
-    positions = tuple(_effect_list_position(effect) for effect in node.effects)
+    effects = project_native_effects(node.effects, node.native_effect_projection)
+    positions = tuple(effect_list_position(effect) for effect in effects)
     if len(set(positions)) != len(positions):
         raise ValueError("duplicate effect-list children require an effectDag representation")
     parts: list[str] = []
-    for effect in sorted(node.effects, key=_effect_list_position):
+    for effect in sorted(effects, key=effect_list_position):
         if isinstance(effect, Shadow):
             if effect.inset:
                 parts.append(_inner_shadow_xml(effect))
@@ -358,19 +359,6 @@ def _effects_xml(node: ShapeNode) -> str:
     if not parts:
         return ""
     return f"<a:effectLst>{''.join(parts)}</a:effectLst>"
-
-
-def _effect_list_position(effect: Effect) -> int:
-    """Return the fixed ``CT_EffectList`` child position from ECMA-376."""
-    if isinstance(effect, Shadow):
-        return 3 if effect.inset else 4
-    return {
-        "blur": 0,
-        "fillOverlay": 1,
-        "glow": 2,
-        "reflection": 6,
-        "softEdge": 7,
-    }[effect.kind]
 
 
 def _custgeom_xml(cg: CustomGeometry) -> str:

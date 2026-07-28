@@ -15,6 +15,7 @@ from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
+from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
 from domoxml.core.ir.model import (
     ArcTo,
     Box,
@@ -170,10 +171,15 @@ def _matching_effect_intent(
     """Recover private effect intent only while its generated native projection is unchanged."""
     metadata = element.find("./*/p:nvPr/p:extLst/p:ext/dx:node", _NS)
     payload = decode_effect_payload(metadata.get("effectIntent") if metadata is not None else None)
-    if payload is None or len(payload.effects) != len(native_effects):
+    if payload is None:
         return None
+
+    intent_effects = project_native_effects(payload.effects, payload.native_projection)
+    if len(intent_effects) != len(native_effects):
+        return None
+
     projected: list[Effect] = []
-    for effect in payload.effects:
+    for effect in intent_effects:
         if isinstance(effect, Shadow):
             projected_color = effect.color.model_copy(
                 update={
@@ -207,21 +213,7 @@ def _matching_effect_intent(
         else:
             projected.append(effect)
     if payload.container == "list":
-        projected.sort(
-            key=lambda effect: (
-                3
-                if isinstance(effect, Shadow) and effect.inset
-                else 4
-                if isinstance(effect, Shadow)
-                else {
-                    "blur": 0,
-                    "fillOverlay": 1,
-                    "glow": 2,
-                    "reflection": 6,
-                    "softEdge": 7,
-                }[effect.kind]
-            )
-        )
+        projected.sort(key=effect_list_position)
     return payload if tuple(projected) == native_effects else None
 
 
@@ -396,6 +388,9 @@ def _shape(
                     effect_intent.source_ref
                     if effect_intent is not None
                     else effect_source_ref(properties)
+                ),
+                native_effect_projection=(
+                    effect_intent.native_projection if effect_intent is not None else "complete"
                 ),
                 corner_radius_emu=corner,
                 transform=_xfrm_transform(xfrm),

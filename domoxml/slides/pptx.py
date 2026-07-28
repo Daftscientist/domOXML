@@ -423,6 +423,7 @@ def _slide(
                             "line": None,
                             "side_lines": None,
                             "effects": (),
+                            "native_effect_projection": "complete",
                             "portable_fallback": None,
                             "transform": None,
                             "corner_radius_emu": 0,

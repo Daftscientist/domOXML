@@ -37,13 +37,15 @@ def node_identity_xml(node: CanvasNode) -> str:
             attributes.append(f'ownerId="{_attr(provenance.owner_node_id)}"')
         if provenance.role is not None:
             attributes.append(f'role="{_attr(provenance.role)}"')
-    if isinstance(node, ShapeNode) and any(
-        isinstance(effect, Shadow) and effect.inset for effect in node.effects
+    if isinstance(node, ShapeNode) and (
+        node.native_effect_projection == "schema_subset"
+        or any(isinstance(effect, Shadow) and effect.inset for effect in node.effects)
     ):
         intent = encode_effects(
             node.effects,
             container=node.effect_container,
             source_ref=node.effect_source_ref,
+            native_projection=node.native_effect_projection,
         )
         attributes.append(f'effectIntent="{_attr(intent)}"')
     if not attributes:

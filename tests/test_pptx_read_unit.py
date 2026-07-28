@@ -315,6 +315,76 @@ def test_mixed_shadow_effect_list_retains_authored_order_and_rejects_stale_inten
     assert edited_outer.blur_emu == 85_725
 
 
+def test_mixed_shadow_schema_subset_retains_exact_intent_and_rejects_stale_projection() -> None:
+    fallback_box = Box(x=800_000, y=700_000, width=2_700_000, height=1_600_000)
+    front_outer = Shadow(
+        color=Rgba(r=15, g=23, b=42, a=0.58),
+        blur_emu=228_600,
+        distance_emu=270_000,
+        direction_deg=50.0,
+        spread_emu=-38_100,
+    )
+    inner = Shadow(
+        color=Rgba(r=255, g=255, b=255, a=0.72),
+        blur_emu=114_300,
+        distance_emu=60_000,
+        direction_deg=53.0,
+        spread_emu=19_050,
+        inset=True,
+    )
+    back_outer = Shadow(
+        color=Rgba(r=225, g=29, b=72, a=0.55),
+        blur_emu=171_450,
+        distance_emu=200_000,
+        direction_deg=139.0,
+    )
+    shape = ShapeNode(
+        node_id="html-three-mixed-shadows",
+        box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
+        fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+        effects=(front_outer, inner, back_outer),
+        native_effect_projection="schema_subset",
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-three-shadow-png",
+                ext="png",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert slide_xml.count("<a:outerShdw") == 1
+    assert slide_xml.count("<a:innerShdw") == 1
+    assert 'val="0F172A"' in slide_xml
+    assert 'val="E11D48"' not in slide_xml
+    assert 'name="Shape 2" hidden="1"' in slide_xml
+    assert slide_xml.count("effectIntent=") == 1
+
+    result = read_pptx_result(pptx)
+    [recovered] = result.slides[0].shapes
+    assert recovered.effects == (front_outer, inner, back_outer)
+    assert recovered.native_effect_projection == "schema_subset"
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.picture.data == b"isolated-three-shadow-png"
+
+    package = OpcPackage.from_bytes(pptx)
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    parts["ppt/slides/slide1.xml"] = package.read("ppt/slides/slide1.xml").replace(
+        b'blurRad="228600"',
+        b'blurRad="238125"',
+        1,
+    )
+    mutated = read_pptx_result(write_package(parts))
+    [edited] = mutated.slides[0].shapes
+    assert edited.native_effect_projection == "complete"
+    assert len(edited.effects) == 2
+    assert edited.effects != (front_outer, inner, back_outer)
+
+
 def test_portable_reflection_fallback_uses_alternate_content_and_round_trips() -> None:
     fallback_box = Box(x=900_000, y=700_000, width=2_200_000, height=2_100_000)
     reflection = Reflection(

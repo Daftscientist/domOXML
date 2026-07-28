@@ -348,6 +348,7 @@ type Effect = Annotated[
     Shadow | Glow | Blur | SoftEdge | Reflection | FillOverlay,
     Field(discriminator="kind"),
 ]
+type NativeEffectProjection = Literal["complete", "schema_subset"]
 
 
 # --------------------------------------------------------------------------- text / shapes
@@ -682,7 +683,9 @@ class ShapeNode(CanvasNode):
     ``geom`` is a preset name; ``custom_geom`` overrides it with a free-form path when set.
     ``effects`` follows CSS paint order. ``effect_container="list"`` emits the fixed DrawingML
     effect list; ``"sibling"`` emits a flat sibling graph for repeatable effects such as multiple
-    outer shadows. ``effect_source_ref`` retains the graph's explicit source input.
+    outer shadows. ``native_effect_projection="schema_subset"`` keeps the exact effect tuple in
+    IR while emitting at most one child per schema slot under an exact portable paint layer.
+    ``effect_source_ref`` retains the graph's explicit source input.
     :attr:`shadow` remains as a backward-compatible accessor over the first shadow."""
 
     model_config = _FROZEN
@@ -696,6 +699,7 @@ class ShapeNode(CanvasNode):
     effects: tuple[Effect, ...] = ()
     effect_container: Literal["list", "sibling"] = "list"
     effect_source_ref: Literal["fill", "fillLine"] = "fill"
+    native_effect_projection: NativeEffectProjection = "complete"
     portable_fallback: PortableFallback | None = None
     transform: Transform | None = None
     corner_radius_emu: int = 0
@@ -709,6 +713,8 @@ class ShapeNode(CanvasNode):
             or any(not isinstance(effect, Shadow) or effect.inset for effect in self.effects)
         ):
             raise ValueError("sibling effect graph requires multiple outer shadows")
+        if self.effect_container == "sibling" and self.native_effect_projection == "schema_subset":
+            raise ValueError("schema-subset native projection is only supported for effect lists")
         return self
 
     @property

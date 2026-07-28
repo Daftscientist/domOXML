@@ -393,14 +393,24 @@ def _slide(
                     )
                 )
             else:
+                fallback_rid = fallback_rids.get(position)
+                choice_has_visible_fallback = (
+                    node.portable_fallback is not None
+                    and fallback_rid is not None
+                    and node.effect_container != "sibling"
+                    and not (
+                        node.effects
+                        and all(isinstance(effect, FillOverlay) for effect in node.effects)
+                    )
+                )
                 native_xml = shape_xml(
                     node,
                     shape_id=shape_id,
                     blip_rid=blip_rid,
                     svg_rid=svg_rids.get(position),
                     hyperlink_rid=_hyperlink_rid,
+                    hidden=choice_has_visible_fallback,
                 )
-                fallback_rid = fallback_rids.get(position)
                 if node.portable_fallback is None or fallback_rid is None:
                     content_parts.append(native_xml)
                 else:
@@ -430,15 +440,7 @@ def _slide(
                         shape_id=(2 * len(slide.contents)) + 2 + position,
                         blip_rid=fallback_rid,
                     )
-                    choice_fallback = (
-                        ""
-                        if node.effect_container == "sibling"
-                        or (
-                            node.effects
-                            and all(isinstance(effect, FillOverlay) for effect in node.effects)
-                        )
-                        else choice_fallback_xml
-                    )
+                    choice_fallback = choice_fallback_xml if choice_has_visible_fallback else ""
                     content_parts.append(
                         "<mc:AlternateContent "
                         'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '

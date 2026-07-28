@@ -1,0 +1,25 @@
+<style>
+  body { margin: 0; padding: 0; }
+  .domoxml-slide {
+    position: relative;
+    width: 1280px;
+    height: 720px;
+    overflow: hidden;
+  }
+</style>
+<div class="domoxml-slide">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 240"
+       style="position:absolute;left:380px;top:240px;width:520px;height:240px;overflow:visible">
+    <defs>
+      <filter id="soft-edge" x="0" y="0" width="100%" height="100%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="8" result="softBlur"/>
+        <feComposite in="softBlur" in2="SourceAlpha" operator="in" result="softClip"/>
+        <feComposite in="SourceGraphic" in2="softClip" operator="in"/>
+      </filter>
+    </defs>
+    <path style="filter:url(#soft-edge)"
+          d="M 26 120 C 26 28 170 28 260 96 C 350 28 494 28 494 120
+             C 494 212 350 212 260 144 C 170 212 26 212 26 120 Z"
+          fill="#be123c" stroke="#881337" stroke-width="8"/>
+  </svg>
+</div>

@@ -694,6 +694,89 @@ def test_custom_svg_compound_filter_and_reflection_uses_element_layer() -> None:
     assert "compound SVG filter and reflection ordering" in result.coverage[0].reason
 
 
+def test_custom_svg_nonstandard_soft_edge_filter_uses_element_layer() -> None:
+    svg = RenderedNode(
+        tag="svg",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        src="0 0 10 10",
+        index=0,
+        parent=-1,
+    )
+    path = RenderedNode(
+        tag="path",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        src="M 0 0 L 10 0 L 10 10 Z",
+        index=1,
+        parent=0,
+        styles={
+            "fill": "rgb(68, 114, 196)",
+            "filter": 'url("#soft-edge")',
+            "domoxmlSvgFilter": (
+                '<filter id="soft-edge">'
+                '<feGaussianBlur in="SourceAlpha" stdDeviation="4" result="softBlur"/>'
+                '<feComposite in="softBlur" in2="SourceAlpha" operator="out" '
+                'result="softClip"/>'
+                '<feComposite in="SourceGraphic" in2="softClip" operator="in"/>'
+                "</filter>"
+            ),
+        },
+    )
+
+    result = extract_slide(_slide(svg, path))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert "SVG CSS filter has no native custom-geometry mapping" in result.coverage[0].reason
+
+
+def test_custom_svg_soft_edge_does_not_mix_outer_and_path_filter_sources() -> None:
+    valid_filter = (
+        '<filter id="soft-edge" x="0" y="0" width="100%" height="100%">'
+        '<feGaussianBlur in="SourceAlpha" stdDeviation="4" result="softBlur"/>'
+        '<feComposite in="softBlur" in2="SourceAlpha" operator="in" result="softClip"/>'
+        '<feComposite in="SourceGraphic" in2="softClip" operator="in"/>'
+        "</filter>"
+    )
+    svg = RenderedNode(
+        tag="svg",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        src="0 0 10 10",
+        index=0,
+        parent=-1,
+        styles={"filter": 'url("#outer-filter")'},
+    )
+    path = RenderedNode(
+        tag="path",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        src="M 0 0 L 10 0 L 10 10 Z",
+        index=1,
+        parent=0,
+        styles={
+            "fill": "rgb(68, 114, 196)",
+            "filter": 'url("#soft-edge")',
+            "domoxmlSvgFilter": valid_filter,
+        },
+    )
+
+    result = extract_slide(_slide(svg, path))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert "SVG CSS filter has no native custom-geometry mapping" in result.coverage[0].reason
+
+
 def test_custom_svg_solid_fill_and_stroke_map_to_native_shape_paint() -> None:
     svg = RenderedNode(
         tag="svg",

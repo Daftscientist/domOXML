@@ -11,8 +11,8 @@ Snapshot audited on **2026-07-28** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 822 tests are collected.
-- 36 atomic PPTX capability fixtures exist; 30 are bidirectional and six are reverse-first
+- 826 tests are collected.
+- 37 atomic PPTX capability fixtures exist; 31 are bidirectional and six are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, rasterized preset
   shadow node/slide fallbacks, named nested effect-graph preservation, and custom-path-owned
   effect fallback.
@@ -41,7 +41,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 36 atomic fixtures and 7 real decks pin
+  retention, output-count, and raster-area records. All 37 atomic fixtures and 7 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -257,7 +257,8 @@ silently lowering the expected score.
    isolation; reflection directions beyond the strict custom-path `below` subset and non-pixel
    gaps; typed preset-shadow semantics and
    combinations; gradient/pattern/picture fill overlays and `over` calibration; custom-geometry
-   soft-edge/fill-overlay; multi-function SVG filter ordering; broader color models;
+   fill-overlay; multi-function SVG filter ordering beyond the strict soft-edge pipeline; broader
+   color models;
    and representative real-deck coverage for those families.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic

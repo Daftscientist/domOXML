@@ -63,6 +63,7 @@ from domoxml.core.ir.parse import (
     parse_shadow,
     parse_shadows,
     parse_soft_edge_mask,
+    parse_svg_soft_edge_filter,
 )
 from domoxml.core.units import px_to_emu
 from domoxml.slides.appearance_read import rgba
@@ -155,6 +156,35 @@ def test_parse_computed_css_ellipse_soft_edge_mask() -> None:
         radius_emu=px_to_emu(12)
     )
     assert parse_soft_edge_mask(mask, "intersect", ellipse=False) is None
+
+
+def test_parse_strict_svg_soft_edge_filter() -> None:
+    valid = """
+    <filter id="soft-edge" x="0" y="0" width="100%" height="100%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="softBlur"/>
+      <feComposite in="softBlur" in2="SourceAlpha" operator="in" result="softClip"/>
+      <feComposite in="SourceGraphic" in2="softClip" operator="in"/>
+    </filter>
+    """
+
+    assert parse_svg_soft_edge_filter(valid) == SoftEdge(radius_emu=px_to_emu(12))
+    assert parse_svg_soft_edge_filter(valid.replace('operator="in"', 'operator="out"', 1)) is None
+    assert (
+        parse_svg_soft_edge_filter(valid.replace('stdDeviation="6"', 'stdDeviation="6 4"')) is None
+    )
+    assert parse_svg_soft_edge_filter(valid.replace('x="0"', 'x="-20%"')) is None
+    assert (
+        parse_svg_soft_edge_filter(
+            valid.replace('result="softBlur"', 'edgeMode="wrap" result="softBlur"')
+        )
+        is None
+    )
+    assert parse_svg_soft_edge_filter(valid.replace('id="soft-edge"', 'id=""')) is None
+    assert (
+        parse_svg_soft_edge_filter(valid.replace('stdDeviation="6"', f'stdDeviation="{"9" * 400}"'))
+        is None
+    )
+    assert parse_svg_soft_edge_filter(valid.replace("</filter>", "<feFlood/></filter>")) is None
 
 
 def test_rejects_css_masks_that_are_not_exact_soft_edges() -> None:

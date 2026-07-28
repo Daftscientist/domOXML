@@ -1360,6 +1360,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     if fallback_shape is not None and isinstance(fallback_shape.fill, PictureFill)
                     else None
                 )
+                if blur is not None and portable_fallback is None:
+                    effect_reason = (
+                        "SVG blur requires an exact owned renderer fallback, "
+                        "but rasterization returned no region"
+                    )
                 paint_reason = fill_reason or line_reason or effect_reason
                 if paint_reason is not None:
                     label = _label(node)

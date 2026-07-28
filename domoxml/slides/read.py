@@ -14,6 +14,7 @@ from defusedxml import ElementTree
 from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
+from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
 from domoxml.core.ir.model import (
     ArcTo,
     Box,
@@ -21,6 +22,7 @@ from domoxml.core.ir.model import (
     ClosePath,
     CubicTo,
     CustomGeometry,
+    Effect,
     Geometry,
     GeometryKind,
     GroupNode,
@@ -34,6 +36,7 @@ from domoxml.core.ir.model import (
     PortableFallback,
     PreservedNode,
     QuadTo,
+    Shadow,
     ShapeNode,
     SlideIR,
     SolidFill,
@@ -157,6 +160,45 @@ def _with_pptx_identity[T: CanvasNode](output: T, element: Element, slide_part: 
         role=metadata.get("role") if metadata is not None else None,
     )
     return output.model_copy(update={"node_id": node_id, "provenance": provenance})
+
+
+def _matching_effect_intent(
+    element: Element,
+    native_effects: tuple[Effect, ...],
+) -> EffectPayload | None:
+    """Recover private effect intent only while its generated native projection is unchanged."""
+    metadata = element.find("./*/p:nvPr/p:extLst/p:ext/dx:node", _NS)
+    payload = decode_effect_payload(metadata.get("effectIntent") if metadata is not None else None)
+    if payload is None or len(payload.effects) != len(native_effects):
+        return None
+    projected: list[Effect] = []
+    for effect in payload.effects:
+        if isinstance(effect, Shadow):
+            projected_color = effect.color.model_copy(
+                update={
+                    "a": (
+                        1.0 if effect.color.a >= 1.0 else round(effect.color.a * 100_000) / 100_000
+                    )
+                }
+            )
+            projected_blur = (
+                max(0, effect.blur_emu + effect.spread_emu)
+                if effect.inset and effect.spread_emu != 0
+                else effect.blur_emu
+            )
+            projected.append(
+                effect.model_copy(
+                    update={
+                        "blur_emu": projected_blur,
+                        "color": projected_color,
+                        "direction_deg": round((effect.direction_deg % 360.0) * 60_000) / 60_000,
+                        "spread_emu": 0 if effect.inset else effect.spread_emu,
+                    }
+                )
+            )
+        else:
+            projected.append(effect)
+    return payload if tuple(projected) == native_effects else None
 
 
 def _related_part_by_type(
@@ -307,6 +349,9 @@ def _shape(
     shape_effects, effect_warns, effect_preserved = read_effects(
         properties, lambda element: _rgba(element, colors), box=box
     )
+    effect_intent = _matching_effect_intent(element, shape_effects)
+    if effect_intent is not None:
+        shape_effects = effect_intent.effects
     custgeom_el = properties.find(f"{{{_A}}}custGeom")
     custom_geom = _custGeom(custgeom_el, box) if custgeom_el is not None else None
     return (
@@ -318,8 +363,16 @@ def _shape(
                 fill=_fill(properties, package, slide_part, colors),
                 line=_line(properties, colors),
                 effects=shape_effects,
-                effect_container=effect_container_kind(properties),
-                effect_source_ref=effect_source_ref(properties),
+                effect_container=(
+                    effect_intent.container
+                    if effect_intent is not None
+                    else effect_container_kind(properties)
+                ),
+                effect_source_ref=(
+                    effect_intent.source_ref
+                    if effect_intent is not None
+                    else effect_source_ref(properties)
+                ),
                 corner_radius_emu=corner,
                 transform=_xfrm_transform(xfrm),
                 text=read_text_body(

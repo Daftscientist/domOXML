@@ -141,14 +141,17 @@ Renderer-selective hybrids use markup compatibility when a native Office effect 
 available in PowerPoint but not painted by another supported renderer. The semantic choice remains
 authoritative; an isolated paint-bound fallback is emitted above it for exact output and as the sole
 branch for incompatible renderers, measured as raster area, and recovered beside the native node on
-re-ingestion. Blur, conservative below-shape CSS reflection, and the strict two-axis CSS soft-edge
-mask use a PowerPoint 2015 choice containing the native effect plus its portable layer, with the
-same picture selected alone by LibreOffice. Solid fill overlays using multiply, screen, darken, or
-lighten use the exact native effect alone in the PowerPoint choice and the portable picture only in
-the LibreOffice fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned
-geometry. Blur and reflection bounds include their full overflow; soft edge and fill overlay use
-the shape paint box, expanded to its axis-aligned painted bounds after rotation. Normalized
-rectangles use the same two-axis mask, while normalized ellipses
+re-ingestion. Blur, one CSS inset shadow, conservative below-shape CSS reflection, and the strict
+two-axis CSS soft-edge mask use a PowerPoint 2015 choice containing the native effect plus its
+portable layer, with the same picture selected alone by LibreOffice. DrawingML has no inner-shadow
+spread attribute, so domOXML stores the exact signed CSS spread in private shape metadata and
+recovers it only while the native `a:innerShdw` still matches the generated projection; an Office
+edit invalidates stale intent. Solid fill overlays using multiply, screen, darken, or lighten use
+the exact native effect alone in the PowerPoint choice and the portable picture only in the
+LibreOffice fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned
+geometry. Blur and reflection bounds include their full overflow; inset shadow, soft edge, and fill
+overlay use the shape paint box, expanded to its axis-aligned painted bounds after rotation.
+Normalized rectangles use the same two-axis mask, while normalized ellipses
 use a boundary-following closest-side radial mask. Nondefault authored mask geometry does not enter
 this hybrid path and remains visible through the general element-layer fallback.
 Multiple outer `box-shadow` layers use a typed flat sibling effect graph. CSS declares those
@@ -231,7 +234,8 @@ allowed where CSS cannot carry editability, source grouping, or an Office semant
 document must remain useful without proprietary metadata, while metadata-aware re-ingestion should
 recover the richer IR. Metadata currently retains source provenance; versioned typed payloads retain
 attached preservation graphs, effects, custom geometry, text-body semantics, and exact table
-geometry. Typed
+geometry. The private PPTX shape extension also retains otherwise inexpressible inner-shadow spread
+intent behind a native-projection freshness check. Typed
 connector JSON retains the canonical route beside renderer-facing HTML; current PPTX ingestion
 derives that route and its endpoints from the connector transform box, so coverage reports the
 result as approximated with source detail lost. Geometry emitted to Chromium is

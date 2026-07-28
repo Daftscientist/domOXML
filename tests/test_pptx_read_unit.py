@@ -178,6 +178,71 @@ def test_portable_blur_fallback_uses_alternate_content_and_round_trips() -> None
     assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
 
 
+def test_portable_inset_shadow_fallback_retains_exact_spread_intent() -> None:
+    fallback_box = Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000)
+    inset = Shadow(
+        color=Rgba(r=0, g=0, b=0, a=0.333333),
+        blur_emu=114_300,
+        distance_emu=53_882,
+        direction_deg=53.13010235415598,
+        spread_emu=19_050,
+        inset=True,
+    )
+    shape = ShapeNode(
+        node_id="html-inset",
+        box=fallback_box,
+        fill=SolidFill(color=Rgba(r=241, g=245, b=249)),
+        effects=(inset,),
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-inset-shadow-png",
+                ext="png",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert 'mc:Choice Requires="p16"' in slide_xml
+    assert '<a:innerShdw blurRad="133350" dist="53882" dir="3187806">' in slide_xml
+    assert 'effectIntent="' in slide_xml
+    assert slide_xml.count("domoxml-raster:portable-effect-fallback") == 2
+
+    result = read_pptx_result(pptx)
+    [recovered] = result.slides[0].shapes
+    assert recovered.effects == (inset,)
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == fallback_box
+    assert recovered.portable_fallback.picture.data == b"isolated-inset-shadow-png"
+    assert result.coverage.count(Representation.HYBRID) == 1
+    assert result.coverage.count_editability(Editability.COMPONENTS) == 1
+    assert result.coverage.output_count == 2
+    assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
+
+    package = OpcPackage.from_bytes(pptx)
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    parts["ppt/slides/slide1.xml"] = package.read("ppt/slides/slide1.xml").replace(
+        b'blurRad="133350"',
+        b'blurRad="144300"',
+        1,
+    )
+    mutated = read_pptx_result(write_package(parts))
+    [edited] = mutated.slides[0].shapes
+    assert edited.effects == (
+        inset.model_copy(
+            update={
+                "blur_emu": 144_300,
+                "color": inset.color.model_copy(update={"a": 0.33333}),
+                "direction_deg": 53.1301,
+                "spread_emu": 0,
+            }
+        ),
+    )
+
+
 def test_portable_reflection_fallback_uses_alternate_content_and_round_trips() -> None:
     fallback_box = Box(x=900_000, y=700_000, width=2_200_000, height=2_100_000)
     reflection = Reflection(

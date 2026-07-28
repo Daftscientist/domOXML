@@ -687,7 +687,7 @@ def test_hr_one_sided_border_becomes_connector_stroke() -> None:
     assert connector.line.color.hex == "666666"
 
 
-def test_inset_css_shadow_rasterises_for_portable_fidelity() -> None:
+def test_inset_css_shadow_is_native_with_isolated_portable_fallback() -> None:
     node = RenderedNode(
         tag="div",
         x=0,
@@ -703,10 +703,19 @@ def test_inset_css_shadow_rasterises_for_portable_fidelity() -> None:
 
     result = extract_slide(_slide(node))
 
-    assert isinstance(result.slide.shapes[0].fill, PictureFill)
-    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
-    assert result.coverage[0].editability is Editability.LAYERS
-    assert "inset box-shadow" in (result.coverage[0].reason or "")
+    [shape] = result.slide.shapes
+    assert isinstance(shape.fill, SolidFill)
+    assert len(shape.effects) == 1
+    assert isinstance(shape.effects[0], Shadow)
+    assert shape.effects[0].inset is True
+    assert shape.effects[0].spread_emu == px_to_emu(2)
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.picture.raster_role == "portable-effect-fallback"
+    assert result.coverage[0].representation is Representation.HYBRID
+    assert result.coverage[0].editability is Editability.COMPONENTS
+    assert result.coverage[0].output_count == 2
+    assert result.coverage[0].raster_area_emu2 == px_to_emu(10) * px_to_emu(10)
+    assert "editable native innerShdw" in (result.coverage[0].reason or "")
 
 
 def test_browser_requests_isolated_raster_for_inset_shadow() -> None:

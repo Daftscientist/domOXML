@@ -52,7 +52,7 @@ Audited on **2026-07-28**.
 | `custom-path` | both | native custom geometry and connector structure survive normalized HTML and PPTX re-emission |
 | `custom-path-effects` | both | single-path SVG offset shadow and glow lower to native effects, paint path-aware normalized HTML, reject omission by visual floors, and converge after two cycles |
 | `effect-dag-fill-line` | both | two CSS outer shadows lower to a native sibling graph referencing the blue fill and yellow line together; the alpha-preserving portable layer, exact `fillLine` graph, stroke, coverage, and second-cycle convergence are pinned |
-| `effects` | both | native outer shadow/glow plus portable inset layer; broader effect-list family remains |
+| `effects` | both | native outer shadow/glow plus editable native inset shadow with an isolated portable layer, guarded exact spread intent, focused omission floors, and two-cycle convergence |
 | `fill-overlay-effect` | both | four editable solid blend modes, portable renderer branches, exact payload, stacking, and convergence |
 | `fill-overlay-owned-fallback` | reverse | rotated unsupported `over` blend remains visible as one owned layer, retains exact source payload, and converges after the fallback boundary |
 | `hyperlink` | both | run hyperlinks and relationships |

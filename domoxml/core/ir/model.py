@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _FROZEN = ConfigDict(frozen=True)
 
@@ -701,6 +701,15 @@ class ShapeNode(CanvasNode):
     corner_radius_emu: int = 0
     opacity: float = Field(default=1.0, ge=0.0, le=1.0)
     text: TextBody | None = None
+
+    @model_validator(mode="after")
+    def _sibling_effect_graph_is_supported(self) -> ShapeNode:
+        if self.effect_container == "sibling" and (
+            len(self.effects) < 2
+            or any(not isinstance(effect, Shadow) or effect.inset for effect in self.effects)
+        ):
+            raise ValueError("sibling effect graph requires multiple outer shadows")
+        return self
 
     @property
     def shadow(self) -> Shadow | None:

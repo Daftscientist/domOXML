@@ -664,6 +664,67 @@ async def test_svg_soft_edge_becomes_native_custom_geometry_with_owned_layer() -
     assert second_coverage.raster_area_emu2 == coverage.raster_area_emu2
 
 
+async def test_svg_fill_overlay_becomes_native_custom_geometry_with_owned_layer() -> None:
+    html = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"
+         style="position:absolute;left:100px;top:80px;width:200px;height:100px;
+                overflow:visible">
+      <defs>
+        <filter id="fill-overlay" x="0" y="0" width="100%" height="100%"
+                color-interpolation-filters="sRGB">
+          <feFlood flood-color="rgb(244,63,94)" flood-opacity=".72" result="overlay"/>
+          <feComposite in="overlay" in2="SourceAlpha" operator="in" result="overlayClip"/>
+          <feBlend in="SourceGraphic" in2="overlayClip" mode="multiply"/>
+        </filter>
+      </defs>
+      <path style="filter:url(#fill-overlay)"
+            d="M 10 50 C 10 10 190 10 190 50 C 190 90 10 90 10 50 Z"
+            fill="#2563eb" stroke="#1e3a8a" stroke-width="4"/>
+    </svg>
+    """
+
+    first = await _render_and_extract_result(html)
+
+    [shape] = [candidate for candidate in first.slide.shapes if candidate.custom_geom is not None]
+    assert shape.fill == SolidFill(color=Rgba(r=37, g=99, b=235))
+    assert shape.effects == (
+        FillOverlay(
+            fill=SolidFill(color=Rgba(r=244, g=63, b=94, a=0.72)),
+            blend="mult",
+        ),
+    )
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.picture.raster_role == "portable-effect-fallback"
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(100),
+        y=px_to_emu(80),
+        width=px_to_emu(200),
+        height=px_to_emu(100),
+    )
+    [coverage] = [item for item in first.coverage if item.representation is Representation.HYBRID]
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.output_count == 2
+    assert coverage.raster_area_emu2 == px_to_emu(200) * px_to_emu(100)
+
+    serialized = inline_assets(serialize_canvas([first.slide]))
+    second = await _render_and_extract_result(serialized.slides[0].html)
+
+    [recovered] = [
+        candidate for candidate in second.slide.shapes if candidate.custom_geom is not None
+    ]
+    assert recovered.custom_geom == shape.custom_geom
+    assert recovered.fill == shape.fill
+    assert recovered.effects == shape.effects
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == shape.portable_fallback.box
+    [second_coverage] = [
+        item for item in second.coverage if item.representation is Representation.HYBRID
+    ]
+    assert second_coverage.editability is Editability.COMPONENTS
+    assert second_coverage.output_count == 2
+    assert second_coverage.raster_area_emu2 == coverage.raster_area_emu2
+
+
 async def test_custom_geometry_owned_effect_layer_round_trips_as_one_hybrid() -> None:
     fallback_buffer = BytesIO()
     Image.new("RGBA", (250, 140), (37, 99, 235, 255)).save(fallback_buffer, "PNG")

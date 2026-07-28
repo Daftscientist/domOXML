@@ -52,6 +52,7 @@ Audited on **2026-07-28**.
 | `custom-path` | both | native custom geometry and connector structure survive normalized HTML and PPTX re-emission |
 | `custom-path-blur` | both | strict lone SVG blur retains native custom geometry and editable `a:blur` beneath one exact owned fallback with absolute overflow bounds, LibreOffice/Graph evidence, and two-cycle convergence |
 | `custom-path-effects` | both | single-path SVG offset shadow and glow lower to native effects, paint path-aware normalized HTML, reject omission by visual floors, and converge after two cycles |
+| `custom-path-fill-overlay` | both | strict clipped sRGB SVG flood blend retains native custom geometry and editable solid `a:fillOverlay` with exact path-owned fallback, changed-graph rejection, Office evidence, and two-cycle convergence |
 | `custom-path-owned-fallback` | reverse | mixed outer/inset shadows retain one exact SVG-owned picture, hidden editable custom geometry, typed projection intent, exact bounds, Graph-perfect PPTX re-emission, and two-cycle convergence |
 | `custom-path-reflection` | both | strict lone SVG below-reflection retains native custom geometry and editable `a:reflection` beneath one exact owned fallback with measured reflection bounds, LibreOffice/Graph evidence, and two-cycle convergence |
 | `custom-path-soft-edge` | both | strict path-aware SVG alpha feather retains native custom geometry and editable `a:softEdge` beneath one exact owned fallback, rejects changed primitive graphs, and converges after two cycles |

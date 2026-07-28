@@ -777,6 +777,48 @@ def test_custom_svg_soft_edge_does_not_mix_outer_and_path_filter_sources() -> No
     assert "SVG CSS filter has no native custom-geometry mapping" in result.coverage[0].reason
 
 
+def test_custom_svg_nonstandard_fill_overlay_filter_uses_element_layer() -> None:
+    svg = RenderedNode(
+        tag="svg",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        src="0 0 10 10",
+        index=0,
+        parent=-1,
+    )
+    path = RenderedNode(
+        tag="path",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        src="M 0 0 L 10 0 L 10 10 Z",
+        index=1,
+        parent=0,
+        styles={
+            "fill": "rgb(37, 99, 235)",
+            "filter": 'url("#fill-overlay")',
+            "domoxmlSvgFilter": (
+                '<filter id="fill-overlay" x="0" y="0" width="100%" height="100%" '
+                'color-interpolation-filters="linearRGB">'
+                '<feFlood flood-color="rgb(244,63,94)" flood-opacity=".72" result="overlay"/>'
+                '<feComposite in="overlay" in2="SourceAlpha" operator="in" '
+                'result="overlayClip"/>'
+                '<feBlend in="SourceGraphic" in2="overlayClip" mode="multiply"/>'
+                "</filter>"
+            ),
+        },
+    )
+
+    result = extract_slide(_slide(svg, path))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert "SVG CSS filter has no native custom-geometry mapping" in result.coverage[0].reason
+
+
 def test_custom_svg_solid_fill_and_stroke_map_to_native_shape_paint() -> None:
     svg = RenderedNode(
         tag="svg",

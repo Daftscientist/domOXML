@@ -63,6 +63,7 @@ from domoxml.core.ir.parse import (
     parse_shadow,
     parse_shadows,
     parse_soft_edge_mask,
+    parse_svg_fill_overlay_filter,
     parse_svg_soft_edge_filter,
 )
 from domoxml.core.units import px_to_emu
@@ -192,6 +193,37 @@ def test_parse_strict_svg_soft_edge_filter() -> None:
         is None
     )
     assert parse_svg_soft_edge_filter(valid.replace("</filter>", "<feFlood/></filter>")) is None
+
+
+def test_parse_strict_svg_fill_overlay_filter() -> None:
+    valid = """
+    <filter id="fill-overlay" x="0" y="0" width="100%" height="100%"
+            color-interpolation-filters="sRGB">
+      <feFlood flood-color="rgb(244,63,94)" flood-opacity=".72" result="overlay"/>
+      <feComposite in="overlay" in2="SourceAlpha" operator="in" result="overlayClip"/>
+      <feBlend in="SourceGraphic" in2="overlayClip" mode="multiply"/>
+    </filter>
+    """
+
+    assert parse_svg_fill_overlay_filter(valid) == FillOverlay(
+        fill=SolidFill(color=Rgba(r=244, g=63, b=94, a=0.72)),
+        blend="mult",
+    )
+    assert parse_svg_fill_overlay_filter(valid.replace('mode="multiply"', 'mode="overlay"')) is None
+    assert parse_svg_fill_overlay_filter(valid.replace('operator="in"', 'operator="out"')) is None
+    assert parse_svg_fill_overlay_filter(valid.replace("sRGB", "linearRGB")) is None
+    assert parse_svg_fill_overlay_filter(valid.replace("rgb(244,63,94)", "rgb(300,63,94)")) is None
+    assert (
+        parse_svg_fill_overlay_filter(valid.replace('flood-opacity=".72"', 'flood-opacity="0"'))
+        is None
+    )
+    assert (
+        parse_svg_fill_overlay_filter(
+            valid.replace('result="overlay"', 'result="overlay" x="0"', 1)
+        )
+        is None
+    )
+    assert parse_svg_fill_overlay_filter(valid.replace("</filter>", "<feOffset/></filter>")) is None
 
 
 def test_rejects_css_masks_that_are_not_exact_soft_edges() -> None:

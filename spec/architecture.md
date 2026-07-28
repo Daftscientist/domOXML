@@ -160,6 +160,10 @@ graph to native parity. Custom geometry with an owned effect fallback emits the 
 renderer-only child of its normalized inline SVG while retaining a hidden typed path. Explicit
 absolute raster bounds recover the same movable hybrid instead of clipping effect overflow to the
 SVG layout box, and the portable role marker keeps that ownership stable across repeated cycles.
+A strict lone authored SVG `blur()` lowers to editable native `a:blur` beneath one exact
+path-owned fallback whose isolated bounds expand by three blur radii. The same typed geometry,
+native effect, absolute fallback bounds, and ownership marker survive normalized HTML and
+subsequent PPTX cycles; compound SVG filter chains remain on the general element-layer path.
 Solid fill overlays using multiply, screen, darken, or lighten
 use the exact native effect alone in the PowerPoint choice and the portable picture only in the
 LibreOffice fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned

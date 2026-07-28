@@ -50,6 +50,7 @@ Audited on **2026-07-28**.
 | `chart-preservation` | reverse | owned chart graph, ambient theme, identity, renderer-backed HTML element layer, and exact PPTX re-emission |
 | `compound-effect-list` | both | CSS blur plus offset shadow serialize in schema order, retain one isolated portable layer, enforce focused omission floors, and converge after two cycles |
 | `custom-path` | both | native custom geometry and connector structure survive normalized HTML and PPTX re-emission |
+| `custom-path-blur` | both | strict lone SVG blur retains native custom geometry and editable `a:blur` beneath one exact owned fallback with absolute overflow bounds, LibreOffice/Graph evidence, and two-cycle convergence |
 | `custom-path-effects` | both | single-path SVG offset shadow and glow lower to native effects, paint path-aware normalized HTML, reject omission by visual floors, and converge after two cycles |
 | `custom-path-owned-fallback` | reverse | mixed outer/inset shadows retain one exact SVG-owned picture, hidden editable custom geometry, typed projection intent, exact bounds, Graph-perfect PPTX re-emission, and two-cycle convergence |
 | `effect-dag-fill-line` | both | two CSS outer shadows lower to a native sibling graph referencing the blue fill and yellow line together; the alpha-preserving portable layer, exact `fillLine` graph, stroke, coverage, and second-cycle convergence are pinned |

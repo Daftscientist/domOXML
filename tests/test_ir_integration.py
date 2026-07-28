@@ -11,6 +11,7 @@ from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import ExtractResult, extract_slide
 from domoxml.core.ir.model import (
     AutoNumberBullet,
+    Blur,
     Box,
     CharBullet,
     ClosePath,
@@ -505,6 +506,53 @@ async def test_svg_drop_shadow_becomes_native_custom_geometry_effect() -> None:
     assert effect.distance_emu == px_to_emu(10)
     assert effect.blur_emu == px_to_emu(12)
     assert any(item.representation is Representation.NATIVE for item in result.coverage)
+
+
+async def test_svg_blur_becomes_native_custom_geometry_with_owned_layer() -> None:
+    html = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"
+         style="position:absolute;left:100px;top:80px;width:200px;height:100px;
+                overflow:visible;filter:blur(12px)">
+      <path d="M 10 50 C 10 10 190 10 190 50 C 190 90 10 90 10 50 Z"
+            fill="#4472c4" stroke="#1f4e79" stroke-width="4"/>
+    </svg>
+    """
+
+    first = await _render_and_extract_result(html)
+
+    [shape] = [candidate for candidate in first.slide.shapes if candidate.custom_geom is not None]
+    assert shape.effects == (Blur(radius_emu=px_to_emu(12)),)
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.picture.raster_role == "portable-effect-fallback"
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(64),
+        y=px_to_emu(44),
+        width=px_to_emu(272),
+        height=px_to_emu(172),
+    )
+    [coverage] = [item for item in first.coverage if item.representation is Representation.HYBRID]
+    assert coverage.representation is Representation.HYBRID
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.output_count == 2
+    assert coverage.raster_area_emu2 == px_to_emu(272) * px_to_emu(172)
+
+    serialized = inline_assets(serialize_canvas([first.slide]))
+    second = await _render_and_extract_result(serialized.slides[0].html)
+
+    [recovered] = [
+        candidate for candidate in second.slide.shapes if candidate.custom_geom is not None
+    ]
+    assert recovered.custom_geom == shape.custom_geom
+    assert recovered.effects == shape.effects
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == shape.portable_fallback.box
+    [second_coverage] = [
+        item for item in second.coverage if item.representation is Representation.HYBRID
+    ]
+    assert second_coverage.representation is Representation.HYBRID
+    assert second_coverage.editability is Editability.COMPONENTS
+    assert second_coverage.output_count == 2
+    assert second_coverage.raster_area_emu2 == coverage.raster_area_emu2
 
 
 async def test_custom_geometry_owned_effect_layer_round_trips_as_one_hybrid() -> None:

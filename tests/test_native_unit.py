@@ -600,6 +600,7 @@ def test_unmappable_custom_svg_paint_uses_element_layer_instead_of_omitting_it()
         src="0 0 10 10",
         index=0,
         parent=-1,
+        styles={"filter": "blur(1px)"},
     )
     path = RenderedNode(
         tag="path",
@@ -618,6 +619,42 @@ def test_unmappable_custom_svg_paint_uses_element_layer_instead_of_omitting_it()
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
     assert "SVG custom geometry paint" in result.coverage[0].reason
+    assert not any("editable native a:blur" in warning.message for warning in result.warnings)
+
+
+def test_custom_svg_blur_without_raster_region_is_failed_not_native() -> None:
+    svg = RenderedNode(
+        tag="svg",
+        x=100,
+        y=100,
+        width=10,
+        height=10,
+        src="0 0 10 10",
+        index=0,
+        parent=-1,
+        styles={"filter": "blur(1px)"},
+    )
+    path = RenderedNode(
+        tag="path",
+        x=100,
+        y=100,
+        width=10,
+        height=10,
+        src="M 0 0 L 10 0 L 10 10 Z",
+        index=1,
+        parent=0,
+        styles={"fill": "rgb(68, 114, 196)"},
+    )
+
+    result = extract_slide(_slide(svg, path))
+
+    assert result.slide.shapes == ()
+    assert result.coverage[0].representation is Representation.FAILED
+    assert result.coverage[0].editability is Editability.NONE
+    assert result.coverage[0].source_retention is SourceRetention.LOST
+    assert result.coverage[0].output_count == 0
+    assert "requires an exact owned renderer fallback" in result.coverage[0].reason
+    assert not any("editable native a:blur" in warning.message for warning in result.warnings)
 
 
 def test_custom_svg_solid_fill_and_stroke_map_to_native_shape_paint() -> None:

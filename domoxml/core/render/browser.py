@@ -212,6 +212,7 @@ _SNAPSHOT_JS = """
       domoxmlConnector: 'data-domoxml-connector',
       domoxmlEffects: 'data-domoxml-effects',
       domoxmlCustomGeometry: 'data-domoxml-custom-geometry',
+      domoxmlRasterBounds: 'data-domoxml-raster-bounds',
       domoxmlReflectionDistance: 'data-domoxml-reflection-distance',
       domoxmlReflectionBlur: 'data-domoxml-reflection-blur',
       domoxmlTextPayload: 'data-domoxml-text-payload',
@@ -354,6 +355,24 @@ def _raster_bounds(
     node: RenderedNode, *, slide_width: int, slide_height: int
 ) -> tuple[float, float, float, float]:
     """Return slide-clamped paint bounds for an isolated element raster."""
+    encoded_bounds = node.styles.get("domoxmlRasterBounds", "").split()
+    if len(encoded_bounds) == 4:
+        try:
+            left, top, width, height = (float(value) for value in encoded_bounds)
+        except ValueError:
+            pass
+        else:
+            if all(math.isfinite(value) for value in (left, top, width, height)) and (
+                width > 0 and height > 0
+            ):
+                clamped_left = min(float(slide_width), max(0.0, left))
+                clamped_top = min(float(slide_height), max(0.0, top))
+                return (
+                    clamped_left,
+                    clamped_top,
+                    max(clamped_left, min(float(slide_width), left + width)),
+                    max(clamped_top, min(float(slide_height), top + height)),
+                )
     match = _BLUR_RE.search(node.styles.get("filter", ""))
     padding = float(match.group(1)) * 3 if match is not None else 0.0
     left = node.x - padding

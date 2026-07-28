@@ -13,8 +13,13 @@ from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
     CharBullet,
+    ClosePath,
+    CubicTo,
+    CustomGeometry,
     FillOverlay,
     PictureFill,
+    Point,
+    PortableFallback,
     PreservationPayload,
     PreservedNode,
     Reflection,
@@ -500,6 +505,85 @@ async def test_svg_drop_shadow_becomes_native_custom_geometry_effect() -> None:
     assert effect.distance_emu == px_to_emu(10)
     assert effect.blur_emu == px_to_emu(12)
     assert any(item.representation is Representation.NATIVE for item in result.coverage)
+
+
+async def test_custom_geometry_owned_effect_layer_round_trips_as_one_hybrid() -> None:
+    fallback_buffer = BytesIO()
+    Image.new("RGBA", (250, 140), (37, 99, 235, 255)).save(fallback_buffer, "PNG")
+    geometry = CustomGeometry(
+        width_emu=px_to_emu(200),
+        height_emu=px_to_emu(100),
+        path=(
+            CubicTo(
+                c1=Point(x=0, y=0),
+                c2=Point(x=px_to_emu(200), y=0),
+                to=Point(x=px_to_emu(200), y=px_to_emu(100)),
+            ),
+            ClosePath(),
+        ),
+    )
+    effects = (
+        Shadow(
+            color=Rgba(r=15, g=23, b=42, a=0.55),
+            blur_emu=px_to_emu(20),
+            distance_emu=px_to_emu(24),
+            direction_deg=45,
+        ),
+        Shadow(
+            color=Rgba(r=255, g=255, b=255, a=0.7),
+            blur_emu=px_to_emu(10),
+            distance_emu=px_to_emu(5),
+            direction_deg=45,
+            inset=True,
+        ),
+        Shadow(
+            color=Rgba(r=225, g=29, b=72, a=0.65),
+            blur_emu=px_to_emu(30),
+            distance_emu=px_to_emu(36),
+            direction_deg=135,
+        ),
+    )
+    node = ShapeNode(
+        node_id="custom-owned-effects",
+        box=Box(
+            x=px_to_emu(100),
+            y=px_to_emu(80),
+            width=px_to_emu(200),
+            height=px_to_emu(100),
+        ),
+        custom_geom=geometry,
+        fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+        effects=effects,
+        native_effect_projection="schema_subset",
+        portable_fallback=PortableFallback(
+            box=Box(
+                x=px_to_emu(80),
+                y=px_to_emu(70),
+                width=px_to_emu(250),
+                height=px_to_emu(140),
+            ),
+            picture=PictureFill(data=fallback_buffer.getvalue(), ext="png"),
+        ),
+    )
+    serialized = inline_assets(
+        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(node,))])
+    )
+
+    result = await _render_and_extract_result(serialized.slides[0].html)
+
+    [recovered] = [shape for shape in result.slide.shapes if shape.node_id == node.node_id]
+    assert recovered.custom_geom == geometry
+    assert recovered.effects == effects
+    assert recovered.native_effect_projection == "schema_subset"
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.picture.raster_role == "portable-effect-fallback"
+    assert node.portable_fallback is not None
+    assert recovered.portable_fallback.box == node.portable_fallback.box
+    [coverage] = result.coverage
+    assert coverage.representation is Representation.HYBRID
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.output_count == 2
+    assert coverage.raster_area_emu2 == px_to_emu(250) * px_to_emu(140)
 
 
 async def test_unsupported_svg_filter_uses_visible_element_layer() -> None:

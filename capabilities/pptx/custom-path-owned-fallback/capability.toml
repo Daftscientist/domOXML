@@ -1,0 +1,88 @@
+id = "custom-path-owned-fallback"
+direction = "reverse"
+pptx_file = "source.pptx"
+reverse_render_files = ["source-graph.png"]
+
+[expected]
+required_parts = [
+  "[Content_Types].xml",
+  "ppt/presentation.xml",
+  "ppt/slides/slide1.xml",
+  "ppt/slides/_rels/slide1.xml.rels",
+]
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:sp/p:spPr/a:custGeom/a:pathLst/a:path"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:sp/p:spPr/a:effectLst[count(*)=2][*[1][self::a:innerShdw]][*[2][self::a:outerShdw]]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = '''.//mc:Choice[@Requires='p16']/p:sp/p:nvSpPr[p:cNvPr[@hidden='1']]/p:nvPr/p:extLst/p:ext/dx:node[@effectIntent='{"version":1,"effects":[{"kind":"shadow","color":{"r":15,"g":23,"b":42,"a":0.58},"blur_emu":228600,"distance_emu":270748,"direction_deg":50.71,"inset":false,"spread_emu":-38100},{"kind":"shadow","color":{"r":255,"g":255,"b":255,"a":0.72},"blur_emu":114300,"distance_emu":60960,"direction_deg":51.34,"inset":true,"spread_emu":19050},{"kind":"shadow","color":{"r":225,"g":29,"b":72,"a":0.55},"blur_emu":171450,"distance_emu":202502,"direction_deg":138.81,"inset":false,"spread_emu":0}],"container":"list","source_ref":"fill","native_projection":"schema_subset"}']'''
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:pic[p:nvPicPr/p:cNvPr[@descr='domoxml-raster:portable-effect-fallback']]/p:spPr/a:xfrm[a:off[@x='2667000' and @y='1619250'] and a:ext[@cx='6858000' and @cy='3619500']]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Fallback/p:pic[p:nvPicPr/p:cNvPr[@descr='domoxml-raster:portable-effect-fallback']]/p:spPr/a:xfrm[a:off[@x='2667000' and @y='1619250'] and a:ext[@cx='6858000' and @cy='3619500']]"
+min_count = 1
+max_count = 1
+
+[visual]
+pptx_to_html_min_similarity = 0.99
+pptx_to_html_min_regional_similarity = 0.97
+pptx_to_html_min_focused_similarity = 0.90
+pptx_to_html_min_structural_similarity = 0.98
+
+[reverse]
+min_representation = { hybrid = 1 }
+max_representation = { native = 0, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, rasterized = 0, failed = 0 }
+min_editability = { components = 1 }
+max_editability = { semantic = 0, components = 1, layers = 0, none = 0 }
+min_source_retention = { not_required = 1 }
+max_source_retention = { not_required = 1, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 2
+max_output_count = 2
+min_raster_area_emu2 = 24822531000000
+max_raster_area_emu2 = 24822531000000
+expected_slides = 1
+min_assets = 1
+html_contains = [
+  "data-domoxml-custom-geometry=",
+  "data-domoxml-effects=",
+  "data-domoxml-raster-bounds=\"280 170 720 380\"",
+  "data-domoxml-render-layer=",
+  "schema_subset",
+]
+max_warnings = 1
+max_preserved = 0
+
+[roundtrip]
+cycles = 2
+min_representation = { hybrid = 1 }
+max_representation = { native = 0, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, rasterized = 0, failed = 0 }
+min_editability = { components = 1 }
+max_editability = { semantic = 0, components = 1, layers = 0, none = 0 }
+min_source_retention = { not_required = 1 }
+max_source_retention = { not_required = 1, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 2
+max_output_count = 2
+min_raster_area_emu2 = 24822531000000
+max_raster_area_emu2 = 24822531000000
+min_convergence_similarity = 0.999
+min_convergence_regional_similarity = 0.999
+min_convergence_focused_similarity = 0.999
+min_convergence_structural_similarity = 0.999

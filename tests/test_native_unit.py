@@ -984,6 +984,23 @@ def test_browser_requests_isolated_renderer_fallback_for_css_mask() -> None:
     assert _raster_bounds(node, slide_width=20, slide_height=20) == (0, 0, 10, 10)
 
 
+def test_browser_raster_bounds_honor_normalized_owned_layer_metadata() -> None:
+    node = RenderedNode(
+        tag="svg",
+        x=100,
+        y=80,
+        width=200,
+        height=100,
+        styles={"domoxmlRasterBounds": "80 70 250 140"},
+    )
+
+    assert _needs_isolated_raster(node)
+    assert _raster_bounds(node, slide_width=320, slide_height=180) == (80, 70, 320, 180)
+
+    outside = node.model_copy(update={"styles": {"domoxmlRasterBounds": "400 -40 50 20"}})
+    assert _raster_bounds(outside, slide_width=320, slide_height=180) == (320, 0, 320, 0)
+
+
 def test_browser_reflection_fallback_bounds_include_reflected_copy() -> None:
     node = RenderedNode(
         tag="div",

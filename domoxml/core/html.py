@@ -1038,7 +1038,9 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                 f"position:absolute;left:{left};top:{top};"
                 f"width:{w_px}px;height:{h_px}px;overflow:visible"
             )
-            effect_filter = _custom_geometry_filter(node, warnings)
+            effect_filter = (
+                _custom_geometry_filter(node, warnings) if node.portable_fallback is None else None
+            )
             if effect_filter is not None:
                 pos_style += f";filter:{effect_filter}"
             vb_w = cg.width_emu
@@ -1073,12 +1075,58 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                     f'{dash_attr} stroke-linecap="{cap}" stroke-linejoin="{line.join}"'
                     ' vector-effect="non-scaling-stroke"'
                 )
+            fallback_attrs = ""
+            fallback_layer = ""
+            path_visibility = ""
+            if node.portable_fallback is not None:
+                fallback = node.portable_fallback
+                asset = _asset(fallback.picture)
+                assets.setdefault(asset.path, asset)
+                fallback_attrs = (
+                    ' data-domoxml-raster-bounds="'
+                    f"{_number(emu_to_px(fallback.box.x))} "
+                    f"{_number(emu_to_px(fallback.box.y))} "
+                    f"{_number(emu_to_px(fallback.box.width))} "
+                    f'{_number(emu_to_px(fallback.box.height))}"'
+                )
+                fallback_x = (
+                    (fallback.box.x - node.box.x) / node.box.width * vb_w if node.box.width else 0
+                )
+                fallback_y = (
+                    (fallback.box.y - node.box.y) / node.box.height * vb_h if node.box.height else 0
+                )
+                fallback_width = (
+                    fallback.box.width / node.box.width * vb_w if node.box.width else vb_w
+                )
+                fallback_height = (
+                    fallback.box.height / node.box.height * vb_h if node.box.height else vb_h
+                )
+                fallback_layer = (
+                    '<image data-domoxml-render-layer="true" '
+                    f'href="../{escape(asset.path, quote=True)}" '
+                    f'x="{_number(fallback_x)}" y="{_number(fallback_y)}" '
+                    f'width="{_number(fallback_width)}" height="{_number(fallback_height)}" '
+                    'preserveAspectRatio="none"/>'
+                )
+                path_visibility = ' opacity="0"'
+                warnings.append(
+                    ConversionWarning(
+                        message=(
+                            "custom geometry displayed with its exact portable effect layer; "
+                            "native path and typed effect intent retained"
+                        ),
+                        element=node.node_id or "custom-geometry",
+                    )
+                )
             inner = (
                 f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}'
                 f"{_custom_geometry_attrs(cg)}{_effect_attrs(node)}"
+                f"{fallback_attrs}"
                 f' viewBox="0 0 {vb_w} {vb_h}"'
                 f' style="{escape(pos_style, quote=True)}">'
-                f'<path d="{escape(d, quote=True)}" {fill_attr}{stroke_attrs}/>'
+                f"{fallback_layer}"
+                f'<path d="{escape(d, quote=True)}" {fill_attr}{stroke_attrs}'
+                f"{path_visibility}/>"
                 f"</svg>"
             )
             return inner

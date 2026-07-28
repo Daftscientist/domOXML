@@ -156,7 +156,11 @@ legal slot as a hidden editable native subset, and uses one exact shape-owned pi
 paint. The `schema_subset` projection is carried through normalized HTML and accepted on reverse
 only while that native subset is unchanged. Direct PowerPoint tests of flat and nested mixed
 `effectDag` topologies lost the inset or source paint, so schema validity alone never promotes a
-graph to native parity. Solid fill overlays using multiply, screen, darken, or lighten
+graph to native parity. Custom geometry with an owned effect fallback emits the exact picture as a
+renderer-only child of its normalized inline SVG while retaining a hidden typed path. Explicit
+absolute raster bounds recover the same movable hybrid instead of clipping effect overflow to the
+SVG layout box, and the portable role marker keeps that ownership stable across repeated cycles.
+Solid fill overlays using multiply, screen, darken, or lighten
 use the exact native effect alone in the PowerPoint choice and the portable picture only in the
 LibreOffice fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned
 geometry. Blur and reflection bounds include their full overflow; inset shadow, soft edge, and fill

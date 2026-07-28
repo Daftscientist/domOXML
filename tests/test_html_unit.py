@@ -18,6 +18,7 @@ from domoxml.core.ir.model import (
     LineSpacing,
     PictureFill,
     Point,
+    PortableFallback,
     PreservationPart,
     PreservationPayload,
     PreservedNode,
@@ -222,6 +223,60 @@ def test_custom_geometry_emits_path_aware_shadow_and_glow_filters() -> None:
     ) in html.slides[0].html
     assert "data-domoxml-effects=" in html.slides[0].html
     assert "data-domoxml-custom-geometry=" in html.slides[0].html
+
+
+def test_custom_geometry_portable_fallback_is_visible_with_exact_bounds() -> None:
+    geometry = CustomGeometry(
+        width_emu=1_905_000,
+        height_emu=952_500,
+        path=(
+            CubicTo(
+                c1=Point(x=0, y=0),
+                c2=Point(x=1_905_000, y=0),
+                to=Point(x=1_905_000, y=952_500),
+            ),
+            ClosePath(),
+        ),
+    )
+    node = ShapeNode(
+        box=Box(x=952_500, y=762_000, width=1_905_000, height=952_500),
+        custom_geom=geometry,
+        fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+        effects=(
+            Shadow(
+                color=Rgba(r=15, g=23, b=42, a=0.55),
+                blur_emu=190_500,
+                distance_emu=260_000,
+            ),
+            Shadow(
+                color=Rgba(r=255, g=255, b=255, a=0.7),
+                blur_emu=95_250,
+                distance_emu=47_625,
+                inset=True,
+            ),
+            Shadow(
+                color=Rgba(r=225, g=29, b=72, a=0.65),
+                blur_emu=285_750,
+                distance_emu=430_000,
+            ),
+        ),
+        native_effect_projection="schema_subset",
+        portable_fallback=PortableFallback(
+            box=Box(x=762_000, y=666_750, width=2_381_250, height=1_333_500),
+            picture=PictureFill(data=b"exact-custom-effect-layer", ext="png"),
+        ),
+    )
+
+    html = serialize_canvas([SlideIR(width=4_000_000, height=3_000_000, contents=(node,))])
+    markup = html.slides[0].html
+
+    assert 'data-domoxml-raster-bounds="80 70 250 140"' in markup
+    assert '<image data-domoxml-render-layer="true"' in markup
+    assert 'x="-190500" y="-95250" width="2381250" height="1333500"' in markup
+    assert "<path " in markup and 'opacity="0"' in markup
+    assert "filter:" not in markup
+    assert html.assets[0].data == b"exact-custom-effect-layer"
+    assert any("exact portable effect layer" in warning.message for warning in html.warnings)
 
 
 def test_custom_geometry_unsupported_effect_warnings_name_the_shape() -> None:

@@ -1341,6 +1341,21 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         else ()
                     )
                 )
+                fallback_shape = (
+                    _raster_shape(node, rendered)
+                    if node.styles.get("domoxmlRasterBounds")
+                    else None
+                )
+                portable_fallback = (
+                    PortableFallback(
+                        box=fallback_shape.box,
+                        picture=fallback_shape.fill.model_copy(
+                            update={"raster_role": "portable-effect-fallback"}
+                        ),
+                    )
+                    if fallback_shape is not None and isinstance(fallback_shape.fill, PictureFill)
+                    else None
+                )
                 paint_reason = fill_reason or line_reason or effect_reason
                 if paint_reason is not None:
                     label = _label(node)
@@ -1390,12 +1405,29 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                                 if encoded_effect_payload is not None
                                 else "complete"
                             ),
+                            portable_fallback=portable_fallback,
                         ),
                         node,
                     )
                 )
                 consumed |= _subtree(node.index, children)
-                coverage.append(_native_coverage(_label(node)))
+                if portable_fallback is None:
+                    coverage.append(_native_coverage(_label(node)))
+                else:
+                    coverage.append(
+                        CoverageItem(
+                            element=_label(node),
+                            representation=Representation.HYBRID,
+                            editability=Editability.COMPONENTS,
+                            output_count=2,
+                            raster_area_emu2=(
+                                portable_fallback.box.width * portable_fallback.box.height
+                            ),
+                            reason=(
+                                "editable native custom geometry with an exact owned effect layer"
+                            ),
+                        )
+                    )
                 continue
             else:
                 # SVG custom-geometry failed: fall through to raster

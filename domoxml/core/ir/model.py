@@ -715,6 +715,8 @@ class ShapeNode(CanvasNode):
             raise ValueError("sibling effect graph requires multiple outer shadows")
         if self.effect_container == "sibling" and self.native_effect_projection == "schema_subset":
             raise ValueError("schema-subset native projection is only supported for effect lists")
+        if self.native_effect_projection == "schema_subset" and self.portable_fallback is None:
+            raise ValueError("schema-subset native projection requires a portable fallback")
         return self
 
     @property

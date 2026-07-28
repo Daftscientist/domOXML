@@ -383,6 +383,7 @@ def test_mixed_shadow_schema_subset_retains_exact_intent_and_rejects_stale_proje
     assert edited.native_effect_projection == "complete"
     assert len(edited.effects) == 2
     assert edited.effects != (front_outer, inner, back_outer)
+    assert edited.portable_fallback is None
 
 
 def test_portable_reflection_fallback_uses_alternate_content_and_round_trips() -> None:

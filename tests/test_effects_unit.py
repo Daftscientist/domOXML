@@ -44,6 +44,7 @@ from domoxml.core.ir.model import (
     FillOverlay,
     Glow,
     PictureFill,
+    PortableFallback,
     Reflection,
     Rgba,
     Shadow,
@@ -658,6 +659,10 @@ def test_schema_subset_projection_emits_one_child_per_effect_list_slot() -> None
         fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
         effects=(front_outer, inner, back_outer),
         native_effect_projection="schema_subset",
+        portable_fallback=PortableFallback(
+            box=Box(x=0, y=0, width=9_525_000, height=4_762_500),
+            picture=PictureFill(data=b"exact-effect-layer", ext="png"),
+        ),
     )
 
     xml = _effects_xml(node)
@@ -735,6 +740,26 @@ def test_shape_rejects_schema_subset_projection_for_sibling_graph() -> None:
                 ),
             ),
             effect_container="sibling",
+            native_effect_projection="schema_subset",
+        )
+
+
+def test_shape_rejects_schema_subset_projection_without_portable_fallback() -> None:
+    with pytest.raises(ValueError, match="requires a portable fallback"):
+        ShapeNode(
+            box=Box(x=0, y=0, width=100_000, height=100_000),
+            effects=(
+                Shadow(
+                    color=Rgba(r=0, g=0, b=0, a=0.4),
+                    blur_emu=40_000,
+                    distance_emu=20_000,
+                ),
+                Shadow(
+                    color=Rgba(r=0, g=0, b=0, a=0.3),
+                    blur_emu=30_000,
+                    distance_emu=10_000,
+                ),
+            ),
             native_effect_projection="schema_subset",
         )
 
@@ -1290,7 +1315,15 @@ def test_normalized_html_retains_schema_subset_native_projection() -> None:
         ),
     )
     slide = _slide_with(*effects)
-    shape = slide.shapes[0].model_copy(update={"native_effect_projection": "schema_subset"})
+    shape = slide.shapes[0].model_copy(
+        update={
+            "native_effect_projection": "schema_subset",
+            "portable_fallback": PortableFallback(
+                box=slide.shapes[0].box,
+                picture=PictureFill(data=b"exact-effect-layer", ext="png"),
+            ),
+        }
+    )
 
     html = serialize_canvas([slide.model_copy(update={"contents": (shape,)})])
     match = re.search(r'data-domoxml-effects="([^"]+)"', html.slides[0].html)

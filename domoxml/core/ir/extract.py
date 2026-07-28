@@ -83,7 +83,7 @@ from domoxml.core.ir.parse import (
     parse_color,
     parse_decoration,
     parse_drop_shadow_filter,
-    parse_fill_overlay,
+    parse_fill_overlay_effect,
     parse_gradient,
     parse_length_px,
     parse_letter_spacing_pt,
@@ -538,10 +538,10 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     has_normalized_overlay = normalized_overlay is not None
     if (
         blend_mode not in ("normal", "")
-        and parse_fill_overlay(
+        and parse_fill_overlay_effect(
             styles.get("backgroundImage"),
-            styles.get("backgroundColor"),
             blend_mode,
+            background_color=styles.get("backgroundColor"),
             background_size=styles.get("backgroundSize"),
             background_position=styles.get("backgroundPosition"),
             background_repeat=styles.get("backgroundRepeat"),
@@ -810,10 +810,10 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
         styles = {**styles, **base_styles}
         background_image = styles["backgroundImage"]
     else:
-        fill_overlay = parse_fill_overlay(
+        fill_overlay = parse_fill_overlay_effect(
             background_image,
-            styles.get("backgroundColor"),
             styles.get("backgroundBlendMode"),
+            background_color=styles.get("backgroundColor"),
             background_size=styles.get("backgroundSize"),
             background_position=styles.get("backgroundPosition"),
             background_repeat=styles.get("backgroundRepeat"),
@@ -821,7 +821,20 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
             background_clip=styles.get("backgroundClip"),
         )
         if fill_overlay is not None:
-            return fill_overlay[0], None
+            base_styles = fill_overlay_base_styles(
+                background_image,
+                styles.get("backgroundBlendMode"),
+                fill_overlay,
+                background_size=styles.get("backgroundSize"),
+                background_position=styles.get("backgroundPosition"),
+                background_repeat=styles.get("backgroundRepeat"),
+                background_origin=styles.get("backgroundOrigin"),
+                background_clip=styles.get("backgroundClip"),
+            )
+            if base_styles is None:
+                return None, "authored fill-overlay metadata does not match rendered CSS"
+            styles = {**styles, **base_styles}
+            background_image = styles["backgroundImage"]
 
     # Check for url(...) first, before checking for gradient keywords
     if "url(" in background_image:
@@ -1722,11 +1735,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             if encoded_effects is None
             else None
         )
-        fill_overlay = (
-            parse_fill_overlay(
+        fill_overlay_effect = (
+            parse_fill_overlay_effect(
                 node.styles.get("backgroundImage"),
-                node.styles.get("backgroundColor"),
                 node.styles.get("backgroundBlendMode"),
+                background_color=node.styles.get("backgroundColor"),
                 background_size=node.styles.get("backgroundSize"),
                 background_position=node.styles.get("backgroundPosition"),
                 background_repeat=node.styles.get("backgroundRepeat"),
@@ -1743,7 +1756,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 ((blur,) if blur is not None else ())
                 + ((soft_edge,) if soft_edge is not None else ())
                 + ((reflection,) if reflection is not None else ())
-                + ((fill_overlay[1],) if fill_overlay is not None else ())
+                + ((fill_overlay_effect,) if fill_overlay_effect is not None else ())
                 + tuple(_shadow_to_effect(shadow, box, warnings) for shadow in shadows)
             )
         )

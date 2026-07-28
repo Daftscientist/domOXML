@@ -60,6 +60,7 @@ from domoxml.core.ir.parse import (
     parse_box_reflection,
     parse_drop_shadow_filter,
     parse_fill_overlay,
+    parse_fill_overlay_effect,
     parse_shadow,
     parse_shadows,
     parse_soft_edge_mask,
@@ -338,6 +339,58 @@ def test_normalized_fill_overlay_peels_per_layer_background_geometry() -> None:
     assert base["backgroundSize"] == "200% 100%"
     assert base["backgroundPosition"] == "50% 50%"
     assert base["backgroundRepeat"] == "no-repeat"
+
+
+def test_parse_picture_fill_overlay_peels_one_uniform_top_layer() -> None:
+    image = "linear-gradient(rgba(255, 40, 80, .75), rgba(255, 40, 80, .75)),url(asset.png)"
+
+    effect = parse_fill_overlay_effect(
+        image,
+        "multiply,normal",
+        background_size="auto,cover",
+        background_position="0% 0%,50% 50%",
+        background_repeat="repeat,no-repeat",
+    )
+
+    assert effect == FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="mult",
+    )
+    assert parse_fill_overlay(image, "rgb(20,60,140)", "multiply,normal") is None
+    assert (
+        parse_fill_overlay_effect(
+            image,
+            "multiply,screen",
+            background_size="auto,cover",
+            background_position="0% 0%,50% 50%",
+            background_repeat="repeat,no-repeat",
+        )
+        is None
+    )
+    assert (
+        parse_fill_overlay_effect(
+            "linear-gradient(red,red),linear-gradient(blue,blue)",
+            "multiply,normal",
+        )
+        is None
+    )
+    assert (
+        parse_fill_overlay_effect(
+            "linear-gradient(red,red),url(asset.png),url(second.png)",
+            "multiply,normal,normal",
+        )
+        is None
+    )
+    assert (
+        parse_fill_overlay_effect(
+            image,
+            "multiply,normal",
+            background_size="50% 50%,cover",
+            background_position="100% 100%,50% 50%",
+            background_repeat="no-repeat,no-repeat",
+        )
+        is None
+    )
 
 
 def test_rejects_css_reflection_that_cannot_map_to_current_ir() -> None:

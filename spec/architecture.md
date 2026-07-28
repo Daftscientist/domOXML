@@ -177,8 +177,12 @@ different color spaces, partial clips, and compound graphs stay on the element-l
 Solid fill overlays using multiply, screen, darken, or lighten
 use the exact native effect alone in the PowerPoint choice and the portable picture only in the
 LibreOffice fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned
-geometry. Blur and reflection bounds include their full overflow; inset shadow, soft edge, and fill
-overlay use the shape paint box, expanded to its axis-aligned painted bounds after rotation.
+geometry. The same contract admits a uniform top CSS gradient over one picture background layer
+when every remaining blend mode is `normal`; per-layer size, position, and repeat values are peeled
+before the base picture crop is resolved. Partial overlays, active lower blend layers, and
+nonuniform overlay gradients remain on the element-layer path. Blur and reflection bounds include
+their full overflow; inset shadow, soft edge, and fill overlay use the shape paint box, expanded to
+its axis-aligned painted bounds after rotation.
 Normalized rectangles use the same two-axis mask, while normalized ellipses
 use a boundary-following closest-side radial mask. Nondefault authored mask geometry does not enter
 this hybrid path and remains visible through the general element-layer fallback.

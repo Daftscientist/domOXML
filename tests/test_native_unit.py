@@ -477,6 +477,31 @@ def test_nonuniform_background_blend_uses_visible_element_layer() -> None:
     assert "background-blend-mode" in (result.coverage[0].reason or "")
 
 
+def test_authored_gradient_base_fill_overlay_uses_visible_element_layer() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "backgroundImage": (
+                "linear-gradient(rgb(255, 0, 0), rgb(255, 0, 0)),"
+                "linear-gradient(90deg, rgb(10, 20, 30), rgb(40, 50, 60))"
+            ),
+            "backgroundColor": "rgba(0, 0, 0, 0)",
+            "backgroundBlendMode": "multiply,normal",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert "background-blend-mode" in (result.coverage[0].reason or "")
+
+
 def test_partial_uniform_background_blend_uses_visible_element_layer() -> None:
     node = RenderedNode(
         tag="div",

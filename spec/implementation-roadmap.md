@@ -11,8 +11,8 @@ Snapshot audited on **2026-07-28** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 829 tests are collected.
-- 38 atomic PPTX capability fixtures exist; 32 are bidirectional and six are reverse-first
+- 832 tests are collected.
+- 39 atomic PPTX capability fixtures exist; 33 are bidirectional and six are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, rasterized preset
   shadow node/slide fallbacks, named nested effect-graph preservation, and custom-path-owned
   effect fallback.
@@ -256,8 +256,8 @@ silently lowering the expected score.
    geometry; thick/compound line alignment; smaller independently owned source
    isolation; reflection directions beyond the strict custom-path `below` subset and non-pixel
    gaps; typed preset-shadow semantics and
-   combinations; gradient/pattern/picture fill overlays and `over` calibration; multi-function SVG
-   filter ordering beyond the strict soft-edge and fill-overlay pipelines; broader color models;
+   combinations; gradient/pattern fill overlays and `over` calibration; multi-function SVG filter
+   ordering beyond the strict soft-edge and fill-overlay pipelines; broader color models;
    and representative real-deck coverage for those families.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic

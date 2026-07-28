@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from io import BytesIO
 
 import pytest
@@ -53,9 +54,9 @@ async def _render_and_extract(slide_html: str) -> SlideIR:
     return extract_slide(rendered).slide
 
 
-async def _render_and_extract_result(slide_html: str) -> ExtractResult:
+async def _render_and_extract_result(slide_html: str, *, css: str | None = None) -> ExtractResult:
     width, height = pixels(SlideSize.WIDE_16_9)
-    page = compose_page(slide_html, css=None, theme=Theme(), width_px=width, height_px=height)
+    page = compose_page(slide_html, css=css, theme=Theme(), width_px=width, height_px=height)
     async with BrowserSession() as session:
         rendered = await session.render(page, width=width, height=height)
     return extract_slide(rendered)
@@ -206,6 +207,65 @@ async def test_extracts_css_fill_overlay_with_shape_bound_fallback() -> None:
     [coverage] = [item for item in result.coverage if item.representation is Representation.HYBRID]
     assert coverage.editability is Editability.COMPONENTS
     assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(90)
+
+
+async def test_extracts_picture_fill_overlay_with_shape_bound_fallback() -> None:
+    image_buffer = BytesIO()
+    image = Image.new("RGB", (8, 4), (37, 99, 235))
+    for x in range(4, 8):
+        for y in range(4):
+            image.putpixel((x, y), (16, 185, 129))
+    image.save(image_buffer, "PNG")
+    encoded = base64.b64encode(image_buffer.getvalue()).decode("ascii")
+    result = await _render_and_extract_result(
+        '<div style="position:absolute;left:100px;top:80px;width:220px;height:90px;'
+        "background-image:"
+        "linear-gradient(rgba(244,63,94,.72),rgba(244,63,94,.72)),"
+        f"url(data:image/png;base64,{encoded});"
+        "background-blend-mode:multiply,normal;"
+        "background-size:auto,100% 100%;"
+        "background-position:0% 0%,0% 0%;"
+        'background-repeat:repeat,no-repeat"></div>'
+    )
+
+    [shape] = [
+        shape
+        for shape in result.slide.shapes
+        if any(isinstance(effect, FillOverlay) for effect in shape.effects)
+    ]
+    assert isinstance(shape.fill, PictureFill)
+    assert shape.fill.data == image_buffer.getvalue()
+    assert shape.effects == (
+        FillOverlay(
+            fill=SolidFill(color=Rgba(r=244, g=63, b=94, a=0.72)),
+            blend="mult",
+        ),
+    )
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(100),
+        y=px_to_emu(80),
+        width=px_to_emu(220),
+        height=px_to_emu(90),
+    )
+    [coverage] = [item for item in result.coverage if item.representation is Representation.HYBRID]
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.output_count == 2
+    assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(90)
+
+    serialized = inline_assets(serialize_canvas([result.slide]))
+    second = await _render_and_extract_result(serialized.slides[0].html, css=serialized.css)
+
+    [recovered] = [
+        candidate
+        for candidate in second.slide.shapes
+        if any(isinstance(effect, FillOverlay) for effect in candidate.effects)
+    ]
+    assert isinstance(recovered.fill, PictureFill)
+    assert recovered.fill.data == image_buffer.getvalue()
+    assert recovered.effects == shape.effects
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == shape.portable_fallback.box
 
 
 async def test_blurred_reflection_render_layer_reingests_as_one_hybrid_owner() -> None:

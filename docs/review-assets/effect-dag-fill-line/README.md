@@ -7,10 +7,10 @@ two outer shadows. PowerPoint uses one editable sibling `a:effectDag` whose fina
 
 | Path | Global | Regional | Focused | Structural |
 |---|---:|---:|---:|---:|
-| Forward LibreOffice | 0.991 | 0.964 | 0.834 | 0.979 |
+| Forward LibreOffice | 0.991 | 0.963 | 0.833 | 0.979 |
 | Forward Microsoft Graph | 0.986 | 0.949 | 0.836 | 0.984 |
-| PPTX -> normalized HTML | 0.994 | 0.977 | 0.913 | 0.996 |
-| Rebuilt LibreOffice | 0.990 | 0.963 | 0.834 | 0.979 |
+| PPTX -> normalized HTML | 0.994 | 0.976 | 0.915 | 0.996 |
+| Rebuilt LibreOffice | 0.990 | 0.962 | 0.833 | 0.979 |
 | Rebuilt Microsoft Graph | 0.986 | 0.949 | 0.836 | 0.984 |
 | Normalized HTML cycle 2 | 1.000 | 1.000 | 1.000 | 1.000 |
 
@@ -22,7 +22,7 @@ structural XPath and visual floor reject that mutation.
 This fixture exposed inherited page paint in isolated browser captures: after PPTX -> HTML -> PPTX,
 LibreOffice previously showed a white rectangle around the portable layer. Isolation now forces the
 root canvas and nonselected ancestors transparent, restores their styles after capture, and has a
-direct alpha regression test. The rebuilt LibreOffice regional score rose from `0.957` to `0.963`,
+direct alpha regression test. The rebuilt LibreOffice regional score rose from `0.957` to `0.962`,
 and visual inspection confirms the rectangle is gone.
 
 ## Forward PPTX

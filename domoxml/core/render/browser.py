@@ -268,9 +268,16 @@ _ISOLATE_JS = """
     ...document.body.querySelectorAll('*'),
   ];
   for (const element of elements) {
-    changed.push([element, element.style.visibility]);
-    element.style.visibility =
-      element === selected || selected.contains(element) ? 'visible' : 'hidden';
+    changed.push([
+      element,
+      element.style.getPropertyValue('visibility'),
+      element.style.getPropertyPriority('visibility'),
+    ]);
+    element.style.setProperty(
+      'visibility',
+      element === selected || selected.contains(element) ? 'visible' : 'hidden',
+      'important',
+    );
   }
   for (const [element] of rootStyles) {
     element.style.setProperty('background', 'transparent', 'important');
@@ -278,7 +285,10 @@ _ISOLATE_JS = """
     element.style.setProperty('background-image', 'none', 'important');
   }
   return () => {
-    for (const [element, visibility] of changed) element.style.visibility = visibility;
+    for (const [element, visibility, priority] of changed) {
+      if (visibility) element.style.setProperty('visibility', visibility, priority);
+      else element.style.removeProperty('visibility');
+    }
     for (const [element, cssText] of rootStyles) element.style.cssText = cssText;
   };
 }

@@ -117,7 +117,9 @@ async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:
         '<div style="position:absolute;left:340px;top:214px;width:600px;height:268px;'
         "box-sizing:border-box;background:#2563eb;border:4px solid #facc15;"
         "border-radius:18px;box-shadow:18px 22px 24px rgba(15,23,42,.55),"
-        '-26px 24px 30px 2px rgba(225,29,72,.65)"></div></div>'
+        '-26px 24px 30px 2px rgba(225,29,72,.65)"></div>'
+        '<div style="position:absolute;inset:0;background:#22c55e;'
+        'visibility:visible!important"></div></div>'
     )
 
     [shape] = [

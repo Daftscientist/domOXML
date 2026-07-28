@@ -58,8 +58,9 @@ def test_required_backend_fails_closed_and_writes_summary(
     assert summary["skipped"] == ["libreoffice: renderer unavailable"]
 
 
+@pytest.mark.parametrize("message", fidelity_check._TRANSIENT_RENDER_ERRORS)
 def test_render_case_retries_one_transient_browser_failure(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: MonkeyPatch, message: str
 ) -> None:
     case = fidelity_check.load_corpus(_corpus(tmp_path))[0]
     attempts = 0
@@ -68,12 +69,30 @@ def test_render_case_retries_one_transient_browser_failure(
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            raise RuntimeError("Page.captureScreenshot: Unable to capture screenshot")
+            raise RuntimeError(message)
         return ((b"source",), b"pptx")
 
     monkeypatch.setattr(fidelity_check, "_render_case", render)
 
     assert fidelity_check._render_case_with_retry(case) == ((b"source",), b"pptx")
+    assert attempts == 2
+
+
+def test_render_case_stops_after_one_transient_retry(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    case = fidelity_check.load_corpus(_corpus(tmp_path))[0]
+    attempts = 0
+
+    def render(_case: object) -> tuple[tuple[bytes, ...], bytes]:
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("Page.captureScreenshot: Unable to capture screenshot")
+
+    monkeypatch.setattr(fidelity_check, "_render_case", render)
+
+    with pytest.raises(RuntimeError, match="Unable to capture screenshot"):
+        fidelity_check._render_case_with_retry(case)
     assert attempts == 2
 
 

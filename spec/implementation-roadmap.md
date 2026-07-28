@@ -11,7 +11,7 @@ Snapshot audited on **2026-07-27** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 795 tests are collected.
+- 797 tests are collected.
 - 30 atomic PPTX capability fixtures exist; 25 are bidirectional and five are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, rasterized preset
   shadow node/slide fallbacks, and named nested effect-graph preservation.
@@ -248,67 +248,14 @@ silently lowering the expected score.
    items 7 and 10 rather than being implied by this structural gate.
 7. [ ] Add groups, media, masters/layouts/placeholders, notes, and extensions to the real-deck
    corpus.
-8. [ ] Expand effects beyond the bidirectional offset-shadow/inset-layer/glow baseline using
-   PowerPoint/Graph-calibrated evidence for blur, soft edge, reflection, preset shadow, fill overlay,
-   compound lists/order, and effect-bearing custom geometry. CSS blur and the conservative
-   `below <px> linear-gradient(...)` reflection subset, strict two-axis intersecting soft-edge
-   mask, and solid multiply/screen/darken/lighten fill overlays now have bidirectional atomic
-   fixtures. PowerPoint retains native `a:blur`, `a:reflection`, or `a:softEdge` beneath an
-   isolated layer, while exact native `a:fillOverlay` is selected without a redundant overlaid
-   bitmap; LibreOffice selects the portable fallback alone. Both branches recover into one hybrid
-   IR node, and two-cycle convergence is exact. Fill-overlay recovery requires exact RGB and blend
-   tokens while allowing at most one 8-bit alpha quantum introduced by Chromium computed-color
-   serialization; partial background geometry and stale normalized metadata take the visible
-   element-layer path. Unsupported rotated `over` payload, paint bounds, isolated fallback bytes,
-   and ownership are pinned across two PPTX-to-normalized-HTML rebuild cycles; unsafe overlapping
-   crops remain visible but report rasterized/noneditable. Native reflection
-   blur uses an owned mirrored CSS layer and transform-aware isolated bounds on reverse output.
-   Soft-edge mask sizing, position, repeat, origin, clip, and mode are admitted only at their exact
-   default geometry; other masks take the visible element-layer path. Normalized ellipses use a
-   geometry-aware radial feather, proven against an external OfficeCLI deck whose exact zero/8pt/
-   20pt radii survive re-emission; its baseline also records the separate ellipse internal-text-
-   rectangle debt. An Aspose-generated real deck pins all four verified overlay modes against
-   PowerPoint/Graph; LibreOffice's ignored source effect and domOXML's intended portable output are
-   retained as direct review evidence. DrawingML `over` is explicitly not mapped to CSS `normal`
-   after Graph inspection disproved equivalence, and remains source-preserved on the admitted owned
-   fallback path. A reverse-first perspective preset-shadow fixture now retains exact native source
-   for PowerPoint and, on a sole-visual slide, selects one full-slide raster fallback for renderers
-   that omit `a:prstShdw`; coverage reports that full area as rasterized/noneditable and the second
-   normalized HTML cycle is exact. A second reverse fixture combines that shadow with a later
-   overlapping translucent shape: Canvas IR owns the composite fallback at slide level, normalized
-   HTML paints it once above retained objects, PowerPoint selects the original native sequence, and
-   LibreOffice selects the one picture. Re-ingestion retains exact payload, z-order, fallback bytes,
-   coverage, and pixels through cycle two. Single-path SVG `drop-shadow()` now lowers to a native
-   custom geometry outer shadow or glow with separate Graph/LibreOffice calibration; normalized HTML
-   paints the path-aware effect, exact typed metadata survives two cycles, and unsupported SVG filter
-   chains take a visible element-layer fallback. A reduced Apache POI real-deck case pins four
-   producer-authored guide-backed paths and shadows on LibreOffice and Graph; DrawingML guide
-   formulas and elliptical arcs now normalize into typed custom geometry rather than crashing or
-   disappearing on re-ingestion. Its upstream digest is checked through a committed
-   URL/revision-bound receipt, and exact-count gates require all four custom geometries, guide lists,
-   outer shadows, and normalized effect payloads. Reflection directions other than `below`, non-pixel
-   gaps, typed/editable preset-shadow semantics, multiple preset shadows, unknown compound siblings,
-   smaller preset-shadow isolation, gradient/other fill-overlay families, `over` calibration,
-   `CT_EffectList` now serializes its supported unique effects in schema order rather than IR tuple
-   order; an authored blur-plus-outer-shadow fixture pins the native list, isolated portable layer,
-   exact maximum XPath counts, focused omission floors, and two-cycle convergence. Multiple CSS
-   outer shadows now lower to one typed flat sibling `effectDag`: PPTX reverses CSS paint order,
-   appends the source reference, selects the editable native graph in PowerPoint, and selects one
-   isolated portable layer in LibreOffice. Reverse ingestion restores CSS order and container
-   metadata; arbitrary/nested graphs remain attached as one exact source payload under a
-   renderer-backed fallback. A bidirectional fixture pins both shadow branches with Graph and
-   LibreOffice evidence, exact graph structure/coverage, omission-sensitive focused floors, and
-   exact second-cycle convergence. A second bidirectional graph fixture pins the `fillLine` source
-   reference against a visible native stroke, two shadows, exact package structure, and both Office
-   renderers. Its round-trip inspection exposed and fixed inherited page paint in isolated fallback
-   captures: the browser capture canvas and ancestors are now transparent, fallback alpha is
-   asserted directly, and rebuilt LibreOffice output no longer gains a white rectangle. A
-   reverse-first named tree graph now proves exact nested
-   container/effect retention, one owned renderer fallback, valid regenerated packages, exact
-   PowerPoint output, and exact second-cycle convergence. Typed/editable mappings for heterogeneous
-   tree graphs, duplicate non-shadow effects, smaller graph isolation, custom-geometry
-   blur/reflection/soft-edge/fill-overlay families, and multi-function SVG filter ordering remain
-   open.
+8. [ ] Complete the remaining effect families. Implemented behavior and evidence live in the
+   shared/PPTX inventories and executable manifests rather than this work queue. Remaining work is:
+   typed/editable heterogeneous tree graphs; duplicate non-shadow effects; negative-spread and
+   mixed/inset graph branches; thick/compound line alignment; smaller independently owned source
+   isolation; reflection directions and non-pixel gaps; typed preset-shadow semantics and
+   combinations; gradient/pattern/picture fill overlays and `over` calibration; custom-geometry
+   blur/reflection/soft-edge/fill-overlay; multi-function SVG filter ordering; broader color models;
+   and representative real-deck coverage for those families.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic
    fixture now rebuilds and re-ingests at least twice, validates each package and quality boundary,

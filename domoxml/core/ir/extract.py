@@ -1322,10 +1322,16 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 filter_value = node.styles.get("filter", "none")
                 if filter_value in ("none", ""):
                     filter_value = fill_node.styles.get("filter", "none")
+                reflection_value = node.styles.get("webkitBoxReflect", "none")
+                if reflection_value in ("none", ""):
+                    reflection_value = fill_node.styles.get("webkitBoxReflect", "none")
                 drop_shadow = (
                     parse_drop_shadow_filter(filter_value) if encoded_effects is None else None
                 )
                 blur = parse_blur_filter(filter_value) if encoded_effects is None else None
+                reflection = (
+                    parse_box_reflection(reflection_value) if encoded_effects is None else None
+                )
                 effect_reason: str | None = None
                 if (
                     encoded_effects is None
@@ -1334,6 +1340,17 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     and blur is None
                 ):
                     effect_reason = "SVG CSS filter has no native custom-geometry mapping"
+                if (
+                    encoded_effects is None
+                    and reflection_value not in ("none", "")
+                    and reflection is None
+                ):
+                    effect_reason = "SVG CSS reflection has no native custom-geometry mapping"
+                if reflection is not None and (drop_shadow is not None or blur is not None):
+                    effect_reason = (
+                        "compound SVG filter and reflection ordering has no native "
+                        "custom-geometry mapping"
+                    )
                 effects = (
                     encoded_effects
                     if encoded_effects is not None
@@ -1342,12 +1359,18 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         if drop_shadow is not None
                         else (blur,)
                         if blur is not None
+                        else (reflection,)
+                        if reflection is not None
                         else ()
                     )
                 )
                 fallback_shape = (
                     _raster_shape(node, rendered)
-                    if node.styles.get("domoxmlRasterBounds") or blur is not None
+                    if (
+                        node.styles.get("domoxmlRasterBounds")
+                        or blur is not None
+                        or reflection is not None
+                    )
                     else None
                 )
                 portable_fallback = (
@@ -1360,9 +1383,9 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     if fallback_shape is not None and isinstance(fallback_shape.fill, PictureFill)
                     else None
                 )
-                if blur is not None and portable_fallback is None:
+                if (blur is not None or reflection is not None) and portable_fallback is None:
                     effect_reason = (
-                        "SVG blur requires an exact owned renderer fallback, "
+                        "SVG effect requires an exact owned renderer fallback, "
                         "but rasterization returned no region"
                     )
                 paint_reason = fill_reason or line_reason or effect_reason
@@ -1388,11 +1411,14 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             )
                         )
                     continue
-                if blur is not None and portable_fallback is not None:
+                if (blur is not None or reflection is not None) and portable_fallback is not None:
+                    effect_name = "blur" if blur is not None else "reflection"
+                    native_name = "a:blur" if blur is not None else "a:reflection"
                     warnings.append(
                         ConversionWarning(
                             message=(
-                                "SVG blur emitted as editable native a:blur with an exact "
+                                f"SVG {effect_name} emitted as editable native {native_name} "
+                                "with an exact "
                                 "custom-geometry-owned renderer fallback"
                             ),
                             element=_label(node),

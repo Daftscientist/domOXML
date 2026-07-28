@@ -578,7 +578,15 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     if reflection_value not in ("none", "") and parse_box_reflection(reflection_value) is None:
         return "CSS box reflection has no native mapping"
     shadows = parse_shadows(styles.get("boxShadow"))
-    if len(shadows) > 1 and any(shadow.inset or shadow.distance_emu == 0 for shadow in shadows):
+    all_outer_sibling_graph = all(
+        not shadow.inset and shadow.distance_emu != 0 for shadow in shadows
+    )
+    mixed_effect_list = (
+        len(shadows) == 2
+        and sum(shadow.inset for shadow in shadows) == 1
+        and all(shadow.inset or shadow.distance_emu != 0 for shadow in shadows)
+    )
+    if len(shadows) > 1 and not (all_outer_sibling_graph or mixed_effect_list):
         return "mixed multiple box-shadow layers have no proven DrawingML effect graph"
     transform_val = styles.get("transform")
     if _has_complex_transform(transform_val):
@@ -1578,7 +1586,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             encoded_effect_payload.container
             if encoded_effect_payload is not None
             else "sibling"
-            if len(shadows) > 1
+            if len(shadows) > 1 and all(not shadow.inset for shadow in shadows)
             else "list"
         )
         effect_source_ref = (
@@ -1620,6 +1628,18 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             "multiple CSS shadows emitted as editable native a:effectDag "
                             "with an isolated renderer fallback"
                             if effect_container == "sibling"
+                            else (
+                                "mixed CSS outer and inset shadows emitted as editable native "
+                                "a:effectLst with an isolated renderer fallback"
+                            )
+                            if (
+                                len(effects) == 2
+                                and all(isinstance(effect, Shadow) for effect in effects)
+                                and sum(
+                                    effect.inset for effect in effects if isinstance(effect, Shadow)
+                                )
+                                == 1
+                            )
                             else (
                                 "CSS inset shadow emitted as editable native a:innerShdw "
                                 "with an isolated renderer fallback"
@@ -1687,7 +1707,9 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             )
         elif portable_fallback is not None:
             effect_names = ", ".join(
-                "innerShdw" if isinstance(effect, Shadow) and effect.inset else effect.kind
+                ("innerShdw" if effect.inset else "outerShdw")
+                if isinstance(effect, Shadow)
+                else effect.kind
                 for effect in effects
             )
             coverage.append(

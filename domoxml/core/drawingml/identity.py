@@ -38,8 +38,7 @@ def node_identity_xml(node: CanvasNode) -> str:
         if provenance.role is not None:
             attributes.append(f'role="{_attr(provenance.role)}"')
     if isinstance(node, ShapeNode) and any(
-        isinstance(effect, Shadow) and effect.inset and effect.spread_emu != 0
-        for effect in node.effects
+        isinstance(effect, Shadow) and effect.inset for effect in node.effects
     ):
         intent = encode_effects(
             node.effects,

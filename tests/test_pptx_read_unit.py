@@ -209,6 +209,7 @@ def test_portable_inset_shadow_fallback_retains_exact_spread_intent() -> None:
     assert 'mc:Choice Requires="p16"' in slide_xml
     assert '<a:innerShdw blurRad="133350" dist="53882" dir="3187806">' in slide_xml
     assert 'effectIntent="' in slide_xml
+    assert 'name="Shape 2" hidden="1"' in slide_xml
     assert slide_xml.count("domoxml-raster:portable-effect-fallback") == 2
 
     result = read_pptx_result(pptx)
@@ -241,6 +242,77 @@ def test_portable_inset_shadow_fallback_retains_exact_spread_intent() -> None:
             }
         ),
     )
+
+
+def test_mixed_shadow_effect_list_retains_authored_order_and_rejects_stale_intent() -> None:
+    fallback_box = Box(x=900_000, y=800_000, width=2_400_000, height=1_300_000)
+    outer = Shadow(
+        color=Rgba(r=15, g=23, b=42, a=0.555555),
+        blur_emu=76_200,
+        distance_emu=148_827,
+        direction_deg=50.19442890773481,
+        spread_emu=-19_053,
+    )
+    inner = Shadow(
+        color=Rgba(r=255, g=255, b=255, a=0.7),
+        blur_emu=66_675,
+        distance_emu=47_625,
+        direction_deg=53.13010235415598,
+        spread_emu=0,
+        inset=True,
+    )
+    shape = ShapeNode(
+        node_id="html-mixed-shadows",
+        box=Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000),
+        fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+        effects=(outer, inner),
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-mixed-shadow-png",
+                ext="png",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert slide_xml.index("<a:innerShdw") < slide_xml.index("<a:outerShdw")
+    assert "effectIntent=" in slide_xml
+    assert 'name="Shape 2" hidden="1"' in slide_xml
+    result = read_pptx_result(pptx)
+    [recovered] = result.slides[0].shapes
+    assert recovered.effects == (outer, inner)
+    assert recovered.effect_container == "list"
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.picture.data == b"isolated-mixed-shadow-png"
+
+    native_only = recovered.model_copy(update={"portable_fallback": None})
+    native_only_pptx = build_pptx(
+        [SlideIR(width=12_192_000, height=6_858_000, contents=(native_only,))],
+        faces=[],
+    )
+    native_only_xml = OpcPackage.from_bytes(native_only_pptx).read("ppt/slides/slide1.xml").decode()
+    assert 'hidden="1"' not in native_only_xml
+    assert native_only_xml.index("<a:innerShdw") < native_only_xml.index("<a:outerShdw")
+
+    package = OpcPackage.from_bytes(pptx)
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    parts["ppt/slides/slide1.xml"] = package.read("ppt/slides/slide1.xml").replace(
+        b'blurRad="76200"',
+        b'blurRad="85725"',
+        1,
+    )
+    mutated = read_pptx_result(write_package(parts))
+    [edited] = mutated.slides[0].shapes
+    assert edited.effects != (outer, inner)
+    edited_inner, edited_outer = edited.effects
+    assert isinstance(edited_inner, Shadow)
+    assert isinstance(edited_outer, Shadow)
+    assert [edited_inner.inset, edited_outer.inset] == [True, False]
+    assert edited_outer.blur_emu == 85_725
 
 
 def test_portable_reflection_fallback_uses_alternate_content_and_round_trips() -> None:

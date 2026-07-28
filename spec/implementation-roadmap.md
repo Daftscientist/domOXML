@@ -11,8 +11,8 @@ Snapshot audited on **2026-07-28** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 805 tests are collected.
-- 31 atomic PPTX capability fixtures exist; 26 are bidirectional and five are reverse-first
+- 809 tests are collected.
+- 32 atomic PPTX capability fixtures exist; 27 are bidirectional and five are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, rasterized preset
   shadow node/slide fallbacks, and named nested effect-graph preservation.
 - 9 authored HTML fidelity cases exist.
@@ -40,7 +40,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 31 atomic fixtures and 7 real decks pin
+  retention, output-count, and raster-area records. All 32 atomic fixtures and 7 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -250,8 +250,8 @@ silently lowering the expected score.
    corpus.
 8. [ ] Complete the remaining effect families. Implemented behavior and evidence live in the
    shared/PPTX inventories and executable manifests rather than this work queue. Remaining work is:
-   typed/editable heterogeneous tree graphs; duplicate non-shadow effects; mixed/inset graph
-   branches; thick/compound line alignment; smaller independently owned source
+   typed/editable heterogeneous tree graphs; duplicate non-shadow effects; repeatable/more-than-two
+   mixed shadow graphs; thick/compound line alignment; smaller independently owned source
    isolation; reflection directions and non-pixel gaps; typed preset-shadow semantics and
    combinations; gradient/pattern/picture fill overlays and `over` calibration; custom-geometry
    blur/reflection/soft-edge/fill-overlay; multi-function SVG filter ordering; broader color models;

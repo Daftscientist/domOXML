@@ -817,8 +817,84 @@ def test_multiple_css_shadows_become_a_hybrid_sibling_effect_graph() -> None:
     assert coverage.representation is Representation.HYBRID
     assert coverage.editability is Editability.COMPONENTS
     assert coverage.output_count == 2
-    assert "native shadow, shadow" in (coverage.reason or "")
+    assert "native outerShdw, outerShdw" in (coverage.reason or "")
     assert any("a:effectDag" in warning.message for warning in result.warnings)
+
+
+def test_mixed_outer_and_inset_css_shadows_become_a_hybrid_effect_list() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=50,
+        y=50,
+        width=100,
+        height=60,
+        index=0,
+        styles={
+            "backgroundColor": "rgb(37, 99, 235)",
+            "boxShadow": (
+                "rgba(15, 23, 42, 0.55) 10px 12px 8px -2px, "
+                "rgba(255, 255, 255, 0.70) 3px 4px 7px 1px inset"
+            ),
+        },
+    )
+    raster = RenderedRaster(png=_png(150, 110), x=30, y=30, width=150, height=110)
+    rendered = _slide(node).model_copy(update={"rasters": {0: raster}})
+
+    result = extract_slide(rendered)
+
+    [shape] = result.slide.shapes
+    assert shape.effect_container == "list"
+    assert len(shape.effects) == 2
+    outer_effect, inner_effect = shape.effects
+    assert isinstance(outer_effect, Shadow)
+    assert isinstance(inner_effect, Shadow)
+    assert [outer_effect.inset, inner_effect.inset] == [False, True]
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(30),
+        y=px_to_emu(30),
+        width=px_to_emu(150),
+        height=px_to_emu(110),
+    )
+    assert shape.portable_fallback.picture.data == raster.png
+    [coverage] = result.coverage
+    assert coverage.representation is Representation.HYBRID
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.output_count == 2
+    assert coverage.raster_area_emu2 == px_to_emu(150) * px_to_emu(110)
+    assert "native outerShdw, innerShdw" in (coverage.reason or "")
+    assert any("a:effectLst" in warning.message for warning in result.warnings)
+
+
+def test_three_layer_mixed_css_shadows_remain_an_owned_element_layer() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "backgroundColor": "rgb(37, 99, 235)",
+            "boxShadow": (
+                "rgb(15, 23, 42) 2px 3px 4px, "
+                "rgb(255, 255, 255) 1px 1px 2px inset, "
+                "rgb(225, 29, 72) -2px 3px 4px"
+            ),
+        },
+    )
+    raster = RenderedRaster(png=_png(18, 18), x=-4, y=-4, width=18, height=18)
+    rendered = _slide(node).model_copy(update={"rasters": {0: raster}})
+
+    result = extract_slide(rendered)
+
+    [layer] = result.slide.shapes
+    assert isinstance(layer.fill, PictureFill)
+    assert layer.effects == ()
+    [coverage] = result.coverage
+    assert coverage.representation is Representation.ELEMENT_LAYER
+    assert coverage.editability is Editability.LAYERS
+    assert "mixed multiple box-shadow" in (coverage.reason or "")
 
 
 def test_browser_requests_isolated_renderer_fallback_for_css_mask() -> None:

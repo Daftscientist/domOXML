@@ -595,6 +595,32 @@ def test_effect_list_xml_uses_schema_order_instead_of_ir_tuple_order() -> None:
     assert positions == sorted(positions)
 
 
+def test_mixed_shadow_effect_list_uses_schema_order_without_losing_ir_order() -> None:
+    outer = Shadow(
+        color=Rgba(r=15, g=23, b=42, a=0.55),
+        blur_emu=76_200,
+        distance_emu=148_827,
+        direction_deg=50.19442890773481,
+        spread_emu=-19_050,
+    )
+    inner = Shadow(
+        color=Rgba(r=255, g=255, b=255, a=0.7),
+        blur_emu=66_675,
+        distance_emu=47_625,
+        direction_deg=53.13010235415598,
+        spread_emu=9_525,
+        inset=True,
+    )
+    node = _node(effects=(outer, inner))
+
+    xml = _effects_xml(node)
+
+    assert xml.count("<a:innerShdw") == 1
+    assert xml.count("<a:outerShdw") == 1
+    assert xml.index("<a:innerShdw") < xml.index("<a:outerShdw")
+    assert node.effects == (outer, inner)
+
+
 def test_duplicate_effect_list_children_require_effect_dag() -> None:
     node = _node(
         effects=(

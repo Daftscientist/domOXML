@@ -165,6 +165,7 @@ def _with_pptx_identity[T: CanvasNode](output: T, element: Element, slide_part: 
 def _matching_effect_intent(
     element: Element,
     native_effects: tuple[Effect, ...],
+    box: Box,
 ) -> EffectPayload | None:
     """Recover private effect intent only while its generated native projection is unchanged."""
     metadata = element.find("./*/p:nvPr/p:extLst/p:ext/dx:node", _NS)
@@ -186,18 +187,41 @@ def _matching_effect_intent(
                 if effect.inset and effect.spread_emu != 0
                 else effect.blur_emu
             )
+            projected_spread = effect.spread_emu
+            if not effect.inset and effect.spread_emu != 0 and box.width > 0 and box.height > 0:
+                scale_x = round((box.width + 2 * effect.spread_emu) / box.width * 100_000)
+                scale_y = round((box.height + 2 * effect.spread_emu) / box.height * 100_000)
+                spread_x = (scale_x / 100_000 - 1) * box.width / 2
+                spread_y = (scale_y / 100_000 - 1) * box.height / 2
+                projected_spread = round((spread_x + spread_y) / 2)
             projected.append(
                 effect.model_copy(
                     update={
                         "blur_emu": projected_blur,
                         "color": projected_color,
                         "direction_deg": round((effect.direction_deg % 360.0) * 60_000) / 60_000,
-                        "spread_emu": 0 if effect.inset else effect.spread_emu,
+                        "spread_emu": 0 if effect.inset else projected_spread,
                     }
                 )
             )
         else:
             projected.append(effect)
+    if payload.container == "list":
+        projected.sort(
+            key=lambda effect: (
+                3
+                if isinstance(effect, Shadow) and effect.inset
+                else 4
+                if isinstance(effect, Shadow)
+                else {
+                    "blur": 0,
+                    "fillOverlay": 1,
+                    "glow": 2,
+                    "reflection": 6,
+                    "softEdge": 7,
+                }[effect.kind]
+            )
+        )
     return payload if tuple(projected) == native_effects else None
 
 
@@ -349,7 +373,7 @@ def _shape(
     shape_effects, effect_warns, effect_preserved = read_effects(
         properties, lambda element: _rgba(element, colors), box=box
     )
-    effect_intent = _matching_effect_intent(element, shape_effects)
+    effect_intent = _matching_effect_intent(element, shape_effects, box)
     if effect_intent is not None:
         shape_effects = effect_intent.effects
     custgeom_el = properties.find(f"{{{_A}}}custGeom")

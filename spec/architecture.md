@@ -139,15 +139,19 @@ Rasterization is a compatibility backend, not an error. It must:
 
 Renderer-selective hybrids use markup compatibility when a native Office effect is editable and
 available in PowerPoint but not painted by another supported renderer. The semantic choice remains
-authoritative; an isolated paint-bound fallback is emitted above it for exact output and as the sole
-branch for incompatible renderers, measured as raster area, and recovered beside the native node on
-re-ingestion. Blur, one CSS inset shadow, conservative below-shape CSS reflection, and the strict
-two-axis CSS soft-edge mask use a PowerPoint 2015 choice containing the native effect plus its
-portable layer, with the same picture selected alone by LibreOffice. DrawingML has no inner-shadow
-spread attribute, so domOXML stores the exact signed CSS spread in private shape metadata and
-recovers it only while the native `a:innerShdw` still matches the generated projection; an Office
-edit invalidates stale intent. Solid fill overlays using multiply, screen, darken, or lighten use
-the exact native effect alone in the PowerPoint choice and the portable picture only in the
+authoritative; an isolated paint-bound fallback is emitted for exact output and as the sole branch
+for incompatible renderers, measured as raster area, and recovered beside the native node on
+re-ingestion. When the PowerPoint choice contains that visible picture, its effect-bearing native
+shape is retained as a hidden editable component so translucent fallback pixels cannot double-paint
+the native effect underneath. Removing the fallback rebuilds the native shape as visible. Blur, one
+CSS inset shadow, one outer-plus-inner CSS shadow pair, conservative below-shape CSS reflection, and
+the strict two-axis CSS soft-edge mask use this PowerPoint 2015 choice, with the same picture
+selected alone by LibreOffice. DrawingML has no inner-shadow spread attribute, so domOXML stores
+the exact signed CSS effect intent in private shape metadata and recovers it only while the native
+projection still matches; an Office edit invalidates stale intent. A mixed shadow pair preserves CSS
+paint order in that intent while serializing the unique `innerShdw` and `outerShdw` children in
+fixed `CT_EffectList` schema order. Solid fill overlays using multiply, screen, darken, or lighten
+use the exact native effect alone in the PowerPoint choice and the portable picture only in the
 LibreOffice fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned
 geometry. Blur and reflection bounds include their full overflow; inset shadow, soft edge, and fill
 overlay use the shape paint box, expanded to its axis-aligned painted bounds after rotation.

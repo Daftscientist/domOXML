@@ -587,6 +587,7 @@ def shape_xml(
     blip_rid: str | None = None,
     svg_rid: str | None = None,
     hyperlink_rid: HyperlinkRid = _no_hyperlink_rid,
+    hidden: bool = False,
 ) -> str:
     """Build the ``<p:sp>`` for one shape. ``shape_id`` must be unique within the slide.
 
@@ -602,8 +603,9 @@ def shape_xml(
         svg_rid=svg_rid,
         box=node.box,
     )
+    hidden_attr = ' hidden="1"' if hidden else ""
     return (
-        f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Shape {shape_id}"/>'
+        f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Shape {shape_id}"{hidden_attr}/>'
         f"<p:cNvSpPr/><p:nvPr>{node_identity_xml(node)}</p:nvPr></p:nvSpPr>"
         f"<p:spPr>{_xfrm_xml(node)}"
         f"{_geometry_xml(node)}{fill}{line_xml(node.line)}{_effects_xml(node)}</p:spPr>"

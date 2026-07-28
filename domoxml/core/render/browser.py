@@ -258,13 +258,38 @@ _ISOLATE_JS = """
   const selected = document.querySelector(`[data-domoxml-capture-index="${index}"]`);
   if (!selected) return () => {};
   const changed = [];
-  for (const element of document.body.querySelectorAll('*')) {
-    if (selected.contains(element) || element.contains(selected)) continue;
-    changed.push([element, element.style.visibility]);
-    element.style.visibility = 'hidden';
+  const rootStyles = [
+    [document.documentElement, document.documentElement.style.cssText],
+    [document.body, document.body.style.cssText],
+  ];
+  const elements = [
+    document.documentElement,
+    document.body,
+    ...document.body.querySelectorAll('*'),
+  ];
+  for (const element of elements) {
+    changed.push([
+      element,
+      element.style.getPropertyValue('visibility'),
+      element.style.getPropertyPriority('visibility'),
+    ]);
+    element.style.setProperty(
+      'visibility',
+      element === selected || selected.contains(element) ? 'visible' : 'hidden',
+      'important',
+    );
+  }
+  for (const [element] of rootStyles) {
+    element.style.setProperty('background', 'transparent', 'important');
+    element.style.setProperty('background-color', 'transparent', 'important');
+    element.style.setProperty('background-image', 'none', 'important');
   }
   return () => {
-    for (const [element, visibility] of changed) element.style.visibility = visibility;
+    for (const [element, visibility, priority] of changed) {
+      if (visibility) element.style.setProperty('visibility', visibility, priority);
+      else element.style.removeProperty('visibility');
+    }
+    for (const [element, cssText] of rootStyles) element.style.cssText = cssText;
   };
 }
 """
@@ -666,7 +691,7 @@ class BrowserSession:
                     continue
                 restore = await page.evaluate_handle(_ISOLATE_JS, node.index)
                 try:
-                    isolated_page = await page.screenshot(type="png")
+                    isolated_page = await page.screenshot(type="png", omit_background=True)
                 finally:
                     await restore.evaluate("(restore) => restore()")
                     await restore.dispose()

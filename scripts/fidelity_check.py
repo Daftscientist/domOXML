@@ -40,6 +40,10 @@ from domoxml.presentation import Presentation, Slide
 from domoxml.types import OutputFormat
 
 _BACKENDS = ("libreoffice", "graph")
+_TRANSIENT_RENDER_ERRORS = (
+    "Unable to capture screenshot",
+    "Target page, context or browser has been closed",
+)
 
 
 @dataclass(frozen=True)
@@ -85,6 +89,23 @@ def _render_case(case: CorpusCase) -> tuple[tuple[bytes, ...], bytes]:
     if result.pptx is None:
         raise RuntimeError(f"case {case.name!r} produced no .pptx")
     return result.pngs, result.pptx
+
+
+def _render_case_with_retry(case: CorpusCase) -> tuple[tuple[bytes, ...], bytes]:
+    """Retry one browser transport failure without masking fidelity or compilation errors."""
+    for attempt in range(2):
+        try:
+            return _render_case(case)
+        except Exception as exc:
+            is_transient = any(token in str(exc) for token in _TRANSIENT_RENDER_ERRORS)
+            if attempt == 0 and is_transient:
+                print(
+                    f"retry {case.name}: transient browser capture failure",
+                    file=sys.stderr,
+                )
+                continue
+            raise
+    raise AssertionError("unreachable")
 
 
 def _score_backend(
@@ -238,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
     all_scores: list[SlideScore] = []
     for case in cases:
         print(f"• {case.name} — {case.title or 'untitled'}")
-        source_pngs, pptx = _render_case(case)
+        source_pngs, pptx = _render_case_with_retry(case)
         for backend in active:
             effective = CorpusCase(
                 name=case.name,

@@ -32,6 +32,7 @@ from xml.etree.ElementTree import Element, fromstring
 
 import pytest
 
+from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.drawingml.shape import _effects_xml
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir.effect_calibration import BOX_SHADOW_BLUR_TO_DML
@@ -397,6 +398,26 @@ def test_inset_shadow_stays_shadow_not_glow() -> None:
     effect = _shadow_to_effect(shadow, box, dummy_warnings)
     assert isinstance(effect, Shadow)
     assert effect.inset is True
+
+
+def test_inset_spread_intent_serializes_without_preassigned_node_id() -> None:
+    shape = ShapeNode(
+        box=Box(x=0, y=0, width=100_000, height=100_000),
+        effects=(
+            Shadow(
+                color=Rgba(r=0, g=0, b=0, a=0.4),
+                blur_emu=40_000,
+                distance_emu=20_000,
+                spread_emu=10_000,
+                inset=True,
+            ),
+        ),
+    )
+
+    xml = node_identity_xml(shape)
+
+    assert "effectIntent=" in xml
+    assert 'id="' not in xml
 
 
 # -----------------------------------------------------------------------

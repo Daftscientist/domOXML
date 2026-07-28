@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from xml.sax.saxutils import escape
 
-from domoxml.core.ir.model import CanvasNode
+from domoxml.core.ir.effect_payload import encode_effects
+from domoxml.core.ir.model import CanvasNode, Shadow, ShapeNode
 
 NAMESPACE = "urn:domoxml:canvas-ir:1"
 EXTENSION_URI = "{A6E4A7B1-9D9C-4E8F-A94B-22CB18A8D72F}"
@@ -19,9 +20,9 @@ def _attr(value: str) -> str:
 
 def node_identity_xml(node: CanvasNode) -> str:
     """Return a ``p:extLst`` carrying domOXML metadata, or an empty string."""
-    if node.node_id is None:
-        return ""
-    attributes = [f'id="{_attr(node.node_id)}"']
+    attributes: list[str] = []
+    if node.node_id is not None:
+        attributes.append(f'id="{_attr(node.node_id)}"')
     provenance = node.provenance
     if provenance is not None:
         attributes.extend(
@@ -36,6 +37,18 @@ def node_identity_xml(node: CanvasNode) -> str:
             attributes.append(f'ownerId="{_attr(provenance.owner_node_id)}"')
         if provenance.role is not None:
             attributes.append(f'role="{_attr(provenance.role)}"')
+    if isinstance(node, ShapeNode) and any(
+        isinstance(effect, Shadow) and effect.inset and effect.spread_emu != 0
+        for effect in node.effects
+    ):
+        intent = encode_effects(
+            node.effects,
+            container=node.effect_container,
+            source_ref=node.effect_source_ref,
+        )
+        attributes.append(f'effectIntent="{_attr(intent)}"')
+    if not attributes:
+        return ""
     joined = " ".join(attributes)
     return (
         f'<p:extLst><p:ext uri="{EXTENSION_URI}">'

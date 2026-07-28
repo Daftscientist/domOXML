@@ -580,8 +580,6 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     shadows = parse_shadows(styles.get("boxShadow"))
     if len(shadows) > 1 and any(shadow.inset or shadow.distance_emu == 0 for shadow in shadows):
         return "mixed multiple box-shadow layers have no proven DrawingML effect graph"
-    if any(shadow.inset for shadow in shadows):
-        return "inset box-shadow is rasterised because LibreOffice ignores a:innerShdw"
     transform_val = styles.get("transform")
     if _has_complex_transform(transform_val):
         return "skew/perspective/shear transform has no native mapping"
@@ -1595,6 +1593,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             effect
             for effect in effects
             if isinstance(effect, Blur | Reflection)
+            or (isinstance(effect, Shadow) and effect.inset)
             or (isinstance(effect, SoftEdge) and effect.radius_emu > 0)
             or (isinstance(effect, FillOverlay) and effect.fill.color.a > 0.0)
         )
@@ -1621,6 +1620,13 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             "multiple CSS shadows emitted as editable native a:effectDag "
                             "with an isolated renderer fallback"
                             if effect_container == "sibling"
+                            else (
+                                "CSS inset shadow emitted as editable native a:innerShdw "
+                                "with an isolated renderer fallback"
+                            )
+                            if len(effects) == 1
+                            and isinstance(effects[0], Shadow)
+                            and effects[0].inset
                             else (
                                 "CSS blur emitted as editable native a:blur with an isolated "
                                 "renderer fallback"
@@ -1680,7 +1686,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 )
             )
         elif portable_fallback is not None:
-            effect_names = ", ".join(effect.kind for effect in effects)
+            effect_names = ", ".join(
+                "innerShdw" if isinstance(effect, Shadow) and effect.inset else effect.kind
+                for effect in effects
+            )
             coverage.append(
                 CoverageItem(
                     element=_label(node),

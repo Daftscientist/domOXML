@@ -15,6 +15,7 @@ from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
+from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
 from domoxml.core.ir.model import (
     ArcTo,
     Box,
@@ -162,18 +163,28 @@ def _with_pptx_identity[T: CanvasNode](output: T, element: Element, slide_part: 
     return output.model_copy(update={"node_id": node_id, "provenance": provenance})
 
 
+def _declared_effect_intent(element: Element) -> EffectPayload | None:
+    """Read private effect intent attached to a generated native shape."""
+    metadata = element.find("./*/p:nvPr/p:extLst/p:ext/dx:node", _NS)
+    return decode_effect_payload(metadata.get("effectIntent") if metadata is not None else None)
+
+
 def _matching_effect_intent(
     element: Element,
     native_effects: tuple[Effect, ...],
     box: Box,
 ) -> EffectPayload | None:
     """Recover private effect intent only while its generated native projection is unchanged."""
-    metadata = element.find("./*/p:nvPr/p:extLst/p:ext/dx:node", _NS)
-    payload = decode_effect_payload(metadata.get("effectIntent") if metadata is not None else None)
-    if payload is None or len(payload.effects) != len(native_effects):
+    payload = _declared_effect_intent(element)
+    if payload is None:
         return None
+
+    intent_effects = project_native_effects(payload.effects, payload.native_projection)
+    if len(intent_effects) != len(native_effects):
+        return None
+
     projected: list[Effect] = []
-    for effect in payload.effects:
+    for effect in intent_effects:
         if isinstance(effect, Shadow):
             projected_color = effect.color.model_copy(
                 update={
@@ -207,21 +218,7 @@ def _matching_effect_intent(
         else:
             projected.append(effect)
     if payload.container == "list":
-        projected.sort(
-            key=lambda effect: (
-                3
-                if isinstance(effect, Shadow) and effect.inset
-                else 4
-                if isinstance(effect, Shadow)
-                else {
-                    "blur": 0,
-                    "fillOverlay": 1,
-                    "glow": 2,
-                    "reflection": 6,
-                    "softEdge": 7,
-                }[effect.kind]
-            )
-        )
+        projected.sort(key=effect_list_position)
     return payload if tuple(projected) == native_effects else None
 
 
@@ -374,8 +371,13 @@ def _shape(
         properties, lambda element: _rgba(element, colors), box=box
     )
     effect_intent = _matching_effect_intent(element, shape_effects, box)
-    if effect_intent is not None:
-        shape_effects = effect_intent.effects
+    applied_effect_intent = (
+        effect_intent
+        if effect_intent is not None and effect_intent.native_projection == "complete"
+        else None
+    )
+    if applied_effect_intent is not None:
+        shape_effects = applied_effect_intent.effects
     custgeom_el = properties.find(f"{{{_A}}}custGeom")
     custom_geom = _custGeom(custgeom_el, box) if custgeom_el is not None else None
     return (
@@ -388,14 +390,19 @@ def _shape(
                 line=_line(properties, colors),
                 effects=shape_effects,
                 effect_container=(
-                    effect_intent.container
-                    if effect_intent is not None
+                    applied_effect_intent.container
+                    if applied_effect_intent is not None
                     else effect_container_kind(properties)
                 ),
                 effect_source_ref=(
-                    effect_intent.source_ref
-                    if effect_intent is not None
+                    applied_effect_intent.source_ref
+                    if applied_effect_intent is not None
                     else effect_source_ref(properties)
+                ),
+                native_effect_projection=(
+                    applied_effect_intent.native_projection
+                    if applied_effect_intent is not None
+                    else "complete"
                 ),
                 corner_radius_emu=corner,
                 transform=_xfrm_transform(xfrm),
@@ -1196,13 +1203,50 @@ def _slide(
                                 )
                             )
                             continue
+                        declared_effect_intent = _declared_effect_intent(native)
+                        matching_subset_intent = (
+                            _matching_effect_intent(native, shape.effects, shape.box)
+                            if (
+                                fallback_role == "portable-effect-fallback"
+                                and declared_effect_intent is not None
+                                and declared_effect_intent.native_projection == "schema_subset"
+                            )
+                            else None
+                        )
+                        if (
+                            fallback_role == "portable-effect-fallback"
+                            and declared_effect_intent is not None
+                            and declared_effect_intent.native_projection == "schema_subset"
+                            and matching_subset_intent is None
+                        ):
+                            contents.append(shape)
+                            warnings.extend(shape_warns)
+                            preserved.extend(shape_preserved)
+                            coverage.append(
+                                _shape_reverse_coverage(
+                                    slide_part,
+                                    native,
+                                    has_preserved_effects=bool(shape_preserved),
+                                )
+                            )
+                            continue
                         portable_fallback = PortableFallback(
                             box=fallback_shape.box,
                             picture=fallback_shape.fill,
                         )
-                        contents.append(
-                            shape.model_copy(update={"portable_fallback": portable_fallback})
-                        )
+                        shape_updates: dict[str, object] = {"portable_fallback": portable_fallback}
+                        if matching_subset_intent is not None:
+                            shape_updates.update(
+                                {
+                                    "effects": matching_subset_intent.effects,
+                                    "effect_container": matching_subset_intent.container,
+                                    "effect_source_ref": matching_subset_intent.source_ref,
+                                    "native_effect_projection": (
+                                        matching_subset_intent.native_projection
+                                    ),
+                                }
+                            )
+                        contents.append(shape.model_copy(update=shape_updates))
                         warnings.extend(shape_warns)
                         preserved.extend(shape_preserved)
                         has_preserved_effects = bool(shape_preserved)

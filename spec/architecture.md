@@ -150,7 +150,13 @@ selected alone by LibreOffice. DrawingML has no inner-shadow spread attribute, s
 the exact signed CSS effect intent in private shape metadata and recovers it only while the native
 projection still matches; an Office edit invalidates stale intent. A mixed shadow pair preserves CSS
 paint order in that intent while serializing the unique `innerShdw` and `outerShdw` children in
-fixed `CT_EffectList` schema order. Solid fill overlays using multiply, screen, darken, or lighten
+fixed `CT_EffectList` schema order. A longer mixed shadow list cannot repeat either schema slot.
+domOXML therefore retains every authored layer in IR, emits the first-authored effect for each
+legal slot as a hidden editable native subset, and uses one exact shape-owned picture for visible
+paint. The `schema_subset` projection is carried through normalized HTML and accepted on reverse
+only while that native subset is unchanged. Direct PowerPoint tests of flat and nested mixed
+`effectDag` topologies lost the inset or source paint, so schema validity alone never promotes a
+graph to native parity. Solid fill overlays using multiply, screen, darken, or lighten
 use the exact native effect alone in the PowerPoint choice and the portable picture only in the
 LibreOffice fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned
 geometry. Blur and reflection bounds include their full overflow; inset shadow, soft edge, and fill

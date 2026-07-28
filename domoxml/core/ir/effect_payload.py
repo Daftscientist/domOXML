@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from domoxml.core.ir.model import Effect, Shadow
+from domoxml.core.ir.model import Effect, NativeEffectProjection, Shadow
 
 
 class EffectPayload(BaseModel):
@@ -18,6 +18,7 @@ class EffectPayload(BaseModel):
     effects: tuple[Effect, ...]
     container: Literal["list", "sibling"] = "list"
     source_ref: Literal["fill", "fillLine"] = "fill"
+    native_projection: NativeEffectProjection = "complete"
 
     @model_validator(mode="after")
     def _sibling_graph_is_supported(self) -> EffectPayload:
@@ -26,6 +27,8 @@ class EffectPayload(BaseModel):
             or any(not isinstance(effect, Shadow) or effect.inset for effect in self.effects)
         ):
             raise ValueError("sibling effect graph requires multiple outer shadows")
+        if self.container == "sibling" and self.native_projection == "schema_subset":
+            raise ValueError("schema-subset native projection is only supported for effect lists")
         return self
 
 
@@ -34,12 +37,14 @@ def encode_effects(
     *,
     container: Literal["list", "sibling"] = "list",
     source_ref: Literal["fill", "fillLine"] = "fill",
+    native_projection: NativeEffectProjection = "complete",
 ) -> str:
     """Serialize typed effects to compact, versioned JSON."""
     return EffectPayload(
         effects=effects,
         container=container,
         source_ref=source_ref,
+        native_projection=native_projection,
     ).model_dump_json()
 
 

@@ -1,0 +1,98 @@
+id = "mixed-shadow-owned-fallback"
+direction = "both"
+html_file = "slide.html"
+
+[expected]
+min_representation = { native = 6, hybrid = 1 }
+max_representation = { native = 6, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, rasterized = 0, failed = 0 }
+min_editability = { semantic = 6, components = 1 }
+max_editability = { semantic = 6, components = 1, layers = 0, none = 0 }
+min_source_retention = { not_required = 7 }
+max_source_retention = { not_required = 7, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 8
+max_output_count = 8
+min_raster_area_emu2 = 21062407471875
+max_raster_area_emu2 = 21062407471875
+warnings = ["exact multi-layer CSS shadow intent retained with a schema-valid native effect subset and an isolated renderer fallback"]
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:sp/p:spPr/a:effectLst[count(*)=2][*[1][self::a:innerShdw]][*[2][self::a:outerShdw]]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:sp/p:spPr/a:effectDag"
+min_count = 0
+max_count = 0
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:sp/p:nvSpPr[p:cNvPr[@hidden='1']]/p:nvPr/p:extLst/p:ext/dx:node[@effectIntent]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Choice[@Requires='p16']/p:pic/p:nvPicPr/p:cNvPr[@descr='domoxml-raster:portable-effect-fallback']"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//mc:Fallback/p:pic/p:nvPicPr/p:cNvPr[@descr='domoxml-raster:portable-effect-fallback']"
+min_count = 1
+max_count = 1
+
+[visual]
+source_to_pptx_min_similarity = 0.990
+source_to_pptx_min_regional_similarity = 0.959
+source_to_pptx_min_focused_similarity = 0.82
+source_to_pptx_min_structural_similarity = 0.974
+pptx_to_html_min_similarity = 0.993
+pptx_to_html_min_regional_similarity = 0.975
+pptx_to_html_min_focused_similarity = 0.90
+pptx_to_html_min_structural_similarity = 0.993
+
+[roundtrip]
+cycles = 2
+min_representation = { native = 6, hybrid = 1 }
+max_representation = { native = 6, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, rasterized = 0, failed = 0 }
+min_editability = { semantic = 6, components = 1 }
+max_editability = { semantic = 6, components = 1, layers = 0, none = 0 }
+min_source_retention = { not_required = 7 }
+max_source_retention = { not_required = 7, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 8
+max_output_count = 8
+min_raster_area_emu2 = 21062407471875
+max_raster_area_emu2 = 21062407471875
+min_convergence_similarity = 0.999
+min_convergence_regional_similarity = 0.999
+min_convergence_focused_similarity = 0.999
+min_convergence_structural_similarity = 0.999
+
+[reverse]
+min_representation = { native = 6, hybrid = 1 }
+max_representation = { native = 6, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, rasterized = 0, failed = 0 }
+min_editability = { semantic = 6, components = 1 }
+max_editability = { semantic = 6, components = 1, layers = 0, none = 0 }
+min_source_retention = { not_required = 7 }
+max_source_retention = { not_required = 7, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 8
+max_output_count = 8
+min_raster_area_emu2 = 21062407471875
+max_raster_area_emu2 = 21062407471875
+expected_slides = 1
+html_contains = [
+  "data-domoxml-effects=",
+  "native_projection",
+  "schema_subset",
+  "box-shadow:18px 22px 24px -4px",
+  "4px 5px 12px 2px",
+  "-16px 14px 18.0001px",
+  "inset",
+  "EXACT + EDITABLE",
+]
+max_warnings = 0
+max_preserved = 0

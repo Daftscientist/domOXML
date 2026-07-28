@@ -44,6 +44,7 @@ from domoxml.core.ir.model import (
     FillOverlay,
     Glow,
     PictureFill,
+    PortableFallback,
     Reflection,
     Rgba,
     Shadow,
@@ -633,6 +634,47 @@ def test_duplicate_effect_list_children_require_effect_dag() -> None:
         _effects_xml(node)
 
 
+def test_schema_subset_projection_emits_one_child_per_effect_list_slot() -> None:
+    front_outer = Shadow(
+        color=Rgba(r=15, g=23, b=42, a=0.55),
+        blur_emu=190_500,
+        distance_emu=260_000,
+        direction_deg=45,
+    )
+    inner = Shadow(
+        color=Rgba(r=255, g=255, b=255, a=0.7),
+        blur_emu=95_250,
+        distance_emu=47_625,
+        direction_deg=45,
+        inset=True,
+    )
+    back_outer = Shadow(
+        color=Rgba(r=225, g=29, b=72, a=0.65),
+        blur_emu=285_750,
+        distance_emu=430_000,
+        direction_deg=135,
+    )
+    node = ShapeNode(
+        box=Box(x=0, y=0, width=9_525_000, height=4_762_500),
+        fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+        effects=(front_outer, inner, back_outer),
+        native_effect_projection="schema_subset",
+        portable_fallback=PortableFallback(
+            box=Box(x=0, y=0, width=9_525_000, height=4_762_500),
+            picture=PictureFill(data=b"exact-effect-layer", ext="png"),
+        ),
+    )
+
+    xml = _effects_xml(node)
+
+    assert xml.startswith("<a:effectLst>")
+    assert xml.count("<a:outerShdw") == 1
+    assert xml.count("<a:innerShdw") == 1
+    assert 'val="0F172A"' in xml
+    assert 'val="E11D48"' not in xml
+    assert xml.index("<a:innerShdw") < xml.index("<a:outerShdw")
+
+
 def test_sibling_shadow_container_emits_effect_dag_back_to_front() -> None:
     front = Shadow(
         color=Rgba(r=15, g=23, b=42, a=0.55),
@@ -678,6 +720,47 @@ def test_shape_rejects_inset_shadow_in_sibling_effect_graph() -> None:
                 ),
             ),
             effect_container="sibling",
+        )
+
+
+def test_shape_rejects_schema_subset_projection_for_sibling_graph() -> None:
+    with pytest.raises(ValueError, match="only supported for effect lists"):
+        ShapeNode(
+            box=Box(x=0, y=0, width=100_000, height=100_000),
+            effects=(
+                Shadow(
+                    color=Rgba(r=0, g=0, b=0, a=0.4),
+                    blur_emu=40_000,
+                    distance_emu=20_000,
+                ),
+                Shadow(
+                    color=Rgba(r=0, g=0, b=0, a=0.3),
+                    blur_emu=30_000,
+                    distance_emu=10_000,
+                ),
+            ),
+            effect_container="sibling",
+            native_effect_projection="schema_subset",
+        )
+
+
+def test_shape_rejects_schema_subset_projection_without_portable_fallback() -> None:
+    with pytest.raises(ValueError, match="requires a portable fallback"):
+        ShapeNode(
+            box=Box(x=0, y=0, width=100_000, height=100_000),
+            effects=(
+                Shadow(
+                    color=Rgba(r=0, g=0, b=0, a=0.4),
+                    blur_emu=40_000,
+                    distance_emu=20_000,
+                ),
+                Shadow(
+                    color=Rgba(r=0, g=0, b=0, a=0.3),
+                    blur_emu=30_000,
+                    distance_emu=10_000,
+                ),
+            ),
+            native_effect_projection="schema_subset",
         )
 
 
@@ -1207,6 +1290,49 @@ def test_normalized_html_retains_sibling_effect_container_metadata() -> None:
     assert decoded.source_ref == "fill"
     assert decoded.effects == effects
     assert html.slides[0].html.count("rgba(") >= 3
+
+
+def test_normalized_html_retains_schema_subset_native_projection() -> None:
+    effects = (
+        Shadow(
+            color=Rgba(r=15, g=23, b=42, a=0.55),
+            blur_emu=px_to_emu(20),
+            distance_emu=px_to_emu(24),
+            direction_deg=45,
+        ),
+        Shadow(
+            color=Rgba(r=255, g=255, b=255, a=0.7),
+            blur_emu=px_to_emu(10),
+            distance_emu=px_to_emu(5),
+            direction_deg=45,
+            inset=True,
+        ),
+        Shadow(
+            color=Rgba(r=225, g=29, b=72, a=0.65),
+            blur_emu=px_to_emu(30),
+            distance_emu=px_to_emu(36),
+            direction_deg=135,
+        ),
+    )
+    slide = _slide_with(*effects)
+    shape = slide.shapes[0].model_copy(
+        update={
+            "native_effect_projection": "schema_subset",
+            "portable_fallback": PortableFallback(
+                box=slide.shapes[0].box,
+                picture=PictureFill(data=b"exact-effect-layer", ext="png"),
+            ),
+        }
+    )
+
+    html = serialize_canvas([slide.model_copy(update={"contents": (shape,)})])
+    match = re.search(r'data-domoxml-effects="([^"]+)"', html.slides[0].html)
+    decoded = decode_effect_payload(unescape(match.group(1)) if match is not None else None)
+
+    assert decoded is not None
+    assert decoded.effects == effects
+    assert decoded.container == "list"
+    assert decoded.native_projection == "schema_subset"
 
 
 def test_effect_payload_rejects_unsupported_sibling_graphs() -> None:

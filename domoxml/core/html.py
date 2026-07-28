@@ -133,6 +133,7 @@ def _effect_attrs(node: ShapeNode) -> str:
             node.effects,
             container=node.effect_container,
             source_ref=node.effect_source_ref,
+            native_projection=node.native_effect_projection,
         ),
         quote=True,
     )

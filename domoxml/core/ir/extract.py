@@ -511,7 +511,8 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     if styles.get("mixBlendMode", "normal") not in ("normal", ""):
         return "mix-blend-mode has no native mapping"
     blend_mode = styles.get("backgroundBlendMode", "normal")
-    encoded_effects = decode_effects(styles.get("domoxmlEffects"))
+    encoded_effect_payload = decode_effect_payload(styles.get("domoxmlEffects"))
+    encoded_effects = encoded_effect_payload.effects if encoded_effect_payload is not None else None
     encoded_overlay = next(
         (effect for effect in (encoded_effects or ()) if isinstance(effect, FillOverlay)),
         None,
@@ -586,7 +587,21 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
         and sum(shadow.inset for shadow in shadows) == 1
         and all(shadow.inset or shadow.distance_emu != 0 for shadow in shadows)
     )
-    if len(shadows) > 1 and not (all_outer_sibling_graph or mixed_effect_list):
+    mixed_schema_subset = (
+        len(shadows) > 2
+        and any(shadow.inset for shadow in shadows)
+        and any(not shadow.inset for shadow in shadows)
+    )
+    retained_schema_subset = (
+        encoded_effect_payload is not None
+        and encoded_effect_payload.native_projection == "schema_subset"
+    )
+    if len(shadows) > 1 and not (
+        all_outer_sibling_graph
+        or mixed_effect_list
+        or mixed_schema_subset
+        or retained_schema_subset
+    ):
         return "mixed multiple box-shadow layers have no proven DrawingML effect graph"
     transform_val = styles.get("transform")
     if _has_complex_transform(transform_val):
@@ -1300,7 +1315,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 fill, fill_reason = _resolve_fill(fill_node, rendered)
                 line, line_reason = _resolve_svg_line(fill_node.styles)
                 box = _box(node)
-                encoded_effects = decode_effects(node.styles.get("domoxmlEffects"))
+                encoded_effect_payload = decode_effect_payload(node.styles.get("domoxmlEffects"))
+                encoded_effects = (
+                    encoded_effect_payload.effects if encoded_effect_payload is not None else None
+                )
                 filter_value = node.styles.get("filter", "none")
                 if filter_value in ("none", ""):
                     filter_value = fill_node.styles.get("filter", "none")
@@ -1355,6 +1373,23 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             fill=fill,
                             line=line,
                             effects=effects,
+                            effect_container=(
+                                encoded_effect_payload.container
+                                if encoded_effect_payload is not None
+                                else "list"
+                            ),
+                            effect_source_ref=(
+                                encoded_effect_payload.source_ref
+                                if encoded_effect_payload is not None
+                                else "fillLine"
+                                if line is not None
+                                else "fill"
+                            ),
+                            native_effect_projection=(
+                                encoded_effect_payload.native_projection
+                                if encoded_effect_payload is not None
+                                else "complete"
+                            ),
                         ),
                         node,
                     )
@@ -1596,6 +1631,17 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             if line is not None
             else "fill"
         )
+        native_effect_projection = (
+            encoded_effect_payload.native_projection
+            if encoded_effect_payload is not None
+            else "schema_subset"
+            if (
+                len(shadows) > 2
+                and any(shadow.inset for shadow in shadows)
+                and any(not shadow.inset for shadow in shadows)
+            )
+            else "complete"
+        )
         portable_fallback: PortableFallback | None = None
         portable_effects = tuple(
             effect
@@ -1625,8 +1671,13 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 warnings.append(
                     ConversionWarning(
                         message=(
-                            "multiple CSS shadows emitted as editable native a:effectDag "
-                            "with an isolated renderer fallback"
+                            "exact multi-layer CSS shadow intent retained with a schema-valid "
+                            "native effect subset and an isolated renderer fallback"
+                            if native_effect_projection == "schema_subset"
+                            else (
+                                "multiple CSS shadows emitted as editable native a:effectDag "
+                                "with an isolated renderer fallback"
+                            )
                             if effect_container == "sibling"
                             else (
                                 "mixed CSS outer and inset shadows emitted as editable native "
@@ -1672,6 +1723,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     effects=effects,
                     effect_container=effect_container,
                     effect_source_ref=effect_source_ref,
+                    native_effect_projection=native_effect_projection,
                     portable_fallback=portable_fallback,
                     corner_radius_emu=corner,
                     opacity=_opacity(node.styles),
@@ -1719,7 +1771,12 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     editability=Editability.COMPONENTS,
                     output_count=2,
                     raster_area_emu2=(portable_fallback.box.width * portable_fallback.box.height),
-                    reason=(f"editable native {effect_names} with an isolated renderer fallback"),
+                    reason=(
+                        "editable schema-valid native subset with exact retained effect intent "
+                        "and an isolated renderer fallback"
+                        if native_effect_projection == "schema_subset"
+                        else f"editable native {effect_names} with an isolated renderer fallback"
+                    ),
                 )
             )
         else:

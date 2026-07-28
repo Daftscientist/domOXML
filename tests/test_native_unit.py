@@ -664,6 +664,65 @@ def test_custom_svg_solid_fill_and_stroke_map_to_native_shape_paint() -> None:
     assert result.coverage[0].representation is Representation.NATIVE
 
 
+def test_custom_svg_retains_normalized_effect_graph_metadata() -> None:
+    effects = (
+        Shadow(
+            color=Rgba(r=15, g=23, b=42, a=0.55),
+            blur_emu=76_200,
+            distance_emu=95_250,
+            direction_deg=45,
+        ),
+        Shadow(
+            color=Rgba(r=225, g=29, b=72, a=0.65),
+            blur_emu=114_300,
+            distance_emu=152_400,
+            direction_deg=135,
+        ),
+    )
+    svg = RenderedNode(
+        tag="svg",
+        x=0,
+        y=0,
+        width=100,
+        height=50,
+        src="0 0 100 50",
+        index=0,
+        parent=-1,
+        styles={
+            "domoxmlEffects": encode_effects(
+                effects,
+                container="sibling",
+                source_ref="fillLine",
+            )
+        },
+    )
+    path = RenderedNode(
+        tag="path",
+        x=0,
+        y=0,
+        width=100,
+        height=50,
+        src="M 0 0 L 100 0 L 100 50 Z",
+        index=1,
+        parent=0,
+        styles={
+            "fill": "rgb(68, 114, 196)",
+            "stroke": "rgb(31, 78, 121)",
+            "strokeWidth": "2px",
+        },
+    )
+
+    result = extract_slide(_slide(svg, path))
+
+    [shape] = result.slide.shapes
+    assert shape.custom_geom is not None
+    assert shape.effects == effects
+    assert shape.effect_container == "sibling"
+    assert shape.effect_source_ref == "fillLine"
+    assert shape.native_effect_projection == "complete"
+    assert result.coverage[0].representation is Representation.NATIVE
+
+
 def test_hr_one_sided_border_becomes_connector_stroke() -> None:
     hr = RenderedNode(
         tag="hr",
@@ -866,7 +925,7 @@ def test_mixed_outer_and_inset_css_shadows_become_a_hybrid_effect_list() -> None
     assert any("a:effectLst" in warning.message for warning in result.warnings)
 
 
-def test_three_layer_mixed_css_shadows_remain_an_owned_element_layer() -> None:
+def test_three_layer_mixed_css_shadows_retain_native_base_and_exact_owned_layer() -> None:
     node = RenderedNode(
         tag="div",
         x=0,
@@ -888,13 +947,27 @@ def test_three_layer_mixed_css_shadows_remain_an_owned_element_layer() -> None:
 
     result = extract_slide(rendered)
 
-    [layer] = result.slide.shapes
-    assert isinstance(layer.fill, PictureFill)
-    assert layer.effects == ()
+    [shape] = result.slide.shapes
+    assert isinstance(shape.fill, SolidFill)
+    assert len(shape.effects) == 3
+    assert shape.native_effect_projection == "schema_subset"
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(-4),
+        y=px_to_emu(-4),
+        width=px_to_emu(18),
+        height=px_to_emu(18),
+    )
+    assert shape.portable_fallback.picture.data == raster.png
     [coverage] = result.coverage
-    assert coverage.representation is Representation.ELEMENT_LAYER
-    assert coverage.editability is Editability.LAYERS
-    assert "mixed multiple box-shadow" in (coverage.reason or "")
+    assert coverage.representation is Representation.HYBRID
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.output_count == 2
+    assert coverage.raster_area_emu2 == px_to_emu(18) * px_to_emu(18)
+    assert "schema-valid native subset" in (coverage.reason or "")
+    assert any(
+        "exact multi-layer CSS shadow intent" in warning.message for warning in result.warnings
+    )
 
 
 def test_browser_requests_isolated_renderer_fallback_for_css_mask() -> None:

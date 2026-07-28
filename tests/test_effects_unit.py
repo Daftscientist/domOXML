@@ -184,6 +184,13 @@ def test_parse_strict_svg_soft_edge_filter() -> None:
         parse_svg_soft_edge_filter(valid.replace('stdDeviation="6"', f'stdDeviation="{"9" * 400}"'))
         is None
     )
+    assert (
+        parse_svg_soft_edge_filter(
+            '<!DOCTYPE filter [<!ENTITY injected SYSTEM "file:///etc/passwd">]>'
+            + valid.replace('id="soft-edge"', 'id="&injected;"')
+        )
+        is None
+    )
     assert parse_svg_soft_edge_filter(valid.replace("</filter>", "<feFlood/></filter>")) is None
 
 

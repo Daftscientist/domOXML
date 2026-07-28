@@ -9,7 +9,9 @@ from __future__ import annotations
 import math
 import re
 from typing import Literal
-from xml.etree import ElementTree
+
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 
 from domoxml.core.ir.model import (
     Blur,
@@ -547,7 +549,7 @@ def parse_svg_soft_edge_filter(value: str | None) -> SoftEdge | None:
         return None
     try:
         root = ElementTree.fromstring(value)
-    except ElementTree.ParseError:
+    except (ElementTree.ParseError, DefusedXmlException):
         return None
 
     def local_name(tag: str) -> str:

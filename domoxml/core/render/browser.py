@@ -164,7 +164,7 @@ _SNAPSHOT_JS = """
     const styles = pick(getComputedStyle(el));
     const tag = el.tagName.toLowerCase();
     if (tag === 'path' || tag === 'svg') {
-      const filterRef = el.getAttribute('filter') || styles.filter || '';
+      const filterRef = el.getAttribute('filter') || el.style.filter || styles.filter || '';
       const filterMatch = filterRef.match(/^url\\(\\s*['"]?#([^'")]+)['"]?\\s*\\)$/i);
       const svgRoot = tag === 'svg' ? el : el.ownerSVGElement;
       if (filterMatch && svgRoot) {

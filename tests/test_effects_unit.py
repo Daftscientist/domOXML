@@ -34,6 +34,7 @@ import pytest
 
 from domoxml.core.drawingml.shape import _effects_xml
 from domoxml.core.html import serialize_canvas
+from domoxml.core.ir.effect_calibration import BOX_SHADOW_BLUR_TO_DML
 from domoxml.core.ir.effect_payload import decode_effect_payload, decode_effects, encode_effects
 from domoxml.core.ir.extract import _shadow_to_effect
 from domoxml.core.ir.model import (
@@ -299,6 +300,14 @@ def test_parse_shadow_captures_spread() -> None:
     assert shadow.distance_emu == pytest.approx(px_to_emu(math.hypot(5, 10)), abs=1)
 
 
+def test_parse_shadow_captures_negative_spread() -> None:
+    shadow = parse_shadow("18px 22px 26px -10px rgba(0,0,0,0.5)")
+    assert shadow is not None
+    assert shadow.spread_emu == px_to_emu(-10)
+    assert shadow.blur_emu == px_to_emu(26)
+    assert shadow.distance_emu == pytest.approx(px_to_emu(math.hypot(18, 22)), abs=1)
+
+
 def test_parse_shadow_zero_spread_when_absent() -> None:
     shadow = parse_shadow("5px 10px 8px rgba(0,0,0,0.5)")
     assert shadow is not None
@@ -352,6 +361,21 @@ def test_zero_offset_shadow_becomes_glow() -> None:
     assert effect.color == shadow.color.model_copy(update={"a": shadow.color.a * 0.6})
 
 
+def test_zero_offset_negative_spread_stays_outer_shadow() -> None:
+    shadow = parse_shadow("0px 0px 30px -8px rgba(100,200,50,0.8)")
+    assert shadow is not None
+    effect = _shadow_to_effect(
+        shadow,
+        Box(x=0, y=0, width=9_525_000, height=4_762_500),
+        [],
+    )
+    assert isinstance(effect, Shadow)
+    assert effect.inset is False
+    assert effect.distance_emu == 0
+    assert effect.blur_emu == round(px_to_emu(30) * BOX_SHADOW_BLUR_TO_DML)
+    assert effect.spread_emu == px_to_emu(-8)
+
+
 def test_nonzero_offset_shadow_stays_shadow() -> None:
     # box-shadow: 5px 3px 10px 2px color → stays Shadow
     shadow = parse_shadow("5px 3px 10px 2px rgba(100,200,50,0.8)")
@@ -360,7 +384,7 @@ def test_nonzero_offset_shadow_stays_shadow() -> None:
     box = Box(x=0, y=0, width=9_525_000, height=4_762_500)
     effect = _shadow_to_effect(shadow, box, dummy_warnings)
     assert isinstance(effect, Shadow)
-    assert effect.blur_emu == round(shadow.blur_emu * 0.75)
+    assert effect.blur_emu == round(shadow.blur_emu * BOX_SHADOW_BLUR_TO_DML)
     assert effect.distance_emu == shadow.distance_emu
     assert effect.spread_emu == shadow.spread_emu
 
@@ -403,6 +427,28 @@ def test_outer_shadow_xml_has_sx_sy_for_spread() -> None:
     expected_sy = round((h + 2 * s) / h * 100_000)
     assert f'sx="{expected_sx}"' in xml
     assert f'sy="{expected_sy}"' in xml
+    assert "outerShdw" in xml
+
+
+def test_outer_shadow_xml_has_sub_100_percent_scale_for_negative_spread() -> None:
+    node = _node(
+        effects=(
+            Shadow(
+                color=Rgba(r=0, g=0, b=0, a=0.5),
+                blur_emu=1_000,
+                distance_emu=500,
+                direction_deg=45,
+                spread_emu=-1_000,
+            ),
+        ),
+        width=10_000,
+        height=5_000,
+    )
+
+    xml = _effects_xml(node)
+
+    assert 'sx="80000"' in xml
+    assert 'sy="60000"' in xml
     assert "outerShdw" in xml
 
 
@@ -606,6 +652,23 @@ def test_reverse_outer_shadow_with_sx_sy_recovers_spread_from_shape_size() -> No
     shadow = effects[0]
     assert isinstance(shadow, Shadow)
     assert shadow.spread_emu == 10_000
+
+
+def test_reverse_outer_shadow_with_sub_100_percent_scale_recovers_negative_spread() -> None:
+    box = Box(x=0, y=0, width=100_000, height=50_000)
+    props = _shape_props(
+        "<a:effectLst>"
+        '<a:outerShdw blurRad="0" dist="0" dir="0" sx="80000" sy="60000">'
+        '<a:srgbClr val="000000"/>'
+        "</a:outerShdw>"
+        "</a:effectLst>"
+    )
+
+    effects, _warns, _preserved = parse_effects_xml(props, {}, box=box)
+
+    shadow = effects[0]
+    assert isinstance(shadow, Shadow)
+    assert shadow.spread_emu == -10_000
 
 
 def test_reverse_outer_shadow_invalid_scale_uses_neutral_default() -> None:
@@ -872,6 +935,24 @@ def test_html_shadow_includes_spread() -> None:
     assert "box-shadow" in html.slides[0].html
     # spread 3px should appear in the box-shadow value
     assert "3" in html.slides[0].html
+
+
+def test_html_shadow_includes_negative_spread() -> None:
+    slide = _slide_with(
+        Shadow(
+            color=Rgba(r=0, g=0, b=0, a=0.5),
+            blur_emu=round(px_to_emu(30) * BOX_SHADOW_BLUR_TO_DML),
+            distance_emu=0,
+            direction_deg=0,
+            spread_emu=px_to_emu(-8),
+        )
+    )
+
+    html = serialize_canvas([slide])
+
+    match = re.search(r"box-shadow:0px 0px ([\d.]+)px -8px", html.slides[0].html)
+    assert match is not None
+    assert float(match.group(1)) == pytest.approx(30, abs=0.001)
 
 
 def test_html_glow_emits_box_shadow() -> None:

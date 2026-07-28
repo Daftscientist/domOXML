@@ -11,6 +11,7 @@ from domoxml.core.drawingml.presets import preset_defaults, preset_vertices
 from domoxml.core.fillcrop import srcrect_to_background
 from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_css
 from domoxml.core.ir.effect_calibration import (
+    BOX_SHADOW_BLUR_TO_DML,
     CUSTOM_GLOW_ALPHA_TO_DML,
     CUSTOM_GLOW_RADIUS_TO_DML,
     CUSTOM_SHADOW_ALPHA_TO_DML,
@@ -361,11 +362,14 @@ def _append_effect_styles(
             radians = math.radians(effect.direction_deg)
             offset_x = emu_to_px(round(math.cos(radians) * effect.distance_emu))
             offset_y = emu_to_px(round(math.sin(radians) * effect.distance_emu))
+            blur_px = emu_to_px(effect.blur_emu)
+            if not effect.inset:
+                blur_px /= BOX_SHADOW_BLUR_TO_DML
             spread_px = emu_to_px(effect.spread_emu) if effect.spread_emu else 0.0
             inset_kw = " inset" if effect.inset else ""
             box_shadows.append(
                 f"{_number(offset_x)}px {_number(offset_y)}px "
-                f"{_px(effect.blur_emu)} {_number(spread_px)}px "
+                f"{_number(blur_px)}px {_number(spread_px)}px "
                 f"{_rgba(effect.color)}{inset_kw}"
             )
         elif isinstance(effect, Glow):

@@ -9,7 +9,7 @@ evidence covers both conversion directions and the round-trip path.
 
 ## Current PresentationML Capability Matrix
 
-Audited on **2026-07-27**.
+Audited on **2026-07-28**.
 
 | Capability | HTML/CSS -> PPTX | PPTX -> HTML/CSS | Evidence | Main remaining work |
 |---|---|---|---|---|
@@ -58,6 +58,7 @@ Audited on **2026-07-27**.
 | `hyperlink` | both | run hyperlinks and relationships |
 | `interleaved-order` | both | canonical mixed-node z-order through both adapters |
 | `multiple-shadow-effect-dag` | both | multiple CSS outer shadows lower to one editable flat sibling graph in PowerPoint and one isolated LibreOffice fallback, recover CSS paint order, reject either-layer omission, and converge after two cycles |
+| `negative-shadow-spread` | both | offset and zero-offset CSS choke lower to exact sub-100% `outerShdw` scales, recover renderer-calibrated negative-spread CSS, reject neutralized scales, and converge after two cycles |
 | `nested-effect-dag-fallback` | reverse | named nested tree graph remains exact in PowerPoint, gains one slide-owned LibreOffice/HTML fallback, retains attached source, validates its package, and converges after two cycles |
 | `node-identity` | both | stable IDs, source provenance, ownership, and private OOXML extension |
 | `pattern-fills` | both | DrawingML pattern mapping |

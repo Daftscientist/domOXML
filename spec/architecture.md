@@ -163,7 +163,9 @@ SVG layout box, and the portable role marker keeps that ownership stable across 
 A strict lone authored SVG `blur()` lowers to editable native `a:blur` beneath one exact
 path-owned fallback whose isolated bounds expand by three blur radii. The same typed geometry,
 native effect, absolute fallback bounds, and ownership marker survive normalized HTML and
-subsequent PPTX cycles; compound SVG filter chains remain on the general element-layer path.
+subsequent PPTX cycles. A strict lone authored below-reflection follows the same transport with
+native `a:reflection` and a measured source-plus-reflection layer. Compound SVG filter/reflection
+ordering remains on the general element-layer path.
 Solid fill overlays using multiply, screen, darken, or lighten
 use the exact native effect alone in the PowerPoint choice and the portable picture only in the
 LibreOffice fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned

@@ -657,6 +657,43 @@ def test_custom_svg_blur_without_raster_region_is_failed_not_native() -> None:
     assert not any("editable native a:blur" in warning.message for warning in result.warnings)
 
 
+def test_custom_svg_compound_filter_and_reflection_uses_element_layer() -> None:
+    svg = RenderedNode(
+        tag="svg",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        src="0 0 10 10",
+        index=0,
+        parent=-1,
+        styles={
+            "filter": "blur(1px)",
+            "webkitBoxReflect": (
+                "below 2px linear-gradient(rgba(0, 0, 0, 0.8) 0%, "
+                "rgba(0, 0, 0, 0) 100%) 0 fill / auto / 0 stretch"
+            ),
+        },
+    )
+    path = RenderedNode(
+        tag="path",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        src="M 0 0 L 10 0 L 10 10 Z",
+        index=1,
+        parent=0,
+        styles={"fill": "rgb(68, 114, 196)"},
+    )
+
+    result = extract_slide(_slide(svg, path))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert "compound SVG filter and reflection ordering" in result.coverage[0].reason
+
+
 def test_custom_svg_solid_fill_and_stroke_map_to_native_shape_paint() -> None:
     svg = RenderedNode(
         tag="svg",

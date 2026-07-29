@@ -174,19 +174,22 @@ overlay similarly admits one strict sRGB `feFlood`, `SourceAlpha` clip, and `feB
 four proven solid blend modes. The flood color and opacity become editable `a:fillOverlay`
 metadata, while one exact path-owned layer preserves renderer parity and repeated-cycle ownership;
 different color spaces, partial clips, and compound graphs stay on the element-layer path.
-Solid and linear-gradient fill overlays using multiply, screen, darken, or lighten use the exact
-native effect alone in the PowerPoint choice and the portable picture only in the LibreOffice
-fallback branch; stacking both caused visible one-pixel edges on non-pixel-aligned geometry. The
-overlay may cover one solid-color base or one picture background layer when every remaining blend
-mode is `normal`; per-layer size, position, and repeat values are peeled before the base picture
-crop is resolved. DrawingML gradient projection aspect-corrects linear angles and subdivides
-translucent stops in premultiplied sRGB, which direct Graph comparison shows is required to match
-browser interpolation. A guarded intent payload retains the authored stop list only while the
-native projected gradient remains unchanged, preventing repeated PPTX cycles from expanding the
-projected stop list. Radial overlays use the same typed read/write path in focused tests but do not
-yet carry atomic Office visual evidence. Partial overlays, active lower blend layers, pattern
-fills, changed native projections, and ambiguous fill families remain on the element-layer or
-preserved-source path.
+Solid, linear-gradient, and canonical centered `circle` radial-gradient fill overlays using
+multiply, screen, darken, or lighten use the exact native effect alone in the PowerPoint choice and
+the portable picture only in the LibreOffice fallback branch; stacking both caused visible
+one-pixel edges on
+non-pixel-aligned geometry. The overlay may cover one solid-color base or one picture background
+layer when every remaining blend mode is `normal`; per-layer size, position, and repeat values are
+peeled before the base picture crop is resolved. DrawingML gradient projection aspect-corrects
+linear angles and subdivides translucent stops in premultiplied sRGB, which direct Graph comparison
+shows is required to match browser interpolation. A guarded intent payload retains the authored
+stop list only while the native projected gradient remains unchanged, preventing repeated PPTX
+cycles from expanding the projected stop list. The admitted radial form uses the CSS default
+farthest-corner extent at the center and exactly matches a DrawingML `circle` path whose four
+`fillToRect` insets are `50000`. Ellipse keywords, size keywords, explicit radii, moved centers,
+other path shapes/extents, partial overlays, active lower blend layers, pattern fills, changed
+native projections, and ambiguous fill families remain on the element-layer or preserved-source
+path.
 Blur and reflection bounds include their full overflow; inset shadow, soft edge, and fill overlay
 use the shape paint box, expanded to its axis-aligned painted bounds after rotation.
 Normalized rectangles use the same two-axis mask, while normalized ellipses
@@ -238,11 +241,17 @@ native sequence in one `mc:Choice` and selects the picture once in `mc:Fallback`
 native PowerPoint z-order and prevents incompatible renderers from double-painting translucent
 siblings. Multiple preset shadows, unknown compound siblings, typed preset semantics, and smaller
 independently isolated boundaries remain open.
-Normalized fill-overlay recovery requires exact RGB and blend tokens while admitting at most one
-8-bit alpha quantum, matching Chromium computed-color serialization without accepting a visibly
-different overlay. The admitted overlay layer must cover the whole shape using the default
-background origin and clip. Partial background geometry or stale encoded effect metadata takes the
-owned visible element-layer path rather than producing a different native composition.
+Normalized fill-overlay recovery requires an exact blend token. Solid overlays require exact RGB
+values while admitting at most one 8-bit alpha quantum, matching Chromium computed-color
+serialization without accepting a visibly different overlay. Gradient overlays additionally
+require the same linear/radial family and stop count, exact stop RGB values, stop positions and
+linear angles within `1e-5`, and stop alpha within one 8-bit quantum. Radial CSS recovery first
+requires the canonical centered `circle` syntax, and reverse recovery requires the exact generated
+`circle` path and four `50000` extent values. Guarded authored intent is then accepted only while
+reprojecting it for the shape box exactly matches the parsed native DrawingML geometry and projected
+stop list. The admitted overlay layer must cover the whole shape using the default background origin
+and clip. Partial background geometry, ambiguous gradients, or stale encoded effect metadata take
+the owned visible element-layer path rather than producing a different native composition.
 
 ## Direction Contract
 

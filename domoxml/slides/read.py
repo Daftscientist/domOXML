@@ -56,7 +56,7 @@ from domoxml.slides.appearance_read import (
     fill as _fill,
 )
 from domoxml.slides.appearance_read import (
-    gradient as _gradient,
+    fill_overlay_gradient as _fill_overlay_gradient,
 )
 from domoxml.slides.appearance_read import (
     line as _line,
@@ -385,7 +385,7 @@ def _shape(
         properties,
         lambda element: _rgba(element, colors),
         box=box,
-        gradient_for=lambda element: _gradient(element, colors),
+        gradient_for=lambda element: _fill_overlay_gradient(element, colors),
     )
     effect_intent = _matching_effect_intent(element, shape_effects, box)
     applied_effect_intent = (

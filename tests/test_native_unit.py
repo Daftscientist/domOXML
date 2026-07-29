@@ -81,7 +81,7 @@ def test_parse_gradient_fills_missing_stop_positions_evenly() -> None:
 
 
 def test_radial_and_keyword_gradients() -> None:
-    radial = parse_gradient("radial-gradient(rgb(0,0,0) 0%, rgb(255,255,255) 100%)")
+    radial = parse_gradient("radial-gradient(circle, rgb(0,0,0) 0%, rgb(255,255,255) 100%)")
     assert radial is not None and radial.radial is True
     keyword = parse_gradient("linear-gradient(to right, rgb(0,0,0), rgb(255,255,255))")
     assert keyword is not None and keyword.angle_deg == 90.0
@@ -90,6 +90,11 @@ def test_radial_and_keyword_gradients() -> None:
 def test_unmappable_gradients_return_none() -> None:
     assert parse_gradient("conic-gradient(rgb(0,0,0), rgb(255,255,255))") is None
     assert parse_gradient("linear-gradient(red, blue), url(x.png)") is None
+    assert parse_gradient("radial-gradient(red, blue)") is None
+    assert parse_gradient("radial-gradient(ellipse, red, blue)") is None
+    assert parse_gradient("radial-gradient(circle closest-side, red, blue)") is None
+    assert parse_gradient("radial-gradient(circle at 25% 50%, red, blue)") is None
+    assert parse_gradient("radial-gradient(circle 40px, red, blue)") is None
     assert parse_gradient("none") is None
 
 

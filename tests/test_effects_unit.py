@@ -1218,6 +1218,7 @@ def test_reverse_radial_gradient_fill_overlay_is_typed() -> None:
     [
         '<a:path path="rect"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path>',
         '<a:path path="circle"><a:fillToRect l="40000" t="50000" r="50000" b="50000"/></a:path>',
+        '<a:path path="circle"><a:fillToRect l="invalid" t="50000" r="50000" b="50000"/></a:path>',
         '<a:path path="circle"/>',
     ],
 )

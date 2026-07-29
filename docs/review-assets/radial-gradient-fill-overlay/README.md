@@ -12,7 +12,7 @@ authored radial intent without expanding PowerPoint's projected stop list across
 | Normalized reverse HTML | 1.000 | 1.000 | 1.000 | 1.000 |
 | Second-cycle convergence | 1.000 | 1.000 | 1.000 | 1.000 |
 
-Direct inspection confirms the centered elliptical paint field, radial extent to all four edges,
+Direct inspection confirms the centered circular paint field, radial extent to all four edges,
 screen blend, base color, bounds, and stop alpha. Office differences are confined to faint
 concentric interpolation and rectangle-boundary antialiasing pixels. Normalized HTML and
 repeated-cycle diffs are empty.

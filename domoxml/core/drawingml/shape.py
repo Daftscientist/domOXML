@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import math
 import warnings
 from collections.abc import Callable
 from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
+from domoxml.core.ir.gradient import drawingml_gradient_angle, drawingml_gradient_projection
 from domoxml.core.ir.model import (
     ArcTo,
     Arrowhead,
@@ -22,7 +22,6 @@ from domoxml.core.ir.model import (
     Fill,
     Glow,
     GradientFill,
-    GradientStop,
     Hyperlink,
     Line,
     LineTo,
@@ -86,52 +85,19 @@ def _solid_fill(color: Rgba, *, opacity: float = 1.0) -> str:
     return f"<a:solidFill>{_srgb(color, opacity=opacity)}</a:solidFill>"
 
 
-def _powerpoint_gradient_stops(gradient: GradientFill) -> tuple[GradientStop, ...]:
-    """Subdivide sRGB stops so PowerPoint's linear-light interpolation tracks CSS."""
-    expanded: list[GradientStop] = []
-    subdivisions = 8
-    for index, (start, end) in enumerate(zip(gradient.stops, gradient.stops[1:], strict=False)):
-        for step in range(subdivisions + 1):
-            if index > 0 and step == 0:
-                continue
-            amount = step / subdivisions
-            expanded.append(
-                GradientStop(
-                    pos=start.pos + (end.pos - start.pos) * amount,
-                    color=Rgba(
-                        r=round(start.color.r + (end.color.r - start.color.r) * amount),
-                        g=round(start.color.g + (end.color.g - start.color.g) * amount),
-                        b=round(start.color.b + (end.color.b - start.color.b) * amount),
-                        a=start.color.a + (end.color.a - start.color.a) * amount,
-                    ),
-                )
-            )
-    return tuple(expanded)
-
-
 def _gradient_fill(gradient: GradientFill, *, opacity: float, box: Box | None = None) -> str:
-    gradient_stops = _powerpoint_gradient_stops(gradient) if box is not None else gradient.stops
+    projected = drawingml_gradient_projection(gradient, box=box)
     stops = "".join(
         f'<a:gs pos="{round(stop.pos * 100000)}">{_srgb(stop.color, opacity=opacity)}</a:gs>'
-        for stop in gradient_stops
+        for stop in projected.stops
     )
     gs_lst = f"<a:gsLst>{stops}</a:gsLst>"
-    if gradient.radial:
+    if projected.radial:
         path = (
             '<a:path path="circle"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path>'
         )
         return f"<a:gradFill>{gs_lst}{path}</a:gradFill>"
-    # CSS gradients use the physical box aspect ratio to find their corner endpoints, while
-    # DrawingML's scaled angle is measured in normalized shape coordinates. Correct the angle
-    # by the shape aspect ratio before serializing it.
-    angle_deg = (gradient.angle_deg + 270.0) % 360.0
-    if box is not None and box.width > 0 and box.height > 0:
-        angle = math.radians(angle_deg)
-        angle_deg = (
-            math.degrees(math.atan2(math.sin(angle) * box.height, math.cos(angle) * box.width))
-            % 360.0
-        )
-    ooxml_angle = round(angle_deg * 60000)
+    ooxml_angle = drawingml_gradient_angle(gradient, box=box)
     return f'<a:gradFill>{gs_lst}<a:lin ang="{ooxml_angle}" scaled="1"/></a:gradFill>'
 
 
@@ -352,10 +318,12 @@ def _effects_xml(node: ShapeNode) -> str:
                 f'ky="0" kx="0" algn="bl" rotWithShape="0"/>'
             )
         else:
-            parts.append(
-                f'<a:fillOverlay blend="{effect.blend}">'
-                f"{_solid_fill(effect.fill.color)}</a:fillOverlay>"
+            overlay_fill = (
+                _solid_fill(effect.fill.color)
+                if isinstance(effect.fill, SolidFill)
+                else _gradient_fill(effect.fill, opacity=1.0, box=node.box)
             )
+            parts.append(f'<a:fillOverlay blend="{effect.blend}">{overlay_fill}</a:fillOverlay>')
     if not parts:
         return ""
     return f"<a:effectLst>{''.join(parts)}</a:effectLst>"

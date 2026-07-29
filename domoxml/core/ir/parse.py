@@ -757,7 +757,12 @@ def parse_fill_overlay(
         background_clip=background_clip,
     )
     base_color = parse_color(background_color)
-    if effect is None or base_color is None or base_color.a <= 0.0:
+    if (
+        effect is None
+        or not isinstance(effect.fill, SolidFill)
+        or base_color is None
+        or base_color.a <= 0.0
+    ):
         return None
     return SolidFill(color=base_color), effect
 
@@ -773,7 +778,7 @@ def parse_fill_overlay_effect(
     background_origin: str | None = None,
     background_clip: str | None = None,
 ) -> FillOverlay | None:
-    """Parse a uniform overlay over one solid-color or picture base."""
+    """Parse one gradient overlay over a solid-color or picture base."""
     layers = _split_top_level(background_image or "")
     modes = [part.strip().lower() for part in _split_top_level(blend_mode or "")]
     if (
@@ -811,11 +816,36 @@ def parse_fill_overlay_effect(
     if overlay is None:
         return None
     overlay_color = overlay.stops[0].color
-    if any(stop.color != overlay_color for stop in overlay.stops[1:]):
-        return None
+    overlay_fill: SolidFill | GradientFill = (
+        SolidFill(color=overlay_color)
+        if all(stop.color == overlay_color for stop in overlay.stops[1:])
+        else overlay
+    )
     return FillOverlay(
-        fill=SolidFill(color=overlay_color),
+        fill=overlay_fill,
         blend=_FILL_OVERLAY_BLEND[modes[0]],
+    )
+
+
+def _overlay_fill_matches_css(actual: GradientFill, expected: SolidFill | GradientFill) -> bool:
+    if isinstance(expected, SolidFill):
+        return all(
+            (stop.color.r, stop.color.g, stop.color.b)
+            == (expected.color.r, expected.color.g, expected.color.b)
+            and abs(stop.color.a - expected.color.a) <= (1 / 255)
+            for stop in actual.stops
+        )
+    if actual.radial != expected.radial or len(actual.stops) != len(expected.stops):
+        return False
+    angle_delta = abs((actual.angle_deg - expected.angle_deg) % 360.0)
+    if not actual.radial and min(angle_delta, 360.0 - angle_delta) > 1e-5:
+        return False
+    return all(
+        abs(actual_stop.pos - expected_stop.pos) <= 1e-5
+        and (actual_stop.color.r, actual_stop.color.g, actual_stop.color.b)
+        == (expected_stop.color.r, expected_stop.color.g, expected_stop.color.b)
+        and abs(actual_stop.color.a - expected_stop.color.a) <= (1 / 255)
+        for actual_stop, expected_stop in zip(actual.stops, expected.stops, strict=True)
     )
 
 
@@ -844,12 +874,7 @@ def fill_overlay_base_styles(
     if any(mode != "normal" for mode in modes[1:]):
         return None
     overlay = parse_gradient(layers[0])
-    if overlay is None or any(
-        (stop.color.r, stop.color.g, stop.color.b)
-        != (effect.fill.color.r, effect.fill.color.g, effect.fill.color.b)
-        or abs(stop.color.a - effect.fill.color.a) > (1 / 255)
-        for stop in overlay.stops
-    ):
+    if overlay is None or not _overlay_fill_matches_css(overlay, effect.fill):
         return None
     geometry = _background_layer_values(
         len(layers),

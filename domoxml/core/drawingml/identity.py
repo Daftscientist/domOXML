@@ -5,7 +5,7 @@ from __future__ import annotations
 from xml.sax.saxutils import escape
 
 from domoxml.core.ir.effect_payload import encode_effects
-from domoxml.core.ir.model import CanvasNode, Shadow, ShapeNode
+from domoxml.core.ir.model import CanvasNode, FillOverlay, GradientFill, Shadow, ShapeNode
 
 NAMESPACE = "urn:domoxml:canvas-ir:1"
 EXTENSION_URI = "{A6E4A7B1-9D9C-4E8F-A94B-22CB18A8D72F}"
@@ -40,6 +40,10 @@ def node_identity_xml(node: CanvasNode) -> str:
     if isinstance(node, ShapeNode) and (
         node.native_effect_projection == "schema_subset"
         or any(isinstance(effect, Shadow) and effect.inset for effect in node.effects)
+        or any(
+            isinstance(effect, FillOverlay) and isinstance(effect.fill, GradientFill)
+            for effect in node.effects
+        )
     ):
         intent = encode_effects(
             node.effects,

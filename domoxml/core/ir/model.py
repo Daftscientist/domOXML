@@ -331,16 +331,17 @@ class Reflection(BaseModel):
 
 
 FillOverlayBlend = Literal["mult", "screen", "darken", "lighten"]
+type FillOverlayPaint = SolidFill | GradientFill
 
 
 class FillOverlay(BaseModel):
-    """An additional solid fill blended with the owning shape's base fill
+    """An additional solid or gradient fill blended with the owning shape's base fill
     (``a:fillOverlay``)."""
 
     model_config = _FROZEN
 
     kind: Literal["fillOverlay"] = "fillOverlay"
-    fill: SolidFill
+    fill: FillOverlayPaint = Field(discriminator="kind")
     blend: FillOverlayBlend
 
 

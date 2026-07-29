@@ -9,7 +9,7 @@ evidence covers both conversion directions and the round-trip path.
 
 ## Current PresentationML Capability Matrix
 
-Audited on **2026-07-28**.
+Audited on **2026-07-29**.
 
 | Capability | HTML/CSS -> PPTX | PPTX -> HTML/CSS | Evidence | Main remaining work |
 |---|---|---|---|---|
@@ -60,6 +60,7 @@ Audited on **2026-07-28**.
 | `effects` | both | native outer shadow/glow plus editable native inset shadow with an isolated portable layer, guarded exact spread intent, focused omission floors, and two-cycle convergence |
 | `fill-overlay-effect` | both | four editable solid blend modes, portable renderer branches, exact payload, stacking, and convergence |
 | `fill-overlay-owned-fallback` | reverse | rotated unsupported `over` blend remains visible as one owned layer, retains exact source payload, and converges after the fallback boundary |
+| `gradient-fill-overlay` | both | linear gradient overlay IR, premultiplied-sRGB native projection, exact guarded authored intent, portable renderer branch, malformed-fill preservation, Graph/LibreOffice evidence, and two-cycle convergence; radial overlay remains focused-unit evidence |
 | `hyperlink` | both | run hyperlinks and relationships |
 | `interleaved-order` | both | canonical mixed-node z-order through both adapters |
 | `mixed-shadow-effect-list` | both | one CSS outer-plus-inner shadow pair lowers to a schema-ordered native `effectLst` plus an exact non-double-painted portable layer, retains authored CSS order and signed intent, rejects stale metadata after native edits, and converges after two cycles |

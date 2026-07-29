@@ -13,6 +13,7 @@ from domoxml.core.ir.model import (
     FillOverlay,
     FillOverlayBlend,
     Glow,
+    GradientFill,
     Reflection,
     Rgba,
     Shadow,
@@ -28,6 +29,7 @@ type Effect = Shadow | Glow | Blur | SoftEdge | Reflection | FillOverlay
 type EffectContainerKind = Literal["list", "sibling"]
 type EffectSourceRef = Literal["fill", "fillLine"]
 type ColorParser = Callable[[Element], Rgba | None]
+type GradientParser = Callable[[Element], GradientFill | None]
 
 
 def _int_attr(element: Element, name: str, default: int = 0) -> int:
@@ -124,6 +126,7 @@ def read_effects(
     color_for: ColorParser,
     *,
     box: Box | None = None,
+    gradient_for: GradientParser | None = None,
 ) -> tuple[tuple[Effect, ...], tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
     """Parse native effects and explicitly preserve unsupported effect nodes."""
     effect_list = shape_properties.find("a:effectLst", _NS)
@@ -203,7 +206,13 @@ def read_effects(
             )
         elif kind == "fillOverlay":
             solid = child.find("a:solidFill", _NS)
-            color = color_for(solid) if solid is not None else None
+            gradient_element = child.find("a:gradFill", _NS)
+            overlay_fill: SolidFill | GradientFill | None = None
+            if solid is not None and gradient_element is None:
+                color = color_for(solid)
+                overlay_fill = SolidFill(color=color) if color is not None else None
+            elif solid is None and gradient_element is not None and gradient_for is not None:
+                overlay_fill = gradient_for(gradient_element)
             blend = child.get("blend", "over")
             supported_blends: set[FillOverlayBlend] = {
                 "mult",
@@ -211,14 +220,19 @@ def read_effects(
                 "darken",
                 "lighten",
             }
-            if color is not None and blend in supported_blends:
+            if overlay_fill is not None and blend in supported_blends:
                 effects.append(
                     FillOverlay(
-                        fill=SolidFill(color=color),
+                        fill=overlay_fill,
                         blend=blend,
                     )
                 )
-                if color.a > 0.0:
+                overlay_visible = (
+                    overlay_fill.color.a > 0.0
+                    if isinstance(overlay_fill, SolidFill)
+                    else any(stop.color.a > 0.0 for stop in overlay_fill.stops)
+                )
+                if overlay_visible:
                     warnings.append(
                         ConversionWarning(
                             message=(
@@ -231,7 +245,7 @@ def read_effects(
                 warning, fragment = _preserve(
                     child,
                     kind,
-                    "a:fillOverlay has no supported solid CSS mapping; preserved as fragment",
+                    "a:fillOverlay has no supported CSS fill mapping; preserved as fragment",
                 )
                 warnings.append(warning)
                 preserved.append(fragment)

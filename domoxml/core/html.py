@@ -444,7 +444,11 @@ def _append_effect_styles(
                 )
             )
         else:
-            overlay = f"linear-gradient({_rgba(effect.fill.color)},{_rgba(effect.fill.color)})"
+            overlay = (
+                f"linear-gradient({_rgba(effect.fill.color)},{_rgba(effect.fill.color)})"
+                if isinstance(effect.fill, SolidFill)
+                else _gradient(effect.fill, opacity=1.0)
+            )
             background_index = next(
                 (
                     index
@@ -480,7 +484,12 @@ def _append_effect_styles(
                         base_value = styles[property_index].removeprefix(prefix)
                         styles[property_index] = f"{prefix}{overlay_value},{base_value}"
             styles.append(f"background-blend-mode:{blend_modes}")
-            if effect.fill.color.a > 0.0:
+            overlay_visible = (
+                effect.fill.color.a > 0.0
+                if isinstance(effect.fill, SolidFill)
+                else any(stop.color.a > 0.0 for stop in effect.fill.stops)
+            )
+            if overlay_visible:
                 warnings.append(
                     ConversionWarning(
                         message=(

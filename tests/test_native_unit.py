@@ -19,6 +19,7 @@ from domoxml.core.ir.model import (
     FillOverlay,
     Glow,
     GradientFill,
+    GradientStop,
     PictureFill,
     Rgba,
     Shadow,
@@ -456,7 +457,7 @@ def test_encoded_fill_overlay_recovers_stacked_gradient_base() -> None:
     assert result.coverage[0].representation is Representation.HYBRID
 
 
-def test_nonuniform_background_blend_uses_visible_element_layer() -> None:
+def test_gradient_background_blend_is_native_with_shape_bound_fallback() -> None:
     node = RenderedNode(
         tag="div",
         x=0,
@@ -466,6 +467,41 @@ def test_nonuniform_background_blend_uses_visible_element_layer() -> None:
         index=0,
         styles={
             "backgroundImage": "linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))",
+            "backgroundColor": "rgb(20, 60, 140)",
+            "backgroundBlendMode": "multiply",
+        },
+    )
+
+    result = extract_slide(_slide(node))
+
+    shape = result.slide.shapes[0]
+    assert shape.fill == SolidFill(color=Rgba(r=20, g=60, b=140))
+    assert shape.effects == (
+        FillOverlay(
+            fill=GradientFill(
+                stops=(
+                    GradientStop(pos=0.0, color=Rgba(r=255, g=0, b=0)),
+                    GradientStop(pos=1.0, color=Rgba(r=0, g=0, b=255)),
+                ),
+                angle_deg=180.0,
+            ),
+            blend="mult",
+        ),
+    )
+    assert shape.portable_fallback is not None
+    assert result.coverage[0].representation is Representation.HYBRID
+
+
+def test_conic_background_blend_uses_visible_element_layer() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={
+            "backgroundImage": "conic-gradient(rgb(255, 0, 0), rgb(0, 0, 255))",
             "backgroundColor": "rgb(20, 60, 140)",
             "backgroundBlendMode": "multiply",
         },

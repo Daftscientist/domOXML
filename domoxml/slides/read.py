@@ -16,6 +16,7 @@ from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
 from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
+from domoxml.core.ir.gradient import drawingml_gradient_projection
 from domoxml.core.ir.model import (
     ArcTo,
     Box,
@@ -24,8 +25,10 @@ from domoxml.core.ir.model import (
     CubicTo,
     CustomGeometry,
     Effect,
+    FillOverlay,
     Geometry,
     GeometryKind,
+    GradientFill,
     GroupNode,
     Hyperlink,
     LineTo,
@@ -51,6 +54,9 @@ from domoxml.slides.appearance_read import (
 )
 from domoxml.slides.appearance_read import (
     fill as _fill,
+)
+from domoxml.slides.appearance_read import (
+    gradient as _gradient,
 )
 from domoxml.slides.appearance_read import (
     line as _line,
@@ -215,6 +221,14 @@ def _matching_effect_intent(
                     }
                 )
             )
+        elif isinstance(effect, FillOverlay) and isinstance(effect.fill, GradientFill):
+            projected.append(
+                effect.model_copy(
+                    update={
+                        "fill": drawingml_gradient_projection(effect.fill, box=box),
+                    }
+                )
+            )
         else:
             projected.append(effect)
     if payload.container == "list":
@@ -368,7 +382,10 @@ def _shape(
         except (TypeError, ValueError):
             corner = 0
     shape_effects, effect_warns, effect_preserved = read_effects(
-        properties, lambda element: _rgba(element, colors), box=box
+        properties,
+        lambda element: _rgba(element, colors),
+        box=box,
+        gradient_for=lambda element: _gradient(element, colors),
     )
     effect_intent = _matching_effect_intent(element, shape_effects, box)
     applied_effect_intent = (

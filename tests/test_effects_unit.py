@@ -43,6 +43,8 @@ from domoxml.core.ir.model import (
     Box,
     FillOverlay,
     Glow,
+    GradientFill,
+    GradientStop,
     PictureFill,
     PortableFallback,
     Reflection,
@@ -68,7 +70,7 @@ from domoxml.core.ir.parse import (
     parse_svg_soft_edge_filter,
 )
 from domoxml.core.units import px_to_emu
-from domoxml.slides.appearance_read import rgba
+from domoxml.slides.appearance_read import gradient, rgba
 from domoxml.slides.effect_read import Effect, read_effects
 from domoxml.types import ConversionWarning, PreservedFragment
 
@@ -81,7 +83,12 @@ def parse_effects_xml(
     *,
     box: Box | None = None,
 ) -> tuple[tuple[Effect, ...], tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
-    return read_effects(properties, lambda element: rgba(element, colors), box=box)
+    return read_effects(
+        properties,
+        lambda element: rgba(element, colors),
+        box=box,
+        gradient_for=lambda element: gradient(element, colors),
+    )
 
 
 # -----------------------------------------------------------------------
@@ -352,6 +359,7 @@ def test_parse_picture_fill_overlay_peels_one_uniform_top_layer() -> None:
         background_repeat="repeat,no-repeat",
     )
 
+    assert effect is not None
     assert effect == FillOverlay(
         fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
         blend="mult",
@@ -399,6 +407,45 @@ def test_parse_picture_fill_overlay_peels_one_uniform_top_layer() -> None:
         )
         is None
     )
+
+
+def test_parse_gradient_fill_overlay_preserves_stops_and_angle() -> None:
+    effect = parse_fill_overlay_effect(
+        ("linear-gradient(90deg,rgba(244,63,94,.8) 0%,rgba(37,99,235,.35) 100%),url(asset.png)"),
+        "screen,normal",
+        background_color="rgba(0,0,0,0)",
+        background_size="auto,cover",
+        background_position="0% 0%,50% 50%",
+        background_repeat="repeat,no-repeat",
+    )
+
+    assert effect is not None
+    assert effect == FillOverlay(
+        fill=GradientFill(
+            stops=(
+                GradientStop(pos=0.0, color=Rgba(r=244, g=63, b=94, a=0.8)),
+                GradientStop(pos=1.0, color=Rgba(r=37, g=99, b=235, a=0.35)),
+            ),
+            angle_deg=90.0,
+        ),
+        blend="screen",
+    )
+    assert fill_overlay_base_styles(
+        ("linear-gradient(90deg,rgba(244,63,94,.8) 0%,rgba(37,99,235,.35) 100%),url(asset.png)"),
+        "screen,normal",
+        effect,
+        background_size="auto,cover",
+        background_position="0% 0%,50% 50%",
+        background_repeat="repeat,no-repeat",
+    ) == {
+        "backgroundImage": "url(asset.png)",
+        "backgroundBlendMode": "normal",
+        "backgroundSize": "cover",
+        "backgroundPosition": "50% 50%",
+        "backgroundRepeat": "no-repeat",
+        "backgroundOrigin": "padding-box",
+        "backgroundClip": "border-box",
+    }
 
 
 def test_rejects_css_reflection_that_cannot_map_to_current_ir() -> None:
@@ -698,6 +745,27 @@ def test_fill_overlay_xml_emitted() -> None:
         '<a:fillOverlay blend="mult"><a:solidFill><a:srgbClr val="FF2850">'
         '<a:alpha val="75000"/></a:srgbClr></a:solidFill></a:fillOverlay>' in xml
     )
+
+
+def test_gradient_fill_overlay_xml_is_aspect_projected_and_subdivided() -> None:
+    overlay = FillOverlay(
+        fill=GradientFill(
+            stops=(
+                GradientStop(pos=0.0, color=Rgba(r=244, g=63, b=94, a=0.8)),
+                GradientStop(pos=1.0, color=Rgba(r=37, g=99, b=235, a=0.35)),
+            ),
+            angle_deg=90.0,
+        ),
+        blend="screen",
+    )
+
+    xml = _effects_xml(_node(effects=(overlay,)))
+
+    assert '<a:fillOverlay blend="screen"><a:gradFill>' in xml
+    assert xml.count("<a:gs pos=") == 9
+    assert '<a:gs pos="0"><a:srgbClr val="F43F5E"><a:alpha val="80000"/>' in xml
+    assert '<a:gs pos="100000"><a:srgbClr val="2563EB"><a:alpha val="35000"/>' in xml
+    assert '<a:lin ang="0" scaled="1"/></a:gradFill></a:fillOverlay>' in xml
 
 
 def test_effect_list_xml_uses_schema_order_instead_of_ir_tuple_order() -> None:
@@ -1088,6 +1156,82 @@ def test_reverse_solid_fill_overlay_is_typed() -> None:
     assert "renderer fallback" in warns[0].message
 
 
+def test_reverse_gradient_fill_overlay_is_typed() -> None:
+    fill_overlay = (
+        '<a:fillOverlay blend="screen"><a:gradFill><a:gsLst>'
+        '<a:gs pos="0"><a:srgbClr val="F43F5E"><a:alpha val="80000"/></a:srgbClr></a:gs>'
+        '<a:gs pos="100000"><a:srgbClr val="2563EB"><a:alpha val="35000"/></a:srgbClr></a:gs>'
+        '</a:gsLst><a:lin ang="0" scaled="1"/></a:gradFill></a:fillOverlay>'
+    )
+
+    effects, warns, preserved = parse_effects_xml(
+        _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>"), {}
+    )
+
+    assert effects == (
+        FillOverlay(
+            fill=GradientFill(
+                stops=(
+                    GradientStop(pos=0.0, color=Rgba(r=244, g=63, b=94, a=0.8)),
+                    GradientStop(pos=1.0, color=Rgba(r=37, g=99, b=235, a=0.35)),
+                ),
+                angle_deg=90.0,
+            ),
+            blend="screen",
+        ),
+    )
+    assert preserved == ()
+    assert "renderer fallback" in warns[0].message
+
+
+def test_reverse_radial_gradient_fill_overlay_is_typed() -> None:
+    fill_overlay = (
+        '<a:fillOverlay blend="mult"><a:gradFill><a:gsLst>'
+        '<a:gs pos="0"><a:srgbClr val="F43F5E"><a:alpha val="80000"/></a:srgbClr></a:gs>'
+        '<a:gs pos="100000"><a:srgbClr val="2563EB"><a:alpha val="35000"/></a:srgbClr></a:gs>'
+        '</a:gsLst><a:path path="circle"><a:fillToRect l="50000" t="50000" '
+        'r="50000" b="50000"/></a:path></a:gradFill></a:fillOverlay>'
+    )
+
+    effects, warns, preserved = parse_effects_xml(
+        _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>"), {}
+    )
+
+    assert effects == (
+        FillOverlay(
+            fill=GradientFill(
+                stops=(
+                    GradientStop(pos=0.0, color=Rgba(r=244, g=63, b=94, a=0.8)),
+                    GradientStop(pos=1.0, color=Rgba(r=37, g=99, b=235, a=0.35)),
+                ),
+                radial=True,
+            ),
+            blend="mult",
+        ),
+    )
+    assert preserved == ()
+    assert "renderer fallback" in warns[0].message
+
+
+def test_reverse_ambiguous_fill_overlay_stays_preserved() -> None:
+    fill_overlay = (
+        '<a:fillOverlay blend="screen">'
+        '<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>'
+        "<a:gradFill><a:gsLst>"
+        '<a:gs pos="0"><a:srgbClr val="FF0000"/></a:gs>'
+        '<a:gs pos="100000"><a:srgbClr val="0000FF"/></a:gs>'
+        "</a:gsLst></a:gradFill></a:fillOverlay>"
+    )
+
+    effects, warns, preserved = parse_effects_xml(
+        _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>"), {}
+    )
+
+    assert effects == ()
+    assert preserved[0].kind == "fillOverlay"
+    assert "preserved" in warns[0].message
+
+
 def test_reverse_unsupported_fill_overlay_stays_preserved() -> None:
     fill_overlay = (
         '<a:fillOverlay blend="over"><a:gradFill><a:gsLst>'
@@ -1300,6 +1444,30 @@ def test_html_fill_overlay_emits_composited_background_and_warning() -> None:
     assert "background-color:rgba(0,128,255,1)" in markup
     assert "background-image:linear-gradient(rgba(255,40,80,0.75),rgba(255,40,80,0.75))" in markup
     assert "background-blend-mode:multiply" in markup
+    assert any("renderer fallback" in warning.message for warning in html.warnings)
+
+
+def test_html_gradient_fill_overlay_emits_exact_gradient_and_payload() -> None:
+    overlay = FillOverlay(
+        fill=GradientFill(
+            stops=(
+                GradientStop(pos=0.0, color=Rgba(r=244, g=63, b=94, a=0.8)),
+                GradientStop(pos=1.0, color=Rgba(r=37, g=99, b=235, a=0.35)),
+            ),
+            angle_deg=90.0,
+        ),
+        blend="screen",
+    )
+
+    html = serialize_canvas([_slide_with(overlay)])
+    markup = html.slides[0].html
+
+    assert (
+        "background-image:linear-gradient(90deg,rgba(244,63,94,0.8) 0%,"
+        "rgba(37,99,235,0.35) 100%)" in markup
+    )
+    assert "background-blend-mode:screen" in markup
+    assert "&quot;fill&quot;:{&quot;kind&quot;:&quot;gradient&quot;" in markup
     assert any("renderer fallback" in warning.message for warning in html.warnings)
 
 

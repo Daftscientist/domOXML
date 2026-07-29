@@ -1792,7 +1792,16 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             if isinstance(effect, Blur | Reflection)
             or (isinstance(effect, Shadow) and effect.inset)
             or (isinstance(effect, SoftEdge) and effect.radius_emu > 0)
-            or (isinstance(effect, FillOverlay) and effect.fill.color.a > 0.0)
+            or (
+                isinstance(effect, FillOverlay)
+                and (
+                    (isinstance(effect.fill, SolidFill) and effect.fill.color.a > 0.0)
+                    or (
+                        isinstance(effect.fill, GradientFill)
+                        and any(stop.color.a > 0.0 for stop in effect.fill.stops)
+                    )
+                )
+            )
         )
         if portable_effects or effect_container == "sibling":
             fallback_shape = _raster_shape(node, rendered)

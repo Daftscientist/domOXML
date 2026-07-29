@@ -16,6 +16,7 @@ from domoxml.core.fillcrop import (
     explicit_fill_fractions,
     srcrect_to_background,
 )
+from domoxml.core.ir.gradient import drawingml_gradient_projection
 from domoxml.core.ir.model import (
     Box,
     GradientFill,
@@ -300,6 +301,23 @@ def test_shape_gradient_is_aspect_corrected_and_subdivided_for_powerpoint() -> N
 
     assert xml.count("<a:gs pos=") == 9
     assert '<a:lin ang="1761465" scaled="1"/>' in xml
+
+
+def test_translucent_gradient_subdivision_uses_premultiplied_srgb() -> None:
+    fill = GradientFill(
+        stops=(
+            GradientStop(pos=0.0, color=Rgba(r=244, g=63, b=94, a=0.8)),
+            GradientStop(pos=1.0, color=Rgba(r=34, g=197, b=94, a=0.35)),
+        ),
+        angle_deg=90.0,
+    )
+
+    projected = drawingml_gradient_projection(fill, box=Box(x=0, y=0, width=480, height=240))
+
+    assert projected.stops[4] == GradientStop(
+        pos=0.5,
+        color=Rgba(r=180, g=104, b=94, a=0.575),
+    )
 
 
 # --------------------------------------------------------------------------- reverse read + html

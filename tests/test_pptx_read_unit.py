@@ -504,6 +504,49 @@ def test_portable_fill_overlay_fallback_uses_alternate_content_and_round_trips()
     assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
 
 
+def test_gradient_fill_overlay_retains_authored_intent_after_native_projection() -> None:
+    fallback_box = Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000)
+    overlay = FillOverlay(
+        fill=GradientFill(
+            stops=(
+                GradientStop(pos=0.0, color=Rgba(r=244, g=63, b=94, a=0.8)),
+                GradientStop(pos=1.0, color=Rgba(r=37, g=99, b=235, a=0.35)),
+            ),
+            angle_deg=135.0,
+        ),
+        blend="screen",
+    )
+    shape = ShapeNode(
+        box=fallback_box,
+        fill=SolidFill(color=Rgba(r=20, g=60, b=140)),
+        effects=(overlay,),
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-gradient-fill-overlay-png",
+                ext="png",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert '<a:fillOverlay blend="screen"><a:gradFill>' in slide_xml
+    assert slide_xml.count("<a:gs pos=") == 9
+    assert "effectIntent=" in slide_xml
+
+    result = read_pptx_result(pptx)
+
+    [recovered] = result.slides[0].shapes
+    assert recovered.effects == (overlay,)
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == fallback_box
+    assert result.coverage.count(Representation.HYBRID) == 1
+    assert result.coverage.count_editability(Editability.COMPONENTS) == 1
+
+
 def test_sibling_shadow_graph_uses_native_choice_and_round_trips() -> None:
     fallback_box = Box(x=700_000, y=600_000, width=3_000_000, height=1_900_000)
     front = Shadow(

@@ -331,7 +331,7 @@ class Reflection(BaseModel):
 
 
 FillOverlayBlend = Literal["mult", "screen", "darken", "lighten"]
-type FillOverlayPaint = Annotated[SolidFill | GradientFill, Field(discriminator="kind")]
+type FillOverlayPaint = SolidFill | GradientFill
 
 
 class FillOverlay(BaseModel):
@@ -341,7 +341,7 @@ class FillOverlay(BaseModel):
     model_config = _FROZEN
 
     kind: Literal["fillOverlay"] = "fillOverlay"
-    fill: FillOverlayPaint
+    fill: FillOverlayPaint = Field(discriminator="kind")
     blend: FillOverlayBlend
 
 

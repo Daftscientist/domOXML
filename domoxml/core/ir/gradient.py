@@ -68,6 +68,23 @@ def _subdivide_srgb_stops(gradient: GradientFill) -> tuple[GradientStop, ...]:
     return tuple(expanded)
 
 
+def drawingml_gradient_angle(gradient: GradientFill, *, box: Box | None) -> int:
+    """Return the serialized DrawingML linear-gradient angle in 1/60000 degrees."""
+    drawingml_angle = (gradient.angle_deg + 270.0) % 360.0
+    if box is not None and box.width > 0 and box.height > 0:
+        angle = math.radians(drawingml_angle)
+        drawingml_angle = (
+            math.degrees(
+                math.atan2(
+                    math.sin(angle) * box.height,
+                    math.cos(angle) * box.width,
+                )
+            )
+            % 360.0
+        )
+    return round(drawingml_angle * 60_000)
+
+
 def drawingml_gradient_projection(
     gradient: GradientFill,
     *,
@@ -89,18 +106,6 @@ def drawingml_gradient_projection(
     if gradient.radial:
         return GradientFill(stops=stops, angle_deg=180.0, radial=True)
 
-    drawingml_angle = (gradient.angle_deg + 270.0) % 360.0
-    if box is not None and box.width > 0 and box.height > 0:
-        angle = math.radians(drawingml_angle)
-        drawingml_angle = (
-            math.degrees(
-                math.atan2(
-                    math.sin(angle) * box.height,
-                    math.cos(angle) * box.width,
-                )
-            )
-            % 360.0
-        )
-    serialized_angle = round(drawingml_angle * 60_000)
+    serialized_angle = drawingml_gradient_angle(gradient, box=box)
     css_angle = ((serialized_angle / 60_000) - 270.0) % 360.0
     return GradientFill(stops=stops, angle_deg=css_angle, radial=False)

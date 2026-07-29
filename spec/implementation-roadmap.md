@@ -256,8 +256,8 @@ silently lowering the expected score.
    geometry; thick/compound line alignment; smaller independently owned source
    isolation; reflection directions beyond the strict custom-path `below` subset and non-pixel
    gaps; typed preset-shadow semantics and
-   combinations; pattern fill overlays and `over` calibration; multi-function SVG filter
-   ordering beyond the strict soft-edge and fill-overlay pipelines; broader color models;
+   combinations; radial/pattern fill-overlay visual proof and `over` calibration; multi-function
+   SVG filter ordering beyond the strict soft-edge and fill-overlay pipelines; broader color models;
    and representative real-deck coverage for those families.
 9. [x] Add capability-registry fields for semantic editability, representation level, layer area,
    source preservation, output count, and repeated-round-trip count. Every reverse-capable atomic

@@ -8,7 +8,7 @@ from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
-from domoxml.core.ir.gradient import drawingml_gradient_projection
+from domoxml.core.ir.gradient import drawingml_gradient_angle, drawingml_gradient_projection
 from domoxml.core.ir.model import (
     ArcTo,
     Arrowhead,
@@ -97,7 +97,7 @@ def _gradient_fill(gradient: GradientFill, *, opacity: float, box: Box | None = 
             '<a:path path="circle"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path>'
         )
         return f"<a:gradFill>{gs_lst}{path}</a:gradFill>"
-    ooxml_angle = round(((projected.angle_deg + 270.0) % 360.0) * 60_000)
+    ooxml_angle = drawingml_gradient_angle(gradient, box=box)
     return f'<a:gradFill>{gs_lst}<a:lin ang="{ooxml_angle}" scaled="1"/></a:gradFill>'
 
 

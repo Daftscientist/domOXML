@@ -17,7 +17,7 @@ warnings = ["editable native effect metadata with an isolated renderer fallback"
 
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"
-xpath = ".//mc:Choice[@Requires='p16']/p:sp[p:nvSpPr/p:cNvPr[not(@hidden='1')]]/p:spPr[a:solidFill/a:srgbClr[@val='143C8C']]/a:effectLst/a:fillOverlay[@blend='screen']/a:gradFill[a:gsLst/a:gs[1]/a:srgbClr[@val='F43F5E']/a:alpha[@val='80000'] and a:gsLst/a:gs[last()]/a:srgbClr[@val='22C55E']/a:alpha[@val='35000'] and count(a:gsLst/a:gs)=9]"
+xpath = ".//mc:Choice[@Requires='p16']/p:sp[p:nvSpPr/p:cNvPr[not(@hidden='1')]]/p:spPr[a:solidFill/a:srgbClr[@val='143C8C']]/a:effectLst/a:fillOverlay[@blend='screen']/a:gradFill[a:gsLst/a:gs[1][@pos='0']/a:srgbClr[@val='F43F5E']/a:alpha[@val='80000'] and a:gsLst/a:gs[2][@pos='12500']/a:srgbClr[@val='E8475E']/a:alpha[@val='74375'] and a:gsLst/a:gs[3][@pos='25000']/a:srgbClr[@val='D9505E']/a:alpha[@val='68750'] and a:gsLst/a:gs[4][@pos='37500']/a:srgbClr[@val='C85B5E']/a:alpha[@val='63125'] and a:gsLst/a:gs[5][@pos='50000']/a:srgbClr[@val='B4685E']/a:alpha[@val='57500'] and a:gsLst/a:gs[6][@pos='62500']/a:srgbClr[@val='9B785E']/a:alpha[@val='51875'] and a:gsLst/a:gs[7][@pos='75000']/a:srgbClr[@val='7D8B5E']/a:alpha[@val='46250'] and a:gsLst/a:gs[8][@pos='87500']/a:srgbClr[@val='56A45E']/a:alpha[@val='40625'] and a:gsLst/a:gs[9][@pos='100000']/a:srgbClr[@val='22C55E']/a:alpha[@val='35000'] and count(a:gsLst/a:gs)=9 and a:lin[@ang='0' and @scaled='1']]"
 min_count = 1
 max_count = 1
 

@@ -23,9 +23,9 @@ a plain, untransformed, fully opaque solid rectangular base plus one translucent
 overlay with default, full-shape background geometry. Element opacity, additional effects,
 borders, text, gradient and pattern overlays, picture or translucent bases, partial coverage, and
 rounded or clipped geometry stay outside the typed subset. Reverse recovery also verifies the
-hidden state, native base composite, rectangular geometry, and native/fallback bounds before
-trusting private intent, and requires the generated fallback branch to contain exactly that one
-tagged picture.
+single-effect native list, hidden state, native base composite, rectangular geometry, and
+native/fallback bounds before trusting private intent, and requires the generated fallback branch
+to contain exactly that one tagged picture.
 
 | Exact hybrid path | Global | Regional | Focused | Structural |
 |---|---:|---:|---:|---:|

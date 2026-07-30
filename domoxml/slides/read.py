@@ -535,7 +535,7 @@ def _matches_flat_over_fallback(
                 )
                 for index in range(0, len(pixels), 4)
             )
-    except (OSError, ValueError):
+    except (OSError, ValueError, Image.DecompressionBombError):
         return False
 
 
@@ -563,6 +563,8 @@ def _private_over_choice_is_current(
     offset = transform.find("a:off", _NS) if transform is not None else None
     extent = transform.find("a:ext", _NS) if transform is not None else None
     geometry = properties.find("a:prstGeom", _NS) if properties is not None else None
+    effect_list = properties.find("a:effectLst", _NS) if properties is not None else None
+    native_effects = tuple(effect_list) if effect_list is not None else ()
     if (
         non_visual is None
         or non_visual.get("hidden") != "1"
@@ -578,6 +580,9 @@ def _private_over_choice_is_current(
         or properties.find("a:custGeom", _NS) is not None
         or properties.find("a:ln", _NS) is not None
         or native.find("p:txBody", _NS) is not None
+        or len(native_effects) != 1
+        or _local_name(native_effects[0]) != "fillOverlay"
+        or properties.find("a:effectDag", _NS) is not None
     ):
         return False
     native_box = Box(
@@ -1273,7 +1278,7 @@ def _slide(
                                 )
                             )
                             continue
-                        recover_owned = preserved_kinds == {"fillOverlay"}
+                        recover_owned = "fillOverlay" in preserved_kinds
                         rasterized_candidate = (
                             fallback_role == "pptx-source-rasterized"
                             and preserved_kinds in ({"prstShdw"}, {"effectDag"})

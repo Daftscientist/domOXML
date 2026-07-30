@@ -49,6 +49,7 @@ from domoxml.slides.read import (
     _can_own_source_shape_crop,
     _connector_reverse_coverage,
     _group_reverse_coverage,
+    _matches_flat_over_fallback,
     _slide_colors,
     _with_pptx_identity,
 )
@@ -569,6 +570,26 @@ def test_portable_over_fill_overlay_uses_visible_choice_fallback_and_round_trips
     assert edited.coverage.count_source_retention(SourceRetention.ATTACHED) == 1
 
 
+def test_flat_over_fallback_rejects_decompression_bomb(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fallback_buffer = BytesIO()
+    Image.new("RGB", (8, 4), (196, 45, 95)).save(fallback_buffer, "PNG")
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1)
+
+    assert not _matches_flat_over_fallback(
+        PictureFill(
+            data=fallback_buffer.getvalue(),
+            raster_role="portable-effect-fallback",
+        ),
+        SolidFill(color=Rgba(r=20, g=60, b=140)),
+        FillOverlay(
+            fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+            blend="over",
+        ),
+    )
+
+
 @pytest.mark.parametrize(
     ("old", "new"),
     (
@@ -579,6 +600,17 @@ def test_portable_over_fill_overlay_uses_visible_choice_fallback_and_round_trips
         (
             b"</p:pic></mc:Fallback>",
             b"</p:pic><p:sp/></mc:Fallback>",
+        ),
+        (
+            b"<a:effectLst><a:fillOverlay",
+            (b'<a:effectLst><a:glow rad="10000"><a:srgbClr val="000000"/></a:glow><a:fillOverlay'),
+        ),
+        (
+            b"<a:effectLst><a:fillOverlay",
+            (
+                b'<a:effectLst><a:prstShdw prst="shdw1" dir="5400000" dist="100000">'
+                b'<a:srgbClr val="000000"/></a:prstShdw><a:fillOverlay'
+            ),
         ),
     ),
 )

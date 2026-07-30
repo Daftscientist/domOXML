@@ -229,10 +229,10 @@ opacity, additional effects, borders, text, and transformed geometry remain outs
 Both the PowerPoint choice and
 LibreOffice fallback select that picture while the native effect-bearing shape stays hidden, so
 the translucent result cannot double-paint. Private intent is recovered only while the native
-projection, hidden state, base composite, rectangular geometry, native/fallback bounds, and
-single-picture fallback branch remain unchanged; an Office edit rejects stale typed metadata and
-keeps the source alternate-content visual attached. Gradient and pattern overlays, picture or
-translucent bases,
+single-effect native projection, hidden state, base composite, rectangular geometry,
+native/fallback bounds, and single-picture fallback branch remain unchanged; an Office edit
+rejects stale typed metadata and keeps the source alternate-content visual attached. Gradient and
+pattern overlays, picture or translucent bases,
 partial background geometry, and rounded or clipped shapes do not enter this subset. Separately,
 an isolated square-cornered opaque source rectangle can use a geometry-masked owned crop; the exact
 source shape and isolated fallback then travel together through `AlternateContent`, avoiding

@@ -353,8 +353,7 @@ class FillOverlay(BaseModel):
                 or self.fill.color.a >= 1.0
             ):
                 raise ValueError(
-                    "over fill overlays require one translucent solid paint and an exact "
-                    "portable fallback on the owning shape"
+                    "over fill overlays require one translucent solid paint with 0 < alpha < 1"
                 )
             return self
         if not isinstance(self.fill, PatternFill):
@@ -761,6 +760,8 @@ class ShapeNode(CanvasNode):
                 or self.corner_radius_emu != 0
                 or self.opacity != 1.0
                 or self.transform is not None
+                or self.effect_source_ref != "fill"
+                or self.native_effect_projection != "complete"
                 or self.line is not None
                 or self.side_lines is not None
                 or self.text is not None

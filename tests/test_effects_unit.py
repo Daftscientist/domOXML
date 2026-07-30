@@ -518,6 +518,8 @@ def test_over_fill_overlay_requires_owned_fallback_on_shape() -> None:
         {"corner_radius_emu": 100_000},
         {"opacity": 0.8},
         {"transform": Transform(rotation_deg=10)},
+        {"effect_source_ref": "fillLine"},
+        {"native_effect_projection": "schema_subset"},
         {"line": Line(color=Rgba(r=0, g=0, b=0), width_emu=9_525)},
         {
             "portable_fallback": PortableFallback(

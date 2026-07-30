@@ -21,6 +21,7 @@ from domoxml.core.ir.model import (
     GradientStop,
     Line,
     LineSpacing,
+    PatternFill,
     Reflection,
     Rgba,
     Shadow,
@@ -818,22 +819,61 @@ def parse_fill_overlay_effect(
     )
     if geometry is None or not _overlay_layer_covers_shape(geometry, 0):
         return None
-    overlay = parse_gradient(layers[0])
+    overlay = _parse_fill_overlay_paint(layers[0])
     if overlay is None:
         return None
-    overlay_color = overlay.stops[0].color
-    overlay_fill: SolidFill | GradientFill = (
-        SolidFill(color=overlay_color)
-        if all(stop.color == overlay_color for stop in overlay.stops[1:])
-        else overlay
-    )
+    if isinstance(overlay, GradientFill):
+        overlay_color = overlay.stops[0].color
+        overlay_fill: SolidFill | GradientFill | PatternFill = (
+            SolidFill(color=overlay_color)
+            if all(stop.color == overlay_color for stop in overlay.stops[1:])
+            else overlay
+        )
+    else:
+        overlay_fill = overlay
+    blend = _FILL_OVERLAY_BLEND[modes[0]]
+    if isinstance(overlay_fill, PatternFill):
+        from domoxml.core.ir.pattern import pattern_overlay_is_proven
+
+        if not pattern_overlay_is_proven(overlay_fill, blend):
+            return None
     return FillOverlay(
         fill=overlay_fill,
-        blend=_FILL_OVERLAY_BLEND[modes[0]],
+        blend=blend,
     )
 
 
-def _overlay_fill_matches_css(actual: GradientFill, expected: SolidFill | GradientFill) -> bool:
+def _parse_fill_overlay_paint(value: str) -> GradientFill | PatternFill | None:
+    """Parse only overlay paints whose repeating/non-repeating semantics stay intact."""
+    from domoxml.core.ir.pattern import match_pattern_fill
+
+    pattern = match_pattern_fill(value, exact_geometry=True)
+    if "repeating-linear-gradient" in value.lower():
+        return pattern
+    return parse_gradient(value)
+
+
+def _overlay_fill_matches_css(
+    actual: GradientFill | PatternFill,
+    expected: SolidFill | GradientFill | PatternFill,
+) -> bool:
+    if isinstance(expected, PatternFill):
+        return (
+            isinstance(actual, PatternFill)
+            and actual.preset == expected.preset
+            and isinstance(actual.fg, Rgba)
+            and isinstance(actual.bg, Rgba)
+            and isinstance(expected.fg, Rgba)
+            and isinstance(expected.bg, Rgba)
+            and (actual.fg.r, actual.fg.g, actual.fg.b)
+            == (expected.fg.r, expected.fg.g, expected.fg.b)
+            and (actual.bg.r, actual.bg.g, actual.bg.b)
+            == (expected.bg.r, expected.bg.g, expected.bg.b)
+            and abs(actual.fg.a - expected.fg.a) <= (1 / 255)
+            and abs(actual.bg.a - expected.bg.a) <= (1 / 255)
+        )
+    if not isinstance(actual, GradientFill):
+        return False
     if isinstance(expected, SolidFill):
         return all(
             (stop.color.r, stop.color.g, stop.color.b)
@@ -879,7 +919,7 @@ def fill_overlay_base_styles(
         return None
     if any(mode != "normal" for mode in modes[1:]):
         return None
-    overlay = parse_gradient(layers[0])
+    overlay = _parse_fill_overlay_paint(layers[0])
     if overlay is None or not _overlay_fill_matches_css(overlay, effect.fill):
         return None
     geometry = _background_layer_values(

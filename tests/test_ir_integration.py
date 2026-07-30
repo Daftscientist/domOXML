@@ -21,6 +21,7 @@ from domoxml.core.ir.model import (
     FillOverlay,
     GradientFill,
     GradientStop,
+    PatternFill,
     PictureFill,
     Point,
     PortableFallback,
@@ -293,6 +294,57 @@ async def test_extracts_gradient_fill_overlay_and_reingests_exact_intent() -> No
             angle_deg=90.0,
         ),
         blend="screen",
+    )
+    assert shape.fill == SolidFill(color=Rgba(r=20, g=60, b=140))
+    assert shape.effects == (expected_effect,)
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == Box(
+        x=px_to_emu(100),
+        y=px_to_emu(80),
+        width=px_to_emu(220),
+        height=px_to_emu(90),
+    )
+    [coverage] = [item for item in result.coverage if item.representation is Representation.HYBRID]
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.output_count == 2
+    assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(90)
+
+    serialized = inline_assets(serialize_canvas([result.slide]))
+    second = await _render_and_extract_result(serialized.slides[0].html, css=serialized.css)
+
+    [recovered] = [
+        candidate
+        for candidate in second.slide.shapes
+        if any(isinstance(effect, FillOverlay) for effect in candidate.effects)
+    ]
+    assert recovered.fill == shape.fill
+    assert recovered.effects == (expected_effect,)
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == shape.portable_fallback.box
+
+
+async def test_extracts_pattern_fill_overlay_as_owned_hybrid_and_reingests() -> None:
+    result = await _render_and_extract_result(
+        '<div style="position:absolute;left:100px;top:80px;width:220px;height:90px;'
+        "background-color:rgb(20,60,140);"
+        "background-image:repeating-linear-gradient("
+        "0deg,rgb(244,63,94) 0px,rgb(244,63,94) 1px,"
+        "rgb(254,226,226) 1px,rgb(254,226,226) 4px);"
+        'background-blend-mode:multiply"></div>'
+    )
+
+    [shape] = [
+        candidate
+        for candidate in result.slide.shapes
+        if any(isinstance(effect, FillOverlay) for effect in candidate.effects)
+    ]
+    expected_effect = FillOverlay(
+        fill=PatternFill(
+            preset="horz",
+            fg=Rgba(r=244, g=63, b=94),
+            bg=Rgba(r=254, g=226, b=226),
+        ),
+        blend="mult",
     )
     assert shape.fill == SolidFill(color=Rgba(r=20, g=60, b=140))
     assert shape.effects == (expected_effect,)

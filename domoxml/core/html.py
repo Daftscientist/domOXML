@@ -447,6 +447,12 @@ def _append_effect_styles(
             overlay = (
                 f"linear-gradient({_rgba(effect.fill.color)},{_rgba(effect.fill.color)})"
                 if isinstance(effect.fill, SolidFill)
+                else pattern_to_css(
+                    _color_spec_hex(effect.fill.fg),
+                    _color_spec_hex(effect.fill.bg),
+                    effect.fill.preset,
+                )[1]
+                if isinstance(effect.fill, PatternFill)
                 else _gradient(effect.fill, opacity=1.0)
             )
             background_index = next(
@@ -488,6 +494,8 @@ def _append_effect_styles(
                 effect.fill.color.a > 0.0
                 if isinstance(effect.fill, SolidFill)
                 else any(stop.color.a > 0.0 for stop in effect.fill.stops)
+                if isinstance(effect.fill, GradientFill)
+                else True
             )
             if overlay_visible:
                 warnings.append(

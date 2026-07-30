@@ -177,19 +177,21 @@ different color spaces, partial clips, and compound graphs stay on the element-l
 Solid, linear-gradient, and canonical centered `circle` radial-gradient fill overlays using
 multiply, screen, darken, or lighten use the exact native effect alone in the PowerPoint choice and
 the portable picture only in the LibreOffice fallback branch; stacking both caused visible
-one-pixel edges on
-non-pixel-aligned geometry. The overlay may cover one solid-color base or one picture background
-layer when every remaining blend mode is `normal`; per-layer size, position, and repeat values are
-peeled before the base picture crop is resolved. DrawingML gradient projection aspect-corrects
-linear angles and subdivides translucent stops in premultiplied sRGB, which direct Graph comparison
-shows is required to match browser interpolation. A guarded intent payload retains the authored
-stop list only while the native projected gradient remains unchanged, preventing repeated PPTX
-cycles from expanding the projected stop list. The admitted radial form uses the CSS default
-farthest-corner extent at the center and exactly matches a DrawingML `circle` path whose four
-`fillToRect` insets are `50000`. Ellipse keywords, size keywords, explicit radii, moved centers,
-other path shapes/extents, partial overlays, active lower blend layers, pattern fills, changed
-native projections, and ambiguous fill families remain on the element-layer or preserved-source
-path.
+one-pixel edges on non-pixel-aligned geometry. One calibrated opaque horizontal stripe pattern
+using multiply retains editable native `a:pattFill` metadata, but direct Graph comparison shows
+tile-edge differences and LibreOffice drops the overlay. Its exact shape-owned picture is therefore
+visible beside a hidden native shape in the PowerPoint choice and is also the sole LibreOffice
+fallback. The overlay may cover one solid-color base or one picture background layer
+when every remaining blend mode is `normal`; per-layer size, position, and repeat values are peeled
+before the base picture crop is resolved. DrawingML gradient projection aspect-corrects linear
+angles and subdivides translucent stops in premultiplied sRGB, which direct Graph comparison shows
+is required to match browser interpolation. A guarded intent payload retains the authored stop list
+only while the native projected gradient remains unchanged, preventing repeated PPTX cycles from
+expanding the projected stop list. The admitted radial form uses the CSS default farthest-corner
+extent at the center and exactly matches a DrawingML `circle` path whose four `fillToRect` insets are
+`50000`. Ellipse keywords, size keywords, explicit radii, moved centers, other path shapes/extents,
+partial overlays, active lower blend layers, uncalibrated pattern presets, changed native
+projections, and ambiguous fill families remain on the element-layer or preserved-source path.
 Blur and reflection bounds include their full overflow; inset shadow, soft edge, and fill overlay
 use the shape paint box, expanded to its axis-aligned painted bounds after rotation.
 Normalized rectangles use the same two-axis mask, while normalized ellipses
@@ -249,9 +251,12 @@ linear angles within `1e-5`, and stop alpha within one 8-bit quantum. Radial CSS
 requires the canonical centered `circle` syntax, and reverse recovery requires the exact generated
 `circle` path and four `50000` extent values. Guarded authored intent is then accepted only while
 reprojecting it for the shape box exactly matches the parsed native DrawingML geometry and projected
-stop list. The admitted overlay layer must cover the whole shape using the default background origin
-and clip. Partial background geometry, ambiguous gradients, or stale encoded effect metadata take
-the owned visible element-layer path rather than producing a different native composition.
+stop list. Pattern recovery requires the calibrated opaque horizontal stripe preset, multiply
+blend, exact RGB colours, and exact band geometry; other repeating gradients cannot fall through
+to a finite gradient mapping. The admitted overlay layer must cover the whole shape using the default background origin
+and clip. Partial background geometry, ambiguous gradients or patterns, or stale encoded effect
+metadata take the owned visible element-layer path rather than producing a different native
+composition.
 
 ## Direction Contract
 

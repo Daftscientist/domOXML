@@ -14,12 +14,14 @@ from domoxml.core.ir.model import (
     FillOverlayBlend,
     Glow,
     GradientFill,
+    PatternFill,
     Reflection,
     Rgba,
     Shadow,
     SoftEdge,
     SolidFill,
 )
+from domoxml.core.ir.pattern import pattern_overlay_is_proven
 from domoxml.types import ConversionWarning, PreservedFragment
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -30,6 +32,7 @@ type EffectContainerKind = Literal["list", "sibling"]
 type EffectSourceRef = Literal["fill", "fillLine"]
 type ColorParser = Callable[[Element], Rgba | None]
 type GradientParser = Callable[[Element], GradientFill | None]
+type PatternParser = Callable[[Element], PatternFill | None]
 
 
 def _int_attr(element: Element, name: str, default: int = 0) -> int:
@@ -127,6 +130,7 @@ def read_effects(
     *,
     box: Box | None = None,
     gradient_for: GradientParser | None = None,
+    pattern_for: PatternParser | None = None,
 ) -> tuple[tuple[Effect, ...], tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
     """Parse native effects and explicitly preserve unsupported effect nodes."""
     effect_list = shape_properties.find("a:effectLst", _NS)
@@ -207,12 +211,18 @@ def read_effects(
         elif kind == "fillOverlay":
             solid = child.find("a:solidFill", _NS)
             gradient_element = child.find("a:gradFill", _NS)
-            overlay_fill: SolidFill | GradientFill | None = None
-            if solid is not None and gradient_element is None:
+            pattern_element = child.find("a:pattFill", _NS)
+            overlay_fill: SolidFill | GradientFill | PatternFill | None = None
+            present_fills = sum(
+                element is not None for element in (solid, gradient_element, pattern_element)
+            )
+            if solid is not None and present_fills == 1:
                 color = color_for(solid)
                 overlay_fill = SolidFill(color=color) if color is not None else None
-            elif solid is None and gradient_element is not None and gradient_for is not None:
+            elif gradient_element is not None and present_fills == 1 and gradient_for is not None:
                 overlay_fill = gradient_for(gradient_element)
+            elif pattern_element is not None and present_fills == 1 and pattern_for is not None:
+                overlay_fill = pattern_for(pattern_element)
             blend = child.get("blend", "over")
             supported_blends: set[FillOverlayBlend] = {
                 "mult",
@@ -220,6 +230,10 @@ def read_effects(
                 "darken",
                 "lighten",
             }
+            if isinstance(overlay_fill, PatternFill) and not pattern_overlay_is_proven(
+                overlay_fill, blend
+            ):
+                overlay_fill = None
             if overlay_fill is not None and blend in supported_blends:
                 effects.append(
                     FillOverlay(
@@ -231,6 +245,8 @@ def read_effects(
                     overlay_fill.color.a > 0.0
                     if isinstance(overlay_fill, SolidFill)
                     else any(stop.color.a > 0.0 for stop in overlay_fill.stops)
+                    if isinstance(overlay_fill, GradientFill)
+                    else True
                 )
                 if overlay_visible:
                     warnings.append(

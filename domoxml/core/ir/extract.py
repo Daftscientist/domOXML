@@ -52,6 +52,7 @@ from domoxml.core.ir.model import (
     Line,
     LineSpacing,
     Node,
+    PatternFill,
     PictureFill,
     PortableFallback,
     PreservedNode,
@@ -1795,7 +1796,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             or (
                 isinstance(effect, FillOverlay)
                 and (
-                    (isinstance(effect.fill, SolidFill) and effect.fill.color.a > 0.0)
+                    isinstance(effect.fill, PatternFill)
+                    or (isinstance(effect.fill, SolidFill) and effect.fill.color.a > 0.0)
                     or (
                         isinstance(effect.fill, GradientFill)
                         and any(stop.color.a > 0.0 for stop in effect.fill.stops)

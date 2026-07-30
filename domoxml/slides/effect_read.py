@@ -131,6 +131,7 @@ def read_effects(
     box: Box | None = None,
     gradient_for: GradientParser | None = None,
     pattern_for: PatternParser | None = None,
+    expected_over: FillOverlay | None = None,
 ) -> tuple[tuple[Effect, ...], tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
     """Parse native effects and explicitly preserve unsupported effect nodes."""
     effect_list = shape_properties.find("a:effectLst", _NS)
@@ -234,18 +235,25 @@ def read_effects(
                 overlay_fill, blend
             ):
                 overlay_fill = None
+            typed_overlay: FillOverlay | None = None
             if overlay_fill is not None and blend in supported_blends:
-                effects.append(
-                    FillOverlay(
-                        fill=overlay_fill,
-                        blend=blend,
-                    )
-                )
+                typed_overlay = FillOverlay(fill=overlay_fill, blend=blend)
+            elif (
+                blend == "over"
+                and expected_over is not None
+                and isinstance(overlay_fill, SolidFill)
+                and 0.0 < overlay_fill.color.a < 1.0
+            ):
+                candidate = FillOverlay(fill=overlay_fill, blend="over")
+                if candidate == expected_over:
+                    typed_overlay = candidate
+            if typed_overlay is not None:
+                effects.append(typed_overlay)
                 overlay_visible = (
-                    overlay_fill.color.a > 0.0
-                    if isinstance(overlay_fill, SolidFill)
-                    else any(stop.color.a > 0.0 for stop in overlay_fill.stops)
-                    if isinstance(overlay_fill, GradientFill)
+                    typed_overlay.fill.color.a > 0.0
+                    if isinstance(typed_overlay.fill, SolidFill)
+                    else any(stop.color.a > 0.0 for stop in typed_overlay.fill.stops)
+                    if isinstance(typed_overlay.fill, GradientFill)
                     else True
                 )
                 if overlay_visible:

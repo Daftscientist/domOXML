@@ -525,6 +525,7 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
             styles.get("backgroundImage"),
             blend_mode,
             encoded_overlay,
+            background_color=styles.get("backgroundColor"),
             background_size=styles.get("backgroundSize"),
             background_position=styles.get("backgroundPosition"),
             background_repeat=styles.get("backgroundRepeat"),
@@ -537,9 +538,8 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     if encoded_overlay is not None and normalized_overlay is None:
         return "encoded fill-overlay metadata does not match rendered CSS"
     has_normalized_overlay = normalized_overlay is not None
-    if (
-        blend_mode not in ("normal", "")
-        and parse_fill_overlay_effect(
+    authored_overlay = (
+        parse_fill_overlay_effect(
             styles.get("backgroundImage"),
             blend_mode,
             background_color=styles.get("backgroundColor"),
@@ -549,9 +549,54 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
             background_origin=styles.get("backgroundOrigin"),
             background_clip=styles.get("backgroundClip"),
         )
-        is None
-        and not has_normalized_overlay
+        if encoded_overlay is None
+        else None
+    )
+    over_overlay = (
+        encoded_overlay
+        if encoded_overlay is not None and encoded_overlay.blend == "over"
+        else authored_overlay
+        if authored_overlay is not None and authored_overlay.blend == "over"
+        else None
+    )
+    if over_overlay is not None and (
+        clip not in ("none", "")
+        or _opacity(styles) != 1.0
+        or bool(node.text or node.text_runs)
+        or any(side is not None for side in _resolve_border_sides(styles)[0])
+        or (encoded_effects is not None and len(encoded_effects) != 1)
+        or (
+            encoded_effects is None
+            and (
+                bool(parse_shadows(styles.get("boxShadow")))
+                or parse_blur_filter(styles.get("filter")) is not None
+                or parse_soft_edge_mask(
+                    styles.get("maskImage"),
+                    styles.get("maskComposite"),
+                    repeat=styles.get("maskRepeat"),
+                    position=styles.get("maskPosition"),
+                    size=styles.get("maskSize"),
+                    origin=styles.get("maskOrigin"),
+                    clip=styles.get("maskClip"),
+                    mode=styles.get("maskMode"),
+                    ellipse=False,
+                )
+                is not None
+                or parse_box_reflection(styles.get("webkitBoxReflect")) is not None
+            )
+        )
+        or (
+            styles.get("transform", "none") not in ("none", "")
+            and _parse_transform(styles) is not None
+        )
+        or parse_radius_px(
+            styles.get("borderRadius"),
+            shorter_side_px=min(node.width, node.height),
+        )
+        > 0
     ):
+        return "CSS normal fill overlay is only typed for square-cornered rectangles"
+    if blend_mode not in ("normal", "") and authored_overlay is None and not has_normalized_overlay:
         return "background-blend-mode has no native fill-overlay mapping"
     if styles.get("backdropFilter", "none") not in ("none", ""):
         return "backdrop-filter has no native mapping"
@@ -800,6 +845,7 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
             background_image,
             styles.get("backgroundBlendMode"),
             encoded_overlay,
+            background_color=styles.get("backgroundColor"),
             background_size=styles.get("backgroundSize"),
             background_position=styles.get("backgroundPosition"),
             background_repeat=styles.get("backgroundRepeat"),
@@ -826,6 +872,7 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
                 background_image,
                 styles.get("backgroundBlendMode"),
                 fill_overlay,
+                background_color=styles.get("backgroundColor"),
                 background_size=styles.get("backgroundSize"),
                 background_position=styles.get("backgroundPosition"),
                 background_repeat=styles.get("backgroundRepeat"),

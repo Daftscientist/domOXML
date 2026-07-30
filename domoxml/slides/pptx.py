@@ -405,7 +405,8 @@ def _slide(
                             and all(isinstance(effect, FillOverlay) for effect in node.effects)
                         )
                         or any(
-                            isinstance(effect, FillOverlay) and isinstance(effect.fill, PatternFill)
+                            isinstance(effect, FillOverlay)
+                            and (isinstance(effect.fill, PatternFill) or effect.blend == "over")
                             for effect in node.effects
                         )
                     )

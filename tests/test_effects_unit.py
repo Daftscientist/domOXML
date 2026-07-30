@@ -70,7 +70,7 @@ from domoxml.core.ir.parse import (
     parse_svg_soft_edge_filter,
 )
 from domoxml.core.units import px_to_emu
-from domoxml.slides.appearance_read import gradient, rgba
+from domoxml.slides.appearance_read import fill_overlay_gradient, rgba
 from domoxml.slides.effect_read import Effect, read_effects
 from domoxml.types import ConversionWarning, PreservedFragment
 
@@ -87,7 +87,7 @@ def parse_effects_xml(
         properties,
         lambda element: rgba(element, colors),
         box=box,
-        gradient_for=lambda element: gradient(element, colors),
+        gradient_for=lambda element: fill_overlay_gradient(element, colors),
     )
 
 
@@ -1211,6 +1211,32 @@ def test_reverse_radial_gradient_fill_overlay_is_typed() -> None:
     )
     assert preserved == ()
     assert "renderer fallback" in warns[0].message
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        '<a:path path="rect"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path>',
+        '<a:path path="circle"><a:fillToRect l="40000" t="50000" r="50000" b="50000"/></a:path>',
+        '<a:path path="circle"><a:fillToRect l="invalid" t="50000" r="50000" b="50000"/></a:path>',
+        '<a:path path="circle"/>',
+    ],
+)
+def test_reverse_unproven_radial_fill_overlay_geometry_stays_preserved(path: str) -> None:
+    fill_overlay = (
+        '<a:fillOverlay blend="mult"><a:gradFill><a:gsLst>'
+        '<a:gs pos="0"><a:srgbClr val="F43F5E"><a:alpha val="80000"/></a:srgbClr></a:gs>'
+        '<a:gs pos="100000"><a:srgbClr val="2563EB"><a:alpha val="35000"/></a:srgbClr></a:gs>'
+        f"</a:gsLst>{path}</a:gradFill></a:fillOverlay>"
+    )
+
+    effects, warns, preserved = parse_effects_xml(
+        _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>"), {}
+    )
+
+    assert effects == ()
+    assert preserved[0].kind == "fillOverlay"
+    assert "preserved" in warns[0].message
 
 
 def test_reverse_ambiguous_fill_overlay_stays_preserved() -> None:

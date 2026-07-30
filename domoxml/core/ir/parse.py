@@ -706,7 +706,9 @@ def parse_gradient(value: str | None) -> GradientFill | None:
     """Map a CSS ``linear-gradient``/``radial-gradient`` to a :class:`GradientFill`.
 
     Returns ``None`` for ``none``, ``url(...)``, ``conic-gradient``, stacked gradient layers,
-    or any gradient with fewer than two parseable colour stops — those rasterise instead.
+    unsupported radial geometry, or any gradient with fewer than two parseable colour stops —
+    those rasterise instead. Radial gradients currently admit only the canonical centered
+    ``circle`` form with its default farthest-corner extent.
     """
     if not value or value.strip().lower() in {"none", ""}:
         return None
@@ -720,7 +722,11 @@ def parse_gradient(value: str | None) -> GradientFill | None:
     inner, radial = body
     args = _split_top_level(inner)
     angle = 180.0
-    if args and _ANGLE_RE.search(args[0]) and parse_color(args[0]) is None:
+    if radial:
+        if not args or " ".join(args[0].strip().lower().split()) != "circle":
+            return None
+        args = args[1:]
+    elif args and _ANGLE_RE.search(args[0]) and parse_color(args[0]) is None:
         angle = float(_ANGLE_RE.search(args[0]).group(1))  # type: ignore[union-attr]
         args = args[1:]
     elif args and "to " in args[0].lower() and parse_color(args[0]) is None:

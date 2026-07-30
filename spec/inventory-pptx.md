@@ -60,7 +60,7 @@ Audited on **2026-07-29**.
 | `effects` | both | native outer shadow/glow plus editable native inset shadow with an isolated portable layer, guarded exact spread intent, focused omission floors, and two-cycle convergence |
 | `fill-overlay-effect` | both | four editable solid blend modes, portable renderer branches, exact payload, stacking, and convergence |
 | `fill-overlay-owned-fallback` | reverse | rotated unsupported `over` blend remains visible as one owned layer, retains exact source payload, and converges after the fallback boundary |
-| `gradient-fill-overlay` | both | linear gradient overlay IR, premultiplied-sRGB native projection, exact guarded authored intent, portable renderer branch, malformed-fill preservation, Graph/LibreOffice evidence, and two-cycle convergence; radial overlay remains focused-unit evidence |
+| `gradient-fill-overlay` | both | linear gradient overlay IR, premultiplied-sRGB native projection, exact guarded authored intent, portable renderer branch, malformed-fill preservation, Graph/LibreOffice evidence, and two-cycle convergence |
 | `hyperlink` | both | run hyperlinks and relationships |
 | `interleaved-order` | both | canonical mixed-node z-order through both adapters |
 | `mixed-shadow-effect-list` | both | one CSS outer-plus-inner shadow pair lowers to a schema-ordered native `effectLst` plus an exact non-double-painted portable layer, retains authored CSS order and signed intent, rejects stale metadata after native edits, and converges after two cycles |
@@ -75,6 +75,7 @@ Audited on **2026-07-29**.
 | `preset-shadow-raster-fallback` | reverse | sole-visual perspective preset shadow remains visible through one measured full-slide raster fallback, retains exact native source, and converges after the fallback boundary |
 | `preset-shadow-slide-fallback` | reverse | perspective shadow plus overlapping translucent sibling retain native z-order under one slide-owned renderer fallback and converge after two normalized HTML cycles |
 | `preset-shapes` | both | supported preset geometry subset |
+| `radial-gradient-fill-overlay` | both | centered radial gradient overlay IR, editable circular DrawingML path projection, exact guarded authored intent, portable renderer branch, Graph/LibreOffice evidence, and two-cycle convergence |
 | `reflection-effect` | both | native PowerPoint reflection plus isolated LibreOffice fallback, exact effect payload, stacking, and convergence |
 | `soft-edge-effect` | both | strict CSS feather mask, ellipse-aware reverse feather, native PowerPoint soft edge plus shape-bound fallback, exact payload, stacking, and convergence |
 | `svg-vector` | both | original SVG asset, identity, native picture, and extension survive re-emission |

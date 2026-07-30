@@ -138,6 +138,29 @@ def gradient(element: Element, colors: ThemeColors) -> GradientFill | None:
     )
 
 
+def fill_overlay_gradient(element: Element, colors: ThemeColors) -> GradientFill | None:
+    """Parse only fill-overlay gradient geometry with a proven CSS equivalent."""
+    parsed = gradient(element, colors)
+    if parsed is None:
+        return None
+    linear = element.find("a:lin", _NS)
+    path = element.find("a:path", _NS)
+    if path is None:
+        return parsed if linear is not None else None
+    if linear is not None or path.get("path") != "circle":
+        return None
+    fill_rect = path.find("a:fillToRect", _NS)
+    if fill_rect is None:
+        return None
+    try:
+        edges = tuple(_int_attr(fill_rect, edge) for edge in ("l", "t", "r", "b"))
+    except ValueError:
+        return None
+    if any(edge != 50_000 for edge in edges):
+        return None
+    return parsed
+
+
 def src_rect(element: Element) -> SrcRect | None:
     """Read an ``a:srcRect`` crop into normalized edge insets."""
     rect = element.find("a:srcRect", _NS)

@@ -1176,6 +1176,10 @@ def _slide(
                         else None
                     )
                     private_effect_intent = _declared_effect_intent(native)
+                    private_over_declared = private_effect_intent is not None and any(
+                        isinstance(effect, FillOverlay) and effect.blend == "over"
+                        for effect in private_effect_intent.effects
+                    )
                     private_over_choice = (
                         len(fallback_children) == 1
                         and choice_fallback_shape is not None
@@ -1192,6 +1196,7 @@ def _slide(
                             colors,
                         )
                     )
+                    stale_private_over = private_over_declared and not private_over_choice
                     private_over_fallback: PortableFallback | None = None
                     if (
                         private_over_choice
@@ -1278,7 +1283,7 @@ def _slide(
                                 )
                             )
                             continue
-                        recover_owned = "fillOverlay" in preserved_kinds
+                        recover_owned = stale_private_over or "fillOverlay" in preserved_kinds
                         rasterized_candidate = (
                             fallback_role == "pptx-source-rasterized"
                             and preserved_kinds in ({"prstShdw"}, {"effectDag"})

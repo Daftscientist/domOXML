@@ -331,11 +331,11 @@ class Reflection(BaseModel):
 
 
 FillOverlayBlend = Literal["mult", "screen", "darken", "lighten"]
-type FillOverlayPaint = SolidFill | GradientFill
+type FillOverlayPaint = SolidFill | GradientFill | PatternFill
 
 
 class FillOverlay(BaseModel):
-    """An additional solid or gradient fill blended with the owning shape's base fill
+    """An additional solid, gradient, or pattern fill blended with the owning shape's base fill
     (``a:fillOverlay``)."""
 
     model_config = _FROZEN
@@ -343,6 +343,21 @@ class FillOverlay(BaseModel):
     kind: Literal["fillOverlay"] = "fillOverlay"
     fill: FillOverlayPaint = Field(discriminator="kind")
     blend: FillOverlayBlend
+
+    @model_validator(mode="after")
+    def _pattern_fill_is_exact(self) -> FillOverlay:
+        if not isinstance(self.fill, PatternFill):
+            return self
+
+        # Imported lazily because pattern parsing depends on these IR models.
+        from domoxml.core.ir.pattern import pattern_overlay_is_proven
+
+        if not pattern_overlay_is_proven(self.fill, self.blend):
+            raise ValueError(
+                "pattern fill overlays require the renderer-proven horizontal multiply pattern "
+                "with opaque RGB colours"
+            )
+        return self
 
 
 type Effect = Annotated[

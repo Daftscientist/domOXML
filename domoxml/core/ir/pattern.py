@@ -97,14 +97,14 @@ def _gradient_body(value: str) -> str | None:
     return None
 
 
-def _normalise_angle(deg: float) -> int | None:
+def _normalise_angle(deg: float, *, tolerance: float = _ANGLE_TOL) -> int | None:
     """Snap a CSS angle to one of the four supported axes (0/45/90/135), or ``None``.
 
     Angles 180/270/225/315 fold onto their 0/90/45/135 equivalents (a stripe pattern is the
     same under a 180 flip)."""
     folded = deg % 180.0
     for axis in (0, 45, 90, 135):
-        if abs(folded - axis) <= _ANGLE_TOL or abs(folded - (axis + 180)) <= _ANGLE_TOL:
+        if abs(folded - axis) <= tolerance or abs(folded - (axis + 180)) <= tolerance:
             return axis
     # 180 folds to 0; handle the exact-180 case (folded == 0 already covers it).
     return None
@@ -132,7 +132,11 @@ def _parse_stop(arg: str) -> tuple[Rgba, float] | None:
     return None
 
 
-def match_pattern_fill(background_image: str | None) -> PatternFill | None:
+def match_pattern_fill(
+    background_image: str | None,
+    *,
+    exact_geometry: bool = False,
+) -> PatternFill | None:
     """Map a CSS ``repeating-linear-gradient`` two-colour stripe to a :class:`PatternFill`.
 
     Returns ``None`` (so the caller keeps its existing raster/gradient handling) unless the
@@ -158,18 +162,20 @@ def match_pattern_fill(background_image: str | None) -> PatternFill | None:
         # A non-angle, non-colour leading token (e.g. "to right") is not supported.
         return None
 
-    axis = _normalise_angle(angle_deg)
+    tolerance = 1e-9 if exact_geometry else _ANGLE_TOL
+    axis = _normalise_angle(angle_deg, tolerance=tolerance)
     if axis is None:
         return None
 
-    stops = [parsed for arg in args if (parsed := _parse_stop(arg)) is not None]
+    parsed_stops = [_parse_stop(arg) for arg in args]
     # A two-colour hard-stop stripe needs exactly 4 stops: c1@0, c1@W, c2@W, c2@2W.
-    if len(stops) != 4:
+    if len(parsed_stops) != 4 or any(stop is None for stop in parsed_stops):
         return None
+    stops = [stop for stop in parsed_stops if stop is not None]
     (c0, p0), (c1, p1), (c2, p2), (c3, p3) = stops
 
     # Exactly two distinct colours, alternating.
-    if c0.hex != c1.hex or c2.hex != c3.hex or c0.hex == c2.hex:
+    if c0 != c1 or c2 != c3 or c0 == c2:
         return None
     if c0.a < 1.0 or c2.a < 1.0:
         # Pattern presets are two opaque colours; translucent stripes are not a clean match.
@@ -184,9 +190,10 @@ def match_pattern_fill(background_image: str | None) -> PatternFill | None:
         return None
 
     for preset, expected_foreground, expected_gap in _FORWARD_PATTERNS.get(axis, ()):
+        width_tolerance = 1e-9 if exact_geometry else _WIDTH_TOL
         if (
-            abs(foreground_width - expected_foreground) <= _WIDTH_TOL
-            and abs(gap_width - expected_gap) <= _WIDTH_TOL
+            abs(foreground_width - expected_foreground) <= width_tolerance
+            and abs(gap_width - expected_gap) <= width_tolerance
         ):
             # fg = the stripe (first) colour, bg = the gap (second) colour.
             return PatternFill(preset=preset, fg=c0, bg=c2)
@@ -205,6 +212,25 @@ _REVERSE_EXACT: dict[str, tuple[int, int, int]] = {
     "ltDnDiag": (135, 1, 4),
     "wdDnDiag": (135, 8, 16),
 }
+
+
+def pattern_has_exact_css(preset: str) -> bool:
+    """Return whether ``preset`` has a calibrated, round-trippable CSS stripe mapping."""
+    return preset in _REVERSE_EXACT
+
+
+def pattern_overlay_is_proven(fill: PatternFill, blend: str) -> bool:
+    """Return whether a pattern overlay is inside the renderer-calibrated exact subset."""
+    return (
+        fill.preset == "horz"
+        and blend == "mult"
+        and isinstance(fill.fg, Rgba)
+        and isinstance(fill.bg, Rgba)
+        and fill.fg.a == 1.0
+        and fill.bg.a == 1.0
+        and fill.fg != fill.bg
+    )
+
 
 # Every other ECMA preset is approximated with an 8x8 SVG tile. The value chooses the tile
 # geometry family; the warning notes the approximation. This is not exhaustive geometry — it is

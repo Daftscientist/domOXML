@@ -16,6 +16,7 @@ from domoxml.core.ir.model import (
     Connector,
     FillOverlay,
     Hyperlink,
+    PatternFill,
     PictureFill,
     PreservationPart,
     PreservationRelationship,
@@ -398,9 +399,15 @@ def _slide(
                     node.portable_fallback is not None
                     and fallback_rid is not None
                     and node.effect_container != "sibling"
-                    and not (
-                        node.effects
-                        and all(isinstance(effect, FillOverlay) for effect in node.effects)
+                    and (
+                        not (
+                            node.effects
+                            and all(isinstance(effect, FillOverlay) for effect in node.effects)
+                        )
+                        or any(
+                            isinstance(effect, FillOverlay) and isinstance(effect.fill, PatternFill)
+                            for effect in node.effects
+                        )
                     )
                 )
                 native_xml = shape_xml(

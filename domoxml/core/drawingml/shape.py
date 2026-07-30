@@ -321,6 +321,8 @@ def _effects_xml(node: ShapeNode) -> str:
             overlay_fill = (
                 _solid_fill(effect.fill.color)
                 if isinstance(effect.fill, SolidFill)
+                else _pattern_fill(effect.fill)
+                if isinstance(effect.fill, PatternFill)
                 else _gradient_fill(effect.fill, opacity=1.0, box=node.box)
             )
             parts.append(f'<a:fillOverlay blend="{effect.blend}">{overlay_fill}</a:fillOverlay>')

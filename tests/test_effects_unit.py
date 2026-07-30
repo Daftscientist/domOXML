@@ -45,6 +45,7 @@ from domoxml.core.ir.model import (
     Glow,
     GradientFill,
     GradientStop,
+    PatternFill,
     PictureFill,
     PortableFallback,
     Reflection,
@@ -55,6 +56,7 @@ from domoxml.core.ir.model import (
     SoftEdge,
     SolidFill,
     SrcRect,
+    ThemeColorRef,
 )
 from domoxml.core.ir.parse import (
     fill_overlay_base_styles,
@@ -70,7 +72,7 @@ from domoxml.core.ir.parse import (
     parse_svg_soft_edge_filter,
 )
 from domoxml.core.units import px_to_emu
-from domoxml.slides.appearance_read import fill_overlay_gradient, rgba
+from domoxml.slides.appearance_read import fill_overlay_gradient, pattern_fill, rgba
 from domoxml.slides.effect_read import Effect, read_effects
 from domoxml.types import ConversionWarning, PreservedFragment
 
@@ -88,6 +90,7 @@ def parse_effects_xml(
         lambda element: rgba(element, colors),
         box=box,
         gradient_for=lambda element: fill_overlay_gradient(element, colors),
+        pattern_for=lambda element: pattern_fill(element, colors),
     )
 
 
@@ -448,6 +451,99 @@ def test_parse_gradient_fill_overlay_preserves_stops_and_angle() -> None:
     }
 
 
+def test_parse_pattern_fill_overlay_preserves_preset_and_colours() -> None:
+    pattern = (
+        "repeating-linear-gradient(0deg,"
+        "rgb(244,63,94) 0px,rgb(244,63,94) 1px,"
+        "rgb(254,226,226) 1px,rgb(254,226,226) 4px)"
+    )
+    effect = parse_fill_overlay_effect(
+        pattern,
+        "multiply",
+        background_color="rgb(20,60,140)",
+    )
+
+    expected = FillOverlay(
+        fill=PatternFill(
+            preset="horz",
+            fg=Rgba(r=244, g=63, b=94),
+            bg=Rgba(r=254, g=226, b=226),
+        ),
+        blend="mult",
+    )
+    assert effect == expected
+    assert fill_overlay_base_styles(pattern, "multiply", expected) == {
+        "backgroundImage": "none",
+        "backgroundBlendMode": "normal",
+        "backgroundSize": "auto",
+        "backgroundPosition": "0% 0%",
+        "backgroundRepeat": "repeat",
+        "backgroundOrigin": "padding-box",
+        "backgroundClip": "border-box",
+    }
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    (
+        "repeating-linear-gradient(0deg,"
+        "rgb(244,63,94) 0px,rgb(244,63,94) 2px,"
+        "rgb(254,226,226) 2px,rgb(254,226,226) 5px)",
+        "repeating-linear-gradient(0.5deg,"
+        "rgb(244,63,94) 0px,rgb(244,63,94) 1px,"
+        "rgb(254,226,226) 1px,rgb(254,226,226) 4px)",
+        "repeating-linear-gradient(0deg,"
+        "rgb(244,63,94) 0px,rgba(244,63,94,0.2) 1px,"
+        "rgb(254,226,226) 1px,rgb(254,226,226) 4px)",
+        "repeating-linear-gradient(0deg,"
+        "rgb(244,63,94) 0px,rgb(244,63,94) 1px,"
+        "rgb(254,226,226) 1px,rgb(254,226,226) 4px,"
+        "transparent 4px)",
+        "repeating-linear-gradient(0deg,"
+        "rgb(244,63,94) 0px,rgb(244,63,94) 1px,"
+        "rgb(254,226,226) 1px,rgb(254,226,226) 4px,"
+        "color(display-p3 1 0 0) 4px)",
+    ),
+)
+def test_rejects_noncanonical_repeating_gradient_fill_overlay(pattern: str) -> None:
+    assert (
+        parse_fill_overlay_effect(
+            pattern,
+            "multiply",
+            background_color="rgb(20,60,140)",
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("pattern", "blend"),
+    (
+        (
+            "repeating-linear-gradient(90deg,"
+            "rgb(244,63,94) 0px,rgb(244,63,94) 1px,"
+            "rgb(254,226,226) 1px,rgb(254,226,226) 4px)",
+            "multiply",
+        ),
+        (
+            "repeating-linear-gradient(0deg,"
+            "rgb(244,63,94) 0px,rgb(244,63,94) 1px,"
+            "rgb(254,226,226) 1px,rgb(254,226,226) 4px)",
+            "screen",
+        ),
+    ),
+)
+def test_rejects_renderer_unproven_pattern_fill_overlay(pattern: str, blend: str) -> None:
+    assert (
+        parse_fill_overlay_effect(
+            pattern,
+            blend,
+            background_color="rgb(20,60,140)",
+        )
+        is None
+    )
+
+
 def test_rejects_css_reflection_that_cannot_map_to_current_ir() -> None:
     assert parse_box_reflection("above 12px linear-gradient(black, transparent)") is None
     assert parse_box_reflection("below 1em linear-gradient(black, transparent)") is None
@@ -766,6 +862,78 @@ def test_gradient_fill_overlay_xml_is_aspect_projected_and_subdivided() -> None:
     assert '<a:gs pos="0"><a:srgbClr val="F43F5E"><a:alpha val="80000"/>' in xml
     assert '<a:gs pos="100000"><a:srgbClr val="2563EB"><a:alpha val="35000"/>' in xml
     assert '<a:lin ang="0" scaled="1"/></a:gradFill></a:fillOverlay>' in xml
+
+
+def test_pattern_fill_overlay_xml_is_native_and_editable() -> None:
+    overlay = FillOverlay(
+        fill=PatternFill(
+            preset="horz",
+            fg=Rgba(r=244, g=63, b=94),
+            bg=Rgba(r=254, g=226, b=226),
+        ),
+        blend="mult",
+    )
+
+    xml = _effects_xml(_node(effects=(overlay,)))
+
+    assert (
+        '<a:fillOverlay blend="mult"><a:pattFill prst="horz">'
+        '<a:fgClr><a:srgbClr val="F43F5E"></a:srgbClr></a:fgClr>'
+        '<a:bgClr><a:srgbClr val="FEE2E2"></a:srgbClr></a:bgClr>'
+        "</a:pattFill></a:fillOverlay>" in xml
+    )
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    (
+        PatternFill(
+            preset="vert",
+            fg=Rgba(r=244, g=63, b=94),
+            bg=Rgba(r=254, g=226, b=226),
+        ),
+        PatternFill(
+            preset="diagCross",
+            fg=Rgba(r=244, g=63, b=94),
+            bg=Rgba(r=254, g=226, b=226),
+        ),
+        PatternFill(
+            preset="horz",
+            fg=Rgba(r=244, g=63, b=94, a=0.5),
+            bg=Rgba(r=254, g=226, b=226),
+        ),
+        PatternFill(
+            preset="horz",
+            fg=ThemeColorRef(slot="accent1"),
+            bg=Rgba(r=254, g=226, b=226),
+        ),
+        PatternFill(
+            preset="horz",
+            fg=Rgba(r=244, g=63, b=94),
+            bg=Rgba(r=244, g=63, b=94),
+        ),
+    ),
+)
+def test_pattern_fill_overlay_rejects_unproven_direct_ir(pattern: PatternFill) -> None:
+    with pytest.raises(
+        ValueError,
+        match="pattern fill overlays require the renderer-proven horizontal multiply pattern",
+    ):
+        FillOverlay(fill=pattern, blend="mult")
+
+
+def test_pattern_fill_overlay_rejects_unproven_direct_ir_blend() -> None:
+    pattern = PatternFill(
+        preset="horz",
+        fg=Rgba(r=244, g=63, b=94),
+        bg=Rgba(r=254, g=226, b=226),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="pattern fill overlays require the renderer-proven horizontal multiply pattern",
+    ):
+        FillOverlay(fill=pattern, blend="screen")
 
 
 def test_effect_list_xml_uses_schema_order_instead_of_ir_tuple_order() -> None:
@@ -1184,6 +1352,87 @@ def test_reverse_gradient_fill_overlay_is_typed() -> None:
     assert "renderer fallback" in warns[0].message
 
 
+def test_reverse_pattern_fill_overlay_is_typed() -> None:
+    fill_overlay = (
+        '<a:fillOverlay blend="mult"><a:pattFill prst="horz">'
+        '<a:fgClr><a:srgbClr val="F43F5E"/></a:fgClr>'
+        '<a:bgClr><a:srgbClr val="FEE2E2"/></a:bgClr>'
+        "</a:pattFill></a:fillOverlay>"
+    )
+
+    effects, warns, preserved = parse_effects_xml(
+        _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>"), {}
+    )
+
+    assert effects == (
+        FillOverlay(
+            fill=PatternFill(
+                preset="horz",
+                fg=Rgba(r=244, g=63, b=94),
+                bg=Rgba(r=254, g=226, b=226),
+            ),
+            blend="mult",
+        ),
+    )
+    assert preserved == ()
+    assert "renderer fallback" in warns[0].message
+
+
+@pytest.mark.parametrize(
+    ("preset", "blend"),
+    (("diagCross", "mult"), ("vert", "mult"), ("horz", "screen")),
+)
+def test_reverse_unproven_pattern_fill_overlay_stays_preserved(preset: str, blend: str) -> None:
+    fill_overlay = (
+        f'<a:fillOverlay blend="{blend}"><a:pattFill prst="{preset}">'
+        '<a:fgClr><a:srgbClr val="F43F5E"/></a:fgClr>'
+        '<a:bgClr><a:srgbClr val="FEE2E2"/></a:bgClr>'
+        "</a:pattFill></a:fillOverlay>"
+    )
+
+    effects, warns, preserved = parse_effects_xml(
+        _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>"), {}
+    )
+
+    assert effects == ()
+    assert preserved[0].kind == "fillOverlay"
+    assert "preserved" in warns[0].message
+
+
+def test_reverse_translucent_pattern_fill_overlay_stays_preserved() -> None:
+    fill_overlay = (
+        '<a:fillOverlay blend="mult"><a:pattFill prst="horz">'
+        '<a:fgClr><a:srgbClr val="F43F5E"><a:alpha val="50000"/></a:srgbClr></a:fgClr>'
+        '<a:bgClr><a:srgbClr val="FEE2E2"/></a:bgClr>'
+        "</a:pattFill></a:fillOverlay>"
+    )
+
+    effects, warns, preserved = parse_effects_xml(
+        _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>"), {}
+    )
+
+    assert effects == ()
+    assert preserved[0].kind == "fillOverlay"
+    assert "preserved" in warns[0].message
+
+
+def test_reverse_single_colour_pattern_fill_overlay_stays_preserved() -> None:
+    fill_overlay = (
+        '<a:fillOverlay blend="mult"><a:pattFill prst="horz">'
+        '<a:fgClr><a:srgbClr val="F43F5E"/></a:fgClr>'
+        '<a:bgClr><a:srgbClr val="F43F5E"/></a:bgClr>'
+        "</a:pattFill></a:fillOverlay>"
+    )
+
+    effects, warns, preserved = parse_effects_xml(
+        _shape_props(f"<a:effectLst>{fill_overlay}</a:effectLst>"), {}
+    )
+
+    assert effects == ()
+    assert preserved[0].kind == "fillOverlay"
+    assert "preserved" in warns[0].message
+
+
 def test_reverse_radial_gradient_fill_overlay_is_typed() -> None:
     fill_overlay = (
         '<a:fillOverlay blend="mult"><a:gradFill><a:gsLst>'
@@ -1494,6 +1743,29 @@ def test_html_gradient_fill_overlay_emits_exact_gradient_and_payload() -> None:
     )
     assert "background-blend-mode:screen" in markup
     assert "&quot;fill&quot;:{&quot;kind&quot;:&quot;gradient&quot;" in markup
+    assert any("renderer fallback" in warning.message for warning in html.warnings)
+
+
+def test_html_pattern_fill_overlay_emits_exact_pattern_and_payload() -> None:
+    overlay = FillOverlay(
+        fill=PatternFill(
+            preset="horz",
+            fg=Rgba(r=244, g=63, b=94),
+            bg=Rgba(r=254, g=226, b=226),
+        ),
+        blend="mult",
+    )
+
+    html = serialize_canvas([_slide_with(overlay)])
+    markup = html.slides[0].html
+
+    assert (
+        "background-image:repeating-linear-gradient(0deg,"
+        "rgb(244,63,94) 0,rgb(244,63,94) 1px,"
+        "rgb(254,226,226) 1px,rgb(254,226,226) 4px)" in markup
+    )
+    assert "background-blend-mode:multiply" in markup
+    assert "&quot;fill&quot;:{&quot;kind&quot;:&quot;pattern&quot;" in markup
     assert any("renderer fallback" in warning.message for warning in html.warnings)
 
 

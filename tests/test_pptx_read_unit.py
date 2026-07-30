@@ -24,6 +24,7 @@ from domoxml.core.ir.model import (
     GradientStop,
     GroupNode,
     Line,
+    PatternFill,
     PictureFill,
     PortableFallback,
     PreservedNode,
@@ -502,6 +503,49 @@ def test_portable_fill_overlay_fallback_uses_alternate_content_and_round_trips()
     assert result.coverage.count_editability(Editability.COMPONENTS) == 1
     assert result.coverage.output_count == 2
     assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
+
+
+def test_portable_pattern_fill_overlay_round_trips_as_typed_hybrid() -> None:
+    fallback_box = Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000)
+    overlay = FillOverlay(
+        fill=PatternFill(
+            preset="horz",
+            fg=Rgba(r=244, g=63, b=94),
+            bg=Rgba(r=254, g=226, b=226),
+        ),
+        blend="mult",
+    )
+    shape = ShapeNode(
+        box=fallback_box,
+        fill=SolidFill(color=Rgba(r=20, g=60, b=140)),
+        effects=(overlay,),
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-pattern-fill-overlay-png",
+                ext="png",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert '<a:fillOverlay blend="mult"><a:pattFill prst="horz">' in slide_xml
+    assert '<mc:Choice Requires="p16"><p:sp>' in slide_xml
+    assert 'hidden="1"' in slide_xml
+    assert "</p:sp><p:pic>" in slide_xml
+    assert slide_xml.count("domoxml-raster:portable-effect-fallback") == 2
+
+    result = read_pptx_result(pptx)
+    [recovered] = result.slides[0].shapes
+    assert recovered.effects == (overlay,)
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == fallback_box
+    assert recovered.portable_fallback.picture.data == b"isolated-pattern-fill-overlay-png"
+    assert result.coverage.count(Representation.HYBRID) == 1
+    assert result.coverage.count_editability(Editability.COMPONENTS) == 1
 
 
 def test_gradient_fill_overlay_retains_authored_intent_after_native_projection() -> None:

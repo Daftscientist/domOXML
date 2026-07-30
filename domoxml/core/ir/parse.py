@@ -908,6 +908,7 @@ def fill_overlay_base_styles(
     blend_mode: str | None,
     effect: FillOverlay,
     *,
+    background_color: str | None = None,
     background_size: str | None = None,
     background_position: str | None = None,
     background_repeat: str | None = None,
@@ -928,6 +929,10 @@ def fill_overlay_base_styles(
         return None
     if any(mode != "normal" for mode in modes[1:]):
         return None
+    if effect.blend == "over":
+        base_color = parse_color(background_color)
+        if len(layers) != 1 or base_color is None or base_color.a != 1.0:
+            return None
     overlay = _parse_fill_overlay_paint(layers[0])
     if overlay is None or not _overlay_fill_matches_css(overlay, effect.fill):
         return None

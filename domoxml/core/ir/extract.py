@@ -525,6 +525,7 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
             styles.get("backgroundImage"),
             blend_mode,
             encoded_overlay,
+            background_color=styles.get("backgroundColor"),
             background_size=styles.get("backgroundSize"),
             background_position=styles.get("backgroundPosition"),
             background_repeat=styles.get("backgroundRepeat"),
@@ -560,6 +561,34 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     )
     if over_overlay is not None and (
         clip not in ("none", "")
+        or _opacity(styles) != 1.0
+        or bool(node.text or node.text_runs)
+        or any(side is not None for side in _resolve_border_sides(styles)[0])
+        or (encoded_effects is not None and len(encoded_effects) != 1)
+        or (
+            encoded_effects is None
+            and (
+                bool(parse_shadows(styles.get("boxShadow")))
+                or parse_blur_filter(styles.get("filter")) is not None
+                or parse_soft_edge_mask(
+                    styles.get("maskImage"),
+                    styles.get("maskComposite"),
+                    repeat=styles.get("maskRepeat"),
+                    position=styles.get("maskPosition"),
+                    size=styles.get("maskSize"),
+                    origin=styles.get("maskOrigin"),
+                    clip=styles.get("maskClip"),
+                    mode=styles.get("maskMode"),
+                    ellipse=False,
+                )
+                is not None
+                or parse_box_reflection(styles.get("webkitBoxReflect")) is not None
+            )
+        )
+        or (
+            styles.get("transform", "none") not in ("none", "")
+            and _parse_transform(styles) is not None
+        )
         or parse_radius_px(
             styles.get("borderRadius"),
             shorter_side_px=min(node.width, node.height),
@@ -816,6 +845,7 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
             background_image,
             styles.get("backgroundBlendMode"),
             encoded_overlay,
+            background_color=styles.get("backgroundColor"),
             background_size=styles.get("backgroundSize"),
             background_position=styles.get("backgroundPosition"),
             background_repeat=styles.get("backgroundRepeat"),
@@ -842,6 +872,7 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
                 background_image,
                 styles.get("backgroundBlendMode"),
                 fill_overlay,
+                background_color=styles.get("backgroundColor"),
                 background_size=styles.get("backgroundSize"),
                 background_position=styles.get("backgroundPosition"),
                 background_repeat=styles.get("backgroundRepeat"),

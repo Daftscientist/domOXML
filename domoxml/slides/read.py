@@ -6,10 +6,12 @@ import contextlib
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from io import BytesIO
 from typing import Literal
 from xml.etree.ElementTree import Element
 
 from defusedxml import ElementTree
+from PIL import Image
 
 from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
@@ -488,6 +490,111 @@ def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> Sh
         ),
         element,
         slide_part,
+    )
+
+
+def _matches_flat_over_fallback(
+    picture: PictureFill,
+    base: SolidFill,
+    overlay: FillOverlay,
+) -> bool:
+    """Whether a generated picture still paints the declared flat CSS-normal composite."""
+    if (
+        not isinstance(overlay.fill, SolidFill)
+        or base.color.a != 1.0
+        or picture.ext != "png"
+        or picture.crop is not None
+        or picture.mode != "stretch"
+        or picture.svg_data is not None
+    ):
+        return False
+    alpha = overlay.fill.color.a
+    expected = tuple(
+        round(over * alpha + under * (1.0 - alpha))
+        for over, under in zip(
+            (
+                overlay.fill.color.r,
+                overlay.fill.color.g,
+                overlay.fill.color.b,
+            ),
+            (base.color.r, base.color.g, base.color.b),
+            strict=True,
+        )
+    )
+    try:
+        with Image.open(BytesIO(picture.data)) as image:
+            rgba = image.convert("RGBA")
+            if rgba.width < 1 or rgba.height < 1:
+                return False
+            pixels = rgba.tobytes()
+            return all(
+                pixels[index + 3] == 255
+                and all(
+                    abs(actual - target) <= 1
+                    for actual, target in zip(pixels[index : index + 3], expected, strict=True)
+                )
+                for index in range(0, len(pixels), 4)
+            )
+    except (OSError, ValueError):
+        return False
+
+
+def _private_over_choice_is_current(
+    native: Element,
+    fallback_shape: ShapeNode,
+    effect_intent: EffectPayload | None,
+    package: OpcPackage,
+    slide_part: str,
+    colors: ThemeColors,
+) -> bool:
+    """Admit generated CSS-normal intent only while all exact-subset projections still agree."""
+    if (
+        effect_intent is None
+        or len(effect_intent.effects) != 1
+        or not isinstance(effect_intent.effects[0], FillOverlay)
+        or effect_intent.effects[0].blend != "over"
+        or not isinstance(fallback_shape.fill, PictureFill)
+        or fallback_shape.fill.raster_role != "portable-effect-fallback"
+    ):
+        return False
+    non_visual = native.find("p:nvSpPr/p:cNvPr", _NS)
+    properties = native.find("p:spPr", _NS)
+    transform = properties.find("a:xfrm", _NS) if properties is not None else None
+    offset = transform.find("a:off", _NS) if transform is not None else None
+    extent = transform.find("a:ext", _NS) if transform is not None else None
+    geometry = properties.find("a:prstGeom", _NS) if properties is not None else None
+    if (
+        non_visual is None
+        or non_visual.get("hidden") != "1"
+        or properties is None
+        or transform is None
+        or offset is None
+        or extent is None
+        or transform.get("rot") is not None
+        or transform.get("flipH") is not None
+        or transform.get("flipV") is not None
+        or geometry is None
+        or geometry.get("prst") != "rect"
+        or properties.find("a:custGeom", _NS) is not None
+        or properties.find("a:ln", _NS) is not None
+        or native.find("p:txBody", _NS) is not None
+    ):
+        return False
+    native_box = Box(
+        x=_int_attr(offset, "x"),
+        y=_int_attr(offset, "y"),
+        width=_int_attr(extent, "cx"),
+        height=_int_attr(extent, "cy"),
+    )
+    base = _fill(properties, package, slide_part, colors)
+    return (
+        native_box == fallback_shape.box
+        and isinstance(base, SolidFill)
+        and _matches_flat_over_fallback(
+            fallback_shape.fill,
+            base,
+            effect_intent.effects[0],
+        )
     )
 
 
@@ -1049,9 +1156,8 @@ def _slide(
                 )
                 choice_children = tuple(choice) if choice is not None else ()
                 native = choice_children[0] if choice_children else None
-                fallback_element = (
-                    next(iter(fallback_branch), None) if fallback_branch is not None else None
-                )
+                fallback_children = tuple(fallback_branch) if fallback_branch is not None else ()
+                fallback_element = fallback_children[0] if fallback_children else None
                 if (
                     native is not None
                     and _local_name(native) == "sp"
@@ -1066,16 +1172,19 @@ def _slide(
                     )
                     private_effect_intent = _declared_effect_intent(native)
                     private_over_choice = (
-                        choice_fallback_shape is not None
+                        len(fallback_children) == 1
+                        and choice_fallback_shape is not None
                         and fallback_shape is not None
                         and isinstance(fallback_shape.fill, PictureFill)
-                        and fallback_shape.fill.raster_role == "portable-effect-fallback"
                         and choice_fallback_shape.box == fallback_shape.box
                         and choice_fallback_shape.fill == fallback_shape.fill
-                        and private_effect_intent is not None
-                        and any(
-                            isinstance(effect, FillOverlay) and effect.blend == "over"
-                            for effect in private_effect_intent.effects
+                        and _private_over_choice_is_current(
+                            native,
+                            fallback_shape,
+                            private_effect_intent,
+                            package,
+                            slide_part,
+                            colors,
                         )
                     )
                     private_over_fallback: PortableFallback | None = None

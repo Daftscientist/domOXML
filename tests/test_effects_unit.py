@@ -41,10 +41,12 @@ from domoxml.core.ir.extract import _shadow_to_effect
 from domoxml.core.ir.model import (
     Blur,
     Box,
+    CustomGeometry,
     FillOverlay,
     Glow,
     GradientFill,
     GradientStop,
+    Line,
     PatternFill,
     PictureFill,
     PortableFallback,
@@ -57,6 +59,7 @@ from domoxml.core.ir.model import (
     SolidFill,
     SrcRect,
     ThemeColorRef,
+    Transform,
 )
 from domoxml.core.ir.parse import (
     fill_overlay_base_styles,
@@ -428,6 +431,7 @@ def test_parse_css_normal_solid_overlay_as_portable_over_intent() -> None:
         "linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75))",
         "normal",
         effect,
+        background_color="rgb(20,60,140)",
     ) == {
         "backgroundImage": "none",
         "backgroundBlendMode": "normal",
@@ -497,12 +501,92 @@ def test_over_fill_overlay_requires_owned_fallback_on_shape() -> None:
         blend="over",
     )
 
-    with pytest.raises(ValueError, match="exact portable fallback"):
+    with pytest.raises(ValueError, match="exact owned subset"):
         ShapeNode(
             box=Box(x=0, y=0, width=1_000_000, height=500_000),
             fill=SolidFill(color=Rgba(r=20, g=60, b=140)),
             effects=(overlay,),
         )
+
+
+@pytest.mark.parametrize(
+    "update",
+    (
+        {"fill": SolidFill(color=Rgba(r=20, g=60, b=140, a=0.8))},
+        {"geom": "roundRect"},
+        {"custom_geom": CustomGeometry(width_emu=1_000_000, height_emu=500_000)},
+        {"corner_radius_emu": 100_000},
+        {"opacity": 0.8},
+        {"transform": Transform(rotation_deg=10)},
+        {"line": Line(color=Rgba(r=0, g=0, b=0), width_emu=9_525)},
+        {
+            "portable_fallback": PortableFallback(
+                box=Box(x=1, y=0, width=1_000_000, height=500_000),
+                picture=PictureFill(
+                    data=b"fallback",
+                    raster_role="portable-effect-fallback",
+                ),
+            )
+        },
+        {
+            "portable_fallback": PortableFallback(
+                box=Box(x=0, y=0, width=1_000_000, height=500_000),
+                picture=PictureFill(data=b"fallback"),
+            )
+        },
+    ),
+)
+def test_over_fill_overlay_rejects_state_outside_exact_owned_subset(
+    update: dict[str, object],
+) -> None:
+    box = Box(x=0, y=0, width=1_000_000, height=500_000)
+    overlay = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="over",
+    )
+    values: dict[str, object] = {
+        "box": box,
+        "fill": SolidFill(color=Rgba(r=20, g=60, b=140)),
+        "effects": (overlay,),
+        "portable_fallback": PortableFallback(
+            box=box,
+            picture=PictureFill(
+                data=b"fallback",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    }
+    values.update(update)
+
+    with pytest.raises(ValueError, match="exact owned subset"):
+        ShapeNode.model_validate(values)
+
+
+def test_normalized_over_overlay_rejects_nonopaque_or_picture_base() -> None:
+    effect = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="over",
+    )
+    overlay = "linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75))"
+
+    assert (
+        fill_overlay_base_styles(
+            overlay,
+            "normal",
+            effect,
+            background_color="rgba(20,60,140,.8)",
+        )
+        is None
+    )
+    assert (
+        fill_overlay_base_styles(
+            f"{overlay},url(asset.png)",
+            "normal,normal",
+            effect,
+            background_color="transparent",
+        )
+        is None
+    )
 
 
 def test_parse_gradient_fill_overlay_preserves_stops_and_angle() -> None:

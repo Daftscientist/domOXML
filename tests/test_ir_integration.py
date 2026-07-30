@@ -260,6 +260,23 @@ async def test_css_normal_overlay_with_rounded_edges_stays_outside_typed_over_su
     assert coverage.editability is Editability.LAYERS
 
 
+async def test_css_normal_overlay_with_element_opacity_stays_outside_typed_over_subset() -> None:
+    result = await _render_and_extract_result(
+        '<div style="position:absolute;left:100px;top:80px;width:220px;height:90px;'
+        "opacity:.8;background-color:rgb(20,60,140);"
+        "background-image:linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75));"
+        'background-blend-mode:normal"></div>'
+    )
+
+    assert not any(
+        isinstance(effect, FillOverlay) for shape in result.slide.shapes for effect in shape.effects
+    )
+    [coverage] = [
+        item for item in result.coverage if item.representation is Representation.ELEMENT_LAYER
+    ]
+    assert coverage.editability is Editability.LAYERS
+
+
 async def test_extracts_picture_fill_overlay_with_shape_bound_fallback() -> None:
     image_buffer = BytesIO()
     image = Image.new("RGB", (8, 4), (37, 99, 235))

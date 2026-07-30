@@ -744,14 +744,39 @@ class ShapeNode(CanvasNode):
             raise ValueError("schema-subset native projection is only supported for effect lists")
         if self.native_effect_projection == "schema_subset" and self.portable_fallback is None:
             raise ValueError("schema-subset native projection requires a portable fallback")
-        if (
-            any(
-                isinstance(effect, FillOverlay) and effect.blend == "over"
-                for effect in self.effects
-            )
-            and self.portable_fallback is None
-        ):
-            raise ValueError("over fill overlays require an exact portable fallback")
+        over_effects = tuple(
+            effect
+            for effect in self.effects
+            if isinstance(effect, FillOverlay) and effect.blend == "over"
+        )
+        if over_effects:
+            fallback = self.portable_fallback
+            if (
+                len(self.effects) != 1
+                or len(over_effects) != 1
+                or not isinstance(self.fill, SolidFill)
+                or self.fill.color.a != 1.0
+                or self.geom != "rect"
+                or self.custom_geom is not None
+                or self.corner_radius_emu != 0
+                or self.opacity != 1.0
+                or self.transform is not None
+                or self.line is not None
+                or self.side_lines is not None
+                or self.text is not None
+                or fallback is None
+                or fallback.box != self.box
+                or fallback.picture.ext != "png"
+                or fallback.picture.crop is not None
+                or fallback.picture.mode != "stretch"
+                or fallback.picture.svg_data is not None
+                or fallback.picture.raster_role != "portable-effect-fallback"
+            ):
+                raise ValueError(
+                    "over fill overlays require the exact owned subset: one effect on an "
+                    "untransformed opaque solid square-cornered rectangle with a matching "
+                    "shape-bound PNG fallback"
+                )
         return self
 
     @property

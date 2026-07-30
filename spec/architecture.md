@@ -223,12 +223,16 @@ path, so arc paths do not depend on the authored-SVG parser during repeated cycl
 filter chains take a visible element-layer fallback instead of silently losing paint.
 DrawingML's `over` fill-overlay mode is not treated as CSS `normal`: direct Graph inspection proves
 that mapping false, while LibreOffice omits the effect. A strict authored CSS `normal` case with
-one opaque solid rectangular base and one full-coverage translucent uniform solid overlay retains
-typed `over` intent beneath one exact shape-owned picture. Both the PowerPoint choice and
+one plain, untransformed, fully opaque solid rectangular base and one full-coverage translucent
+uniform solid overlay retains typed `over` intent beneath one exact shape-owned picture. Element
+opacity, additional effects, borders, text, and transformed geometry remain outside this subset.
+Both the PowerPoint choice and
 LibreOffice fallback select that picture while the native effect-bearing shape stays hidden, so
 the translucent result cannot double-paint. Private intent is recovered only while the native
-projection remains unchanged; an Office edit rejects stale typed metadata and keeps the source
-alternate-content visual attached. Gradient and pattern overlays, picture or translucent bases,
+projection, hidden state, base composite, rectangular geometry, native/fallback bounds, and
+single-picture fallback branch remain unchanged; an Office edit rejects stale typed metadata and
+keeps the source alternate-content visual attached. Gradient and pattern overlays, picture or
+translucent bases,
 partial background geometry, and rounded or clipped shapes do not enter this subset. Separately,
 an isolated square-cornered opaque source rectangle can use a geometry-masked owned crop; the exact
 source shape and isolated fallback then travel together through `AlternateContent`, avoiding

@@ -7,11 +7,11 @@ import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from io import BytesIO
-from typing import Literal
+from typing import Literal, cast
 from xml.etree.ElementTree import Element
 
 from defusedxml import ElementTree
-from PIL import Image
+from PIL import Image, ImageChops
 
 from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
@@ -526,15 +526,15 @@ def _matches_flat_over_fallback(
             rgba = image.convert("RGBA")
             if rgba.width < 1 or rgba.height < 1:
                 return False
-            pixels = rgba.tobytes()
-            return all(
-                pixels[index + 3] == 255
-                and all(
-                    abs(actual - target) <= 1
-                    for actual, target in zip(pixels[index : index + 3], expected, strict=True)
-                )
-                for index in range(0, len(pixels), 4)
+            if rgba.getchannel("A").getextrema() != (255, 255):
+                return False
+            rgb = rgba.convert("RGB")
+            reference = Image.new("RGB", rgb.size, expected)
+            extrema = cast(
+                tuple[tuple[int, int], tuple[int, int], tuple[int, int]],
+                ImageChops.difference(rgb, reference).getextrema(),
             )
+            return all(upper <= 1 for _lower, upper in extrema)
     except (OSError, ValueError, Image.DecompressionBombError):
         return False
 
@@ -582,6 +582,7 @@ def _private_over_choice_is_current(
         or native.find("p:txBody", _NS) is not None
         or len(native_effects) != 1
         or _local_name(native_effects[0]) != "fillOverlay"
+        or native_effects[0].get("blend") != "over"
         or properties.find("a:effectDag", _NS) is not None
     ):
         return False

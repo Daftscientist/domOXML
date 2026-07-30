@@ -597,6 +597,7 @@ def test_flat_over_fallback_rejects_decompression_bomb(
         (b'prst="rect"', b'prst="roundRect"'),
         (b' hidden="1"', b""),
         (b'x="1000000"', b'x="1000001"'),
+        (b'blend="over"', b'blend="mult"'),
         (
             b"</p:pic></mc:Fallback>",
             b"</p:pic><p:sp/></mc:Fallback>",

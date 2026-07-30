@@ -338,6 +338,8 @@ def _shape(
     hyperlink_for: Callable[[Element], Hyperlink | None],
     *,
     inherit_ctx: _SlideInheritCtx | None = None,
+    allow_private_over: bool = False,
+    portable_fallback: PortableFallback | None = None,
 ) -> tuple[ShapeNode | None, tuple[ConversionWarning, ...], tuple[PreservedFragment, ...]]:
     properties = element.find("p:spPr", _NS)
 
@@ -384,12 +386,22 @@ def _shape(
             corner = round(int(formula.removeprefix("val ")) / 100_000 * min(box.width, box.height))
         except (TypeError, ValueError):
             corner = 0
+    declared_effect_intent = _declared_effect_intent(element) if allow_private_over else None
+    expected_over = next(
+        (
+            effect
+            for effect in (declared_effect_intent.effects if declared_effect_intent else ())
+            if isinstance(effect, FillOverlay) and effect.blend == "over"
+        ),
+        None,
+    )
     shape_effects, effect_warns, effect_preserved = read_effects(
         properties,
         lambda element: _rgba(element, colors),
         box=box,
         gradient_for=lambda element: _fill_overlay_gradient(element, colors),
         pattern_for=lambda element: _pattern_fill(element, colors),
+        expected_over=expected_over,
     )
     effect_intent = _matching_effect_intent(element, shape_effects, box)
     applied_effect_intent = (
@@ -425,6 +437,7 @@ def _shape(
                     if applied_effect_intent is not None
                     else "complete"
                 ),
+                portable_fallback=portable_fallback,
                 corner_radius_emu=corner,
                 transform=_xfrm_transform(xfrm),
                 text=read_text_body(
@@ -1034,7 +1047,8 @@ def _slide(
                 fallback_branch = next(
                     (child for child in element if _local_name(child) == "Fallback"), None
                 )
-                native = next(iter(choice), None) if choice is not None else None
+                choice_children = tuple(choice) if choice is not None else ()
+                native = choice_children[0] if choice_children else None
                 fallback_element = (
                     next(iter(fallback_branch), None) if fallback_branch is not None else None
                 )
@@ -1044,6 +1058,36 @@ def _slide(
                     and fallback_element is not None
                     and _local_name(fallback_element) == "pic"
                 ):
+                    fallback_shape = _picture_shape(fallback_element, package, slide_part)
+                    choice_fallback_shape = (
+                        _picture_shape(choice_children[1], package, slide_part)
+                        if len(choice_children) == 2 and _local_name(choice_children[1]) == "pic"
+                        else None
+                    )
+                    private_effect_intent = _declared_effect_intent(native)
+                    private_over_choice = (
+                        choice_fallback_shape is not None
+                        and fallback_shape is not None
+                        and isinstance(fallback_shape.fill, PictureFill)
+                        and fallback_shape.fill.raster_role == "portable-effect-fallback"
+                        and choice_fallback_shape.box == fallback_shape.box
+                        and choice_fallback_shape.fill == fallback_shape.fill
+                        and private_effect_intent is not None
+                        and any(
+                            isinstance(effect, FillOverlay) and effect.blend == "over"
+                            for effect in private_effect_intent.effects
+                        )
+                    )
+                    private_over_fallback: PortableFallback | None = None
+                    if (
+                        private_over_choice
+                        and fallback_shape is not None
+                        and isinstance(fallback_shape.fill, PictureFill)
+                    ):
+                        private_over_fallback = PortableFallback(
+                            box=fallback_shape.box,
+                            picture=fallback_shape.fill,
+                        )
                     shape, shape_warns, shape_preserved = _shape(
                         native,
                         package,
@@ -1051,8 +1095,9 @@ def _slide(
                         colors,
                         hyperlink_for,
                         inherit_ctx=inherit_ctx,
+                        allow_private_over=private_over_choice,
+                        portable_fallback=private_over_fallback,
                     )
-                    fallback_shape = _picture_shape(fallback_element, package, slide_part)
                     if (
                         shape is not None
                         and fallback_shape is not None

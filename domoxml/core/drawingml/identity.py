@@ -44,6 +44,9 @@ def node_identity_xml(node: CanvasNode) -> str:
             isinstance(effect, FillOverlay) and isinstance(effect.fill, GradientFill)
             for effect in node.effects
         )
+        or any(
+            isinstance(effect, FillOverlay) and effect.blend == "over" for effect in node.effects
+        )
     ):
         intent = encode_effects(
             node.effects,

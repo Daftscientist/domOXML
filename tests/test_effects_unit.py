@@ -412,6 +412,99 @@ def test_parse_picture_fill_overlay_peels_one_uniform_top_layer() -> None:
     )
 
 
+def test_parse_css_normal_solid_overlay_as_portable_over_intent() -> None:
+    effect = parse_fill_overlay_effect(
+        "linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75))",
+        "normal",
+        background_color="rgb(20,60,140)",
+    )
+
+    assert effect is not None
+    assert effect == FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="over",
+    )
+    assert fill_overlay_base_styles(
+        "linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75))",
+        "normal",
+        effect,
+    ) == {
+        "backgroundImage": "none",
+        "backgroundBlendMode": "normal",
+        "backgroundSize": "auto",
+        "backgroundPosition": "0% 0%",
+        "backgroundRepeat": "repeat",
+        "backgroundOrigin": "padding-box",
+        "backgroundClip": "border-box",
+    }
+
+
+@pytest.mark.parametrize(
+    ("background_image", "background_color", "background_size"),
+    (
+        (
+            "linear-gradient(rgba(255,40,80,.75),rgba(37,99,235,.35))",
+            "rgb(20,60,140)",
+            None,
+        ),
+        (
+            "repeating-linear-gradient(0deg,rgb(244,63,94) 0px,"
+            "rgb(244,63,94) 1px,rgb(254,226,226) 1px,rgb(254,226,226) 4px)",
+            "rgb(20,60,140)",
+            None,
+        ),
+        (
+            "linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75)),url(asset.png)",
+            None,
+            None,
+        ),
+        (
+            "linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75))",
+            "rgba(20,60,140,.8)",
+            None,
+        ),
+        (
+            "linear-gradient(rgb(255,40,80),rgb(255,40,80))",
+            "rgb(20,60,140)",
+            None,
+        ),
+        (
+            "linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75))",
+            "rgb(20,60,140)",
+            "50% 50%",
+        ),
+    ),
+)
+def test_css_normal_overlay_rejects_unproven_paint_base_alpha_and_coverage(
+    background_image: str,
+    background_color: str | None,
+    background_size: str | None,
+) -> None:
+    assert (
+        parse_fill_overlay_effect(
+            background_image,
+            "normal",
+            background_color=background_color,
+            background_size=background_size,
+        )
+        is None
+    )
+
+
+def test_over_fill_overlay_requires_owned_fallback_on_shape() -> None:
+    overlay = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="over",
+    )
+
+    with pytest.raises(ValueError, match="exact portable fallback"):
+        ShapeNode(
+            box=Box(x=0, y=0, width=1_000_000, height=500_000),
+            fill=SolidFill(color=Rgba(r=20, g=60, b=140)),
+            effects=(overlay,),
+        )
+
+
 def test_parse_gradient_fill_overlay_preserves_stops_and_angle() -> None:
     effect = parse_fill_overlay_effect(
         ("linear-gradient(90deg,rgba(244,63,94,.8) 0%,rgba(37,99,235,.35) 100%),url(asset.png)"),

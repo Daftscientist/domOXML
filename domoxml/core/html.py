@@ -574,6 +574,7 @@ def _fill_overlay_blend_css(effect: FillOverlay) -> str:
         "screen": "screen",
         "darken": "darken",
         "lighten": "lighten",
+        "over": "normal",
     }[effect.blend]
 
 

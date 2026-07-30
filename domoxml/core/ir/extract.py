@@ -537,9 +537,8 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     if encoded_overlay is not None and normalized_overlay is None:
         return "encoded fill-overlay metadata does not match rendered CSS"
     has_normalized_overlay = normalized_overlay is not None
-    if (
-        blend_mode not in ("normal", "")
-        and parse_fill_overlay_effect(
+    authored_overlay = (
+        parse_fill_overlay_effect(
             styles.get("backgroundImage"),
             blend_mode,
             background_color=styles.get("backgroundColor"),
@@ -549,9 +548,26 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
             background_origin=styles.get("backgroundOrigin"),
             background_clip=styles.get("backgroundClip"),
         )
-        is None
-        and not has_normalized_overlay
+        if encoded_overlay is None
+        else None
+    )
+    over_overlay = (
+        encoded_overlay
+        if encoded_overlay is not None and encoded_overlay.blend == "over"
+        else authored_overlay
+        if authored_overlay is not None and authored_overlay.blend == "over"
+        else None
+    )
+    if over_overlay is not None and (
+        clip not in ("none", "")
+        or parse_radius_px(
+            styles.get("borderRadius"),
+            shorter_side_px=min(node.width, node.height),
+        )
+        > 0
     ):
+        return "CSS normal fill overlay is only typed for square-cornered rectangles"
+    if blend_mode not in ("normal", "") and authored_overlay is None and not has_normalized_overlay:
         return "background-blend-mode has no native fill-overlay mapping"
     if styles.get("backdropFilter", "none") not in ("none", ""):
         return "backdrop-filter has no native mapping"

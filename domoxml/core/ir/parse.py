@@ -792,7 +792,7 @@ def parse_fill_overlay_effect(
         not layers
         or len(layers) > 2
         or len(modes) != len(layers)
-        or modes[0] not in _FILL_OVERLAY_BLEND
+        or (modes[0] not in _FILL_OVERLAY_BLEND and modes[0] != "normal")
         or any(mode != "normal" for mode in modes[1:])
     ):
         return None
@@ -831,7 +831,15 @@ def parse_fill_overlay_effect(
         )
     else:
         overlay_fill = overlay
-    blend = _FILL_OVERLAY_BLEND[modes[0]]
+    blend: FillOverlayBlend = "over" if modes[0] == "normal" else _FILL_OVERLAY_BLEND[modes[0]]
+    if blend == "over" and (
+        len(layers) != 1
+        or base_color is None
+        or base_color.a != 1.0
+        or not isinstance(overlay_fill, SolidFill)
+        or not 0.0 < overlay_fill.color.a < 1.0
+    ):
+        return None
     if isinstance(overlay_fill, PatternFill):
         from domoxml.core.ir.pattern import pattern_overlay_is_proven
 
@@ -914,6 +922,7 @@ def fill_overlay_base_styles(
         "screen": "screen",
         "darken": "darken",
         "lighten": "lighten",
+        "over": "normal",
     }[effect.blend]
     if not layers or len(modes) != len(layers) or modes[0] != expected:
         return None

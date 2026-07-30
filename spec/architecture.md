@@ -222,12 +222,20 @@ elliptical arcs. Normalized HTML carries the exact typed custom geometry beside 
 path, so arc paths do not depend on the authored-SVG parser during repeated cycles. Unsupported SVG
 filter chains take a visible element-layer fallback instead of silently losing paint.
 DrawingML's `over` fill-overlay mode is not treated as CSS `normal`: direct Graph inspection proves
-that mapping false. An isolated square-cornered opaque rectangle can use a geometry-masked owned
-crop; the exact source shape and isolated fallback then travel together through
-`AlternateContent`, avoiding repeated screenshot resampling. Crops that cannot prove isolation
-remain visible with attached source payload but report `rasterized` and noneditable rather than
-falsely claiming a movable element layer. The admitted path's payload, rotated paint bounds,
-coverage, fallback bytes, and pixels remain stable through two normalized HTML rebuild cycles.
+that mapping false, while LibreOffice omits the effect. A strict authored CSS `normal` case with
+one opaque solid rectangular base and one full-coverage translucent uniform solid overlay retains
+typed `over` intent beneath one exact shape-owned picture. Both the PowerPoint choice and
+LibreOffice fallback select that picture while the native effect-bearing shape stays hidden, so
+the translucent result cannot double-paint. Private intent is recovered only while the native
+projection remains unchanged; an Office edit rejects stale typed metadata and keeps the source
+alternate-content visual attached. Gradient and pattern overlays, picture or translucent bases,
+partial background geometry, and rounded or clipped shapes do not enter this subset. Separately,
+an isolated square-cornered opaque source rectangle can use a geometry-masked owned crop; the exact
+source shape and isolated fallback then travel together through `AlternateContent`, avoiding
+repeated screenshot resampling. Crops that cannot prove isolation remain visible with attached
+source payload but report `rasterized` and noneditable rather than falsely claiming a movable
+element layer. Both admitted paths keep their payload, coverage, fallback bytes, and pixels stable
+through two normalized HTML rebuild cycles.
 Preset shadows remain distinct from CSS box shadows: the 20 DrawingML presets include perspective,
 double, and detached geometries, and direct renderer calibration shows LibreOffice omits all of
 them. For a sole-visual slide, until a preset has an exact typed mapping, PPTX ingestion retains the

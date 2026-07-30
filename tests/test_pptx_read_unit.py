@@ -507,6 +507,65 @@ def test_portable_fill_overlay_fallback_uses_alternate_content_and_round_trips()
     assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
 
 
+def test_portable_over_fill_overlay_uses_visible_choice_fallback_and_round_trips() -> None:
+    fallback_box = Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000)
+    overlay = FillOverlay(
+        fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+        blend="over",
+    )
+    shape = ShapeNode(
+        box=fallback_box,
+        fill=SolidFill(color=Rgba(r=20, g=60, b=140)),
+        effects=(overlay,),
+        portable_fallback=PortableFallback(
+            box=fallback_box,
+            picture=PictureFill(
+                data=b"isolated-over-fill-overlay-png",
+                ext="png",
+                raster_role="portable-effect-fallback",
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(shape,))], faces=[])
+    slide_xml = OpcPackage.from_bytes(pptx).read("ppt/slides/slide1.xml").decode()
+
+    assert '<a:fillOverlay blend="over"><a:solidFill>' in slide_xml
+    assert '<a:srgbClr val="FF2850"><a:alpha val="75000"/>' in slide_xml
+    assert '<mc:Choice Requires="p16"><p:sp>' in slide_xml
+    assert 'hidden="1"' in slide_xml
+    assert "</p:sp><p:pic>" in slide_xml
+    assert slide_xml.count("domoxml-raster:portable-effect-fallback") == 2
+
+    result = read_pptx_result(pptx)
+
+    [recovered] = result.slides[0].shapes
+    assert recovered.fill == shape.fill
+    assert recovered.effects == (overlay,)
+    assert recovered.portable_fallback is not None
+    assert recovered.portable_fallback.box == fallback_box
+    assert recovered.portable_fallback.picture.data == b"isolated-over-fill-overlay-png"
+    assert result.coverage.count(Representation.HYBRID) == 1
+    assert result.coverage.count_editability(Editability.COMPONENTS) == 1
+    assert result.coverage.output_count == 2
+    assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
+
+    package = OpcPackage.from_bytes(pptx)
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    parts["ppt/slides/slide1.xml"] = package.read("ppt/slides/slide1.xml").replace(
+        b'val="FF2850"',
+        b'val="FE2850"',
+        1,
+    )
+    edited = read_pptx_result(write_package(parts))
+
+    assert edited.slides[0].shapes == ()
+    [preserved] = [node for node in edited.slides[0].contents if isinstance(node, PreservedNode)]
+    assert isinstance(preserved, PreservedNode)
+    assert edited.coverage.count(Representation.ELEMENT_LAYER) == 1
+    assert edited.coverage.count_source_retention(SourceRetention.ATTACHED) == 1
+
+
 def test_portable_pattern_fill_overlay_round_trips_as_typed_hybrid() -> None:
     fallback_box = Box(x=1_000_000, y=900_000, width=2_000_000, height=1_000_000)
     overlay = FillOverlay(

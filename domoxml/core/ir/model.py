@@ -330,7 +330,7 @@ class Reflection(BaseModel):
     end_alpha: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
-FillOverlayBlend = Literal["mult", "screen", "darken", "lighten"]
+FillOverlayBlend = Literal["mult", "screen", "darken", "lighten", "over"]
 type FillOverlayPaint = SolidFill | GradientFill | PatternFill
 
 
@@ -345,7 +345,18 @@ class FillOverlay(BaseModel):
     blend: FillOverlayBlend
 
     @model_validator(mode="after")
-    def _pattern_fill_is_exact(self) -> FillOverlay:
+    def _fill_overlay_is_exact(self) -> FillOverlay:
+        if self.blend == "over":
+            if (
+                not isinstance(self.fill, SolidFill)
+                or self.fill.color.a <= 0.0
+                or self.fill.color.a >= 1.0
+            ):
+                raise ValueError(
+                    "over fill overlays require one translucent solid paint and an exact "
+                    "portable fallback on the owning shape"
+                )
+            return self
         if not isinstance(self.fill, PatternFill):
             return self
 
@@ -733,6 +744,14 @@ class ShapeNode(CanvasNode):
             raise ValueError("schema-subset native projection is only supported for effect lists")
         if self.native_effect_projection == "schema_subset" and self.portable_fallback is None:
             raise ValueError("schema-subset native projection requires a portable fallback")
+        if (
+            any(
+                isinstance(effect, FillOverlay) and effect.blend == "over"
+                for effect in self.effects
+            )
+            and self.portable_fallback is None
+        ):
+            raise ValueError("over fill overlays require an exact portable fallback")
         return self
 
     @property

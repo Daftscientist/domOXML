@@ -212,6 +212,54 @@ async def test_extracts_css_fill_overlay_with_shape_bound_fallback() -> None:
     assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(90)
 
 
+async def test_extracts_css_normal_overlay_as_typed_over_with_exact_owned_layer() -> None:
+    result = await _render_and_extract_result(
+        '<div style="position:absolute;left:100px;top:80px;width:220px;height:90px;'
+        "background-color:rgb(20,60,140);"
+        "background-image:linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75));"
+        'background-blend-mode:normal"></div>'
+    )
+
+    [shape] = [
+        shape
+        for shape in result.slide.shapes
+        if any(isinstance(effect, FillOverlay) for effect in shape.effects)
+    ]
+    assert shape.fill == SolidFill(color=Rgba(r=20, g=60, b=140))
+    assert shape.effects == (
+        FillOverlay(
+            fill=SolidFill(color=Rgba(r=255, g=40, b=80, a=0.75)),
+            blend="over",
+        ),
+    )
+    assert shape.portable_fallback is not None
+    assert shape.portable_fallback.box == shape.box
+    assert shape.portable_fallback.picture.raster_role == "portable-effect-fallback"
+    with Image.open(BytesIO(shape.portable_fallback.picture.data)) as fallback:
+        assert fallback.convert("RGB").getpixel((110, 45)) == (196, 45, 95)
+    [coverage] = [item for item in result.coverage if item.representation is Representation.HYBRID]
+    assert coverage.editability is Editability.COMPONENTS
+    assert coverage.output_count == 2
+    assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(90)
+
+
+async def test_css_normal_overlay_with_rounded_edges_stays_outside_typed_over_subset() -> None:
+    result = await _render_and_extract_result(
+        '<div style="position:absolute;left:100px;top:80px;width:220px;height:90px;'
+        "border-radius:18px;background-color:rgb(20,60,140);"
+        "background-image:linear-gradient(rgba(255,40,80,.75),rgba(255,40,80,.75));"
+        'background-blend-mode:normal"></div>'
+    )
+
+    assert not any(
+        isinstance(effect, FillOverlay) for shape in result.slide.shapes for effect in shape.effects
+    )
+    [coverage] = [
+        item for item in result.coverage if item.representation is Representation.ELEMENT_LAYER
+    ]
+    assert coverage.editability is Editability.LAYERS
+
+
 async def test_extracts_picture_fill_overlay_with_shape_bound_fallback() -> None:
     image_buffer = BytesIO()
     image = Image.new("RGB", (8, 4), (37, 99, 235))

@@ -166,6 +166,7 @@ def match_pattern_fill(
     axis = _normalise_angle(angle_deg, tolerance=tolerance)
     if axis is None:
         return None
+    stop_tolerance = 1e-9 if exact_geometry else 1e-6
 
     parsed_stops = [_parse_stop(arg) for arg in args]
     # A two-colour hard-stop stripe needs exactly 4 stops: c1@0, c1@W, c2@W, c2@2W.
@@ -183,10 +184,10 @@ def match_pattern_fill(
 
     # Hard stops: foreground is [p0, p1], background is [p1=p2, p3].
     foreground_width = p1 - p0
-    if foreground_width <= 0 or abs(p2 - p1) > 1e-6:
+    if foreground_width <= 0 or abs(p2 - p1) > stop_tolerance:
         return None
     gap_width = p3 - p2
-    if gap_width <= 0 or abs(p0) > 1e-6:
+    if gap_width <= 0 or abs(p0) > stop_tolerance:
         return None
 
     for preset, expected_foreground, expected_gap in _FORWARD_PATTERNS.get(axis, ()):

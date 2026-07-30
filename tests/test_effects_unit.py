@@ -503,6 +503,12 @@ def test_parse_pattern_fill_overlay_preserves_preset_and_colours() -> None:
         "rgb(244,63,94) 0px,rgb(244,63,94) 1px,"
         "rgb(254,226,226) 1px,rgb(254,226,226) 4px,"
         "color(display-p3 1 0 0) 4px)",
+        "repeating-linear-gradient(0deg,"
+        "rgb(244,63,94) 0.0000005px,rgb(244,63,94) 1px,"
+        "rgb(254,226,226) 1px,rgb(254,226,226) 4px)",
+        "repeating-linear-gradient(0deg,"
+        "rgb(244,63,94) 0px,rgb(244,63,94) 1px,"
+        "rgb(254,226,226) 1.0000005px,rgb(254,226,226) 4px)",
     ),
 )
 def test_rejects_noncanonical_repeating_gradient_fill_overlay(pattern: str) -> None:

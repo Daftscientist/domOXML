@@ -177,6 +177,8 @@ def test_portable_blur_fallback_uses_alternate_content_and_round_trips() -> None
     assert result.coverage.count_editability(Editability.COMPONENTS) == 1
     assert result.coverage.output_count == 2
     assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
+    assert result.coverage.output_count == 2
+    assert result.coverage.raster_area_emu2 == fallback_box.width * fallback_box.height
 
 
 def test_portable_inset_shadow_fallback_retains_exact_spread_intent() -> None:

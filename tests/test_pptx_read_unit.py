@@ -616,6 +616,18 @@ def test_flat_over_fallback_rejects_decompression_bomb(
             b"<a:effectLst><a:fillOverlay",
             (b'<a:effectDag type="tree" name="unsupported"/><a:effectLst><a:fillOverlay'),
         ),
+        (
+            b"<a:effectLst><a:fillOverlay",
+            (
+                b'<a:effectDag type="sib">'
+                b'<a:outerShdw blurRad="285750" dist="430000" dir="8100000">'
+                b'<a:srgbClr val="E11D48"/></a:outerShdw>'
+                b'<a:outerShdw blurRad="190500" dist="260000" dir="2700000">'
+                b'<a:srgbClr val="0F172A"/></a:outerShdw>'
+                b'<a:effect ref="fill"/></a:effectDag>'
+                b"<a:effectLst><a:fillOverlay"
+            ),
+        ),
     ),
 )
 def test_portable_over_fill_overlay_rejects_stale_state_or_ambiguous_fallback_branch(

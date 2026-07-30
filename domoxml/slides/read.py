@@ -1289,7 +1289,9 @@ def _slide(
                             and preserved_kinds in ({"prstShdw"}, {"effectDag"})
                         )
                         recover_rasterized = rasterized_candidate and element is only_visual
-                        if shape_preserved and (recover_owned or recover_rasterized):
+                        if (shape_preserved or stale_private_over) and (
+                            recover_owned or recover_rasterized
+                        ):
                             source_fallback = fallback_role == "pptx-source-fallback"
                             fallback_representation = (
                                 "rasterized" if recover_rasterized else "element_layer"

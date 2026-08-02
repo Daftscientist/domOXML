@@ -9,7 +9,7 @@ evidence covers both conversion directions and the round-trip path.
 
 ## Current PresentationML Capability Matrix
 
-Audited on **2026-07-30**.
+Audited on **2026-08-02**.
 
 | Capability | HTML/CSS -> PPTX | PPTX -> HTML/CSS | Evidence | Main remaining work |
 |---|---|---|---|---|
@@ -29,7 +29,7 @@ Audited on **2026-07-30**.
 | SVG extension (`asvg:svgBlip`) | Native write | Native read and exact re-emission for pure pictures | `cap:svg-vector` (both) | cropped/effect-bearing SVG pictures, external assets, and adversarial SVG content |
 | Native tables in graphic frames | Native subset | Native subset; default style reference/flags survive IR and normalized HTML | `cap:table` (both) + LO/Graph real deck | arbitrary style definitions/inheritance and richer graphic-frame ordering |
 | Charts in graphic frames | Attached source re-emission only; authored charts remain a gap | Attached exact graph plus caller-rendered normalized-HTML element layer | `cap:chart-preservation` (reverse) + scoped HTML and real-deck PPTX visual gates | shared chart IR, automatic renderer selection, semantic HTML rendering, and native authoring |
-| Groups | Gap on authoring | Native read then flattened | unit only | author/preserve nested groups, child coordinates, interleaved z-order and IDs |
+| Groups | Native `GroupNode` write for nonempty modeled groups, including nested groups, connectors, pictures, and portable child fallbacks with media relationships; authored DOM grouping remains a gap, while valid direct IR groups outside the strict HTML boundary visibly lower through a flattened wrapper with a warning and recover original geometry over two normalized-browser cycles; a wrapper/member freshness guard leaves visibly edited/stale geometry or transforms flattened with explicit debt, and invalid extents fail explicitly | The proven strict single-level untransformed plain-shape subset retains native `p:grpSp`, group/child coordinates, IDs, ownership, and surrounding z-order through normalized HTML; picture-child media/write-read behavior is unit-covered but lacks this visual round-trip fixture; transformed, nested, connector/fallback-bearing, and otherwise unsupported source groups retain attached source under one slide-owned rasterized/noneditable fallback when caller-rendered pixels exist, or explicitly fail paint coverage without them; additional unsupported owners sharing that raster remain explicit debt, and attached source re-emits with rebound connector references and unique IDs | `cap:native-group-roundtrip` (reverse) + Apache POI grouped custom-path real deck + unit/integration + LibreOffice/Graph evidence | arbitrary authored DOM groups, visually proven picture-child round trips, source nested transforms/connectors/graphic frames, portable-fallback source admission, and independently owned fallbacks where isolation is proved |
 | Connectors | Partial | Partial; transform-box route/endpoints are reported approximated/lost | unit + `cap:custom-path` (both) | attachment/routing/arrows and structure-preserving reverse re-emission |
 | Audio/video | Layered/not native | Native read | unit only | native relationships/parts, playback settings, poster handling and real deck |
 | SmartArt/diagram | Gap | Positioned fallback contract available; ownership/corpus proof pending | unit only | source attachment/re-emission, visual fixture, optional semantic model |
@@ -68,6 +68,7 @@ Audited on **2026-07-30**.
 | `multiple-shadow-effect-dag` | both | multiple CSS outer shadows lower to one editable flat sibling graph in PowerPoint and one isolated LibreOffice fallback, recover CSS paint order, reject either-layer omission, and converge after two cycles |
 | `negative-shadow-spread` | both | offset and zero-offset CSS choke lower to exact sub-100% `outerShdw` scales, recover renderer-calibrated negative-spread CSS, reject neutralized scales, and converge after two cycles |
 | `nested-effect-dag-fallback` | reverse | named nested tree graph remains exact in PowerPoint, gains one slide-owned LibreOffice/HTML fallback, retains attached source, validates its package, and converges after two cycles |
+| `native-group-roundtrip` | reverse | strict single-level untransformed native shape groups retain their group/child coordinate spaces, stable identities, ownership, interleaved z-order, alpha, exact native re-emission, and two-cycle convergence |
 | `node-identity` | both | stable IDs, source provenance, ownership, and private OOXML extension |
 | `over-fill-overlay` | both | strict plain untransformed opaque solid base plus full-coverage translucent CSS normal overlay retains guarded editable `a:fillOverlay blend="over"` intent beneath one exact shape-owned picture selected by both renderer branches, rejects element opacity and unproven paint/base/geometry, rejects stale intent after native base/geometry/visibility/bounds edits or an ambiguous fallback branch, and converges after two cycles |
 | `pattern-fills` | both | DrawingML pattern mapping |
@@ -96,7 +97,8 @@ the initial PPTX-ingest boundary; the seven real-deck manifests pin the same rev
 
 1. Masters, layouts, placeholders, themes, and inheritance in both directions without flattening.
 2. Speaker notes and useful presentation/accessibility metadata.
-3. Exact slide/group/graphic-frame ordering on the canonical node sequence.
+3. Broader nested/transformed group reconstruction and exact graphic-frame ordering on the
+   canonical node sequence.
 4. Complete transitions plus an explicit animation/timing authoring contract.
 5. Native media authoring and playback relationships.
 6. Chart visual layers/native authoring plus SmartArt, OLE, 3D, and unknown-node exact re-emission.

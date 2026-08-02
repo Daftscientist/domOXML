@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+import json
+
 from domoxml.core.ir import extract_slide
+from domoxml.core.ir.group_payload import decode_group_payload
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     CharBullet,
@@ -25,6 +29,38 @@ from domoxml.core.ir.parse import (
 )
 from domoxml.core.render.browser import RenderedNode, RenderedSlide
 from domoxml.core.units import px_to_emu
+
+
+def test_group_payload_rejects_ambiguous_member_identity_and_geometry() -> None:
+    box = {"x": 0, "y": 0, "width": 100, "height": 100}
+    point = {"x": 0, "y": 0}
+    malformed_members = (
+        [{"node_id": "  ", "box": box}],
+        [{"node_id": "dup", "box": box}, {"node_id": "dup", "box": box}],
+        [{"node_id": "both", "box": box, "start": point, "end": point}],
+        [{"node_id": "partial", "start": point}],
+        [{"node_id": "missing"}],
+    )
+    for members in malformed_members:
+        payload = {
+            "version": 1,
+            "box": box,
+            "child_box": box,
+            "members": members,
+        }
+        encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+        assert decode_group_payload(encoded) is None
+
+    valid = {
+        "version": 1,
+        "box": box,
+        "child_box": box,
+        "members": [{"node_id": "shape", "box": box}],
+    }
+    encoded = base64.urlsafe_b64encode(json.dumps(valid).encode()).decode()
+    decoded = decode_group_payload(encoded)
+    assert decoded is not None
+    assert decoded.members[0].node_id == "shape"
 
 
 def test_parse_color_rgb_and_rgba() -> None:

@@ -7,19 +7,20 @@ new unsupported visual states.
 
 ## Current Baseline
 
-Snapshot audited on **2026-07-30** against the repository, executable manifests, and tests:
+Snapshot audited on **2026-08-02** against the repository, executable manifests, and tests:
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 908 tests are collected.
-- 43 atomic PPTX capability fixtures exist; 37 are bidirectional and six are reverse-first
+- 930 tests are collected.
+- 44 atomic PPTX capability fixtures exist; 37 are bidirectional and seven are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, rasterized preset
   shadow node/slide fallbacks, named nested effect-graph preservation, and custom-path-owned
-  effect fallback.
+  effect fallback, plus strict native group reconstruction.
 - 9 authored HTML fidelity cases exist.
 - 7 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, attached
   chart-graph re-emission, ellipse soft-edge radii, four native solid fill-overlay blend modes, and
-  formula-backed custom paths with native outer shadows using PPTX and normalized-HTML visual gates.
+  a real native group containing formula-backed custom paths with outer shadows using PPTX and
+  normalized-HTML visual gates.
 - LibreOffice global, regional, focused, and structural scores are merge-blocking for configured
   cases.
 - Microsoft Graph rendering exists as an opt-in backend, not a normal CI gate.
@@ -28,8 +29,13 @@ The baseline is useful but not yet the product invariant:
 
 - Canvas IR uses one canonical ordered node sequence with compatibility views for legacy callers;
 - adopted nodes have slide-scoped stable IDs and active HTML/PPTX adapters retain typed source
-  provenance; chart payloads are attached and re-emitted, while exact group reconstruction and
-  general preservation ownership remain incomplete;
+  provenance; chart payloads are attached and re-emitted, and strict single-level untransformed
+  native shape groups retain their group/child coordinate spaces, identities, ownership, and stack
+  position through normalized HTML. Valid authored transformed/connector groups use a visibly
+  flattened normalized wrapper with original-member geometry and retain structure over two browser
+  cycles. The PPTX writer also emits grouped pictures and portable child fallbacks with their media
+  relationships. Broader source-group reconstruction and general preservation ownership remain
+  incomplete;
 - forward raster fallback exists, but its granularity and semantic debt are not comprehensively
   asserted;
 - positioned reverse PPTX visuals can own caller-supplied renderer crops; capturable OPC graphs
@@ -41,7 +47,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 43 atomic fixtures and 7 real decks pin
+  retention, output-count, and raster-area records. All 44 atomic fixtures and 7 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural
@@ -88,8 +94,11 @@ This is the highest-leverage engineering change because all directions currently
 
 - Keep every top-level visual in the canonical ordered `SlideIR.contents` sequence. (Implemented.)
 - Add stable node IDs and source ownership/provenance. (Implemented for adopted nodes and active
-  HTML/PPTX visual adapters; group reconstruction remains pending.)
-- Preserve group and stacking relationships rather than flattening by default.
+  HTML/PPTX visual adapters, including the strict native shape-group subset.)
+- Preserve group and stacking relationships rather than flattening by default. (Implemented for
+  strict single-level, untransformed native shape groups and versioned recovery of valid direct-IR
+  transformed/connector groups after visible HTML lowering; arbitrary authored DOM grouping and
+  broader source-group admission remain.)
 - Attach source extensions and preservation payloads to their owning node/part. (Implemented for
   chart graphic frames and their transitive OPC dependencies; other preserved families remain.)
 - Model native, decomposed, hybrid, and layer relationships explicitly.
@@ -240,15 +249,19 @@ silently lowering the expected score.
 5. [ ] Add reverse visual layers for unknown PPTX nodes instead of HTML omission plus detached XML.
    The renderer-backed contract, EMU-accurate crop, HTML asset, attached source recovery, and
    slide-scoped visual gate are implemented for positioned owned nodes and proven on the external
-   chart. Automatic renderer policy and coverage of SmartArt, OLE, 3D, groups, and malformed nodes
-   remain before this item is complete.
+   chart. Unsupported native groups now retain attached source plus one slide-owned raster when
+   caller-supplied renderer pixels exist, or explicitly fail paint coverage without them;
+   automatic renderer policy and coverage of SmartArt, OLE, 3D, broader group forms, and malformed
+   nodes remain before this item is complete.
 6. [x] Add package/schema validation for generated and re-emitted decks. The package builder and
    capability/real-deck gates now enforce content types, relationship ownership/IDs/targets,
    namespaced relationship references, XML parseability, and the core presentation -> slide ->
    layout -> master -> theme structure. Full ECMA XSD and Strict/extension schemas remain under
    items 7 and 10 rather than being implied by this structural gate.
 7. [ ] Add groups, media, masters/layouts/placeholders, notes, and extensions to the real-deck
-   corpus.
+   corpus. One Apache POI group with four formula-backed custom-path children now retains native
+   group structure under its existing LibreOffice/Graph visual contract; the broader families
+   remain.
 8. [ ] Complete the remaining effect families. Implemented behavior and evidence live in the
    shared/PPTX inventories and executable manifests rather than this work queue. Remaining work is:
    typed/editable heterogeneous tree graphs; duplicate non-shadow effects; native-only repeatable

@@ -37,17 +37,20 @@ from domoxml.core.ir.effect_calibration import (
 )
 from domoxml.core.ir.effect_payload import decode_effect_payload, decode_effects
 from domoxml.core.ir.geometry_payload import decode_custom_geometry
+from domoxml.core.ir.group_payload import GroupMemberPayload, GroupPayload, decode_group_payload
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Blur,
     Box,
     CanvasNode,
     CharBullet,
+    Connector,
     Fill,
     FillOverlay,
     Geometry,
     Glow,
     GradientFill,
+    GroupNode,
     Hyperlink,
     Line,
     LineSpacing,
@@ -407,7 +410,9 @@ def _box(node: RenderedNode) -> Box:
 
 def _label(node: RenderedNode) -> str:
     snippet = node.text[:24].strip()
-    return f"<{node.tag}>" + (f" “{snippet}”" if snippet else "")
+    node_id = node.styles.get("domoxmlNodeId", "").strip()
+    identity = f"#{node_id}" if node_id else ""
+    return f"<{node.tag}>{identity}" + (f" “{snippet}”" if snippet else "")
 
 
 class _IdentityAllocator:
@@ -1202,6 +1207,268 @@ def _parse_transform(styles: dict[str, str]) -> Transform | None:
     return Transform(rotation_deg=rotation_deg, flip_h=flip_h, flip_v=flip_v)
 
 
+def _restore_group_child(
+    child: ShapeNode | GroupNode | Connector,
+    group: GroupNode,
+    original: GroupMemberPayload | None,
+) -> ShapeNode | GroupNode | Connector:
+    """Invert the HTML flattening map from slide space into the group's child space."""
+    provenance = child.provenance
+    if provenance is not None and provenance.owner_node_id is None:
+        provenance = provenance.model_copy(update={"owner_node_id": group.node_id})
+    if isinstance(child, Connector):
+        if original is None or original.start is None or original.end is None:
+            return child.model_copy(update={"provenance": provenance})
+        return child.model_copy(
+            update={
+                "start": original.start,
+                "end": original.end,
+                "provenance": provenance,
+            }
+        )
+    if original is not None and original.box is not None:
+        restored = original.box
+    else:
+        scale_x = group.box.width / group.child_box.width
+        scale_y = group.box.height / group.child_box.height
+        box = child.box
+        restored = Box(
+            x=round(group.child_box.x + (box.x - group.box.x) / scale_x),
+            y=round(group.child_box.y + (box.y - group.box.y) / scale_y),
+            width=round(box.width / scale_x),
+            height=round(box.height / scale_y),
+        )
+    return child.model_copy(update={"box": restored, "provenance": provenance})
+
+
+def _group_projection_is_fresh(source: RenderedNode, member: GroupMemberPayload) -> bool:
+    """Whether the captured member still matches the geometry that the payload describes."""
+    expected = member.projected_box
+    if expected is None:
+        return False
+    keys = (
+        "domoxmlGroupLayoutLeft",
+        "domoxmlGroupLayoutTop",
+        "domoxmlGroupLayoutWidth",
+        "domoxmlGroupLayoutHeight",
+    )
+    raw = tuple(source.styles.get(key) for key in keys)
+    if any(not value for value in raw):
+        return False
+    captured = tuple(parse_length_px(value) for value in raw)
+    expected_values = (expected.x, expected.y, expected.width, expected.height)
+    tolerance = px_to_emu(1 / 32)
+    return all(
+        abs(px_to_emu(value) - wanted) <= tolerance
+        for value, wanted in zip(captured, expected_values, strict=True)
+    )
+
+
+def _group_wrapper_projection_is_fresh(source: RenderedNode, payload: GroupPayload) -> bool:
+    """Whether the normalized wrapper still represents the encoded group projection."""
+    transform_value = source.styles.get("transform")
+    if is_complex_transform(transform_value) or _transform_has_translation(transform_value):
+        return False
+    actual_transform = _parse_transform(source.styles)
+    if source.styles.get("display") == "contents":
+        return payload.transform is None and actual_transform is None
+
+    keys = (
+        "domoxmlGroupWrapperLeft",
+        "domoxmlGroupWrapperTop",
+        "domoxmlGroupWrapperWidth",
+        "domoxmlGroupWrapperHeight",
+    )
+    raw = tuple(source.styles.get(key) for key in keys)
+    if any(not value for value in raw):
+        return False
+    captured = tuple(parse_length_px(value) for value in raw)
+    expected_values = (
+        payload.box.x,
+        payload.box.y,
+        payload.box.width,
+        payload.box.height,
+    )
+    tolerance = px_to_emu(1 / 32)
+    if not all(
+        abs(px_to_emu(value) - wanted) <= tolerance
+        for value, wanted in zip(captured, expected_values, strict=True)
+    ):
+        return False
+
+    expected_transform = payload.transform
+    if expected_transform is None or actual_transform is None:
+        return expected_transform is actual_transform
+    if (
+        abs(expected_transform.rotation_deg - actual_transform.rotation_deg) > 0.001
+        or expected_transform.flip_h != actual_transform.flip_h
+        or expected_transform.flip_v != actual_transform.flip_v
+    ):
+        return False
+    origin = source.styles.get("transformOrigin", "").split()
+    if len(origin) < 2:
+        return False
+    return (
+        abs(px_to_emu(parse_length_px(origin[0])) - payload.box.width / 2) <= tolerance
+        and abs(px_to_emu(parse_length_px(origin[1])) - payload.box.height / 2) <= tolerance
+    )
+
+
+def _transform_has_translation(value: str | None) -> bool:
+    """Return whether a CSS transform includes translation that group metadata cannot restore."""
+    if not value or value == "none":
+        return False
+    lowered = value.strip().lower()
+    if lowered.startswith("matrix(") and lowered.endswith(")"):
+        try:
+            components = tuple(
+                float(component.strip())
+                for component in lowered.removeprefix("matrix(").removesuffix(")").split(",")
+            )
+        except ValueError:
+            return True
+        return len(components) != 6 or abs(components[4]) > 1e-6 or abs(components[5]) > 1e-6
+    return "translate" in lowered
+
+
+def _reconstruct_groups(
+    nodes: tuple[RenderedNode, ...],
+    contents: list[Node],
+    coverage: list[CoverageItem],
+    identities: _IdentityAllocator,
+) -> tuple[list[Node], list[CoverageItem], tuple[ConversionWarning, ...]]:
+    """Replace normalized-HTML group children with their canonical ``GroupNode`` owner."""
+    group_sources = [node for node in nodes if node.styles.get("domoxmlGroup")]
+    extra_warnings: list[ConversionWarning] = []
+    for source in reversed(group_sources):
+        payload = decode_group_payload(source.styles.get("domoxmlGroup"))
+        if (
+            payload is None
+            or payload.box.width <= 0
+            or payload.box.height <= 0
+            or payload.child_box.width <= 0
+            or payload.child_box.height <= 0
+        ):
+            extra_warnings.append(
+                ConversionWarning(
+                    message="invalid normalized group payload; children left flattened",
+                    element=_label(source),
+                )
+            )
+            continue
+        direct_sources = [node for node in nodes if node.parent == source.index]
+        member_ids = [
+            member_id
+            for child in direct_sources
+            if (member_id := child.styles.get("domoxmlNodeId", "").strip())
+        ]
+        if len(member_ids) != len(direct_sources):
+            extra_warnings.append(
+                ConversionWarning(
+                    message=(
+                        "normalized group member is missing stable identity; "
+                        "children left flattened"
+                    ),
+                    element=_label(source),
+                )
+            )
+            continue
+        positions = [
+            index for index, candidate in enumerate(contents) if candidate.node_id in member_ids
+        ]
+        if len(positions) != len(member_ids) or not positions:
+            extra_warnings.append(
+                ConversionWarning(
+                    message=(
+                        "normalized group members could not be recovered exactly; "
+                        "children left flattened"
+                    ),
+                    element=_label(source),
+                )
+            )
+            continue
+        member_labels = [_label(child) for child in direct_sources]
+        coverage_positions = [
+            index for index, item in enumerate(coverage) if item.element in member_labels
+        ]
+        member_coverage = [coverage[index] for index in coverage_positions]
+        if len(coverage_positions) != len(direct_sources) or any(
+            item.representation is not Representation.NATIVE or item.output_count != 1
+            for item in member_coverage
+        ):
+            extra_warnings.append(
+                ConversionWarning(
+                    message=(
+                        "normalized group members did not retain exact native mappings; "
+                        "children left flattened"
+                    ),
+                    element=_label(source),
+                )
+            )
+            continue
+        members = [contents[position] for position in positions]
+        group_members = [
+            member for member in members if isinstance(member, ShapeNode | GroupNode | Connector)
+        ]
+        if len(group_members) != len(members):
+            extra_warnings.append(
+                ConversionWarning(
+                    message=(
+                        "normalized group contains an unsupported child; children left flattened"
+                    ),
+                    element=_label(source),
+                )
+            )
+            continue
+        original_members = {member.node_id: member for member in payload.members}
+        stale_members = [
+            child
+            for child in direct_sources
+            if (member_id := child.styles.get("domoxmlNodeId", "").strip())
+            and (
+                (original := original_members.get(member_id)) is None
+                or not _group_projection_is_fresh(child, original)
+            )
+        ]
+        if stale_members or not _group_wrapper_projection_is_fresh(source, payload):
+            reason = (
+                "normalized group or member projection changed after metadata was written; "
+                "visible members left flattened"
+            )
+            extra_warnings.append(ConversionWarning(message=reason, element=_label(source)))
+            for position in coverage_positions:
+                coverage[position] = coverage[position].model_copy(
+                    update={
+                        "representation": Representation.APPROXIMATED,
+                        "editability": Editability.COMPONENTS,
+                        "reason": reason,
+                    }
+                )
+            continue
+        shell = identities.apply(
+            GroupNode(
+                box=payload.box,
+                child_box=payload.child_box,
+                transform=payload.transform,
+            ),
+            source,
+        )
+        restored_children = tuple(
+            _restore_group_child(member, shell, original_members.get(member.node_id or ""))
+            for member in group_members
+        )
+        group = shell.model_copy(update={"children": restored_children})
+        first = min(positions)
+        for position in sorted(positions, reverse=True):
+            contents.pop(position)
+        contents.insert(first, group)
+        first_coverage = min(coverage_positions)
+        for position in sorted(coverage_positions, reverse=True):
+            coverage.pop(position)
+        coverage.insert(first_coverage, _native_coverage(_label(source)))
+    return contents, coverage, tuple(extra_warnings)
+
+
 def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     """Map every captured node to native OOXML where possible, rasterising only the residue.
 
@@ -1254,6 +1521,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # becomes the slide background, captured above).
         if slide_root is not None and node.index == slide_root.index:
             consumed.add(node.index)
+            continue
+
+        # Normalized group wrappers carry structural metadata but no independent paint.
+        # Their direct children remain eligible for extraction and are consolidated below.
+        if node.styles.get("domoxmlGroup"):
             continue
 
         preserved_payload = node.styles.get("domoxmlPreservedPayload")
@@ -1985,6 +2257,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if line_warning is not None:
             warnings.append(line_warning.model_copy(update={"element": _label(node)}))
 
+    contents, coverage, group_warnings = _reconstruct_groups(
+        rendered.nodes, contents, coverage, identities
+    )
+    warnings.extend(group_warnings)
     width = px_to_emu(rendered.width)
     height = px_to_emu(rendered.height)
     attached_owner_node_id: str | None = None

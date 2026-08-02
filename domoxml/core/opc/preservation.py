@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import posixpath
 from collections import deque
+from collections.abc import Callable
 from pathlib import PurePosixPath
 from xml.etree import ElementTree as StdElementTree
 from xml.etree.ElementTree import Element
@@ -169,18 +170,33 @@ def rewrite_root_xml(
     node: PreservedNode,
     *,
     shape_id: int,
+    allocate_shape_id: Callable[[], int],
     relationship_ids: dict[str, str],
 ) -> str:
-    """Rebind a preserved root element to new slide IDs and attach current node identity."""
+    """Rebind a preserved root and all descendants to unique slide-local shape IDs."""
     root = ElementTree.fromstring(node.payload.root_xml)
     for descendant in root.iter():
         for attribute, relationship_id in tuple(descendant.attrib.items()):
             if attribute.startswith(f"{{{_R}}}") and relationship_id in relationship_ids:
                 descendant.set(attribute, relationship_ids[relationship_id])
 
-    non_visual = root.find("./*/p:cNvPr", _NS)
-    if non_visual is not None:
-        non_visual.set("id", str(shape_id))
+    shape_id_map: dict[str, str] = {}
+    non_visuals = root.findall(".//p:cNvPr", _NS)
+    if non_visuals:
+        assigned_ids = [shape_id, *(allocate_shape_id() for _ in non_visuals[1:])]
+        for non_visual, assigned_id in zip(non_visuals, assigned_ids, strict=True):
+            source_id = non_visual.get("id")
+            rebound_id = str(assigned_id)
+            if source_id is not None:
+                shape_id_map[source_id] = rebound_id
+            non_visual.set("id", rebound_id)
+    for connection in (
+        *root.findall(f".//{{{_A}}}stCxn"),
+        *root.findall(f".//{{{_A}}}endCxn"),
+    ):
+        source_id = connection.get("id")
+        if source_id in shape_id_map:
+            connection.set("id", shape_id_map[source_id])
     application_properties = root.find("./*/p:nvPr", _NS)
     if application_properties is not None and node.node_id is not None:
         extension_list = application_properties.find("p:extLst", _NS)

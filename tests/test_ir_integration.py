@@ -8,19 +8,24 @@ from io import BytesIO
 import pytest
 from PIL import Image
 
+from domoxml import pptx_to_html
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import ExtractResult, extract_slide
+from domoxml.core.ir.group_payload import encode_group_payload
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Blur,
     Box,
     CharBullet,
     ClosePath,
+    Connector,
     CubicTo,
     CustomGeometry,
     FillOverlay,
     GradientFill,
     GradientStop,
+    GroupNode,
+    Line,
     PatternFill,
     PictureFill,
     Point,
@@ -40,10 +45,12 @@ from domoxml.core.ir.model import (
     TextBody,
     TextParagraph,
     TextRun,
+    Transform,
 )
 from domoxml.core.render import BrowserSession, compose_page
-from domoxml.core.roundtrip import inline_assets
+from domoxml.core.roundtrip import inline_assets, render_html_roundtrip
 from domoxml.core.units import pixels, px_to_emu
+from domoxml.slides import build_pptx, read_pptx
 from domoxml.types import Editability, Representation, SlideSize, SourceRetention, Theme
 
 pytestmark = pytest.mark.integration
@@ -492,6 +499,390 @@ async def test_browser_capture_preserves_canvas_identity_metadata() -> None:
     assert hero.provenance.source_format == "pptx"
     assert hero.provenance.source_id == "12"
     assert hero.provenance.source_part == "ppt/slides/slide1.xml"
+
+
+async def test_normalized_html_reingests_one_native_group_without_flattening() -> None:
+    group = GroupNode(
+        node_id="group-1",
+        box=Box(
+            x=px_to_emu(200),
+            y=px_to_emu(120),
+            width=px_to_emu(420),
+            height=px_to_emu(260),
+        ),
+        child_box=Box(
+            x=px_to_emu(10),
+            y=px_to_emu(20),
+            width=px_to_emu(210),
+            height=px_to_emu(130),
+        ),
+        children=(
+            ShapeNode(
+                node_id="group-1.1",
+                box=Box(
+                    x=px_to_emu(10),
+                    y=px_to_emu(20),
+                    width=px_to_emu(80),
+                    height=px_to_emu(50),
+                ),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+            ShapeNode(
+                node_id="group-1.2",
+                box=Box(
+                    x=px_to_emu(120),
+                    y=px_to_emu(50),
+                    width=px_to_emu(90),
+                    height=px_to_emu(80),
+                ),
+                fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+            ),
+        ),
+    )
+    serialized = inline_assets(
+        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(group,))])
+    )
+
+    result = await _render_and_extract_result(
+        f"<style>{serialized.css}</style>{serialized.slides[0].html}"
+    )
+    recovered_slide = result.slide
+
+    [recovered] = recovered_slide.contents
+    assert isinstance(recovered, GroupNode)
+    assert recovered.node_id == group.node_id
+    assert recovered.box == group.box
+    assert recovered.child_box == group.child_box
+    assert [child.node_id for child in recovered.children] == [
+        child.node_id for child in group.children
+    ]
+    recovered_shapes = [child for child in recovered.children if isinstance(child, ShapeNode)]
+    expected_shapes = [child for child in group.children if isinstance(child, ShapeNode)]
+    assert len(recovered_shapes) == len(recovered.children)
+    assert [child.box for child in recovered_shapes] == [child.box for child in expected_shapes]
+    [coverage] = result.coverage
+    assert coverage.representation is Representation.NATIVE
+    assert coverage.editability is Editability.SEMANTIC
+    assert coverage.output_count == 1
+    assert not any(
+        "flattened" in warning.message or "projection changed" in warning.message
+        for warning in result.warnings
+    )
+
+
+async def test_authored_transformed_connector_group_converges_through_normalized_html() -> None:
+    source = GroupNode(
+        node_id="authored-group",
+        box=Box(
+            x=px_to_emu(180),
+            y=px_to_emu(120),
+            width=px_to_emu(360),
+            height=px_to_emu(220),
+        ),
+        child_box=Box(x=0, y=0, width=px_to_emu(180), height=px_to_emu(110)),
+        children=(
+            ShapeNode(
+                node_id="authored-shape",
+                box=Box(x=0, y=0, width=px_to_emu(80), height=px_to_emu(60)),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+            Connector(
+                node_id="authored-connector",
+                start=Point(x=px_to_emu(30), y=px_to_emu(20)),
+                end=Point(x=px_to_emu(150), y=px_to_emu(90)),
+                line=Line(color=Rgba(r=15, g=23, b=42), width_emu=12_700),
+            ),
+        ),
+        transform=Transform(rotation_deg=15),
+    )
+    recovered = source
+
+    for _ in range(2):
+        serialized = inline_assets(
+            serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(recovered,))])
+        )
+        assert any("visibly flattened" in warning.message for warning in serialized.warnings)
+        result = await _render_and_extract_result(
+            f"<style>{serialized.css}</style>{serialized.slides[0].html}"
+        )
+        [candidate] = result.slide.contents
+        assert isinstance(candidate, GroupNode)
+        recovered = candidate
+
+    assert recovered.node_id == source.node_id
+    assert recovered.box == source.box
+    assert recovered.child_box == source.child_box
+    assert recovered.transform == source.transform
+    assert [child.node_id for child in recovered.children] == [
+        child.node_id for child in source.children
+    ]
+    recovered_shape, recovered_connector = recovered.children
+    source_shape, source_connector = source.children
+    assert isinstance(recovered_shape, ShapeNode)
+    assert isinstance(source_shape, ShapeNode)
+    assert recovered_shape.box == source_shape.box
+    assert isinstance(recovered_connector, Connector)
+    assert isinstance(source_connector, Connector)
+    assert recovered_connector.start == source_connector.start
+    assert recovered_connector.end == source_connector.end
+
+
+async def test_stale_group_geometry_does_not_override_a_visible_html_edit() -> None:
+    source = GroupNode(
+        node_id="editable-group",
+        box=Box(
+            x=px_to_emu(200),
+            y=px_to_emu(100),
+            width=px_to_emu(300),
+            height=px_to_emu(180),
+        ),
+        child_box=Box(x=0, y=0, width=px_to_emu(300), height=px_to_emu(180)),
+        children=(
+            ShapeNode(
+                node_id="edited-child",
+                box=Box(x=0, y=0, width=px_to_emu(120), height=px_to_emu(80)),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+        ),
+    )
+    serialized = inline_assets(
+        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(source,))])
+    )
+    html = serialized.slides[0].html
+    assert "left:200px" in html
+    edited_html = html.replace("left:200px", "left:240px", 1)
+
+    result = await _render_and_extract_result(f"<style>{serialized.css}</style>{edited_html}")
+
+    [edited] = result.slide.contents
+    assert isinstance(edited, ShapeNode)
+    assert edited.node_id == "edited-child"
+    assert edited.box.x == px_to_emu(240)
+    assert any("projection changed" in warning.message for warning in result.warnings)
+    [coverage] = result.coverage
+    assert coverage.representation is Representation.APPROXIMATED
+    assert "left flattened" in coverage.reason
+
+
+async def test_stale_group_wrapper_geometry_or_transform_does_not_override_html_edits() -> None:
+    source = GroupNode(
+        node_id="moved-group",
+        box=Box(
+            x=px_to_emu(180),
+            y=px_to_emu(100),
+            width=px_to_emu(300),
+            height=px_to_emu(180),
+        ),
+        child_box=Box(x=0, y=0, width=px_to_emu(300), height=px_to_emu(180)),
+        children=(
+            ShapeNode(
+                node_id="moved-child",
+                box=Box(x=0, y=0, width=px_to_emu(120), height=px_to_emu(80)),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+            Connector(
+                node_id="moved-connector",
+                start=Point(x=px_to_emu(20), y=px_to_emu(20)),
+                end=Point(x=px_to_emu(240), y=px_to_emu(140)),
+                line=Line(color=Rgba(r=15, g=23, b=42), width_emu=12_700),
+            ),
+        ),
+    )
+    serialized = inline_assets(
+        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(source,))])
+    )
+    html = serialized.slides[0].html
+    assert "left:180px" in html
+    edited_html = html.replace("left:180px", "left:220px", 1)
+
+    result = await _render_and_extract_result(f"<style>{serialized.css}</style>{edited_html}")
+
+    assert all(not isinstance(node, GroupNode) for node in result.slide.contents)
+    moved = next(node for node in result.slide.contents if node.node_id == "moved-child")
+    assert isinstance(moved, ShapeNode)
+    assert moved.box.x == px_to_emu(220)
+    assert any("projection changed" in warning.message for warning in result.warnings)
+    assert all(item.representation is Representation.APPROXIMATED for item in result.coverage)
+
+    for transform in ("translateX(40px)", "scale(1.2)"):
+        transformed_html = html.replace(
+            "overflow:visible", f"overflow:visible;transform:{transform}", 1
+        )
+        transformed = await _render_and_extract_result(
+            f"<style>{serialized.css}</style>{transformed_html}"
+        )
+        assert all(not isinstance(node, GroupNode) for node in transformed.slide.contents)
+        assert any("projection changed" in warning.message for warning in transformed.warnings)
+        assert all(
+            item.representation is Representation.APPROXIMATED for item in transformed.coverage
+        )
+
+
+async def test_invalid_normalized_group_payload_leaves_visible_children_flattened() -> None:
+    result = await _render_and_extract_result(
+        '<div class="domoxml-slide" style="width:1280px;height:720px">'
+        '<div data-domoxml-node-id="broken-group" data-domoxml-group="not-base64" '
+        'style="display:contents">'
+        '<div data-domoxml-node-id="child-a" style="position:absolute;left:100px;top:80px;'
+        'width:140px;height:90px;background:#ef4444"></div>'
+        '<div data-domoxml-node-id="child-b" style="position:absolute;left:260px;top:120px;'
+        'width:120px;height:100px;background:#2563eb"></div>'
+        "</div></div>"
+    )
+
+    assert [node.node_id for node in result.slide.contents] == ["child-a", "child-b"]
+    assert all(isinstance(node, ShapeNode) for node in result.slide.contents)
+    assert any("invalid normalized group payload" in warning.message for warning in result.warnings)
+
+
+async def test_zero_size_normalized_group_box_leaves_visible_children_flattened() -> None:
+    payload = encode_group_payload(
+        box=Box(x=px_to_emu(100), y=px_to_emu(80), width=0, height=px_to_emu(100)),
+        child_box=Box(x=0, y=0, width=px_to_emu(140), height=px_to_emu(90)),
+    )
+    result = await _render_and_extract_result(
+        '<div class="domoxml-slide" style="width:1280px;height:720px">'
+        f'<div data-domoxml-node-id="zero-group" data-domoxml-group="{payload}" '
+        'style="display:contents">'
+        '<div data-domoxml-node-id="child-a" style="position:absolute;left:100px;top:80px;'
+        'width:140px;height:90px;background:#ef4444"></div>'
+        "</div></div>"
+    )
+
+    [child] = result.slide.contents
+    assert isinstance(child, ShapeNode)
+    assert child.node_id == "child-a"
+    assert any("invalid normalized group payload" in warning.message for warning in result.warnings)
+
+
+async def test_normalized_group_requires_stable_identity_on_every_child() -> None:
+    payload = encode_group_payload(
+        box=Box(
+            x=px_to_emu(100),
+            y=px_to_emu(80),
+            width=px_to_emu(300),
+            height=px_to_emu(180),
+        ),
+        child_box=Box(x=0, y=0, width=px_to_emu(300), height=px_to_emu(180)),
+    )
+    result = await _render_and_extract_result(
+        '<div class="domoxml-slide" style="width:1280px;height:720px">'
+        f'<div data-domoxml-node-id="partial-group" data-domoxml-group="{payload}" '
+        'style="display:contents">'
+        '<div data-domoxml-node-id="child-a" style="position:absolute;left:100px;top:80px;'
+        'width:140px;height:90px;background:#ef4444"></div>'
+        '<div style="position:absolute;left:260px;top:120px;width:120px;height:100px;'
+        'background:#2563eb"></div>'
+        "</div></div>"
+    )
+
+    assert len(result.slide.contents) == 2
+    assert all(isinstance(child, ShapeNode) for child in result.slide.contents)
+    assert any("missing stable identity" in warning.message for warning in result.warnings)
+
+
+def test_native_group_converges_across_two_normalized_html_cycles() -> None:
+    group = GroupNode(
+        node_id="group-1",
+        box=Box(
+            x=px_to_emu(200),
+            y=px_to_emu(120),
+            width=px_to_emu(420),
+            height=px_to_emu(260),
+        ),
+        child_box=Box(
+            x=px_to_emu(10),
+            y=px_to_emu(20),
+            width=px_to_emu(210),
+            height=px_to_emu(130),
+        ),
+        children=(
+            ShapeNode(
+                node_id="group-1.1",
+                box=Box(
+                    x=px_to_emu(10),
+                    y=px_to_emu(20),
+                    width=px_to_emu(80),
+                    height=px_to_emu(50),
+                ),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+            ShapeNode(
+                node_id="group-1.2",
+                box=Box(
+                    x=px_to_emu(120),
+                    y=px_to_emu(50),
+                    width=px_to_emu(90),
+                    height=px_to_emu(80),
+                ),
+                fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+            ),
+        ),
+    )
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(group,))], faces=[])
+
+    for _ in range(2):
+        html = pptx_to_html(pptx)
+        assert 'data-domoxml-group="' in html.slides[0].html
+        result = render_html_roundtrip(html)
+        assert result.pptx is not None
+        pptx = result.pptx
+
+    [recovered] = read_pptx(pptx)[0].contents
+    assert isinstance(recovered, GroupNode)
+    assert recovered.node_id == group.node_id
+    assert recovered.box == group.box
+    assert recovered.child_box == group.child_box
+    assert [child.node_id for child in recovered.children] == [
+        child.node_id for child in group.children
+    ]
+    recovered_shapes = [child for child in recovered.children if isinstance(child, ShapeNode)]
+    expected_shapes = [child for child in group.children if isinstance(child, ShapeNode)]
+    assert len(recovered_shapes) == len(recovered.children)
+    assert [child.box for child in recovered_shapes] == [child.box for child in expected_shapes]
+
+
+def test_native_group_keeps_its_top_level_position_between_siblings() -> None:
+    before = ShapeNode(
+        node_id="before",
+        box=Box(x=px_to_emu(40), y=px_to_emu(40), width=px_to_emu(100), height=px_to_emu(80)),
+        fill=SolidFill(color=Rgba(r=15, g=23, b=42)),
+    )
+    group = GroupNode(
+        node_id="group",
+        box=Box(x=px_to_emu(200), y=px_to_emu(120), width=px_to_emu(300), height=px_to_emu(180)),
+        child_box=Box(x=0, y=0, width=px_to_emu(300), height=px_to_emu(180)),
+        children=(
+            ShapeNode(
+                node_id="group-child",
+                box=Box(x=0, y=0, width=px_to_emu(300), height=px_to_emu(180)),
+                fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+            ),
+        ),
+    )
+    after = ShapeNode(
+        node_id="after",
+        box=Box(x=px_to_emu(540), y=px_to_emu(320), width=px_to_emu(100), height=px_to_emu(80)),
+        fill=SolidFill(color=Rgba(r=245, g=158, b=11)),
+    )
+    pptx = build_pptx(
+        [
+            SlideIR(
+                width=12_192_000,
+                height=6_858_000,
+                contents=(before, group, after),
+            )
+        ],
+        faces=[],
+    )
+
+    html = pptx_to_html(pptx)
+    rebuilt = render_html_roundtrip(html)
+    assert rebuilt.pptx is not None
+    recovered = read_pptx(rebuilt.pptx)[0]
+
+    assert [node.node_id for node in recovered.contents] == ["before", "group", "after"]
+    assert isinstance(recovered.contents[1], GroupNode)
 
 
 async def test_browser_capture_restores_attached_preservation_payload() -> None:

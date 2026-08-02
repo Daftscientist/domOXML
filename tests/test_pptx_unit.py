@@ -4,17 +4,24 @@ from __future__ import annotations
 
 import io
 import zipfile
+from xml.etree import ElementTree
 
 import pytest
+from PIL import Image
 from pptx import Presentation as PptxRead  # test-only validator
 
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
     CharBullet,
+    Connector,
+    GroupNode,
     Hyperlink,
+    Line,
     LineSpacing,
     PictureFill,
+    Point,
+    PortableFallback,
     PreservationPart,
     PreservationPayload,
     PreservedNode,
@@ -26,8 +33,11 @@ from domoxml.core.ir.model import (
     TextBody,
     TextParagraph,
     TextRun,
+    Transform,
 )
-from domoxml.slides import build_pptx
+from domoxml.core.opc import OpcPackage, write_package
+from domoxml.slides import build_pptx, read_pptx, read_pptx_result
+from domoxml.types import Editability, Representation, SourceRetention
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
@@ -117,6 +127,431 @@ def test_build_pptx_opens_and_keeps_text_editable() -> None:
         if shape.has_text_frame:
             texts.append(shape.text_frame.text)  # pyright: ignore  (python-pptx stubs)
     assert "Driftwood" in texts  # real editable text run, not a rasterised image
+
+
+def test_native_group_round_trips_through_pptx_as_one_editable_group() -> None:
+    children = (
+        ShapeNode(
+            box=Box(x=100_000, y=200_000, width=800_000, height=500_000),
+            fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+        ),
+        ShapeNode(
+            box=Box(x=1_000_000, y=350_000, width=600_000, height=700_000),
+            fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+        ),
+    )
+    group = GroupNode(
+        node_id="group-1",
+        box=Box(x=2_000_000, y=1_000_000, width=3_200_000, height=2_100_000),
+        child_box=Box(x=100_000, y=200_000, width=1_500_000, height=850_000),
+        children=children,
+    )
+
+    [recovered] = read_pptx(
+        build_pptx(
+            [SlideIR(width=12_192_000, height=6_858_000, contents=(group,))],
+            faces=[],
+        )
+    )[0].contents
+
+    assert isinstance(recovered, GroupNode)
+    assert recovered.node_id == "group-1"
+    assert recovered.box == group.box
+    assert recovered.child_box == group.child_box
+    recovered_shapes = [child for child in recovered.children if isinstance(child, ShapeNode)]
+    expected_shapes = [child for child in group.children if isinstance(child, ShapeNode)]
+    assert len(recovered_shapes) == len(recovered.children)
+    assert [child.box for child in recovered_shapes] == [child.box for child in expected_shapes]
+    assert [child.fill for child in recovered_shapes] == [child.fill for child in expected_shapes]
+
+
+def test_native_group_reverse_coverage_reports_retained_group_semantics() -> None:
+    group = GroupNode(
+        box=Box(x=2_000_000, y=1_000_000, width=3_200_000, height=2_100_000),
+        child_box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
+        children=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=800_000, height=500_000),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+            ShapeNode(
+                box=Box(x=900_000, y=350_000, width=600_000, height=700_000),
+                fill=SolidFill(color=Rgba(r=37, g=99, b=235)),
+            ),
+        ),
+    )
+
+    result = read_pptx_result(
+        build_pptx(
+            [SlideIR(width=12_192_000, height=6_858_000, contents=(group,))],
+            faces=[],
+        )
+    )
+
+    [coverage] = result.coverage.items
+    assert coverage.representation is Representation.NATIVE
+    assert coverage.editability is Editability.SEMANTIC
+    assert coverage.source_retention is SourceRetention.NOT_REQUIRED
+    assert coverage.output_count == 1
+
+
+def test_group_with_unsupported_child_retains_source_with_honest_rasterized_visual() -> None:
+    group = GroupNode(
+        box=Box(x=2_000_000, y=1_000_000, width=3_200_000, height=2_100_000),
+        child_box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
+        children=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=800_000, height=500_000),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+        ),
+    )
+    package = OpcPackage.from_bytes(
+        build_pptx(
+            [
+                SlideIR(
+                    width=12_192_000,
+                    height=6_858_000,
+                    contents=(
+                        group,
+                        ShapeNode(
+                            box=Box(
+                                x=3_000_000,
+                                y=1_500_000,
+                                width=2_000_000,
+                                height=1_500_000,
+                            ),
+                            fill=SolidFill(color=Rgba(r=245, g=158, b=11, a=0.6)),
+                        ),
+                    ),
+                )
+            ],
+            faces=[],
+        )
+    )
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    slide_part = "ppt/slides/slide1.xml"
+    root = ElementTree.fromstring(parts[slide_part])
+    native_group = root.find(".//{http://schemas.openxmlformats.org/presentationml/2006/main}grpSp")
+    assert native_group is not None
+    ElementTree.SubElement(
+        native_group,
+        "{http://schemas.openxmlformats.org/presentationml/2006/main}contentPart",
+    )
+    parts[slide_part] = ElementTree.tostring(root)
+    source = write_package(parts)
+    fallback = io.BytesIO()
+    Image.new("RGB", (1280, 720), "#f8fafc").save(fallback, "PNG")
+
+    result = read_pptx_result(source, fallback_pngs=[fallback.getvalue()])
+
+    preserved, sibling = result.slides[0].contents
+    assert isinstance(preserved, PreservedNode)
+    assert isinstance(sibling, ShapeNode)
+    assert preserved.payload.kind == "grpSp"
+    assert preserved.fallback is None
+    assert result.slides[0].renderer_fallback is not None
+    assert result.slides[0].renderer_fallback_owner_node_id == preserved.node_id
+    rasterized = next(
+        item for item in result.coverage.items if item.representation is Representation.RASTERIZED
+    )
+    assert rasterized.editability is Editability.NONE
+    assert rasterized.source_retention is SourceRetention.ATTACHED
+    assert rasterized.raster_area_emu2 == 12_192_000 * 6_858_000
+    rebuilt_package = OpcPackage.from_bytes(build_pptx(list(result.slides), faces=[]))
+    rebuilt = rebuilt_package.read(slide_part)
+    assert b"<p:grpSp" in rebuilt
+    assert b"<p:contentPart" in rebuilt
+    root = ElementTree.fromstring(rebuilt)
+    ids = [
+        element.get("id")
+        for element in root.findall(
+            ".//{http://schemas.openxmlformats.org/presentationml/2006/main}cNvPr"
+        )
+    ]
+    assert len(ids) == len(set(ids))
+
+
+def test_transformed_group_stays_owned_until_group_transform_html_is_exact() -> None:
+    group = GroupNode(
+        box=Box(x=2_000_000, y=1_000_000, width=3_200_000, height=2_100_000),
+        child_box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
+        children=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=800_000, height=500_000),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+        ),
+        transform=Transform(rotation_deg=15),
+    )
+    source = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(group,))], faces=[])
+    fallback = io.BytesIO()
+    Image.new("RGB", (1280, 720), "#f8fafc").save(fallback, "PNG")
+
+    result = read_pptx_result(source, fallback_pngs=[fallback.getvalue()])
+
+    [preserved] = result.slides[0].contents
+    assert isinstance(preserved, PreservedNode)
+    assert preserved.payload.kind == "grpSp"
+    assert preserved.fallback is None
+    assert result.slides[0].renderer_fallback is not None
+    assert result.slides[0].renderer_fallback_owner_node_id == preserved.node_id
+    [coverage] = result.coverage.items
+    assert coverage.representation is Representation.RASTERIZED
+    assert coverage.editability is Editability.NONE
+    assert coverage.source_retention is SourceRetention.ATTACHED
+
+    without_renderer = read_pptx_result(source)
+    [preserved_without_renderer] = without_renderer.slides[0].contents
+    assert isinstance(preserved_without_renderer, PreservedNode)
+    assert preserved_without_renderer.fallback is None
+    assert without_renderer.slides[0].renderer_fallback is None
+    [failed] = without_renderer.coverage.items
+    assert failed.representation is Representation.FAILED
+    assert failed.editability is Editability.NONE
+    assert failed.source_retention is SourceRetention.ATTACHED
+
+
+def test_nested_group_retains_source_until_nested_html_reconstruction_is_proven() -> None:
+    inner = GroupNode(
+        box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
+        child_box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
+        children=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=800_000, height=500_000),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+        ),
+    )
+    outer = GroupNode(
+        box=Box(x=2_000_000, y=1_000_000, width=3_200_000, height=2_100_000),
+        child_box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
+        children=(inner,),
+    )
+    source = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(outer,))], faces=[])
+    fallback = io.BytesIO()
+    Image.new("RGB", (1280, 720), "#f8fafc").save(fallback, "PNG")
+
+    result = read_pptx_result(source, fallback_pngs=[fallback.getvalue()])
+
+    [preserved] = result.slides[0].contents
+    assert isinstance(preserved, PreservedNode)
+    assert preserved.payload.kind == "grpSp"
+    assert preserved.fallback is None
+    assert result.slides[0].renderer_fallback is not None
+    assert result.slides[0].renderer_fallback_owner_node_id == preserved.node_id
+    [coverage] = result.coverage.items
+    assert coverage.representation is Representation.RASTERIZED
+    assert coverage.source_retention is SourceRetention.ATTACHED
+
+
+def test_multiple_unsupported_groups_keep_one_owner_and_explicit_remaining_debt() -> None:
+    first = GroupNode(
+        node_id="unsupported-group-1",
+        box=Box(x=1_000_000, y=1_000_000, width=2_000_000, height=1_500_000),
+        child_box=Box(x=0, y=0, width=1_000_000, height=750_000),
+        children=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=1_000_000, height=750_000),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+        ),
+        transform=Transform(rotation_deg=10),
+    )
+    second = first.model_copy(
+        update={
+            "node_id": "unsupported-group-2",
+            "box": Box(x=4_000_000, y=2_500_000, width=2_000_000, height=1_500_000),
+            "transform": Transform(rotation_deg=-12),
+        }
+    )
+    source = build_pptx(
+        [SlideIR(width=12_192_000, height=6_858_000, contents=(first, second))],
+        faces=[],
+    )
+    fallback = io.BytesIO()
+    Image.new("RGB", (1280, 720), "#f8fafc").save(fallback, "PNG")
+
+    result = read_pptx_result(source, fallback_pngs=[fallback.getvalue()])
+
+    first_preserved, second_preserved = result.slides[0].contents
+    assert isinstance(first_preserved, PreservedNode)
+    assert isinstance(second_preserved, PreservedNode)
+    assert first_preserved.node_id != second_preserved.node_id
+    assert result.slides[0].renderer_fallback_owner_node_id == first_preserved.node_id
+    representations = [item.representation for item in result.coverage.items]
+    assert representations.count(Representation.RASTERIZED) == 1
+    assert representations.count(Representation.FAILED) == 1
+    failed = next(
+        item for item in result.coverage.items if item.representation is Representation.FAILED
+    )
+    assert failed.source_retention is SourceRetention.ATTACHED
+
+
+def test_preserved_group_rewrites_connector_shape_id_references() -> None:
+    group = GroupNode(
+        box=Box(x=1_000_000, y=1_000_000, width=3_000_000, height=2_000_000),
+        child_box=Box(x=0, y=0, width=3_000_000, height=2_000_000),
+        children=(
+            ShapeNode(box=Box(x=0, y=0, width=500_000, height=500_000)),
+            ShapeNode(box=Box(x=2_000_000, y=1_000_000, width=500_000, height=500_000)),
+            Connector(
+                start=Point(x=500_000, y=500_000),
+                end=Point(x=2_000_000, y=1_000_000),
+                line=Line(color=Rgba(r=15, g=23, b=42), width_emu=12_700),
+            ),
+        ),
+    )
+    package = OpcPackage.from_bytes(
+        build_pptx(
+            [
+                SlideIR(
+                    width=12_192_000,
+                    height=6_858_000,
+                    contents=(
+                        group,
+                        ShapeNode(box=Box(x=5_000_000, y=1_000_000, width=500_000, height=500_000)),
+                    ),
+                )
+            ],
+            faces=[],
+        )
+    )
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    slide_part = "ppt/slides/slide1.xml"
+    root = ElementTree.fromstring(parts[slide_part])
+    namespace = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    drawing_namespace = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    native_group = root.find(f".//{{{namespace}}}grpSp")
+    assert native_group is not None
+    non_visuals = native_group.findall(f".//{{{namespace}}}cNvPr")
+    for non_visual, shape_id in zip(non_visuals, (100, 220, 340, 460), strict=True):
+        non_visual.set("id", str(shape_id))
+    connection_properties = native_group.find(f".//{{{namespace}}}cNvCxnSpPr")
+    assert connection_properties is not None
+    ElementTree.SubElement(
+        connection_properties,
+        f"{{{drawing_namespace}}}stCxn",
+        {"id": "220", "idx": "0"},
+    )
+    ElementTree.SubElement(
+        connection_properties,
+        f"{{{drawing_namespace}}}endCxn",
+        {"id": "340", "idx": "0"},
+    )
+    parts[slide_part] = ElementTree.tostring(root)
+    source = write_package(parts)
+    fallback = io.BytesIO()
+    Image.new("RGB", (1280, 720), "white").save(fallback, "PNG")
+
+    result = read_pptx_result(source, fallback_pngs=[fallback.getvalue()])
+    rebuilt = OpcPackage.from_bytes(build_pptx(list(result.slides), faces=[])).read(slide_part)
+    rebuilt_root = ElementTree.fromstring(rebuilt)
+    rebuilt_group = rebuilt_root.find(f".//{{{namespace}}}grpSp")
+    assert rebuilt_group is not None
+    child_ids = [
+        element.get("id")
+        for element in rebuilt_group.findall(
+            f"./{{{namespace}}}sp/{{{namespace}}}nvSpPr/{{{namespace}}}cNvPr"
+        )
+    ]
+    start = rebuilt_group.find(f".//{{{drawing_namespace}}}stCxn")
+    end = rebuilt_group.find(f".//{{{drawing_namespace}}}endCxn")
+    assert start is not None and end is not None
+    assert [start.get("id"), end.get("id")] == child_ids
+    assert child_ids != ["220", "340"]
+
+
+def test_authored_group_emits_picture_child_with_its_media_relationship() -> None:
+    image = io.BytesIO()
+    Image.new("RGB", (16, 16), "#2563eb").save(image, "PNG")
+    group = GroupNode(
+        box=Box(x=2_000_000, y=1_000_000, width=3_200_000, height=2_100_000),
+        child_box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
+        children=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=800_000, height=500_000),
+                fill=PictureFill(data=image.getvalue(), ext="png"),
+            ),
+        ),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(group,))], faces=[])
+
+    slide_xml = _slide_xml(pptx)
+    assert "<p:grpSp>" in slide_xml
+    assert "<p:pic>" in slide_xml
+    assert "r:embed=" in slide_xml
+    assert "relationships/image" in _slide_rels(pptx)
+    [recovered] = read_pptx(pptx)[0].contents
+    assert isinstance(recovered, GroupNode)
+    [picture] = recovered.children
+    assert isinstance(picture, ShapeNode)
+    assert isinstance(picture.fill, PictureFill)
+    assert picture.fill.data == image.getvalue()
+
+
+def test_authored_group_emits_portable_child_fallback_without_failing_the_deck() -> None:
+    image = io.BytesIO()
+    Image.new("RGBA", (16, 16), (37, 99, 235, 180)).save(image, "PNG")
+    child = ShapeNode(
+        box=Box(x=0, y=0, width=800_000, height=500_000),
+        fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+        portable_fallback=PortableFallback(
+            box=Box(x=-100_000, y=-100_000, width=1_000_000, height=700_000),
+            picture=PictureFill(data=image.getvalue(), ext="png"),
+        ),
+    )
+    group = GroupNode(
+        box=Box(x=2_000_000, y=1_000_000, width=3_200_000, height=2_100_000),
+        child_box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
+        children=(child,),
+    )
+
+    pptx = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(group,))], faces=[])
+
+    slide_xml = _slide_xml(pptx)
+    assert "<p:grpSp>" in slide_xml
+    assert "<mc:AlternateContent" in slide_xml
+    assert "<mc:Fallback><p:pic>" in slide_xml
+    assert "relationships/image" in _slide_rels(pptx)
+
+
+def test_grouped_text_hyperlink_retains_its_slide_relationship() -> None:
+    hyperlink = Hyperlink(url="https://example.com/grouped")
+    group = GroupNode(
+        box=Box(x=2_000_000, y=1_000_000, width=3_200_000, height=2_100_000),
+        child_box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
+        children=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
+                text=TextBody(
+                    paragraphs=(
+                        TextParagraph(
+                            runs=(
+                                TextRun(
+                                    text="Grouped link",
+                                    font_family="Arial",
+                                    size_pt=18,
+                                    hyperlink=hyperlink,
+                                ),
+                            )
+                        ),
+                    )
+                ),
+            ),
+        ),
+    )
+
+    [recovered] = read_pptx(
+        build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(group,))], faces=[])
+    )[0].contents
+
+    assert isinstance(recovered, GroupNode)
+    child = recovered.children[0]
+    assert isinstance(child, ShapeNode)
+    assert child.text is not None
+    assert child.text.paragraphs[0].runs[0].hyperlink == hyperlink
 
 
 def test_pure_picture_fill_emits_native_picture_with_crop() -> None:

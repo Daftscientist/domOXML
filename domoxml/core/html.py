@@ -19,9 +19,12 @@ from domoxml.core.ir.effect_calibration import (
 )
 from domoxml.core.ir.effect_payload import encode_effects
 from domoxml.core.ir.geometry_payload import encode_custom_geometry
+from domoxml.core.ir.group import group_html_roundtrip_error
+from domoxml.core.ir.group_payload import encode_group_payload
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Blur,
+    Box,
     CanvasNode,
     CharBullet,
     ColorSpec,
@@ -37,6 +40,7 @@ from domoxml.core.ir.model import (
     Node,
     PatternFill,
     PictureFill,
+    Point,
     Reflection,
     Rgba,
     Shadow,
@@ -823,10 +827,87 @@ def _text_html(body: TextBody | None, warnings: list[ConversionWarning] | None =
     return "".join(result)
 
 
+def _group_fallback_html(
+    group: GroupNode,
+    reason: str,
+    assets: dict[str, HtmlAsset],
+    warnings: list[ConversionWarning],
+) -> str:
+    """Visibly flatten a valid group that is outside the structural round-trip subset."""
+    if (
+        group.box.width <= 0
+        or group.box.height <= 0
+        or group.child_box.width <= 0
+        or group.child_box.height <= 0
+    ):
+        raise ValueError(f"cannot flatten invalid group: {reason}")
+    warnings.append(
+        ConversionWarning(
+            message=f"group visibly flattened for HTML: {reason}",
+            element=group.node_id or "<group>",
+        )
+    )
+    scale_x = group.box.width / group.child_box.width
+    scale_y = group.box.height / group.child_box.height
+
+    def local_point(point: Point) -> Point:
+        return Point(
+            x=round((point.x - group.child_box.x) * scale_x),
+            y=round((point.y - group.child_box.y) * scale_y),
+        )
+
+    parts: list[str] = []
+    projected_children: list[ShapeNode | GroupNode | Connector] = []
+    for child in group.children:
+        if isinstance(child, ShapeNode | GroupNode):
+            box = child.box
+            remapped = child.model_copy(
+                update={
+                    "box": Box(
+                        x=round((box.x - group.child_box.x) * scale_x),
+                        y=round((box.y - group.child_box.y) * scale_y),
+                        width=round(box.width * scale_x),
+                        height=round(box.height * scale_y),
+                    )
+                }
+            )
+        else:
+            remapped = child.model_copy(
+                update={"start": local_point(child.start), "end": local_point(child.end)}
+            )
+        projected_children.append(remapped)
+        parts.append(_node_html(remapped, assets, warnings))
+
+    styles = [
+        "position:absolute",
+        f"left:{_px(group.box.x)}",
+        f"top:{_px(group.box.y)}",
+        f"width:{_px(group.box.width)}",
+        f"height:{_px(group.box.height)}",
+        "overflow:visible",
+    ]
+    if transform := _transform_css(group.transform):
+        styles.extend((f"transform:{transform}", "transform-origin:center center"))
+    payload = encode_group_payload(
+        box=group.box,
+        child_box=group.child_box,
+        transform=group.transform,
+        children=group.children,
+        projected_children=tuple(projected_children),
+    )
+    return (
+        f'<div class="domoxml-group-fallback"{_identity_attrs(group)} '
+        f'data-domoxml-group="{payload}" '
+        f'data-domoxml-group-flattened="{escape(reason, quote=True)}" '
+        f'style="{escape(";".join(styles), quote=True)}">'
+        f"{''.join(parts)}</div>"
+    )
+
+
 def _group_html(
     group: GroupNode, assets: dict[str, HtmlAsset], warnings: list[ConversionWarning]
 ) -> str:
-    """Flatten a :class:`GroupNode` to HTML.
+    """Project an admitted :class:`GroupNode` to normalized HTML.
 
     OOXML groups define a child coordinate space (``a:chOff``/``a:chExt``) which may differ
     from the group's slide-space extent (``a:off``/``a:ext``).  Each child's position within
@@ -837,11 +918,15 @@ def _group_html(
         scale_x       = grp_ext_cx / grp_chExt_cx
         scale_y       = grp_ext_cy / grp_chExt_cy
 
-    The resulting children are emitted as flat positioned ``<div>`` elements (no wrapper div),
-    which keeps the HTML simple and consistent with the extractor's flat output.
+    The resulting children remain visually flat, but a ``display:contents`` metadata wrapper
+    retains group identity and its two coordinate spaces for exact re-ingestion.
 
-    Groups with degenerate child extent (zero size) are silently dropped.
+    Valid authored groups outside the proven reconstruction boundary visibly flatten with a
+    warning. Reverse PPTX ingest converts those groups to preserved source plus a renderer
+    fallback before this serializer.
     """
+    if reason := group_html_roundtrip_error(group):
+        return _group_fallback_html(group, reason, assets, warnings)
     g_off_x = group.box.x
     g_off_y = group.box.y
     g_ext_cx = group.box.width
@@ -851,41 +936,52 @@ def _group_html(
     ch_ext_cx = group.child_box.width
     ch_ext_cy = group.child_box.height
 
-    if ch_ext_cx == 0 or ch_ext_cy == 0:
-        warnings.append(ConversionWarning(message="group has zero child extent; children dropped"))
-        return ""
-
     scale_x = g_ext_cx / ch_ext_cx
     scale_y = g_ext_cy / ch_ext_cy
 
     parts: list[str] = []
+    projected_children: list[ShapeNode] = []
     for child in group.children:
-        if isinstance(child, (ShapeNode, GroupNode)):
-            # Remap child's box from group-child-space to slide space.
-            c_box = child.box
-            mapped_x = round(g_off_x + (c_box.x - ch_off_x) * scale_x)
-            mapped_y = round(g_off_y + (c_box.y - ch_off_y) * scale_y)
-            mapped_w = round(c_box.width * scale_x)
-            mapped_h = round(c_box.height * scale_y)
-            from domoxml.core.ir.model import Box as _Box
-
-            remapped_child = child.model_copy(
-                update={"box": _Box(x=mapped_x, y=mapped_y, width=mapped_w, height=mapped_h)}
+        if not isinstance(child, ShapeNode):
+            raise ValueError(
+                "cannot serialize native group to normalized HTML: "
+                f"unsupported admitted child {type(child).__name__}"
             )
-            if (
-                group.node_id is not None
-                and remapped_child.provenance is not None
-                and remapped_child.provenance.owner_node_id is None
-            ):
-                remapped_child = remapped_child.model_copy(
-                    update={
-                        "provenance": remapped_child.provenance.model_copy(
-                            update={"owner_node_id": group.node_id}
-                        )
-                    }
-                )
-            parts.append(_node_html(remapped_child, assets, warnings))
-    return "".join(parts)
+        # Remap child's box from group-child-space to slide space.
+        c_box = child.box
+        mapped_x = round(g_off_x + (c_box.x - ch_off_x) * scale_x)
+        mapped_y = round(g_off_y + (c_box.y - ch_off_y) * scale_y)
+        mapped_w = round(c_box.width * scale_x)
+        mapped_h = round(c_box.height * scale_y)
+        remapped_child = child.model_copy(
+            update={"box": Box(x=mapped_x, y=mapped_y, width=mapped_w, height=mapped_h)}
+        )
+        if (
+            group.node_id is not None
+            and remapped_child.provenance is not None
+            and remapped_child.provenance.owner_node_id is None
+        ):
+            remapped_child = remapped_child.model_copy(
+                update={
+                    "provenance": remapped_child.provenance.model_copy(
+                        update={"owner_node_id": group.node_id}
+                    )
+                }
+            )
+        projected_children.append(remapped_child)
+        parts.append(_node_html(remapped_child, assets, warnings))
+    payload = encode_group_payload(
+        box=group.box,
+        child_box=group.child_box,
+        transform=group.transform,
+        children=group.children,
+        projected_children=tuple(projected_children),
+    )
+    return (
+        f'<div class="domoxml-group"{_identity_attrs(group)} '
+        f'data-domoxml-group="{payload}" style="display:contents">'
+        f"{''.join(parts)}</div>"
+    )
 
 
 def _fill_css(fill: Fill | None, *, opacity: float = 1.0) -> str | None:

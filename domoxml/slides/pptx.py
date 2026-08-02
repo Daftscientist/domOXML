@@ -11,10 +11,12 @@ from defusedxml import ElementTree
 from domoxml.core.drawingml import can_emit_picture, line_xml, picture_xml, shape_xml, table_xml
 from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.fonts import FontFace, load_faces
+from domoxml.core.ir.group import group_pptx_write_error
 from domoxml.core.ir.model import (
     Box,
     Connector,
     FillOverlay,
+    GroupNode,
     Hyperlink,
     PatternFill,
     PictureFill,
@@ -270,6 +272,9 @@ def _slide(
     blip_rids: dict[int, str] = {}
     fallback_rids: dict[int, str] = {}
     svg_rids: dict[int, str] = {}
+    group_blip_rids: dict[int, str] = {}
+    group_fallback_rids: dict[int, str] = {}
+    group_svg_rids: dict[int, str] = {}
     has_svg = False
     next_rid = 2  # rId1 is the layout
     media_rids: dict[str, str] = {}
@@ -294,7 +299,7 @@ def _slide(
 
     # Warn on node types still without a writer. Supported nodes retain their canonical order.
     for node in slide.contents:
-        if not isinstance(node, ShapeNode | Connector | TableNode | PreservedNode):
+        if not isinstance(node, ShapeNode | GroupNode | Connector | TableNode | PreservedNode):
             warnings.warn(
                 f"{type(node).__name__} has no PresentationML writer yet; node dropped",
                 stacklevel=2,
@@ -311,6 +316,15 @@ def _slide(
             slide.renderer_fallback.data,
             slide.renderer_fallback.ext,
         )
+
+    def iter_shapes(nodes: tuple[object, ...]) -> list[ShapeNode]:
+        shapes: list[ShapeNode] = []
+        for candidate in nodes:
+            if isinstance(candidate, ShapeNode):
+                shapes.append(candidate)
+            elif isinstance(candidate, GroupNode):
+                shapes.extend(iter_shapes(candidate.children))
+        return shapes
 
     for position, node in enumerate(slide.contents):
         if isinstance(node, ShapeNode) and isinstance(node.fill, PictureFill):
@@ -330,13 +344,23 @@ def _slide(
         ):
             fallback_rids[position] = register_media(node.fallback.data, node.fallback.ext)
 
+    for group in (node for node in slide.contents if isinstance(node, GroupNode)):
+        for shape in iter_shapes((group,)):
+            identity = id(shape)
+            if isinstance(shape.fill, PictureFill):
+                group_blip_rids[identity] = register_media(shape.fill.data, shape.fill.ext)
+                if shape.fill.svg_data is not None:
+                    group_svg_rids[identity] = register_media(shape.fill.svg_data, "svg")
+                    has_svg = True
+            if shape.portable_fallback is not None:
+                fallback = shape.portable_fallback.picture
+                group_fallback_rids[identity] = register_media(fallback.data, fallback.ext)
+
     # One slide relationship per run hyperlink, in document order. Identity-keyed so two runs
     # with structurally-equal links still each get their own rel (matching the IR objects).
     hyperlink_rels: list[tuple[str, Hyperlink]] = []
     rid_by_link: dict[int, str] = {}
-    for node in slide.contents:
-        if not isinstance(node, ShapeNode):
-            continue
+    for node in iter_shapes(slide.contents):
         for link in _shape_hyperlinks(node.text):
             if id(link) in rid_by_link:
                 continue
@@ -379,9 +403,125 @@ def _slide(
     def _hyperlink_rid(link: Hyperlink) -> str | None:
         return rid_by_link.get(id(link))
 
+    next_shape_id = 2
+
+    def allocate_shape_id() -> int:
+        nonlocal next_shape_id
+        shape_id = next_shape_id
+        next_shape_id += 1
+        return shape_id
+
+    def grouped_shape_xml(node: ShapeNode, *, shape_id: int) -> str:
+        identity = id(node)
+        blip_rid = group_blip_rids.get(identity)
+        svg_rid = group_svg_rids.get(identity)
+        if can_emit_picture(node) and blip_rid is not None:
+            return picture_xml(
+                node,
+                shape_id=shape_id,
+                blip_rid=blip_rid,
+                svg_rid=svg_rid,
+            )
+        fallback_rid = group_fallback_rids.get(identity)
+        choice_has_visible_fallback = (
+            node.portable_fallback is not None
+            and fallback_rid is not None
+            and node.effect_container != "sibling"
+            and (
+                not (
+                    node.effects and all(isinstance(effect, FillOverlay) for effect in node.effects)
+                )
+                or any(
+                    isinstance(effect, FillOverlay)
+                    and (isinstance(effect.fill, PatternFill) or effect.blend == "over")
+                    for effect in node.effects
+                )
+            )
+        )
+        native_xml = shape_xml(
+            node,
+            shape_id=shape_id,
+            blip_rid=blip_rid,
+            svg_rid=svg_rid,
+            hyperlink_rid=_hyperlink_rid,
+            hidden=choice_has_visible_fallback,
+        )
+        if node.portable_fallback is None or fallback_rid is None:
+            return native_xml
+        fallback_node = node.model_copy(
+            update={
+                "box": node.portable_fallback.box,
+                "geom": "rect",
+                "custom_geom": None,
+                "fill": node.portable_fallback.picture,
+                "line": None,
+                "side_lines": None,
+                "effects": (),
+                "native_effect_projection": "complete",
+                "portable_fallback": None,
+                "transform": None,
+                "corner_radius_emu": 0,
+                "opacity": 1.0,
+                "text": None,
+            }
+        )
+        choice_fallback_xml = picture_xml(
+            fallback_node,
+            shape_id=allocate_shape_id(),
+            blip_rid=fallback_rid,
+        )
+        fallback_xml = picture_xml(
+            fallback_node,
+            shape_id=allocate_shape_id(),
+            blip_rid=fallback_rid,
+        )
+        choice_fallback = choice_fallback_xml if choice_has_visible_fallback else ""
+        return (
+            "<mc:AlternateContent "
+            'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+            'xmlns:p16="http://schemas.microsoft.com/office/powerpoint/2015/main">'
+            f'<mc:Choice Requires="p16">{native_xml}{choice_fallback}</mc:Choice>'
+            f"<mc:Fallback>{fallback_xml}</mc:Fallback>"
+            "</mc:AlternateContent>"
+        )
+
+    def group_xml(group: GroupNode, *, shape_id: int) -> str:
+        if reason := group_pptx_write_error(group):
+            raise ValueError(f"cannot emit native group: {reason}")
+        transform_attrs = ""
+        if group.transform is not None:
+            if group.transform.rotation_deg != 0.0:
+                transform_attrs += f' rot="{round(group.transform.rotation_deg * 60_000)}"'
+            if group.transform.flip_h:
+                transform_attrs += ' flipH="1"'
+            if group.transform.flip_v:
+                transform_attrs += ' flipV="1"'
+        children: list[str] = []
+        for child in group.children:
+            child_id = allocate_shape_id()
+            if isinstance(child, ShapeNode):
+                children.append(grouped_shape_xml(child, shape_id=child_id))
+            elif isinstance(child, Connector):
+                children.append(_connector_xml(child, shape_id=child_id))
+            else:
+                children.append(group_xml(child, shape_id=child_id))
+        return (
+            "<p:grpSp><p:nvGrpSpPr>"
+            f'<p:cNvPr id="{shape_id}" name="Group {shape_id}"/>'
+            f"<p:cNvGrpSpPr/><p:nvPr>{node_identity_xml(group)}</p:nvPr>"
+            "</p:nvGrpSpPr><p:grpSpPr>"
+            f"<a:xfrm{transform_attrs}>"
+            f'<a:off x="{group.box.x}" y="{group.box.y}"/>'
+            f'<a:ext cx="{group.box.width}" cy="{group.box.height}"/>'
+            f'<a:chOff x="{group.child_box.x}" y="{group.child_box.y}"/>'
+            f'<a:chExt cx="{group.child_box.width}" cy="{group.child_box.height}"/>'
+            "</a:xfrm></p:grpSpPr>"
+            f"{''.join(children)}</p:grpSp>"
+        )
+
     content_parts: list[str] = []
     for position, node in enumerate(slide.contents):
-        shape_id = position + 2
+        shape_id = allocate_shape_id()
         if isinstance(node, ShapeNode):
             blip_rid = blip_rids.get(position)
             if can_emit_picture(node) and blip_rid is not None:
@@ -441,12 +581,12 @@ def _slide(
                     )
                     choice_fallback_xml = picture_xml(
                         fallback_node,
-                        shape_id=len(slide.contents) + 2 + position,
+                        shape_id=allocate_shape_id(),
                         blip_rid=fallback_rid,
                     )
                     fallback_xml = picture_xml(
                         fallback_node,
-                        shape_id=(2 * len(slide.contents)) + 2 + position,
+                        shape_id=allocate_shape_id(),
                         blip_rid=fallback_rid,
                     )
                     choice_fallback = choice_fallback_xml if choice_has_visible_fallback else ""
@@ -458,6 +598,8 @@ def _slide(
                         f"<mc:Fallback>{fallback_xml}</mc:Fallback>"
                         "</mc:AlternateContent>"
                     )
+        elif isinstance(node, GroupNode):
+            content_parts.append(group_xml(node, shape_id=shape_id))
         elif isinstance(node, Connector):
             content_parts.append(_connector_xml(node, shape_id=shape_id))
         elif isinstance(node, TableNode):
@@ -466,6 +608,7 @@ def _slide(
             native_xml = rewrite_root_xml(
                 node,
                 shape_id=shape_id,
+                allocate_shape_id=allocate_shape_id,
                 relationship_ids=preserved_rids[position],
             )
             fallback_rid = fallback_rids.get(position)
@@ -483,7 +626,7 @@ def _slide(
                 )
                 fallback_xml = picture_xml(
                     fallback_node,
-                    shape_id=(2 * len(slide.contents)) + 2 + position,
+                    shape_id=allocate_shape_id(),
                     blip_rid=fallback_rid,
                 )
                 content_parts.append(
@@ -504,7 +647,7 @@ def _slide(
         )
         fallback_xml = picture_xml(
             fallback_node,
-            shape_id=(3 * len(slide.contents)) + 2,
+            shape_id=allocate_shape_id(),
             blip_rid=slide_fallback_rid,
         )
         contents = (

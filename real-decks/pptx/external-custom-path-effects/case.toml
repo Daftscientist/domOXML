@@ -20,14 +20,14 @@ required_parts = [
 ]
 
 [reverse]
-min_representation = { decomposed = 1 }
-max_representation = { rasterized = 0, native = 0, decomposed = 1, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
-min_editability = { components = 1 }
-max_editability = { semantic = 0, components = 1, layers = 0, none = 0 }
-min_source_retention = { lost = 1 }
-max_source_retention = { not_required = 0, attached = 0, detached = 0, ignored = 0, lost = 1 }
-min_output_count = 4
-max_output_count = 4
+min_representation = { native = 1 }
+max_representation = { rasterized = 0, native = 1, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 1 }
+max_editability = { semantic = 1, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 1 }
+max_source_retention = { not_required = 1, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 1
+max_output_count = 1
 min_raster_area_emu2 = 0
 max_raster_area_emu2 = 0
 min_assets = 0

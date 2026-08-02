@@ -131,7 +131,10 @@ def test_serialize_canvas_visibly_flattens_groups_outside_the_proven_html_bounda
 
     for group, reason, visible_marker in groups:
         result = serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(group,))])
-        assert visible_marker in result.slides[0].html
+        html = result.slides[0].html
+        assert visible_marker in html
+        assert 'data-domoxml-group="' in html
+        assert "data-domoxml-group-flattened=" in html
         assert any(reason in warning.message for warning in result.warnings)
 
     invalid = GroupNode(

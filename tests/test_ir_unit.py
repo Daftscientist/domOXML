@@ -51,6 +51,17 @@ def test_group_payload_rejects_ambiguous_member_identity_and_geometry() -> None:
         encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
         assert decode_group_payload(encoded) is None
 
+    valid = {
+        "version": 1,
+        "box": box,
+        "child_box": box,
+        "members": [{"node_id": "shape", "box": box}],
+    }
+    encoded = base64.urlsafe_b64encode(json.dumps(valid).encode()).decode()
+    decoded = decode_group_payload(encoded)
+    assert decoded is not None
+    assert decoded.members[0].node_id == "shape"
+
 
 def test_parse_color_rgb_and_rgba() -> None:
     assert parse_color("rgb(255, 0, 0)") == Rgba(r=255, g=0, b=0, a=1.0)

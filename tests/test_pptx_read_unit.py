@@ -43,7 +43,7 @@ from domoxml.core.ir.model import (
 )
 from domoxml.core.opc import OpcPackage, write_package
 from domoxml.core.roundtrip import render_html_roundtrip
-from domoxml.slides import build_pptx, read_pptx, read_pptx_result
+from domoxml.slides import build_pptx, read_pptx, read_pptx_result, validate_pptx_package
 from domoxml.slides.appearance_read import rgba
 from domoxml.slides.read import (
     _can_own_source_shape_crop,
@@ -1062,6 +1062,70 @@ def test_preset_shadow_multi_visual_uses_slide_level_fallback() -> None:
         Representation.NATIVE,
         Representation.RASTERIZED,
     ]
+
+
+def test_slide_fallback_decision_is_stable_before_multiple_effects_and_group() -> None:
+    package = OpcPackage.from_bytes(_preset_shadow_source())
+    slide_part = "ppt/slides/slide1.xml"
+    root = ElementTree.fromstring(package.read(slide_part))
+    tree = root.find("p:cSld/p:spTree", {"p": _P})
+    source_shape = root.find("p:cSld/p:spTree/p:sp", {"p": _P})
+    assert tree is not None
+    assert source_shape is not None
+    second_shape = ElementTree.fromstring(ElementTree.tostring(source_shape))
+    second_identity = second_shape.find("p:nvSpPr/p:cNvPr", {"p": _P})
+    assert second_identity is not None
+    second_identity.set("id", "99")
+    second_identity.set("name", "second source-only effect")
+    second_node_identity = second_shape.find(".//{urn:domoxml:canvas-ir:1}node")
+    assert second_node_identity is not None
+    second_node_identity.set("id", "source-effect-2")
+    tree.append(second_shape)
+
+    group = GroupNode(
+        box=Box(x=1_000_000, y=1_000_000, width=2_000_000, height=1_500_000),
+        child_box=Box(x=0, y=0, width=1_000_000, height=750_000),
+        children=(
+            ShapeNode(
+                box=Box(x=0, y=0, width=1_000_000, height=750_000),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+        ),
+        transform=Transform(rotation_deg=10),
+    )
+    group_package = OpcPackage.from_bytes(
+        build_pptx(
+            [SlideIR(width=12_192_000, height=6_858_000, contents=(group,))],
+            faces=[],
+        )
+    )
+    group_root = ElementTree.fromstring(group_package.read(slide_part))
+    group_element = group_root.find("p:cSld/p:spTree/p:grpSp", {"p": _P})
+    assert group_element is not None
+    for index, identity in enumerate(group_element.iter("{urn:domoxml:canvas-ir:1}node"), start=1):
+        identity.set("id", f"unsupported-group-{index}")
+    for index, non_visual in enumerate(group_element.iter(f"{{{_P}}}cNvPr"), start=200):
+        non_visual.set("id", str(index))
+    tree.append(ElementTree.fromstring(ElementTree.tostring(group_element)))
+
+    parts: dict[str, bytes | str] = {part: package.read(part) for part in package.parts}
+    parts[slide_part] = ElementTree.tostring(root)
+    source = write_package(parts)
+    assert validate_pptx_package(source) == ()
+    rendered = BytesIO()
+    Image.new("RGB", (1280, 720), "#5D7893").save(rendered, "PNG")
+
+    result = read_pptx_result(source, fallback_pngs=(rendered.getvalue(),))
+
+    assert result.slides[0].renderer_fallback is not None
+    preserved_nodes = [
+        node for node in result.slides[0].contents if isinstance(node, PreservedNode)
+    ]
+    assert len(preserved_nodes) == 3
+    assert result.slides[0].renderer_fallback_owner_node_id == preserved_nodes[0].node_id
+    representations = [item.representation for item in result.coverage.items]
+    assert representations.count(Representation.RASTERIZED) == 1
+    assert representations.count(Representation.FAILED) == 2
 
 
 def test_malformed_slide_fallback_marker_stays_source_owned() -> None:

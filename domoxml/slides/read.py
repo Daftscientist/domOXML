@@ -1135,11 +1135,29 @@ def _slide(
             for element in visual_elements
             if _local_name(element) == "sp" and _has_source_only_effect(element)
         )
+        group_results = {
+            id(element): _group_node(
+                element,
+                package,
+                slide_part,
+                colors,
+                hyperlink_for,
+                inherit_ctx=inherit_ctx,
+            )
+            for element in visual_elements
+            if _local_name(element) == "grpSp"
+        }
+        has_unsupported_group = any(
+            group is None or bool(group_preserved) or group_html_roundtrip_error(group) is not None
+            for group, _group_warns, group_preserved in group_results.values()
+        )
         if (
             renderer_fallback is None
             and fallback_png is not None
-            and len(visual_elements) > 1
-            and len(source_only_effect_visuals) == 1
+            and (
+                (len(visual_elements) > 1 and len(source_only_effect_visuals) == 1)
+                or has_unsupported_group
+            )
         ):
             renderer_fallback = _fallback_picture(
                 fallback_png,
@@ -1611,14 +1629,7 @@ def _slide(
                     continue
                 reason = "preserved connector that the reverse adapter could not map"
             elif kind == "grpSp":
-                group, group_warns, group_preserved = _group_node(
-                    element,
-                    package,
-                    slide_part,
-                    colors,
-                    hyperlink_for,
-                    inherit_ctx=inherit_ctx,
-                )
+                group, group_warns, group_preserved = group_results[id(element)]
                 group_roundtrip_error = (
                     group_html_roundtrip_error(group) if group is not None else None
                 )
@@ -1635,15 +1646,7 @@ def _slide(
                     )
                     continue
                 fallback_representation = "rasterized"
-                if renderer_fallback is not None or fallback_png is not None:
-                    if renderer_fallback is None and fallback_png is not None:
-                        renderer_fallback = _fallback_picture(
-                            fallback_png,
-                            Box(x=0, y=0, width=width, height=height),
-                            slide_width=width,
-                            slide_height=height,
-                        )
-                    use_slide_renderer_fallback = renderer_fallback is not None
+                use_slide_renderer_fallback = renderer_fallback is not None
                 fallback_detail = (
                     "source retained under one slide-owned composite raster"
                     if use_slide_renderer_fallback

@@ -564,6 +564,10 @@ async def test_normalized_html_reingests_one_native_group_without_flattening() -
     assert coverage.representation is Representation.NATIVE
     assert coverage.editability is Editability.SEMANTIC
     assert coverage.output_count == 1
+    assert not any(
+        "flattened" in warning.message or "projection changed" in warning.message
+        for warning in result.warnings
+    )
 
 
 async def test_authored_transformed_connector_group_converges_through_normalized_html() -> None:

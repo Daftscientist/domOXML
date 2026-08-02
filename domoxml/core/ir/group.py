@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from domoxml.core.ir.model import Connector, GroupNode, ShapeNode
+from domoxml.core.ir.model import Connector, GroupNode
 
 
 def group_pptx_write_error(group: GroupNode) -> str | None:
@@ -14,15 +14,9 @@ def group_pptx_write_error(group: GroupNode) -> str | None:
     if group.child_box.width <= 0 or group.child_box.height <= 0:
         return "group child coordinate extent must be positive"
     for child in group.children:
-        if isinstance(child, ShapeNode):
-            continue
-        elif isinstance(child, GroupNode):
-            if reason := group_pptx_write_error(child):
-                return f"nested {reason}"
-        else:
-            # Connectors are the only remaining modeled group child and the PPTX
-            # writer can emit them natively.
-            continue
+        # Shapes and connectors are emitted natively; only nested groups need recursion.
+        if isinstance(child, GroupNode) and (reason := group_pptx_write_error(child)):
+            return f"nested {reason}"
     return None
 
 

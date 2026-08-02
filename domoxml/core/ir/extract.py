@@ -1420,14 +1420,6 @@ def _reconstruct_groups(
                 )
             )
             continue
-        shell = identities.apply(
-            GroupNode(
-                box=payload.box,
-                child_box=payload.child_box,
-                transform=payload.transform,
-            ),
-            source,
-        )
         original_members = {member.node_id: member for member in payload.members}
         stale_members = [
             child
@@ -1453,6 +1445,14 @@ def _reconstruct_groups(
                     }
                 )
             continue
+        shell = identities.apply(
+            GroupNode(
+                box=payload.box,
+                child_box=payload.child_box,
+                transform=payload.transform,
+            ),
+            source,
+        )
         restored_children = tuple(
             _restore_group_child(member, shell, original_members.get(member.node_id or ""))
             for member in group_members

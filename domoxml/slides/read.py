@@ -19,6 +19,7 @@ from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
 from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
 from domoxml.core.ir.gradient import drawingml_gradient_projection
+from domoxml.core.ir.group import group_html_roundtrip_error
 from domoxml.core.ir.model import (
     ArcTo,
     Box,
@@ -683,6 +684,8 @@ def _group_reverse_coverage(
     *,
     has_preserved_children: bool,
 ) -> CoverageItem:
+    if not has_preserved_children:
+        return _native_reverse_coverage(slide_part, element)
     output_count = _group_output_count(group)
     reason = "PowerPoint group flattened into positioned HTML children"
     if has_preserved_children:
@@ -1149,6 +1152,8 @@ def _slide(
             kind = _local_name(element)
             preserved_owner_id: str | None = None
             preserve_whole_node = True
+            use_slide_renderer_fallback = False
+            owns_slide_renderer_fallback = False
             fallback_representation: Literal["element_layer", "rasterized"] = "element_layer"
             fallback_box_override: Box | None = None
             fallback_mask: tuple[tuple[float, float], ...] | None = None
@@ -1496,6 +1501,18 @@ def _slide(
                             contents.append(shape)
                             owner_node_id = shape.node_id
                             reason += "; dependent OPC graph could not be attached"
+                            if renderer_fallback_owner_node_id is None:
+                                renderer_fallback_owner_node_id = shape.node_id
+                            else:
+                                coverage.append(
+                                    _failed_reverse_coverage(
+                                        slide_part,
+                                        element,
+                                        reason
+                                        + "; slide fallback is owned by another source visual",
+                                        SourceRetention.DETACHED,
+                                    )
+                                )
                         else:
                             preserved_node = _with_pptx_identity(
                                 PreservedNode(box=box, payload=payload),
@@ -1504,7 +1521,18 @@ def _slide(
                             )
                             contents.append(preserved_node)
                             owner_node_id = preserved_node.node_id
-                            renderer_fallback_owner_node_id = preserved_node.node_id
+                            if renderer_fallback_owner_node_id is None:
+                                renderer_fallback_owner_node_id = preserved_node.node_id
+                            else:
+                                coverage.append(
+                                    _failed_reverse_coverage(
+                                        slide_part,
+                                        element,
+                                        reason
+                                        + "; slide fallback is owned by another source visual",
+                                        SourceRetention.ATTACHED,
+                                    )
+                                )
                         warning, fragment = _preserve(slide_part, element, reason)
                         warnings.append(warning)
                         preserved.append(
@@ -1591,10 +1619,12 @@ def _slide(
                     hyperlink_for,
                     inherit_ctx=inherit_ctx,
                 )
-                if group is not None:
+                group_roundtrip_error = (
+                    group_html_roundtrip_error(group) if group is not None else None
+                )
+                if group is not None and not group_preserved and group_roundtrip_error is None:
                     contents.append(group)
                     warnings.extend(group_warns)
-                    preserved.extend(group_preserved)
                     coverage.append(
                         _group_reverse_coverage(
                             slide_part,
@@ -1604,7 +1634,28 @@ def _slide(
                         )
                     )
                     continue
-                reason = "preserved group that the reverse adapter could not map"
+                fallback_representation = "rasterized"
+                if renderer_fallback is not None or fallback_png is not None:
+                    if renderer_fallback is None and fallback_png is not None:
+                        renderer_fallback = _fallback_picture(
+                            fallback_png,
+                            Box(x=0, y=0, width=width, height=height),
+                            slide_width=width,
+                            slide_height=height,
+                        )
+                    use_slide_renderer_fallback = renderer_fallback is not None
+                fallback_detail = (
+                    "source retained under one slide-owned composite raster"
+                    if use_slide_renderer_fallback
+                    else "source retained; no renderer pixels were supplied"
+                )
+                reason = (
+                    f"group contains unsupported children; {fallback_detail}"
+                    if group_preserved
+                    else f"{group_roundtrip_error}; {fallback_detail}"
+                    if group_roundtrip_error is not None
+                    else "preserved group that the reverse adapter could not map"
+                )
             elif kind == "graphicFrame":
                 frame = read_graphic_frame(
                     element,
@@ -1628,12 +1679,16 @@ def _slide(
                 source_retention = SourceRetention.DETACHED
                 has_visual_layer = False
                 if box is not None:
-                    fallback = _fallback_picture(
-                        fallback_png,
-                        box,
-                        slide_width=width,
-                        slide_height=height,
-                        mask_polygon=fallback_mask,
+                    fallback = (
+                        None
+                        if use_slide_renderer_fallback
+                        else _fallback_picture(
+                            fallback_png,
+                            box,
+                            slide_width=width,
+                            slide_height=height,
+                            mask_polygon=fallback_mask,
+                        )
                     )
                     try:
                         payload = capture_payload(
@@ -1673,8 +1728,16 @@ def _slide(
                         )
                         contents.append(preserved_node)
                         preserved_owner_id = preserved_node.node_id
+                        if use_slide_renderer_fallback:
+                            if renderer_fallback_owner_node_id is None:
+                                renderer_fallback_owner_node_id = preserved_node.node_id
+                                owns_slide_renderer_fallback = True
+                            else:
+                                reason += "; slide fallback is owned by another source visual"
                     has_visual_layer = fallback is not None and preserved_owner_id is not None
-                if has_visual_layer and box is not None:
+                if use_slide_renderer_fallback and owns_slide_renderer_fallback:
+                    pass
+                elif has_visual_layer and box is not None:
                     coverage.append(
                         CoverageItem(
                             element=_visual_label(slide_part, element),

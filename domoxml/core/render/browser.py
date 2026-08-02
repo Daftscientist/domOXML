@@ -161,8 +161,24 @@ _SNAPSHOT_JS = """
       .join('').trim();
     const index = out.length;
     el.dataset.domoxmlCaptureIndex = String(index);
-    const styles = pick(getComputedStyle(el));
+    const computed = getComputedStyle(el);
+    const styles = pick(computed);
     const tag = el.tagName.toLowerCase();
+    if (el.hasAttribute('data-domoxml-group')) {
+      styles.domoxmlGroupWrapperLeft = computed.left;
+      styles.domoxmlGroupWrapperTop = computed.top;
+      styles.domoxmlGroupWrapperWidth = computed.width;
+      styles.domoxmlGroupWrapperHeight = computed.height;
+    }
+    if (el.parentElement && el.parentElement.hasAttribute('data-domoxml-group')) {
+      // Normalized group metadata may restore pre-flattening member geometry only while
+      // the visible CSS projection is unchanged. Capture local layout values before any
+      // ancestor transform so extraction can reject stale metadata after an HTML edit.
+      styles.domoxmlGroupLayoutLeft = computed.left;
+      styles.domoxmlGroupLayoutTop = computed.top;
+      styles.domoxmlGroupLayoutWidth = computed.width;
+      styles.domoxmlGroupLayoutHeight = computed.height;
+    }
     if (tag === 'path' || tag === 'svg') {
       const filterRef = el.getAttribute('filter') || el.style.filter || styles.filter || '';
       const filterMatch = filterRef.match(/^url\\(\\s*['"]?#([^'")]+)['"]?\\s*\\)$/i);
@@ -234,6 +250,7 @@ _SNAPSHOT_JS = """
       domoxmlReflectionBlur: 'data-domoxml-reflection-blur',
       domoxmlTextPayload: 'data-domoxml-text-payload',
       domoxmlTableGeometry: 'data-domoxml-table-geometry',
+      domoxmlGroup: 'data-domoxml-group',
     };
     for (const [key, attribute] of Object.entries(metadata)) {
       const value = el.getAttribute(attribute);

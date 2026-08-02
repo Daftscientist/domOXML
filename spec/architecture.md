@@ -76,9 +76,24 @@ The Canvas IR contains one canonical ordered `contents` sequence. Legacy `shapes
 constructor arguments and filtered accessors remain compatibility views, but importers and
 serializers operate on `contents` so heterogeneous nodes retain interleaved z-order. Every node
 adopted by a slide has a stable slide-scoped ID; active HTML and PPTX adapters also retain typed
-source provenance through normalized HTML metadata and a private OOXML extension. Exact
-stacking/group ownership and preservation ownership beyond positioned nodes with capturable OPC
-graphs still need to be completed in addition to the existing geometry and appearance. Both HTML
+source provenance through normalized HTML metadata and a private OOXML extension. A strict
+single-level, untransformed native plain-shape group retains its `p:grpSp`, group and child coordinate
+spaces, IDs, ownership, and surrounding stack position through normalized HTML and PPTX
+re-emission. Transformed, nested, connector-bearing, fallback-bearing, and otherwise unsupported
+source groups retain their attached source and, when caller-supplied renderer pixels exist, use one
+slide-owned composite raster instead of claiming independent child-layer ownership. Without those
+pixels, paint coverage explicitly fails while source retention remains attached. Valid direct
+IR-to-HTML group states outside the strict structural boundary visibly lower through a flattened
+wrapper with an explicit warning, while versioned original-member geometry restores the group over
+repeated normalized-HTML cycles. A captured wrapper/member projection freshness guard prevents stale
+geometry or transform metadata from overriding visible HTML edits; edited groups stay flattened
+with explicit debt.
+Invalid coordinate extents fail rather than disappearing. The
+native PPTX writer emits modeled group shapes, connectors, nested groups, pictures, and portable
+child fallbacks with their media relationships. When several preserved visuals share one
+slide fallback, one exact owner is retained and the others remain explicit failed coverage debt.
+Broader group reconstruction and preservation ownership beyond positioned nodes with capturable
+OPC graphs still need to be completed. Both HTML
 capture and PPTX ingestion emit a per-source-visual coverage report; normalized HTML carries the
 report on its public presentation result alongside warnings and preserved source fragments.
 Canvas IR can also carry one explicit full-slide `renderer_fallback`. Native and preserved contents

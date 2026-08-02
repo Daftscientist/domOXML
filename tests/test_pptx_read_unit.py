@@ -1379,7 +1379,7 @@ def test_group_identity_does_not_fall_through_to_child_metadata() -> None:
     )
 
 
-def test_reverse_coverage_records_flattened_group_components_and_source_loss() -> None:
+def test_reverse_coverage_records_retained_native_group_semantics() -> None:
     group_element = ElementTree.fromstring(
         f'<p:grpSp xmlns:p="{_P}"><p:nvGrpSpPr>'
         '<p:cNvPr id="9" name="group"/></p:nvGrpSpPr></p:grpSp>'
@@ -1397,15 +1397,10 @@ def test_reverse_coverage_records_flattened_group_components_and_source_loss() -
         "ppt/slides/slide1.xml", group_element, group, has_preserved_children=False
     )
 
-    assert coverage.representation is Representation.DECOMPOSED
-    assert coverage.editability is Editability.COMPONENTS
-    assert coverage.source_retention is SourceRetention.LOST
-    assert coverage.output_count == 2
-
-    with_preserved_child = _group_reverse_coverage(
-        "ppt/slides/slide1.xml", group_element, group, has_preserved_children=True
-    )
-    assert with_preserved_child.source_retention is SourceRetention.LOST
+    assert coverage.representation is Representation.NATIVE
+    assert coverage.editability is Editability.SEMANTIC
+    assert coverage.source_retention is SourceRetention.NOT_REQUIRED
+    assert coverage.output_count == 1
 
 
 def test_reverse_coverage_reports_connector_geometry_approximation() -> None:

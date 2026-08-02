@@ -1,0 +1,93 @@
+id = "native-group-roundtrip"
+direction = "reverse"
+pptx_file = "source.pptx"
+reverse_render_files = ["source-libreoffice.png"]
+
+[expected]
+required_parts = [
+  "[Content_Types].xml",
+  "ppt/presentation.xml",
+  "ppt/slides/slide1.xml",
+]
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:spTree/p:grpSp[preceding-sibling::p:sp and following-sibling::p:sp]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:spTree/p:grpSp[count(p:sp)=2 and count(p:grpSp)=0]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:grpSp/p:grpSpPr/a:xfrm[a:off[@x='2381250'][@y='1428750'] and a:ext[@cx='5715000'][@cy='3429000'] and a:chOff[@x='476250'][@y='381000'] and a:chExt[@cx='2857500'][@cy='1714500']]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:grpSp//dx:node[@id='native-group' or @id='group-red' or @id='group-blue']"
+min_count = 3
+max_count = 3
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:grpSp/p:sp[1]/p:spPr/a:solidFill/a:srgbClr[@val='EF4444']"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:grpSp/p:sp[2]/p:spPr/a:solidFill/a:srgbClr[@val='2563EB']/a:alpha[@val='82000']"
+min_count = 1
+max_count = 1
+
+[visual]
+pptx_to_html_min_similarity = 0.99
+pptx_to_html_min_regional_similarity = 0.98
+pptx_to_html_min_focused_similarity = 0.98
+pptx_to_html_min_structural_similarity = 0.98
+
+[reverse]
+min_representation = { native = 3 }
+max_representation = { rasterized = 0, native = 3, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 3 }
+max_editability = { semantic = 3, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 3 }
+max_source_retention = { not_required = 3, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 3
+max_output_count = 3
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+expected_slides = 1
+min_assets = 0
+html_contains = [
+  'data-domoxml-group=',
+  'data-domoxml-node-id="native-group"',
+  'data-domoxml-node-id="group-red"',
+  'data-domoxml-owner-node-id="native-group"',
+  'data-domoxml-node-id="group-blue"',
+]
+max_warnings = 0
+max_preserved = 0
+
+[roundtrip]
+cycles = 2
+min_representation = { native = 3 }
+max_representation = { rasterized = 0, native = 3, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 3 }
+max_editability = { semantic = 3, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 3 }
+max_source_retention = { not_required = 3, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 3
+max_output_count = 3
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+min_convergence_similarity = 0.999
+min_convergence_regional_similarity = 0.999
+min_convergence_focused_similarity = 0.999
+min_convergence_structural_similarity = 0.999

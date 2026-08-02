@@ -4,15 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Box,
     CharBullet,
     ClosePath,
+    Connector,
     CubicTo,
     CustomGeometry,
     Glow,
+    GroupNode,
     Hyperlink,
     Line,
     LineSpacing,
@@ -32,6 +36,7 @@ from domoxml.core.ir.model import (
     TextBody,
     TextParagraph,
     TextRun,
+    Transform,
 )
 from domoxml.core.ir.text_payload import decode_text_body, encode_text_body
 from domoxml.core.opc import decode_payload
@@ -89,6 +94,53 @@ def test_serialize_canvas_emits_stable_slide_html_css_and_assets() -> None:
     assert html.assets[0].path.startswith("assets/")
     assert f"url(../{html.assets[0].path})" in slide.html
     assert slide.html.count("opacity:0.5") == 1
+
+
+def test_serialize_canvas_visibly_flattens_groups_outside_the_proven_html_boundary() -> None:
+    shape = ShapeNode(
+        box=Box(x=0, y=0, width=500_000, height=500_000),
+        fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+    )
+    groups = (
+        (
+            GroupNode(
+                box=Box(x=1_000_000, y=1_000_000, width=1_000_000, height=1_000_000),
+                child_box=Box(x=0, y=0, width=500_000, height=500_000),
+                children=(shape,),
+                transform=Transform(rotation_deg=15),
+            ),
+            "transformed group",
+            "rotate(15deg)",
+        ),
+        (
+            GroupNode(
+                box=Box(x=1_000_000, y=1_000_000, width=1_000_000, height=1_000_000),
+                child_box=Box(x=0, y=0, width=500_000, height=500_000),
+                children=(
+                    Connector(
+                        start=Point(x=0, y=0),
+                        end=Point(x=500_000, y=500_000),
+                        line=Line(color=Rgba(r=15, g=23, b=42), width_emu=12_700),
+                    ),
+                ),
+            ),
+            "connector group child",
+            "<svg",
+        ),
+    )
+
+    for group, reason, visible_marker in groups:
+        result = serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(group,))])
+        assert visible_marker in result.slides[0].html
+        assert any(reason in warning.message for warning in result.warnings)
+
+    invalid = GroupNode(
+        box=Box(x=1_000_000, y=1_000_000, width=0, height=1_000_000),
+        child_box=Box(x=0, y=0, width=500_000, height=500_000),
+        children=(shape,),
+    )
+    with pytest.raises(ValueError, match="group extent must be positive"):
+        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, contents=(invalid,))])
 
 
 def test_serialize_canvas_carries_exact_text_body_payload() -> None:

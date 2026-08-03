@@ -14,13 +14,19 @@ required_parts = [
 
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"
-xpath = ".//p:spTree/p:grpSp[preceding-sibling::p:sp and following-sibling::p:sp and count(p:pic)=1 and count(p:sp)=1 and count(p:grpSp)=0 and p:grpSpPr/a:xfrm[a:off[@x='2095500'][@y='1333500'] and a:ext[@cx='7239000'][@cy='4000500'] and a:chOff[@x='190500'][@y='285750'] and a:chExt[@cx='3619500'][@cy='2000250']] and count(.//dx:node[@id='picture-group'])=1 and p:pic[1][count(.//dx:node[@id='group-picture'])=1]/p:blipFill[a:blip[@r:embed] and a:srcRect[@l='12500'][@r='12500']] and p:pic[1]/following-sibling::p:sp[1][count(.//dx:node[@id='group-yellow'])=1]/p:spPr/a:solidFill/a:srgbClr[@val='FACC15']/a:alpha[@val='86000']]"
+xpath = ".//p:spTree/p:grpSp[preceding-sibling::p:sp and following-sibling::p:sp and count(p:pic)=1 and count(p:sp)=1 and count(p:grpSp)=0 and p:grpSpPr/a:xfrm[a:off[@x='2095500'][@y='1333500'] and a:ext[@cx='7239000'][@cy='4000500'] and a:chOff[@x='190500'][@y='285750'] and a:chExt[@cx='3619500'][@cy='2000250']] and count(.//dx:node[@id='picture-group'])=1 and p:pic[1][count(.//dx:node[@id='group-picture'])=1]/p:blipFill[a:blip[@r:embed='rId2'] and a:srcRect[@l='12500'][@r='12500']] and p:pic[1]/following-sibling::p:sp[1][count(.//dx:node[@id='group-yellow'])=1]/p:spPr/a:solidFill/a:srgbClr[@val='FACC15']/a:alpha[@val='86000']]"
 min_count = 1
 max_count = 1
 
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"
 xpath = ".//p:grpSp/p:pic/p:blipFill/a:blip[@r:embed]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/_rels/slide1.xml.rels"
+xpath = ".//pr:Relationship[@Id='rId2'][@Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'][@Target='../media/image1.png']"
 min_count = 1
 max_count = 1
 

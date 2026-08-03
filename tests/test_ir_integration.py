@@ -910,8 +910,13 @@ def test_native_group_picture_child_converges_across_two_normalized_html_cycles(
         "group-picture",
         "group-shape",
     ]
-    picture = recovered.children[0]
+    picture, shape = recovered.children
+    source_picture, source_shape = group.children
     assert isinstance(picture, ShapeNode)
+    assert isinstance(shape, ShapeNode)
+    assert isinstance(source_picture, ShapeNode)
+    assert isinstance(source_shape, ShapeNode)
+    assert [picture.box, shape.box] == [source_picture.box, source_shape.box]
     assert isinstance(picture.fill, PictureFill)
     assert picture.fill.data == picture_data
     assert picture.fill.crop == SrcRect(left=0.125, right=0.125)

@@ -11,7 +11,7 @@ Snapshot audited on **2026-08-03** against the repository, executable manifests,
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 931 tests are collected.
+- 932 tests are collected.
 - 45 atomic PPTX capability fixtures exist; 37 are bidirectional and eight are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, rasterized preset
   shadow node/slide fallbacks, named nested effect-graph preservation, and custom-path-owned

@@ -77,10 +77,11 @@ constructor arguments and filtered accessors remain compatibility views, but imp
 serializers operate on `contents` so heterogeneous nodes retain interleaved z-order. Every node
 adopted by a slide has a stable slide-scoped ID; active HTML and PPTX adapters also retain typed
 source provenance through normalized HTML metadata and a private OOXML extension. A strict
-single-level, untransformed native plain-shape group retains its `p:grpSp`, group and child coordinate
-spaces, IDs, ownership, and surrounding stack position through normalized HTML and PPTX
-re-emission. Transformed, nested, connector-bearing, fallback-bearing, and otherwise unsupported
-source groups retain their attached source and, when caller-supplied renderer pixels exist, use one
+single-level, untransformed native shape/picture group retains its `p:grpSp`, group and child
+coordinate spaces, IDs, ownership, media/crop data, and surrounding stack position through
+normalized HTML and PPTX re-emission. Transformed, nested, connector-bearing, fallback-bearing,
+and otherwise unsupported source groups retain their attached source and, when caller-supplied
+renderer pixels exist, use one
 slide-owned composite raster instead of claiming independent child-layer ownership. Without those
 pixels, paint coverage explicitly fails while source retention remains attached. Valid direct
 IR-to-HTML group states outside the strict structural boundary visibly lower through a flattened

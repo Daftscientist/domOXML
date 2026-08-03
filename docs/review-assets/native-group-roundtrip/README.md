@@ -26,8 +26,9 @@ without loss fail explicitly instead of dropping transforms or media.
 Original group and member geometry is applied only while the captured wrapper/member CSS projection
 and transform still match the versioned payload. A visible HTML geometry or transform edit makes
 the metadata stale, so members remain flattened with an approximation warning instead of having the
-edit silently overwritten. Grouped
-picture media/write-read behavior is unit-covered, but is not claimed by this visual fixture.
+edit silently overwritten. Grouped picture media/write-read behavior is unit-covered and is now
+visually proven separately by the `native-group-picture-roundtrip` capability; it is not claimed by
+this original plain-shape fixture.
 
 | Comparison | Global | Regional | Focused | Structural |
 |---|---:|---:|---:|---:|

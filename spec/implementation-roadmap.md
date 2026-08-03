@@ -7,15 +7,15 @@ new unsupported visual states.
 
 ## Current Baseline
 
-Snapshot audited on **2026-08-02** against the repository, executable manifests, and tests:
+Snapshot audited on **2026-08-03** against the repository, executable manifests, and tests:
 
 - HTML/CSS can produce PPTX, PNG, and normalized per-slide HTML.
 - PPTX can be ingested into Canvas IR and emitted as normalized HTML/CSS.
-- 930 tests are collected.
-- 44 atomic PPTX capability fixtures exist; 37 are bidirectional and seven are reverse-first
+- 931 tests are collected.
+- 45 atomic PPTX capability fixtures exist; 37 are bidirectional and eight are reverse-first
   fixtures for chart preservation, owned unsupported fill-overlay fallback, rasterized preset
   shadow node/slide fallbacks, named nested effect-graph preservation, and custom-path-owned
-  effect fallback, plus strict native group reconstruction.
+  effect fallback, plus strict native shape-only and picture-child group reconstruction.
 - 9 authored HTML fidelity cases exist.
 - 7 pinned external PPTX cases cover tables, image crop, embedded-font diagnostics, attached
   chart-graph re-emission, ellipse soft-edge radii, four native solid fill-overlay blend modes, and
@@ -30,8 +30,9 @@ The baseline is useful but not yet the product invariant:
 - Canvas IR uses one canonical ordered node sequence with compatibility views for legacy callers;
 - adopted nodes have slide-scoped stable IDs and active HTML/PPTX adapters retain typed source
   provenance; chart payloads are attached and re-emitted, and strict single-level untransformed
-  native shape groups retain their group/child coordinate spaces, identities, ownership, and stack
-  position through normalized HTML. Valid authored transformed/connector groups use a visibly
+  native shape groups and a native cropped-picture child retain their group/child coordinate
+  spaces, identities, ownership, media/crop data, and stack position through normalized HTML.
+  Valid authored transformed/connector groups use a visibly
   flattened normalized wrapper with original-member geometry and retain structure over two browser
   cycles. The PPTX writer also emits grouped pictures and portable child fallbacks with their media
   relationships. Broader source-group reconstruction and general preservation ownership remain
@@ -47,7 +48,7 @@ The baseline is useful but not yet the product invariant:
   layer when a source render is supplied, and recover both through normalized HTML;
 - complex/adversarial HTML and real-PPTX corpora remain small;
 - HTML capture and PPTX ingest both emit typed per-visual representation, editability, source
-  retention, output-count, and raster-area records. All 44 atomic fixtures and 7 real decks pin
+  retention, output-count, and raster-area records. All 45 atomic fixtures and 7 real decks pin
   exact initial reverse-ingest bounds; broader unknown and adversarial families still need corpus
   coverage;
 - generated and re-emitted PPTX output is blocked on shared OPC and core PresentationML structural

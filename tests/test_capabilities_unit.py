@@ -216,6 +216,20 @@ def test_validates_native_coverage_and_ooxml_xpath() -> None:
     assert validate_roundtrip_capability(fixture, below_source_minimum) == ()
 
 
+def test_ooxml_xpath_can_bind_an_embedded_image_to_its_package_relationship() -> None:
+    fixture = _fixture("native-group-picture-roundtrip")
+    assert fixture.pptx is not None
+    result = RenderResult(
+        pptx=fixture.pptx,
+        pngs=(),
+        html=None,
+        coverage=CoverageReport(items=()),
+        warnings=(),
+    )
+
+    assert validate_capability(fixture, result) == ()
+
+
 def test_ooxml_xpath_maximum_is_enforced() -> None:
     fixture = CapabilityFixture(
         id="xml-maximum",

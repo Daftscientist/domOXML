@@ -1,0 +1,79 @@
+id = "native-group-picture-roundtrip"
+direction = "reverse"
+pptx_file = "source.pptx"
+reverse_render_files = ["source-libreoffice.png"]
+
+[expected]
+required_parts = [
+  "[Content_Types].xml",
+  "ppt/presentation.xml",
+  "ppt/slides/slide1.xml",
+  "ppt/slides/_rels/slide1.xml.rels",
+  "ppt/media/image1.png",
+]
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:spTree/p:grpSp[preceding-sibling::p:sp and following-sibling::p:sp and count(p:pic)=1 and count(p:sp)=1 and count(p:grpSp)=0 and p:grpSpPr/a:xfrm[a:off[@x='2095500'][@y='1333500'] and a:ext[@cx='7239000'][@cy='4000500'] and a:chOff[@x='190500'][@y='285750'] and a:chExt[@cx='3619500'][@cy='2000250']] and count(.//dx:node[@id='picture-group'])=1 and p:pic[1][count(.//dx:node[@id='group-picture'])=1]/p:blipFill[a:blip[@r:embed='rId2'] and a:srcRect[@l='12500'][@r='12500']] and p:pic[1]/following-sibling::p:sp[1][count(.//dx:node[@id='group-yellow'])=1]/p:spPr/a:solidFill/a:srgbClr[@val='FACC15']/a:alpha[@val='86000']]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/slide1.xml"
+xpath = ".//p:grpSp/p:pic/p:blipFill/a:blip[@r:embed]"
+min_count = 1
+max_count = 1
+
+[[expected.xml]]
+part = "ppt/slides/_rels/slide1.xml.rels"
+xpath = ".//pr:Relationship[@Id='rId2'][@Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'][@Target='../media/image1.png']"
+min_count = 1
+max_count = 1
+
+[visual]
+pptx_to_html_min_similarity = 0.99
+pptx_to_html_min_regional_similarity = 0.98
+pptx_to_html_min_focused_similarity = 0.96
+pptx_to_html_min_structural_similarity = 0.95
+
+[reverse]
+min_representation = { native = 3 }
+max_representation = { rasterized = 0, native = 3, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 3 }
+max_editability = { semantic = 3, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 3 }
+max_source_retention = { not_required = 3, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 3
+max_output_count = 3
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+expected_slides = 1
+min_assets = 1
+html_contains = [
+  'data-domoxml-group=',
+  'data-domoxml-node-id="picture-group"',
+  'data-domoxml-node-id="group-picture"',
+  'data-domoxml-owner-node-id="picture-group"',
+  'background-image:url(../assets/',
+  'background-size:133.3333% 100%',
+  'data-domoxml-node-id="group-yellow"',
+]
+max_warnings = 0
+max_preserved = 0
+
+[roundtrip]
+cycles = 2
+min_representation = { native = 3 }
+max_representation = { rasterized = 0, native = 3, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 3 }
+max_editability = { semantic = 3, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 3 }
+max_source_retention = { not_required = 3, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 3
+max_output_count = 3
+min_raster_area_emu2 = 0
+max_raster_area_emu2 = 0
+min_convergence_similarity = 0.999
+min_convergence_regional_similarity = 0.999
+min_convergence_focused_similarity = 0.999
+min_convergence_structural_similarity = 0.999

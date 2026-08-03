@@ -39,6 +39,7 @@ from domoxml.core.ir.model import (
     SlideIR,
     SoftEdge,
     SolidFill,
+    SrcRect,
     TableCell,
     TableNode,
     TableRow,
@@ -840,6 +841,86 @@ def test_native_group_converges_across_two_normalized_html_cycles() -> None:
     expected_shapes = [child for child in group.children if isinstance(child, ShapeNode)]
     assert len(recovered_shapes) == len(recovered.children)
     assert [child.box for child in recovered_shapes] == [child.box for child in expected_shapes]
+
+
+def test_native_group_picture_child_converges_across_two_normalized_html_cycles() -> None:
+    image = BytesIO()
+    Image.new("RGB", (24, 16), "#2563eb").save(image, "PNG")
+    picture_data = image.getvalue()
+    group = GroupNode(
+        node_id="picture-group",
+        box=Box(
+            x=px_to_emu(200),
+            y=px_to_emu(120),
+            width=px_to_emu(420),
+            height=px_to_emu(260),
+        ),
+        child_box=Box(
+            x=px_to_emu(10),
+            y=px_to_emu(20),
+            width=px_to_emu(210),
+            height=px_to_emu(130),
+        ),
+        children=(
+            ShapeNode(
+                node_id="group-picture",
+                box=Box(
+                    x=px_to_emu(10),
+                    y=px_to_emu(20),
+                    width=px_to_emu(120),
+                    height=px_to_emu(90),
+                ),
+                fill=PictureFill(
+                    data=picture_data,
+                    ext="png",
+                    crop=SrcRect(left=0.125, right=0.125),
+                ),
+            ),
+            ShapeNode(
+                node_id="group-shape",
+                box=Box(
+                    x=px_to_emu(140),
+                    y=px_to_emu(40),
+                    width=px_to_emu(60),
+                    height=px_to_emu(70),
+                ),
+                fill=SolidFill(color=Rgba(r=239, g=68, b=68)),
+            ),
+        ),
+    )
+    pptx = build_pptx(
+        [SlideIR(width=12_192_000, height=6_858_000, contents=(group,))],
+        faces=[],
+    )
+
+    for _ in range(2):
+        html = pptx_to_html(pptx)
+        assert 'data-domoxml-group="' in html.slides[0].html
+        assert "background-image:url(../assets/" in html.slides[0].html
+        result = render_html_roundtrip(html)
+        assert result.pptx is not None
+        pptx = result.pptx
+
+    [recovered] = read_pptx(pptx)[0].contents
+    assert isinstance(recovered, GroupNode)
+    assert recovered.node_id == group.node_id
+    assert recovered.box == group.box
+    assert recovered.child_box == group.child_box
+    assert [child.node_id for child in recovered.children] == [
+        "group-picture",
+        "group-shape",
+    ]
+    picture, shape = recovered.children
+    source_picture, source_shape = group.children
+    assert isinstance(picture, ShapeNode)
+    assert isinstance(shape, ShapeNode)
+    assert isinstance(source_picture, ShapeNode)
+    assert isinstance(source_shape, ShapeNode)
+    assert [picture.box, shape.box] == [source_picture.box, source_shape.box]
+    assert isinstance(picture.fill, PictureFill)
+    assert picture.fill.data == picture_data
+    assert picture.fill.crop == SrcRect(left=0.125, right=0.125)
+    assert shape.fill == source_shape.fill
 
 
 def test_native_group_keeps_its_top_level_position_between_siblings() -> None:

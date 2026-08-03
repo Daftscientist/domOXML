@@ -920,6 +920,7 @@ def test_native_group_picture_child_converges_across_two_normalized_html_cycles(
     assert isinstance(picture.fill, PictureFill)
     assert picture.fill.data == picture_data
     assert picture.fill.crop == SrcRect(left=0.125, right=0.125)
+    assert shape.fill == source_shape.fill
 
 
 def test_native_group_keeps_its_top_level_position_between_siblings() -> None:

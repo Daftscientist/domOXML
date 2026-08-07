@@ -7,6 +7,7 @@ import math
 import re
 from types import TracebackType
 from typing import Any, Self
+from urllib.parse import urlsplit
 
 from playwright.async_api import Browser, Playwright, Route, async_playwright
 from pydantic import BaseModel, ConfigDict, Field
@@ -273,6 +274,10 @@ _SNAPSHOT_JS = """
 """
 
 _CAPTURED_RESOURCE_TYPES = frozenset({"image", "font"})
+# The only scheme a render legitimately needs. Rendered HTML is attacker-influenced (callers
+# embed sanitizer output, not trusted markup), so this is a hard boundary, not a default —
+# there is deliberately no way to widen it from BrowserSession's constructor.
+_ALLOWED_URL_SCHEMES = frozenset({"data"})
 _BLUR_RE = re.compile(r"blur\(\s*([\d.]+)px\s*\)", re.IGNORECASE)
 _BOX_REFLECTION_RE = re.compile(r"^(above|below|left|right)\s+(-?[\d.]+)px\b", re.IGNORECASE)
 _MATRIX_RE = re.compile(
@@ -716,6 +721,13 @@ class BrowserSession:
         resources: dict[str, bytes] = {}
 
         async def _capture(route: Route) -> None:
+            # Unconditional network-isolation boundary. Runs before anything else so no request
+            # this handler wasn't explicitly asked to fetch can reach the network — regardless of
+            # how the URL got into the DOM (img src, legacy `background=`, SVG `fill="url(...)"`,
+            # CSS `background-image`, @font-face, ...).
+            if urlsplit(route.request.url).scheme.lower() not in _ALLOWED_URL_SCHEMES:
+                await route.abort()
+                return
             if route.request.resource_type not in _CAPTURED_RESOURCE_TYPES:
                 await route.continue_()
                 return

@@ -330,6 +330,78 @@ async def test_shape_bleeding_past_the_slide_edge_is_not_treated_as_clipped() ->
     assert _solid_shape(ir, "CC2200").box.width == px_to_emu(200)
 
 
+async def test_body_background_becomes_the_native_slide_background() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert ir.background is not None
+    assert isinstance(ir.background.fill, SolidFill)
+    # No full-slide rectangle underneath the content: only the authored shape remains.
+    assert [s.box.width for s in ir.shapes] == [px_to_emu(200)]
+
+
+async def test_full_slide_container_repeating_the_background_colour_is_folded_in() -> None:
+    ir = await _render_and_extract(
+        "<style>body{background:#f2f1ea}</style>"
+        "<main style='position:relative;width:1280px;height:720px;background:#f2f1ea'>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div></main>"
+    )
+
+    assert ir.background is not None
+    assert isinstance(ir.background.fill, SolidFill)
+    assert ir.background.fill.color.hex == "F2F1EA"
+    assert [s.box.width for s in ir.shapes] == [px_to_emu(200)]
+
+
+async def test_full_slide_container_with_a_different_colour_stays_a_shape() -> None:
+    ir = await _render_and_extract(
+        "<style>body{background:#f2f1ea}</style>"
+        "<main style='position:relative;width:1280px;height:720px;background:#102030'></main>"
+    )
+
+    assert ir.background is not None
+    assert _solid_shape(ir, "102030").box.width == px_to_emu(1280)
+
+
+async def test_same_colour_full_slide_shape_drawn_over_other_content_is_kept() -> None:
+    # It covers the earlier shape, so removing it would reveal what it was hiding.
+    ir = await _render_and_extract(
+        "<style>body{background:#f2f1ea}</style>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+        "<div style='position:absolute;left:0;top:0;width:1280px;height:720px;"
+        "background:#f2f1ea'></div>"
+    )
+
+    assert len(ir.shapes) == 2
+    assert _solid_shape(ir, "F2F1EA").box.width == px_to_emu(1280)
+
+
+async def test_translucent_or_rounded_full_slide_shape_is_not_folded() -> None:
+    ir = await _render_and_extract(
+        "<style>body{background:#f2f1ea}</style>"
+        "<div style='position:absolute;left:0;top:0;width:1280px;height:720px;"
+        "background:#f2f1ea;border-radius:24px'></div>"
+    )
+
+    assert len(ir.shapes) == 1
+
+
+async def test_gradient_body_background_is_a_native_gradient_slide_background() -> None:
+    ir = await _render_and_extract(
+        "<style>body{background:linear-gradient(90deg,#102030,#405060)}</style>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert ir.background is not None
+    assert isinstance(ir.background.fill, GradientFill)
+    assert len(ir.shapes) == 1
+
+
 async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:
     result = await _render_and_extract_result(
         '<div style="position:relative;width:1280px;height:720px;background:#f7f8fb">'

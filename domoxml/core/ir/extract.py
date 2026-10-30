@@ -65,6 +65,7 @@ from domoxml.core.ir.model import (
     Rgba,
     Shadow,
     ShapeNode,
+    SlideBackground,
     SlideIR,
     SoftEdge,
     SolidFill,
@@ -1508,6 +1509,83 @@ def _reconstruct_groups(
     return contents, coverage, tuple(extra_warnings)
 
 
+def _covers_slide(node: RenderedNode, rendered: RenderedSlide) -> bool:
+    """Whether ``node`` is an unrotated box spanning the whole slide."""
+    tolerance = 0.5
+    return (
+        node.x <= tolerance
+        and node.y <= tolerance
+        and node.x + node.width >= rendered.width - tolerance
+        and node.y + node.height >= rendered.height - tolerance
+    )
+
+
+def _paints_only_a_fill(node: RenderedNode) -> bool:
+    """Whether ``node`` paints nothing but its background fill: no border, shadow, rounding,
+    filter, blending, transform, opacity, own text or non-background media."""
+    styles = node.styles
+    return (
+        node.tag in {"body", "div", "main", "section", "article"}
+        and not node.text
+        and not node.text_runs
+        and styles.get("transform", "none") in ("none", "")
+        and styles.get("boxShadow", "none") in ("none", "")
+        and styles.get("filter", "none") in ("none", "")
+        and styles.get("clipPath", "none") in ("none", "")
+        and styles.get("maskImage", "none") in ("none", "")
+        and styles.get("backdropFilter", "none") in ("none", "")
+        and styles.get("mixBlendMode", "normal") in ("normal", "")
+        and styles.get("opacity", "1") in ("1", "")
+        and parse_radius_px(styles.get("borderRadius"), shorter_side_px=1.0) == 0
+        and all(
+            parse_length_px(styles.get(side, "0px")) == 0
+            for side in (
+                "borderTopWidth",
+                "borderRightWidth",
+                "borderBottomWidth",
+                "borderLeftWidth",
+            )
+        )
+    )
+
+
+def _canvas_background(
+    nodes: tuple[RenderedNode, ...], rendered: RenderedSlide
+) -> tuple[RenderedNode, SlideBackground] | None:
+    """The ``<body>`` as the slide's native background, when it paints only a full-slide fill.
+
+    Browsers paint the body's background over the whole canvas, so it is the slide background
+    rather than a shape that sits on top of one.
+    """
+    body = next((node for node in nodes if node.tag == "body"), None)
+    if body is None or not _covers_slide(body, rendered) or not _paints_only_a_fill(body):
+        return None
+    fill, reason = _resolve_fill(body, rendered)
+    if fill is None or reason is not None:
+        return None
+    return body, SlideBackground(fill=fill)
+
+
+def _repeats_slide_background(
+    node: RenderedNode, background: SlideBackground | None, rendered: RenderedSlide
+) -> bool:
+    """Whether ``node`` only repaints the slide background's exact opaque colour."""
+    if background is None or not isinstance(background.fill, SolidFill):
+        return False
+    if background.fill.color.a < 1.0 or not _covers_slide(node, rendered):
+        return False
+    if not _paints_only_a_fill(node) or node.styles.get("backgroundImage", "none") != "none":
+        return False
+    fill, reason = _resolve_fill(node, rendered)
+    return (
+        reason is None
+        and isinstance(fill, SolidFill)
+        and fill.color.a >= 1.0
+        and (fill.color.r, fill.color.g, fill.color.b)
+        == (background.fill.color.r, background.fill.color.g, background.fill.color.b)
+    )
+
+
 def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     """Map every captured node to native OOXML where possible, rasterising only the residue.
 
@@ -1524,6 +1602,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     slide_root, transition, background = extract_slide_properties(
         rendered.nodes, lambda node: _resolve_fill(node, rendered)
     )
+    canvas_body: RenderedNode | None = None
+    if slide_root is None:
+        canvas = _canvas_background(rendered.nodes, rendered)
+        if canvas is not None:
+            canvas_body, background = canvas
     fallback_node = next(
         (
             node
@@ -1553,7 +1636,12 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
 
         # An opted-in slide root owns the canvas background. The browser's synthetic body is
         # only a rendering wrapper and must not become an opaque full-slide shape above it.
-        if slide_root is not None and node.tag == "body":
+        if (slide_root is not None and node.tag == "body") or node is canvas_body:
+            continue
+
+        # A full-slide element that only repeats the slide background's exact opaque colour,
+        # drawn before anything else, adds nothing the native background does not already paint.
+        if not contents and _repeats_slide_background(node, background, rendered):
             continue
 
         # Skip the slide root node itself — it is the canvas container, not a shape (its fill

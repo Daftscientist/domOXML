@@ -153,13 +153,12 @@ class TakumiSession:
 
 
 def _rgba(raw: Any) -> Rgba:
-    if (
-        not isinstance(raw, list)
-        or len(raw) != 4
-        or not all(isinstance(n, int) and 0 <= n <= 255 for n in raw)
-    ):
+    if not isinstance(raw, list):
         raise ValueError("invalid Takumi RGBA colour")
-    rgba = cast(list[int], raw)
+    values = cast(list[Any], raw)
+    if len(values) != 4 or not all(isinstance(n, int) and 0 <= n <= 255 for n in values):
+        raise ValueError("invalid Takumi RGBA colour")
+    rgba = cast(list[int], values)
     return Rgba(r=rgba[0], g=rgba[1], b=rgba[2], a=rgba[3] / 255.0)
 
 

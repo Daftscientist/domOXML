@@ -1,0 +1,28 @@
+name: Takumi smoke
+
+on:
+  pull_request:
+    paths:
+      - 'domoxml/presentation.py'
+      - 'domoxml/core/render/takumi_backend.py'
+      - 'domoxml/core/render/takumi/**'
+      - 'tests/test_takumi_integration.py'
+      - '.github/workflows/takumi.yml'
+
+jobs:
+  browserless:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Python
+        run: python -m pip install -e '.[dev]'
+      - name: Install Takumi
+        run: npm install --no-audit --no-fund --prefix domoxml/core/render/takumi
+      - name: Exercise Takumi to PPTX
+        run: python -m pytest tests/test_takumi_integration.py -q

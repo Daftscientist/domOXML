@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from io import BytesIO
+
 import pytest
+from pptx import Presentation as PptxPresentation
 
 from domoxml import Presentation, Slide
 from domoxml.types import OutputFormat, Representation
@@ -25,6 +28,10 @@ def test_takumi_html_to_png_and_pptx() -> None:
     assert result.pngs[0].startswith(b"\x89PNG\r\n\x1a\n")
     assert result.pptx is not None
     assert result.pptx.startswith(b"PK")
+    pptx = PptxPresentation(BytesIO(result.pptx))
+    assert any(
+        shape.has_text_frame and "Hello" in shape.text for shape in pptx.slides[0].shapes
+    )
     assert result.coverage.items
     assert any(item.representation is Representation.NATIVE for item in result.coverage.items), (
         result.warnings

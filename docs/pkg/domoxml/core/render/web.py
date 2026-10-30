@@ -23,13 +23,16 @@ from domoxml.core.render.browser import (
     RenderedSlide,
     _needs_isolated_raster,
     _raster_bounds,
+    fixed_canvas_size,
     nodes_from_snapshot,
     rasters_from_pngs,
 )
-from domoxml.types import ConversionWarning, CoverageItem
+from domoxml.core.render.page import compose_page
+from domoxml.types import ConversionWarning, CoverageItem, Theme
 
 __all__ = [
     "HostCaptureSession",
+    "capture_slide",
     "compose_pptx",
     "isolated_raster_plan",
     "open_session",
@@ -124,6 +127,33 @@ def slide_from_snapshot(
         resources=dict(resources or {}),
         rasters=rasters,
     )
+
+
+async def capture_slide(
+    session: BrowserSession | HostCaptureSession,
+    fragment: str,
+    *,
+    css: str | None,
+    theme: Theme,
+    width: int,
+    height: int,
+) -> RenderedSlide:
+    """Compose and capture one slide fragment at ``width`` x ``height`` — unless the
+    fragment is authored on a fixed-size canvas larger than that (see
+    :func:`fixed_canvas_size`), in which case re-compose and re-capture at the canvas
+    size so the slide, the captured geometry and every screenshot-derived layer share
+    one coordinate space. Callers whose size already matches their content see exactly
+    one capture, as before."""
+    page = compose_page(fragment, css=css, theme=theme, width_px=width, height_px=height)
+    rendered = await session.render(page, width=width, height=height)
+    canvas = fixed_canvas_size(rendered.nodes, width=width, height=height)
+    if canvas is not None:
+        canvas_w, canvas_h = canvas
+        page = compose_page(
+            fragment, css=css, theme=theme, width_px=canvas_w, height_px=canvas_h
+        )
+        rendered = await session.render(page, width=canvas_w, height=canvas_h)
+    return rendered
 
 
 def compose_pptx(

@@ -35,7 +35,7 @@ async def _load_sources() -> None:
 await _load_sources()
 
 from domoxml.core.render.page import compose_page
-from domoxml.core.render.web import compose_pptx, open_session
+from domoxml.core.render.web import capture_slide, compose_pptx, open_session
 from domoxml.types import CoverageReport, Representation, Theme
 from domoxml.web import aconvert, aread_deck
 
@@ -72,16 +72,27 @@ async def _dispatch(name):
         fragments = json.loads(ARG_FRAGMENTS)
         theme = _theme()
         width, height = int(ARG_W), int(ARG_H)
-        pptx, items, warnings = await aconvert(
-            fragments, width=width, height=height, theme=theme
-        )
+        # Capture through the package's own slide capture (not aconvert) so the
+        # effective per-slide sizes survive: a fragment authored on a fixed-size
+        # canvas larger than the requested size is captured at the canvas size,
+        # and the previews must be built at that size too.
+        async with open_session() as session:
+            rendered = [
+                await capture_slide(
+                    session, fragment, css=None, theme=theme,
+                    width=width, height=height,
+                )
+                for fragment in fragments
+            ]
+        pptx, items, warnings = compose_pptx(rendered)
         pages = [
-            compose_page(f, css=None, theme=theme, width_px=width, height_px=height)
-            for f in fragments
+            compose_page(f, css=None, theme=theme, width_px=s.width, height_px=s.height)
+            for f, s in zip(fragments, rendered)
         ]
+        sizes = [{"width": s.width, "height": s.height} for s in rendered]
         RESULT_PPTX = pptx
         RESULT_JSON = json.dumps(
-            {"report": _report(items, warnings), "pages": pages}
+            {"report": _report(items, warnings), "pages": pages, "sizes": sizes}
         )
     elif name == "fragment":
         # Single-slide low-level path (spike checks): exposes the capture details

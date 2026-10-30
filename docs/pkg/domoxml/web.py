@@ -15,8 +15,12 @@ import asyncio
 from collections.abc import Sequence
 from typing import Any
 
-from domoxml.core.render.page import compose_page
-from domoxml.core.render.web import _is_browser_runtime, compose_pptx, open_session
+from domoxml.core.render.web import (
+    _is_browser_runtime,
+    capture_slide,
+    compose_pptx,
+    open_session,
+)
 from domoxml.core.roundtrip import inline_assets
 from domoxml.presentation import Presentation
 from domoxml.types import (
@@ -59,10 +63,11 @@ async def aconvert(
     rendered = []
     async with open_session(raster_library_url=raster_library_url) as session:
         for fragment in fragments:
-            page = compose_page(
-                fragment, css=css, theme=theme, width_px=width, height_px=height
+            rendered.append(
+                await capture_slide(
+                    session, fragment, css=css, theme=theme, width=width, height=height
+                )
             )
-            rendered.append(await session.render(page, width=width, height=height))
     return compose_pptx(rendered)
 
 

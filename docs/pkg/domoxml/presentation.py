@@ -10,8 +10,8 @@ from typing import Self
 from domoxml.core.fonts import resolve_faces
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import extract_slide
-from domoxml.core.render import RenderedSlide, compose_page
-from domoxml.core.render.web import open_session
+from domoxml.core.render import RenderedSlide
+from domoxml.core.render.web import capture_slide, open_session
 from domoxml.core.units import pixels
 from domoxml.slides import build_pptx, read_pptx_result
 from domoxml.types import (
@@ -151,10 +151,16 @@ class Presentation:
         async with open_session() as session:
             for slide in chosen:
                 width, height = pixels(slide.size or self.size)
-                page = compose_page(
-                    slide.html, css=self.css, theme=self.theme, width_px=width, height_px=height
+                rendered.append(
+                    await capture_slide(
+                        session,
+                        slide.html,
+                        css=self.css,
+                        theme=self.theme,
+                        width=width,
+                        height=height,
+                    )
                 )
-                rendered.append(await session.render(page, width=width, height=height))
         return rendered
 
 

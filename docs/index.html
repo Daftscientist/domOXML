@@ -224,11 +224,14 @@ document.getElementById('convert-deck').addEventListener('click', async () => {
     const cards = document.getElementById('create-cards');
     cards.replaceChildren();
     for (let i = 0; i < fragments.length; i++) {
-      const pngUrl = await renderPng(json.pages[i], DECK_W, DECK_H).catch(() => null);
+      // Preview at the slide's effective size (a fixed-canvas fragment may have
+      // been captured larger than the requested deck size), not the request size.
+      const size = (json.sizes && json.sizes[i]) || { width: DECK_W, height: DECK_H };
+      const pngUrl = await renderPng(json.pages[i], size.width, size.height).catch(() => null);
       cards.appendChild(makeCard({
         title: 'Slide ' + (i + 1),
         pngUrl,
-        iframeDoc: json.pages[i], iframeW: DECK_W, iframeH: DECK_H,
+        iframeDoc: json.pages[i], iframeW: size.width, iframeH: size.height,
         links: [
           { href: blobUrl(new TextEncoder().encode(fragments[i]), 'text/html'),
             name: `slide-${i + 1}.html`, label: 'Download HTML' },

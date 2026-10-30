@@ -25,10 +25,7 @@ def test_takumi_selection_is_explicit_and_chromium_remains_default() -> None:
 
 
 def test_takumi_css_parse_failure_retains_engine_message_and_stage() -> None:
-    message = (
-        "invalid value for transform: string 'rotate(18deg) skew(-12deg)': "
-        "Unexpected token"
-    )
+    message = "invalid value for transform: string 'rotate(18deg) skew(-12deg)': Unexpected token"
     payload = json.dumps({"ok": False, "stage": "paint", "message": message}).encode()
     with pytest.raises(TakumiRenderError, match="Takumi paint failed") as error:
         _decode_worker_reply(payload, b"", 1)
@@ -47,11 +44,13 @@ def test_simple_takumi_fill_is_native() -> None:
         png=b"image",
         width=1280,
         height=720,
-        steps=({
-            "type": "fill",
-            "bounds": {"x": 40, "y": 60, "width": 180, "height": 90},
-            "color": [79, 70, 229, 255],
-        },),
+        steps=(
+            {
+                "type": "fill",
+                "bounds": {"x": 40, "y": 60, "width": 180, "height": 90},
+                "color": [79, 70, 229, 255],
+            },
+        ),
     )
     result = extract_takumi(slide)
     assert len(result.slide.shapes) == 1
@@ -67,12 +66,21 @@ def test_text_is_native_and_remains_editable() -> None:
         png=b"image",
         width=1280,
         height=720,
-        steps=({
-            "type": "text", "text": "Hello", "x": 40, "y": 50,
-            "width": 240, "height": 38, "fontSize": 32,
-            "fontFamily": "Geist", "fontWeight": 700, "fontStyle": "normal",
-            "color": [12, 23, 34, 255],
-        },),
+        steps=(
+            {
+                "type": "text",
+                "text": "Hello",
+                "x": 40,
+                "y": 50,
+                "width": 240,
+                "height": 38,
+                "fontSize": 32,
+                "fontFamily": "Geist",
+                "fontWeight": 700,
+                "fontStyle": "normal",
+                "color": [12, 23, 34, 255],
+            },
+        ),
     )
     result = extract_takumi(slide)
     text = result.slide.shapes[0].text
@@ -89,9 +97,11 @@ def test_unsupported_effect_never_crops_a_composited_region() -> None:
         width=1280,
         height=720,
         steps=(
-            {"type": "fill",
-             "bounds": {"x": 30, "y": 40, "width": 200, "height": 90},
-             "color": [30, 40, 50, 255]},
+            {
+                "type": "fill",
+                "bounds": {"x": 30, "y": 40, "width": 200, "height": 90},
+                "color": [30, 40, 50, 255],
+            },
             {"type": "unsupported", "reason": "backdrop-filter compositing"},
         ),
     )

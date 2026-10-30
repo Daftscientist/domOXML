@@ -154,6 +154,134 @@ _SNAPSHOT_JS = """
     return runs.some((run) => run.text.trim()) ? runs : [];
   };
   const out = [];
+  // What the browser clips a descendant to. PowerPoint never clips one shape to another, so a
+  // descendant that pokes out of an ancestor's `overflow` box is flagged for an isolated raster.
+  const walked = new Map();
+  const clipCache = new Map();
+  const viewport = [
+    { x: 0, y: 0 },
+    { x: document.documentElement.clientWidth, y: document.documentElement.clientHeight },
+  ];
+  const cornersOf = (rect, linear, el) => {
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height / 2;
+    const rotated = linear && (Math.abs(linear.b) > 1e-6 || Math.abs(linear.c) > 1e-6);
+    if (rotated && el instanceof HTMLElement) {
+      const hw = el.offsetWidth / 2;
+      const hh = el.offsetHeight / 2;
+      return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => {
+        const point = linear.transformPoint({ x, y });
+        return { x: cx + point.x, y: cy + point.y };
+      });
+    }
+    return [
+      { x: rect.x, y: rect.y }, { x: rect.right, y: rect.y },
+      { x: rect.right, y: rect.bottom }, { x: rect.x, y: rect.bottom },
+    ];
+  };
+  const outsideClip = (region, point) => {
+    const local = region.inverse.transformPoint({
+      x: point.x - region.centre.x, y: point.y - region.centre.y,
+    });
+    const x = Math.abs(local.x - region.shift.x);
+    const y = Math.abs(local.y - region.shift.y);
+    const tolerance = 1;
+    if (region.clipX && x > region.half.x + tolerance) return true;
+    if (region.clipY && y > region.half.y + tolerance) return true;
+    const r = region.radius;
+    if (r > 0 && region.clipX && region.clipY && x > region.half.x - r && y > region.half.y - r) {
+      const dx = x - (region.half.x - r);
+      const dy = y - (region.half.y - r);
+      return dx * dx + dy * dy > (r + tolerance) * (r + tolerance);
+    }
+    return false;
+  };
+  // The padding box an element clips its descendants to, in its own (possibly rotated) frame.
+  const clipRegion = (ancestor) => {
+    if (clipCache.has(ancestor)) return clipCache.get(ancestor);
+    let region = null;
+    const record = walked.get(ancestor);
+    if (record && ancestor instanceof HTMLElement && ancestor.offsetWidth > 0
+        && ancestor.offsetHeight > 0) {
+      const cs = record.computed;
+      const clipX = cs.overflowX !== 'visible';
+      const clipY = cs.overflowY !== 'visible';
+      if (clipX || clipY) {
+        const bl = parseFloat(cs.borderLeftWidth) || 0;
+        const br = parseFloat(cs.borderRightWidth) || 0;
+        const bt = parseFloat(cs.borderTopWidth) || 0;
+        const bb = parseFloat(cs.borderBottomWidth) || 0;
+        const radii = [
+          cs.borderTopLeftRadius, cs.borderTopRightRadius,
+          cs.borderBottomRightRadius, cs.borderBottomLeftRadius,
+        ].map((value) => {
+          const first = value.split(' ')[0];
+          return first.endsWith('%')
+            ? (parseFloat(first) / 100) * ancestor.offsetWidth : parseFloat(first) || 0;
+        });
+        // CSS Backgrounds 3.4: one factor shrinks every radius until each side fits the border
+        // box. getComputedStyle reports the authored value, so `9999px` arrives unscaled.
+        const [tl, tr, brr, blr] = radii;
+        const fit = Math.min(
+          1,
+          ancestor.offsetWidth / Math.max(tl + tr, blr + brr),
+          ancestor.offsetHeight / Math.max(tl + blr, tr + brr),
+        );
+        const inverse = (record.linear || new DOMMatrix()).inverse();
+        if ([inverse.a, inverse.b, inverse.c, inverse.d].every(Number.isFinite)) {
+          region = {
+            centre: {
+              x: record.rect.x + record.rect.width / 2,
+              y: record.rect.y + record.rect.height / 2,
+            },
+            inverse,
+            half: {
+              x: (ancestor.offsetWidth - bl - br) / 2,
+              y: (ancestor.offsetHeight - bt - bb) / 2,
+            },
+            shift: { x: (bl - br) / 2, y: (bt - bb) / 2 },
+            clipX,
+            clipY,
+            radius: Math.max(0, Math.max(...radii) * fit - Math.max(bl, br, bt, bb)),
+          };
+          // A clip that already covers the whole slide is just the slide edge.
+          region.coversSlide = viewport.every((point) => !outsideClip(region, point));
+        }
+      }
+    }
+    clipCache.set(ancestor, region);
+    return region;
+  };
+  // The element an absolutely positioned `el` is laid out against: the nearest ancestor that is
+  // positioned or establishes a containing block (transform, perspective, filter). `offsetParent`
+  // is not used because inline <svg> elements do not have it.
+  const containingBlockOf = (el) => {
+    let ancestor = el.parentElement;
+    while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+      const cs = getComputedStyle(ancestor);
+      if (cs.position !== 'static' || cs.transform !== 'none' || cs.perspective !== 'none'
+          || cs.filter !== 'none') {
+        return ancestor;
+      }
+      ancestor = ancestor.parentElement;
+    }
+    return document.body;
+  };
+  // Overflow clips a descendant only along its containing-block chain, so an absolutely
+  // positioned child escapes the clips of unpositioned ancestors between it and its container.
+  const clippersOf = (el) => {
+    const found = [];
+    let current = el;
+    while (current && current !== document.documentElement) {
+      const position = getComputedStyle(current).position;
+      if (position === 'fixed') break;
+      const next = position === 'absolute' ? containingBlockOf(current) : current.parentElement;
+      if (!next || next === document.documentElement) break;
+      found.push(next);
+      current = next;
+    }
+    return found;
+  };
   // The linear part of every ancestor transform composed together. Shapes on a slide are all
   // positioned absolutely, so a descendant must carry the rotation/flip it is drawn with even
   // though its own computed transform is `none`.
@@ -222,6 +350,17 @@ _SNAPSHOT_JS = """
         const identity = upright && Math.abs(effectiveLinear.a - 1) < 1e-6
           && Math.abs(effectiveLinear.d - 1) < 1e-6;
         styles.transform = identity ? 'none' : effectiveLinear.toString();
+      }
+    }
+    walked.set(el, { rect: r, linear: effectiveLinear, computed });
+    if (r.width > 0 && r.height > 0) {
+      const corners = cornersOf(r, effectiveLinear, el);
+      for (const ancestor of clippersOf(el)) {
+        const region = clipRegion(ancestor);
+        if (region && !region.coversSlide && corners.some((point) => outsideClip(region, point))) {
+          styles.domoxmlClippedByAncestor = 'true';
+          break;
+        }
       }
     }
     if (styles.transform && styles.transform !== 'none') {

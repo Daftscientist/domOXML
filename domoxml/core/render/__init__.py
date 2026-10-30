@@ -3,7 +3,12 @@ computed layout. The single source of truth all outputs (PNG, and later the .ppt
 decoration layer + the IR) derive from.
 """
 
-from domoxml.core.render.browser import BrowserSession, RenderedNode, RenderedSlide
+from domoxml.core.render.browser import (
+    BrowserSession,
+    RenderedNode,
+    RenderedSlide,
+    fixed_canvas_size,
+)
 from domoxml.core.render.page import compile_theme, compose_page
 
 __all__ = [
@@ -12,4 +17,5 @@ __all__ = [
     "RenderedSlide",
     "compile_theme",
     "compose_page",
+    "fixed_canvas_size",
 ]

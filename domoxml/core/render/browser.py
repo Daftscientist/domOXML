@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import math
 import re
+from collections.abc import Iterable
 from types import TracebackType
 from typing import Any, Self
 from urllib.parse import urlsplit
@@ -388,6 +389,50 @@ class RenderedSlide(BaseModel):
     nodes: tuple[RenderedNode, ...]
     resources: dict[str, bytes] = Field(default_factory=dict)
     rasters: dict[int, RenderedRaster] = Field(default_factory=dict[int, RenderedRaster])
+
+
+def fixed_canvas_size(
+    nodes: Iterable[RenderedNode], *, width: int, height: int
+) -> tuple[int, int] | None:
+    """Detect a fixed-size authoring canvas that disagrees with the declared slide size.
+
+    Slides are often authored as one fixed-size root element (e.g. a 1600x900 ``<main>``
+    whose children are positioned in its own pixel space). If such a root — a direct
+    child of ``<body>``, anchored at the page origin, at least as large as the declared
+    slide in both dimensions and strictly larger in one — contains every other captured
+    node, the content's coordinate space is the canvas's, not the declared size's, and
+    emitting it onto the declared slide mis-scales the native layer against any
+    screenshot-derived layer. Return the canvas size so the caller can re-capture at
+    the size the content was actually authored at; ``None`` when no such canvas exists
+    (the normal case: fluid content, or a canvas that already matches the slide)."""
+    node_list = list(nodes)
+    body = next((node for node in node_list if node.parent == -1), None)
+    if body is None:
+        return None
+    eps = 1.0
+    best: tuple[int, int] | None = None
+    for candidate in node_list:
+        if candidate.parent != body.index:
+            continue
+        if not (-eps <= candidate.x <= eps and -eps <= candidate.y <= eps):
+            continue
+        canvas_w, canvas_h = round(candidate.width), round(candidate.height)
+        if canvas_w < width or canvas_h < height or (canvas_w, canvas_h) == (width, height):
+            continue
+        right = candidate.x + candidate.width
+        bottom = candidate.y + candidate.height
+        if not all(
+            node.x >= candidate.x - eps
+            and node.y >= candidate.y - eps
+            and node.x + node.width <= right + eps
+            and node.y + node.height <= bottom + eps
+            for node in node_list
+            if node.index != body.index
+        ):
+            continue
+        if best is None or canvas_w * canvas_h > best[0] * best[1]:
+            best = (canvas_w, canvas_h)
+    return best
 
 
 def _raster_bounds(

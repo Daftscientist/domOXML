@@ -219,6 +219,14 @@ _SNAPSHOT_JS = """
           return first.endsWith('%')
             ? (parseFloat(first) / 100) * ancestor.offsetWidth : parseFloat(first) || 0;
         });
+        // CSS Backgrounds 3.4: one factor shrinks every radius until each side fits the border
+        // box. getComputedStyle reports the authored value, so `9999px` arrives unscaled.
+        const [tl, tr, brr, blr] = radii;
+        const fit = Math.min(
+          1,
+          ancestor.offsetWidth / Math.max(tl + tr, blr + brr),
+          ancestor.offsetHeight / Math.max(tl + blr, tr + brr),
+        );
         const inverse = (record.linear || new DOMMatrix()).inverse();
         if ([inverse.a, inverse.b, inverse.c, inverse.d].every(Number.isFinite)) {
           region = {
@@ -234,7 +242,7 @@ _SNAPSHOT_JS = """
             shift: { x: (bl - br) / 2, y: (bt - bb) / 2 },
             clipX,
             clipY,
-            radius: Math.max(0, Math.max(...radii) - Math.max(bl, br, bt, bb)),
+            radius: Math.max(0, Math.max(...radii) * fit - Math.max(bl, br, bt, bb)),
           };
           // A clip that already covers the whole slide is just the slide edge.
           region.coversSlide = viewport.every((point) => !outsideClip(region, point));
@@ -244,6 +252,21 @@ _SNAPSHOT_JS = """
     clipCache.set(ancestor, region);
     return region;
   };
+  // The element an absolutely positioned `el` is laid out against: the nearest ancestor that is
+  // positioned or establishes a containing block (transform, perspective, filter). `offsetParent`
+  // is not used because inline <svg> elements do not have it.
+  const containingBlockOf = (el) => {
+    let ancestor = el.parentElement;
+    while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+      const cs = getComputedStyle(ancestor);
+      if (cs.position !== 'static' || cs.transform !== 'none' || cs.perspective !== 'none'
+          || cs.filter !== 'none') {
+        return ancestor;
+      }
+      ancestor = ancestor.parentElement;
+    }
+    return document.body;
+  };
   // Overflow clips a descendant only along its containing-block chain, so an absolutely
   // positioned child escapes the clips of unpositioned ancestors between it and its container.
   const clippersOf = (el) => {
@@ -252,7 +275,7 @@ _SNAPSHOT_JS = """
     while (current && current !== document.documentElement) {
       const position = getComputedStyle(current).position;
       if (position === 'fixed') break;
-      const next = position === 'absolute' ? current.offsetParent : current.parentElement;
+      const next = position === 'absolute' ? containingBlockOf(current) : current.parentElement;
       if (!next || next === document.documentElement) break;
       found.push(next);
       current = next;

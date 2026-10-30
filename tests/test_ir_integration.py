@@ -292,6 +292,34 @@ async def test_absolutely_positioned_child_escapes_an_unpositioned_clipping_ance
     assert _solid_shape(ir, "CC2200").box.width == px_to_emu(80)
 
 
+async def test_children_of_a_pill_shaped_clip_stay_native() -> None:
+    # `border-radius:9999px` is the pill idiom. The used radius is clamped to half the shorter
+    # side, so a child in the middle of the pill is not near any rounded corner.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:300px;height:60px;"
+        "overflow:hidden;border-radius:9999px;background:#eeeeee'>"
+        "<div style='position:absolute;left:120px;top:20px;width:60px;height:20px;"
+        "background:#cc2200'></div></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert _solid_shape(ir, "CC2200").box.width == px_to_emu(60)
+
+
+async def test_absolutely_positioned_svg_poking_out_of_a_clip_is_rasterised() -> None:
+    # Inline <svg> has no offsetParent, so its containing block has to be found by hand. A lone
+    # <path> would otherwise become native custom geometry that spills past the clip.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:200px;"
+        "overflow:hidden;background:#eeeeee'>"
+        "<svg style='position:absolute;left:150px;top:50px' width='150' height='80' "
+        "viewBox='0 0 150 80'><path d='M0 0H150V80H0Z' fill='#cc2200'/></svg></div>"
+    )
+
+    layer = next(s for s in ir.shapes if isinstance(s.fill, PictureFill))
+    assert isinstance(layer.fill, PictureFill)
+
+
 async def test_shape_bleeding_past_the_slide_edge_is_not_treated_as_clipped() -> None:
     ir = await _render_and_extract(
         "<div style='position:absolute;left:1200px;top:100px;width:200px;height:100px;"

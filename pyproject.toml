@@ -55,6 +55,10 @@ Issues = "https://github.com/Daftscientist/domOXML/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["domoxml"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"domoxml/core/render/takumi/worker.mjs" = "domoxml/core/render/takumi/worker.mjs"
+"domoxml/core/render/takumi/package.json" = "domoxml/core/render/takumi/package.json"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

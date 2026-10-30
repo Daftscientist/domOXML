@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from enum import StrEnum
+from html import escape
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -291,6 +292,20 @@ class HtmlSlide(BaseModel):
     width_px: int
     height_px: int
 
+    def document(self, css: str = "", *, title: str = "domOXML slide") -> str:
+        """The fragment as a complete page that renders on its own.
+
+        Layout is inline on every element, so ``css`` only needs to carry ``@font-face`` rules.
+        The charset is declared so characters such as a curly apostrophe survive a double click.
+        """
+        style = f"<style>{css}</style>" if css else ""
+        return (
+            '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f"<title>{escape(title)}</title>{style}</head>"
+            f'<body style="margin:0">{self.html}</body></html>'
+        )
+
 
 class PreservedFragment(BaseModel):
     """Source OOXML retained when the reverse adapter cannot map it yet."""
@@ -316,12 +331,17 @@ class HtmlPresentation(BaseModel):
     coverage: CoverageReport = Field(default_factory=lambda: CoverageReport(items=()))
 
     def save(self, directory: Path) -> None:
-        """Write HTML slides, shared CSS, and assets below ``directory``."""
+        """Write one standalone HTML page per slide, plus assets, below ``directory``.
+
+        Each page carries its own ``@font-face`` rules, so a font's relative URL resolves from
+        the page that uses it rather than from a stylesheet in another directory.
+        """
         slides_dir = directory / "slides"
         slides_dir.mkdir(parents=True, exist_ok=True)
-        (directory / "shared.css").write_text(self.css, encoding="utf-8")
         for index, slide in enumerate(self.slides, start=1):
-            (slides_dir / f"slide-{index:02d}.html").write_text(slide.html, encoding="utf-8")
+            (slides_dir / f"slide-{index:02d}.html").write_text(
+                slide.document(self.css, title=f"Slide {index}"), encoding="utf-8"
+            )
         for asset in self.assets:
             path = directory / asset.path
             path.parent.mkdir(parents=True, exist_ok=True)

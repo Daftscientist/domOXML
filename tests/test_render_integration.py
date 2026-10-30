@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import http.server
 import threading
+from pathlib import Path
 
 import pytest
+from playwright.sync_api import sync_playwright
 
 from domoxml import Presentation, Slide
 from domoxml.types import OutputFormat, SlideSize
@@ -91,3 +93,41 @@ def test_render_never_reaches_the_network() -> None:
         thread.join(timeout=5)
 
     assert received == []
+
+
+def test_saved_slide_html_renders_on_its_own(tmp_path: Path) -> None:
+    # Opening a saved slide directly (no stylesheet linked, no wrapper page) must lay out exactly
+    # like the original: layout is inline and the charset is declared, so U+2019 is not mojibake.
+    deck = Presentation()
+    deck.add(
+        Slide(
+            html="<div style='position:absolute;left:100px;top:80px;width:300px;height:120px;"
+            "background:#cc2200;color:#fff;font-size:32px'>Don\u2019t flatten</div>"
+        )
+    )
+    deck.render({OutputFormat.HTML}).save(tmp_path)
+
+    page_path = tmp_path / "html" / "slides" / "slide-01.html"
+    assert not (tmp_path / "html" / "shared.css").exists()
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            page.goto(page_path.as_uri())
+            box = page.evaluate(
+                """() => {
+                  const shape = Array.from(document.querySelectorAll('.domoxml-shape'))
+                    .find((el) => el.textContent.includes('flatten'));
+                  const r = shape.getBoundingClientRect();
+                  return {
+                    x: r.x, y: r.y, width: r.width, height: r.height,
+                    position: getComputedStyle(shape).position, text: shape.textContent,
+                  };
+                }"""
+            )
+        finally:
+            browser.close()
+
+    assert box["position"] == "absolute"
+    assert (box["x"], box["y"], box["width"], box["height"]) == (100, 80, 300, 120)
+    assert "Don\u2019t flatten" in box["text"]

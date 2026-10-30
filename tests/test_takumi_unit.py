@@ -11,7 +11,7 @@ from domoxml.core.ir.model import PictureFill, SolidFill
 from domoxml.core.render.takumi_backend import (
     TakumiRenderedSlide,
     TakumiRenderError,
-    _decode_worker_reply,
+    decode_takumi_worker_reply,
     extract_takumi,
 )
 from domoxml.types import Editability, Representation
@@ -28,7 +28,7 @@ def test_takumi_css_parse_failure_retains_engine_message_and_stage() -> None:
     message = "invalid value for transform: string 'rotate(18deg) skew(-12deg)': Unexpected token"
     payload = json.dumps({"ok": False, "stage": "paint", "message": message}).encode()
     with pytest.raises(TakumiRenderError, match="Takumi paint failed") as error:
-        _decode_worker_reply(payload, b"", 1)
+        decode_takumi_worker_reply(payload, b"", 1)
     assert error.value.stage == "paint"
     assert error.value.detail == message
     assert message in str(error.value)
@@ -36,7 +36,7 @@ def test_takumi_css_parse_failure_retains_engine_message_and_stage() -> None:
 
 def test_worker_crash_surfaces_stderr_instead_of_a_generic_raster_warning() -> None:
     with pytest.raises(TakumiRenderError, match="module not found"):
-        _decode_worker_reply(b"", b"module not found", 1)
+        decode_takumi_worker_reply(b"", b"module not found", 1)
 
 
 def test_simple_takumi_fill_is_native() -> None:

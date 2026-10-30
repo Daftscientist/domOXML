@@ -1641,6 +1641,30 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     warnings.append(ConversionWarning(message=reason, element=label))
             continue
 
+        # --- Clipped by an ancestor ---
+        # PowerPoint never clips a shape to another shape. A descendant the browser clips at an
+        # ancestor's overflow edge is rasterised in isolation (the capture keeps the ancestor's
+        # clip), so it keeps exactly its visible pixels and nothing spills past the clipping box.
+        if node.styles.get("domoxmlClippedByAncestor"):
+            label = _label(node)
+            clip_reason = "clipped by an ancestor's overflow has no native mapping"
+            clip_shape = _raster_shape(node, rendered)
+            consumed |= _subtree(node.index, children)
+            if clip_shape is None:
+                warnings.append(
+                    ConversionWarning(
+                        message=f"dropped — empty raster region ({clip_reason})", element=label
+                    )
+                )
+                coverage.append(_failed_coverage(label, clip_reason))
+            else:
+                contents.append(identities.apply(clip_shape, node))
+                coverage.append(_element_layer_coverage(label, clip_shape, clip_reason))
+                warnings.append(
+                    ConversionWarning(message=f"rasterised — {clip_reason}", element=label)
+                )
+            continue
+
         # --- Native table interception ---
         # A <table> subtree maps to a native a:tbl (graphicFrame). Consume the whole subtree so
         # its rows/cells aren't also emitted as shapes.

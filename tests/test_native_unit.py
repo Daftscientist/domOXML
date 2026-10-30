@@ -777,6 +777,25 @@ def test_svg_image_fallback_uses_its_isolated_raster_not_the_composited_slide(
     assert any("not captured" in w.message for w in missing.warnings)
 
 
+def test_node_clipped_by_an_ancestor_becomes_an_element_layer() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={"backgroundColor": "rgb(1,2,3)", "domoxmlClippedByAncestor": "true"},
+    )
+
+    result = extract_slide(_captured_slide(node))
+
+    assert isinstance(result.slide.shapes[0].fill, PictureFill)
+    assert result.coverage[0].representation is Representation.ELEMENT_LAYER
+    assert "clipped by an ancestor" in result.warnings[0].message
+    assert extract_slide(_slide(node)).coverage[0].representation is Representation.FAILED
+
+
 def test_unmappable_custom_svg_paint_uses_element_layer_instead_of_omitting_it() -> None:
     svg = RenderedNode(
         tag="svg",

@@ -229,6 +229,79 @@ async def test_text_inside_a_rotated_element_is_rotated_with_it() -> None:
     assert abs(label.transform.rotation_deg - 10.0) < 0.5
 
 
+async def test_child_clipped_by_an_ancestor_is_rasterised_without_the_clipped_part() -> None:
+    # Half the circle sits outside the card's overflow box. PowerPoint cannot clip one shape to
+    # another, so the circle is rasterised in isolation and must not paint past the card edge.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
+        "overflow:hidden;background:#eeeeee'>"
+        "<div style='position:absolute;left:200px;top:50px;width:200px;height:100px;"
+        "background:#cc2200'></div></div>"
+    )
+
+    [layer] = [s for s in ir.shapes if isinstance(s.fill, PictureFill)]
+    assert isinstance(layer.fill, PictureFill)
+    with Image.open(BytesIO(layer.fill.data)) as image:
+        width = image.width
+        alpha = image.convert("RGBA").getchannel("A").tobytes()
+    scale = width / (layer.box.width / px_to_emu(1))
+
+    def alpha_at(x: float, y: float) -> int:
+        return alpha[int(y * scale) * width + int(x * scale)]
+
+    # The child spans x=300..500; the card ends at x=400, so everything right of it is clipped.
+    assert alpha_at(50, 20) == 255
+    assert alpha_at(150, 20) == 0
+
+
+async def test_children_inside_their_clipping_ancestor_stay_native() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
+        "overflow:hidden;border-radius:12px;background:#eeeeee'>"
+        "<div style='position:absolute;left:30px;top:30px;width:100px;height:20px;"
+        "background:#cc2200'></div></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert _solid_shape(ir, "CC2200").box.width == px_to_emu(100)
+
+
+async def test_rotated_clipping_ancestor_keeps_contained_children_native() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:300px;top:150px;width:400px;height:300px;"
+        "overflow:hidden;border-radius:9px;transform:rotate(-13deg);background:#eeeeee'>"
+        "<div style='position:absolute;left:28px;top:35px;width:300px;height:3px;"
+        "background:#cc2200'></div></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert _solid_shape(ir, "CC2200").transform is not None
+
+
+async def test_absolutely_positioned_child_escapes_an_unpositioned_clipping_ancestor() -> None:
+    # The clip belongs to the static middle box, but the child's containing block is the outer
+    # positioned box, so the browser does not clip it and neither must we.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:600px;height:400px'>"
+        "<div style='overflow:hidden;width:100px;height:100px'>"
+        "<div style='position:absolute;left:200px;top:200px;width:80px;height:40px;"
+        "background:#cc2200'></div></div></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert _solid_shape(ir, "CC2200").box.width == px_to_emu(80)
+
+
+async def test_shape_bleeding_past_the_slide_edge_is_not_treated_as_clipped() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:1200px;top:100px;width:200px;height:100px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert _solid_shape(ir, "CC2200").box.width == px_to_emu(200)
+
+
 async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:
     result = await _render_and_extract_result(
         '<div style="position:relative;width:1280px;height:720px;background:#f7f8fb">'

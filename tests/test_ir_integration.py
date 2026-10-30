@@ -129,6 +129,33 @@ async def test_extracts_css_reflection_with_complete_isolated_paint_bounds() -> 
     assert coverage.raster_area_emu2 == px_to_emu(220) * px_to_emu(192)
 
 
+async def test_unmappable_background_raster_excludes_overlapping_native_text() -> None:
+    # The stripe pattern has no native mapping, so the full-slide div is rasterised. Text drawn
+    # over it is its own native shape; baking it into the raster too would draw it twice.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:0;top:0;width:1280px;height:720px;"
+        "background:repeating-linear-gradient(90deg,transparent 0px,transparent 39px,"
+        "rgba(24,31,26,.2) 39px,rgba(24,31,26,.2) 40px,rgba(200,30,30,.3) 41px)'></div>"
+        "<div style='position:absolute;left:100px;top:100px;font-size:96px;font-weight:800;"
+        "color:#111'>Overlap</div>"
+    )
+
+    pictures = [s for s in ir.shapes if isinstance(s.fill, PictureFill)]
+    assert pictures, "the unmappable gradient should be an element layer"
+    for picture in pictures:
+        assert isinstance(picture.fill, PictureFill)
+        with Image.open(BytesIO(picture.fill.data)) as image:
+            raw = image.convert("RGBA").tobytes()
+        text_pixels = sum(
+            1 for i in range(0, len(raw), 4) if raw[i + 3] > 200 and max(raw[i : i + 3]) < 80
+        )
+        assert text_pixels == 0, "the raster must not contain the overlapping text's pixels"
+    assert any(
+        s.text is not None and any("Overlap" in r.text for p in s.text.paragraphs for r in p.runs)
+        for s in ir.shapes
+    ), "the text stays a native, editable shape"
+
+
 async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:
     result = await _render_and_extract_result(
         '<div style="position:relative;width:1280px;height:720px;background:#f7f8fb">'

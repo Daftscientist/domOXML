@@ -74,11 +74,10 @@ from domoxml.types import (
     PreservedFragment,
 )
 
-_SHARED_CSS = (
-    ".domoxml-slide{position:relative;overflow:hidden;box-sizing:border-box}"
-    ".domoxml-shape{position:absolute;box-sizing:border-box}"
-    ".domoxml-text{white-space:pre-wrap}"
-)
+# Layout rules every emitted element needs. They are inlined on each element, never shipped in a
+# stylesheet, so a slide renders correctly wherever its markup lands.
+_SLIDE_BASE_STYLE = "position:relative;overflow:hidden;box-sizing:border-box"
+_TEXT_BASE_STYLE = "white-space:pre-wrap"
 # CSS has no distinct rendering for the heavier OOXML dash presets, so they fold onto the
 # nearest CSS border-style (dashed/dotted). The keys cover the whole DashStyle literal.
 _CSS_DASH = {
@@ -249,6 +248,8 @@ def _shape_style(
     node: ShapeNode, assets: dict[str, HtmlAsset], warnings: list[ConversionWarning]
 ) -> str:
     styles = [
+        "position:absolute",
+        "box-sizing:border-box",
         f"left:{_px(node.box.x)}",
         f"top:{_px(node.box.y)}",
         f"width:{_px(node.box.width)}",
@@ -814,7 +815,7 @@ def _text_html(body: TextBody | None, warnings: list[ConversionWarning] | None =
             # Plain paragraph — close all open lists first.
             _close_all_lists()
             spacing_style = _para_spacing_style(paragraph)
-            div_style = f"text-align:{paragraph.align}"
+            div_style = f"{_TEXT_BASE_STYLE};text-align:{paragraph.align}"
             if spacing_style:
                 div_style += ";" + spacing_style
             runs_html = "".join(_run_html(run) for run in paragraph.runs)
@@ -1126,6 +1127,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
             assets.setdefault(asset.path, asset)
             styles = [
                 "position:absolute",
+                "box-sizing:border-box",
                 f"left:{_px(node.box.x)}",
                 f"top:{_px(node.box.y)}",
                 f"width:{_px(node.box.width)}",
@@ -1514,7 +1516,7 @@ def serialize_canvas(
         height_px = round(emu_to_px(slide.height))
         transition_attrs = _slide_transition_attrs(slide.transition)
         bg_css = _slide_background_css(slide.background, assets)
-        base_style = f"width:{width_px}px;height:{height_px}px"
+        base_style = f"{_SLIDE_BASE_STYLE};width:{width_px}px;height:{height_px}px"
         slide_style = f"{base_style};{bg_css}" if bg_css else base_style
         html = f'<div class="domoxml-slide"{transition_attrs} style="{slide_style}">{shapes}</div>'
         html_slides.append(HtmlSlide(html=html, width_px=width_px, height_px=height_px))
@@ -1523,7 +1525,7 @@ def serialize_canvas(
     for face in embedded_fonts:
         asset_path = f"assets/fonts/{font_asset_name(face)}"
         assets.setdefault(asset_path, HtmlAsset(path=asset_path, data=face.data))
-    css = _SHARED_CSS + font_face_css(list(embedded_fonts))
+    css = font_face_css(list(embedded_fonts))
 
     return HtmlPresentation(
         slides=tuple(html_slides),

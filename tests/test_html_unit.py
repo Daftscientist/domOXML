@@ -451,8 +451,16 @@ def test_render_result_save_writes_every_artifact(tmp_path: Path) -> None:
 
     assert (tmp_path / "deck.pptx").read_bytes() == b"pptx"
     assert (tmp_path / "slide-01.png").read_bytes() == b"png-1"
-    assert (tmp_path / "html" / "shared.css").read_text()
-    assert "Coffee " in (tmp_path / "html" / "slides" / "slide-01.html").read_text()
+    page = (tmp_path / "html" / "slides" / "slide-01.html").read_text(encoding="utf-8")
+    assert "Coffee " in page
+    assert not (tmp_path / "html" / "shared.css").exists()
+    # A saved slide must render on its own: complete document, charset declared, and every
+    # layout rule inline rather than in a stylesheet it would have to be linked to.
+    assert page.startswith("<!doctype html>")
+    assert '<meta charset="utf-8">' in page
+    assert "<link" not in page
+    assert "position:relative;overflow:hidden;box-sizing:border-box" in page
+    assert "position:absolute;box-sizing:border-box" in page
     assert (tmp_path / "html" / html.assets[0].path).read_bytes() == b"png"
 
 

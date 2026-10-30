@@ -35,8 +35,11 @@
   .card h3 { margin: 0 0 14px; font-size: 15px; font-weight: 650; }
   .card img { display: block; max-width: 640px; width: 100%; border: 1px solid var(--line);
               border-radius: 6px; }
-  .card iframe { display: block; width: 640px; max-width: 100%; border: 1px solid var(--line);
-                 border-radius: 6px; margin-top: 14px; background: #fff; }
+  .card .frame-wrap { position: relative; width: 100%; max-width: 640px; overflow: hidden;
+                      border: 1px solid var(--line); border-radius: 6px; margin-top: 14px;
+                      background: #fff; }
+  .card .frame-wrap iframe { position: absolute; left: 0; top: 0; border: 0;
+                             transform-origin: top left; }
   .card .row { margin-top: 14px; }
   .note { color: var(--muted); font-size: 13px; margin-top: 10px; }
   input[type=file] { font-size: 14px; margin-top: 16px; }
@@ -153,11 +156,23 @@ function makeCard({ title, pngUrl, iframeDoc, iframeW, iframeH, links }) {
     card.appendChild(img);
   }
   if (iframeDoc !== undefined) {
+    // Show the whole slide fitted to the card: keep the frame at its natural
+    // size and scale it into a wrapper that holds the slide's aspect ratio.
+    const wrap = document.createElement('div');
+    wrap.className = 'frame-wrap';
+    wrap.style.aspectRatio = iframeW + ' / ' + iframeH;
     const frame = document.createElement('iframe');
     frame.srcdoc = iframeDoc;
-    frame.style.height = Math.round(640 * iframeH / iframeW) + 'px';
+    frame.style.width = iframeW + 'px';
+    frame.style.height = iframeH + 'px';
     frame.title = title + ' (live HTML)';
-    card.appendChild(frame);
+    wrap.appendChild(frame);
+    card.appendChild(wrap);
+    const fit = () => {
+      if (wrap.clientWidth) frame.style.transform = `scale(${wrap.clientWidth / iframeW})`;
+    };
+    new ResizeObserver(fit).observe(wrap);
+    fit();
   }
   const row = document.createElement('div');
   row.className = 'row';

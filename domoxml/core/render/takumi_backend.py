@@ -147,8 +147,10 @@ class TakumiSession:
 
 
 def _rgba(raw: Any) -> Rgba:
-    if not isinstance(raw, list) or len(raw) != 4 or not all(
-        isinstance(n, int) and 0 <= n <= 255 for n in raw
+    if (
+        not isinstance(raw, list)
+        or len(raw) != 4
+        or not all(isinstance(n, int) and 0 <= n <= 255 for n in raw)
     ):
         raise ValueError("invalid Takumi RGBA colour")
     return Rgba(r=raw[0], g=raw[1], b=raw[2], a=raw[3] / 255.0)
@@ -177,9 +179,9 @@ def extract_takumi(slide: TakumiRenderedSlide) -> ExtractResult:
         try:
             kind = step.get("type")
             if kind == "fill":
-                contents.append(ShapeNode(box=_box(step["bounds"]), fill=SolidFill(
-                    color=_rgba(step["color"])
-                )))
+                contents.append(
+                    ShapeNode(box=_box(step["bounds"]), fill=SolidFill(color=_rgba(step["color"])))
+                )
             elif kind == "text":
                 text = str(step["text"])
                 if not text:
@@ -191,20 +193,28 @@ def extract_takumi(slide: TakumiRenderedSlide) -> ExtractResult:
                     "height": max(float(step["height"]) + 2, 1),
                 }
                 weight = str(step.get("fontWeight", "400"))
-                contents.append(ShapeNode(
-                    box=_box(rect),
-                    text=TextBody(
-                        paragraphs=(TextParagraph(runs=(TextRun(
-                            text=text,
-                            font_family=str(step.get("fontFamily") or "Geist"),
-                            size_pt=px_to_pt(float(step["fontSize"])),
-                            bold=weight in {"bold", "700", "800", "900"},
-                            italic=step.get("fontStyle") in {"italic", "oblique"},
-                            color=_rgba(step["color"]),
-                        ),)),),
-                        autofit="none",
-                    ),
-                ))
+                contents.append(
+                    ShapeNode(
+                        box=_box(rect),
+                        text=TextBody(
+                            paragraphs=(
+                                TextParagraph(
+                                    runs=(
+                                        TextRun(
+                                            text=text,
+                                            font_family=str(step.get("fontFamily") or "Geist"),
+                                            size_pt=px_to_pt(float(step["fontSize"])),
+                                            bold=weight in {"bold", "700", "800", "900"},
+                                            italic=step.get("fontStyle") in {"italic", "oblique"},
+                                            color=_rgba(step["color"]),
+                                        ),
+                                    )
+                                ),
+                            ),
+                            autofit="none",
+                        ),
+                    )
+                )
             else:
                 reason = str(step.get("reason", kind or "unrecognized operation"))
                 break
@@ -216,20 +226,24 @@ def extract_takumi(slide: TakumiRenderedSlide) -> ExtractResult:
         picture = PictureFill(data=slide.png, ext="png", raster_role="takumi-slide")
         full = Box(x=0, y=0, width=px_to_emu(slide.width), height=px_to_emu(slide.height))
         return ExtractResult(
-            slide=SlideIR(width=full.width, height=full.height, contents=(
-                ShapeNode(box=full, fill=picture),
-            )),
-            coverage=(CoverageItem(
-                element="slide",
-                representation=Representation.RASTERIZED,
-                editability=Editability.NONE,
-                raster_area_emu2=full.width * full.height,
-                reason=f"Takumi paint tree needs unsupported OOXML mapping: {reason}",
-            ),),
-            warnings=(ConversionWarning(
-                element="slide",
-                message=f"Takumi used one noneditable slide raster: {reason}",
-            ),),
+            slide=SlideIR(
+                width=full.width, height=full.height, contents=(ShapeNode(box=full, fill=picture),)
+            ),
+            coverage=(
+                CoverageItem(
+                    element="slide",
+                    representation=Representation.RASTERIZED,
+                    editability=Editability.NONE,
+                    raster_area_emu2=full.width * full.height,
+                    reason=f"Takumi paint tree needs unsupported OOXML mapping: {reason}",
+                ),
+            ),
+            warnings=(
+                ConversionWarning(
+                    element="slide",
+                    message=f"Takumi used one noneditable slide raster: {reason}",
+                ),
+            ),
         )
     canvas = SlideIR(
         width=px_to_emu(slide.width),
@@ -238,11 +252,14 @@ def extract_takumi(slide: TakumiRenderedSlide) -> ExtractResult:
     )
     return ExtractResult(
         slide=canvas,
-        coverage=tuple(CoverageItem(
-            element=f"takumi-paint-{index}",
-            representation=Representation.NATIVE,
-            editability=Editability.SEMANTIC,
-            source_retention=SourceRetention.NOT_REQUIRED,
-        ) for index in range(len(contents))),
+        coverage=tuple(
+            CoverageItem(
+                element=f"takumi-paint-{index}",
+                representation=Representation.NATIVE,
+                editability=Editability.SEMANTIC,
+                source_retention=SourceRetention.NOT_REQUIRED,
+            )
+            for index in range(len(contents))
+        ),
         warnings=(),
     )

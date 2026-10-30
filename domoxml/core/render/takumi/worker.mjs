@@ -43,9 +43,30 @@ try {
     return Array.isArray(rgba) && rgba.length === 4 &&
       rgba.every((n) => Number.isInteger(n) && n >= 0 && n <= 255) ? rgba : null;
   };
+  const fullCanvasClips = new Set();
+  const isCanvasClip = (step) => {
+    if (step.clip?.type !== "rect") return false;
+    const box = step.node.bounds;
+    return box.x <= 0.01 && box.y <= 0.01 &&
+      box.x + box.width >= width - 0.01 &&
+      box.y + box.height >= height - 0.01;
+  };
   for (const step of tree.steps) {
+    if (step.type === "begin-clip" && isCanvasClip(step)) {
+      fullCanvasClips.add(step.node);
+      continue;
+    }
+    if (step.type === "end-clip" && fullCanvasClips.has(step.node)) {
+      fullCanvasClips.delete(step.node);
+      continue;
+    }
     if (step.type !== "draw") {
-      steps.push({ type: "unsupported", reason: step.type + " compositing" });
+      steps.push({
+        type: "unsupported",
+        reason: step.type + " compositing on " +
+          (step.node?.element?.tagName || "unnamed") + " " +
+          JSON.stringify(step.node?.bounds || {})
+      });
       continue;
     }
     const node = step.node;

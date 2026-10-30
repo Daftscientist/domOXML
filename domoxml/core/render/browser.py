@@ -154,7 +154,10 @@ _SNAPSHOT_JS = """
     return runs.some((run) => run.text.trim()) ? runs : [];
   };
   const out = [];
-  const walk = (el, parent) => {
+  // The linear part of every ancestor transform composed together. Shapes on a slide are all
+  // positioned absolutely, so a descendant must carry the rotation/flip it is drawn with even
+  // though its own computed transform is `none`.
+  const walk = (el, parent, inheritedLinear) => {
     if (el.getAttribute('data-domoxml-render-layer') === 'true') return;
     const r = el.getBoundingClientRect();
     const text = Array.from(el.childNodes)
@@ -196,6 +199,29 @@ _SNAPSHOT_JS = """
           }
           styles.domoxmlSvgFilter = cleanFilter.outerHTML;
         }
+      }
+    }
+    let effectiveLinear = inheritedLinear;
+    if (computed.transform && computed.transform !== 'none') {
+      const own = new DOMMatrix(computed.transform);
+      effectiveLinear = inheritedLinear ? inheritedLinear.multiply(own) : own;
+    }
+    if (effectiveLinear) {
+      effectiveLinear = new DOMMatrix([
+        effectiveLinear.a, effectiveLinear.b, effectiveLinear.c, effectiveLinear.d, 0, 0,
+      ]);
+    }
+    // SVG-namespace elements have no layout size to recover, so they keep their own transform.
+    // An element with no transform of its own under an upright (scale-only) ancestor is already
+    // exact from its bounding box, so only rotation, flips and shear need the composed value.
+    if (inheritedLinear && el instanceof HTMLElement && effectiveLinear) {
+      const upright = Math.abs(effectiveLinear.b) < 1e-6 && Math.abs(effectiveLinear.c) < 1e-6
+        && effectiveLinear.a > 0 && effectiveLinear.d > 0;
+      const ownNone = !computed.transform || computed.transform === 'none';
+      if (!(ownNone && upright)) {
+        const identity = upright && Math.abs(effectiveLinear.a - 1) < 1e-6
+          && Math.abs(effectiveLinear.d - 1) < 1e-6;
+        styles.transform = identity ? 'none' : effectiveLinear.toString();
       }
     }
     if (styles.transform && styles.transform !== 'none') {
@@ -267,9 +293,9 @@ _SNAPSHOT_JS = """
       styles,
       textRuns: inlineRuns(el, consolidateText),
     });
-    for (const child of el.children) walk(child, index);
+    for (const child of el.children) walk(child, index, effectiveLinear);
   };
-  walk(document.body, -1);
+  walk(document.body, -1, null);
   return out;
 }
 """

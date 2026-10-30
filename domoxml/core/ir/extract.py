@@ -1639,15 +1639,15 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         if (slide_root is not None and node.tag == "body") or node is canvas_body:
             continue
 
-        # A full-slide element that only repeats the slide background's exact opaque colour,
-        # drawn before anything else, adds nothing the native background does not already paint.
-        if not contents and _repeats_slide_background(node, background, rendered):
-            continue
-
         # Skip the slide root node itself — it is the canvas container, not a shape (its fill
         # becomes the slide background, captured above).
         if slide_root is not None and node.index == slide_root.index:
             consumed.add(node.index)
+            continue
+
+        # A full-slide element that only repeats the slide background's exact opaque colour,
+        # drawn before anything else, adds nothing the native background does not already paint.
+        if not contents and _repeats_slide_background(node, background, rendered):
             continue
 
         # Normalized group wrappers carry structural metadata but no independent paint.

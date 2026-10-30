@@ -30,6 +30,19 @@ same-colour full-slide container is folded in; a different colour stays a shape;
 shape drawn over other content stays; a rounded full-slide shape stays; a gradient body becomes a
 native gradient background.
 
+## Capability fixture floors
+
+The capability fixtures pin exact element counts (min = max). Several were calibrated when the
+body, and an authored full-slide `.slide` container, were each counted as a native *shape*. They
+are now the native slide background, so those elements no longer exist as shapes.
+
+26 fixtures move, and the movement is purely a count. Measured against `capability_check.py`
+before editing: 313 failing bounds, all `count N < expected minimum M` (291 off by one, 22 off by
+two for fixtures with two stacked full-slide rectangles), **0** similarity failures, **0**
+structural failures, **0** "too many". Each bound was lowered to the measured value by script;
+real ranges (min < max) are untouched. After the update `capability_check.py`,
+`real_deck_check.py` and `fidelity_check.py` all pass with the CI flags.
+
 ## Expected lossy behaviour (not part of this change)
 
 The glass card is still a flat image and native PowerPoint text is still ~4px offset in

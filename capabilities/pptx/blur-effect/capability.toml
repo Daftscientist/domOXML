@@ -3,14 +3,14 @@ direction = "both"
 html_file = "slide.html"
 
 [expected]
-min_representation = { native = 5, hybrid = 1 }
-max_representation = { rasterized = 0, native = 5, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, failed = 0 }
-min_editability = { semantic = 5, components = 1 }
-max_editability = { semantic = 5, components = 1, layers = 0, none = 0 }
-min_source_retention = { not_required = 6 }
-max_source_retention = { not_required = 6, attached = 0, detached = 0, ignored = 0, lost = 0 }
-min_output_count = 7
-max_output_count = 7
+min_representation = { native = 4, hybrid = 1 }
+max_representation = { rasterized = 0, native = 4, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 4, components = 1 }
+max_editability = { semantic = 4, components = 1, layers = 0, none = 0 }
+min_source_retention = { not_required = 5 }
+max_source_retention = { not_required = 5, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 6
+max_output_count = 6
 min_raster_area_emu2 = 27988819810200
 max_raster_area_emu2 = 27988819810200
 warnings = ["editable native a:blur with an isolated renderer fallback"]
@@ -40,14 +40,14 @@ pptx_to_html_min_structural_similarity = 0.95
 
 [roundtrip]
 cycles = 2
-min_representation = { native = 5, hybrid = 1 }
-max_representation = { rasterized = 0, native = 5, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, failed = 0 }
-min_editability = { semantic = 5, components = 1 }
-max_editability = { semantic = 5, components = 1, layers = 0, none = 0 }
-min_source_retention = { not_required = 6 }
-max_source_retention = { not_required = 6, attached = 0, detached = 0, ignored = 0, lost = 0 }
-min_output_count = 7
-max_output_count = 7
+min_representation = { native = 4, hybrid = 1 }
+max_representation = { rasterized = 0, native = 4, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 4, components = 1 }
+max_editability = { semantic = 4, components = 1, layers = 0, none = 0 }
+min_source_retention = { not_required = 5 }
+max_source_retention = { not_required = 5, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 6
+max_output_count = 6
 min_raster_area_emu2 = 27988819810200
 max_raster_area_emu2 = 27988819810200
 min_convergence_similarity = 0.999

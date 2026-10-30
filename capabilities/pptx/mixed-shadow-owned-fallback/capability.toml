@@ -3,14 +3,14 @@ direction = "both"
 html_file = "slide.html"
 
 [expected]
-min_representation = { native = 6, hybrid = 1 }
-max_representation = { native = 6, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, rasterized = 0, failed = 0 }
-min_editability = { semantic = 6, components = 1 }
-max_editability = { semantic = 6, components = 1, layers = 0, none = 0 }
-min_source_retention = { not_required = 7 }
-max_source_retention = { not_required = 7, attached = 0, detached = 0, ignored = 0, lost = 0 }
-min_output_count = 8
-max_output_count = 8
+min_representation = { native = 5, hybrid = 1 }
+max_representation = { native = 5, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, rasterized = 0, failed = 0 }
+min_editability = { semantic = 5, components = 1 }
+max_editability = { semantic = 5, components = 1, layers = 0, none = 0 }
+min_source_retention = { not_required = 6 }
+max_source_retention = { not_required = 6, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 7
+max_output_count = 7
 min_raster_area_emu2 = 21062407471875
 max_raster_area_emu2 = 21062407471875
 warnings = ["exact multi-layer CSS shadow intent retained with a schema-valid native effect subset and an isolated renderer fallback"]
@@ -57,14 +57,14 @@ pptx_to_html_min_structural_similarity = 0.993
 
 [roundtrip]
 cycles = 2
-min_representation = { native = 6, hybrid = 1 }
-max_representation = { native = 6, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, rasterized = 0, failed = 0 }
-min_editability = { semantic = 6, components = 1 }
-max_editability = { semantic = 6, components = 1, layers = 0, none = 0 }
-min_source_retention = { not_required = 7 }
-max_source_retention = { not_required = 7, attached = 0, detached = 0, ignored = 0, lost = 0 }
-min_output_count = 8
-max_output_count = 8
+min_representation = { native = 5, hybrid = 1 }
+max_representation = { native = 5, decomposed = 0, approximated = 0, hybrid = 1, layered = 0, element_layer = 0, rasterized = 0, failed = 0 }
+min_editability = { semantic = 5, components = 1 }
+max_editability = { semantic = 5, components = 1, layers = 0, none = 0 }
+min_source_retention = { not_required = 6 }
+max_source_retention = { not_required = 6, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 7
+max_output_count = 7
 min_raster_area_emu2 = 21062407471875
 max_raster_area_emu2 = 21062407471875
 min_convergence_similarity = 0.999

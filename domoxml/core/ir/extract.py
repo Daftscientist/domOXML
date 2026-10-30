@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import re
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -22,7 +23,6 @@ from domoxml.core.drawingml.presets import match_polygon
 from domoxml.core.fillcrop import cover_crop_fractions, explicit_crop_fractions
 from domoxml.core.images import (
     ImageExt,
-    crop_png,
     decode_data_uri,
     image_dimensions,
     normalise_image,
@@ -820,16 +820,15 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
                 w_px, h_px = max(1, round(node.width)), max(1, round(node.height))
                 png = _svg_to_png(svg_bytes, width_px=w_px, height_px=h_px)
                 if png is None:
-                    # No SVG rasteriser — crop the region Chromium already rendered.
-                    png = crop_png(
-                        rendered.png,
-                        left=node.x * rendered.scale,
-                        top=node.y * rendered.scale,
-                        width=node.width * rendered.scale,
-                        height=node.height * rendered.scale,
-                    )
+                    # No SVG rasteriser — fall back to the node's OWN isolated capture
+                    # (planned by plan_raster_need). Never crop the composite slide
+                    # screenshot: whatever overlaps the element would be baked in.
+                    isolated = rendered.rasters.get(node.index)
+                    if isolated is not None:
+                        png = isolated.png
                 if png is not None:
                     return PictureFill(data=png, ext="png", svg_data=svg_bytes), None
+                return None, "SVG image could not be rasterised from its own capture"
             return None, "SVG image source was not captured"
 
         resolved = _resolve_image_bytes(node.src, rendered)
@@ -1119,28 +1118,105 @@ def _is_plain_inline(node: RenderedNode, fill: Fill | None, line: Line | None) -
     )
 
 
-def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
-    isolated = rendered.rasters.get(node.index)
-    if isolated is not None:
-        return ShapeNode(
-            box=Box(
-                x=px_to_emu(isolated.x),
-                y=px_to_emu(isolated.y),
-                width=px_to_emu(isolated.width),
-                height=px_to_emu(isolated.height),
-            ),
-            fill=PictureFill(data=isolated.png, ext="png"),
-        )
-    crop = crop_png(
-        rendered.png,
-        left=node.x * rendered.scale,
-        top=node.y * rendered.scale,
-        width=node.width * rendered.scale,
-        height=node.height * rendered.scale,
+class RasterNeed(StrEnum):
+    """Whether capture must isolate a node so extraction can own its raster."""
+
+    NONE = "none"
+    ISOLATED = "isolated"
+
+
+def _raster_entry(node: RenderedNode, rendered: RenderedSlide) -> tuple[str | None, Fill | None]:
+    """The entry raster decision for one element: ``(raster_reason, resolved_fill)``.
+
+    The sequence :func:`extract_slide` applies per element — structural reason first,
+    then fill resolution, then the polygon-clip preset check. Shared verbatim by the
+    extraction loop and by :func:`plan_raster_need`, so the two cannot drift apart.
+    """
+    reason = _structural_raster_reason(node)
+    fill: Fill | None = None
+    if reason is None:
+        fill, reason = _resolve_fill(node, rendered)
+    clip = node.styles.get("clipPath", "none")
+    has_polygon_clip = clip not in ("none", "") and (
+        clip.strip().lower().startswith("polygon(") or "polygon(" in clip
     )
-    if crop is None:
+    if reason is None and has_polygon_clip:
+        _preset, matched = _resolve_preset_geom(node)
+        if not matched:
+            reason = "clip-path polygon does not match any known preset geometry"
+    return reason, fill
+
+
+def _fallback_raster_wanted(node: RenderedNode) -> bool:
+    """Style-only triggers for mid-conversion raster assets (effect fallback layers).
+
+    These elements still convert natively; the raster is an exact fallback picture, so
+    it is subject to the same ownership invariant as an element raster.
+    """
+    styles = node.styles
+    if node.tag == "svg":
+        # The custom-geometry path falls back to a raster when conversion fails.
+        return True
+    shadows = parse_shadows(styles.get("boxShadow"))
+    if len(shadows) > 1 or any(shadow.inset for shadow in shadows):
+        return True
+    if styles.get("maskImage", "none") not in ("none", ""):
+        return True
+    if styles.get("webkitBoxReflect", "none") not in ("none", ""):
+        return True
+    if styles.get("domoxmlReflectionDistance"):
+        return True
+    if styles.get("domoxmlRasterBounds"):
+        return True
+    if parse_blur_filter(styles.get("filter", "none")) is not None:
+        return True
+    effects = decode_effects(styles.get("domoxmlEffects")) or ()
+    return any(isinstance(effect, (Blur, SoftEdge, FillOverlay, Reflection)) for effect in effects)
+
+
+def plan_raster_need(node: RenderedNode, rendered: RenderedSlide) -> RasterNeed:
+    """THE raster planning decision — the single source capture and extraction share.
+
+    Ownership invariant: an element raster may contain only that element's own
+    rendering. Any node extraction can rasterise (the entry decision) or wants a
+    fallback asset for must therefore be captured in isolation. Capture sessions call
+    this with a probe slide (capture-time screenshot/resources, no rasters yet) and
+    isolate every node it marks; extraction enforces the contract in
+    :func:`_raster_shape`, which never crops the composite screenshot — a marked node
+    without an isolated capture becomes an explicit FAILED coverage item.
+
+    Backdrop-dependent effects (backdrop-filter, blend modes) are planned ISOLATED
+    like everything else: isolation captures the element's own paint (its backdrop
+    interaction is approximated, not composited), and their coverage is recorded as
+    ELEMENT_LAYER. They are never served a composite crop labelled as their own.
+    """
+    reason, _fill = _raster_entry(node, rendered)
+    if reason is not None or _fallback_raster_wanted(node):
+        return RasterNeed.ISOLATED
+    return RasterNeed.NONE
+
+
+def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
+    """The element's picture from its OWN isolated capture, or ``None``.
+
+    Ownership invariant: a raster fallback may claim element-level ownership only if
+    its pixels were captured in isolation, so the composite slide screenshot is never
+    cropped here. ``None`` means capture did not isolate a node the planner marked —
+    every caller records an explicit FAILED coverage item instead of silently
+    substituting composite pixels (which double-paints whatever the element overlaps).
+    """
+    isolated = rendered.rasters.get(node.index)
+    if isolated is None:
         return None
-    return ShapeNode(box=_box(node), fill=PictureFill(data=crop, ext="png"))
+    return ShapeNode(
+        box=Box(
+            x=px_to_emu(isolated.x),
+            y=px_to_emu(isolated.y),
+            width=px_to_emu(isolated.width),
+            height=px_to_emu(isolated.height),
+        ),
+        fill=PictureFill(data=isolated.png, ext="png"),
+    )
 
 
 def _native_coverage(element: str) -> CoverageItem:
@@ -1161,14 +1237,18 @@ def _element_layer_coverage(element: str, shape: ShapeNode, reason: str) -> Cove
     )
 
 
-def _failed_coverage(element: str, reason: str) -> CoverageItem:
+def _failed_coverage(
+    element: str,
+    reason: str,
+    detail: str = "no isolated raster was captured for this element",
+) -> CoverageItem:
     return CoverageItem(
         element=element,
         representation=Representation.FAILED,
         editability=Editability.NONE,
         source_retention=SourceRetention.LOST,
         output_count=0,
-        reason=f"{reason}; rasterization returned an empty region",
+        reason=f"{reason}; {detail}",
     )
 
 
@@ -1536,7 +1616,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             except (ValueError, TypeError):
                 consumed |= _subtree(node.index, children)
                 reason = "invalid attached preservation payload"
-                coverage.append(_failed_coverage(label, reason))
+                coverage.append(
+                    _failed_coverage(
+                        label, reason, detail="preservation payload could not be decoded"
+                    )
+                )
                 warnings.append(ConversionWarning(message=reason, element=label))
             else:
                 fallback_fill, fallback_reason = _resolve_fill(node, rendered)
@@ -1763,7 +1847,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         coverage.append(_failed_coverage(label, raster_reason))
                         warnings.append(
                             ConversionWarning(
-                                message=f"dropped — empty raster region ({raster_reason})",
+                                message=f"dropped — no isolated raster captured ({raster_reason})",
                                 element=label,
                             )
                         )
@@ -1869,7 +1953,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 if shape is None:
                     warnings.append(
                         ConversionWarning(
-                            message=f"dropped — empty raster region ({raster_reason})",
+                            message=f"dropped — no isolated raster captured ({raster_reason})",
                             element=label,
                         )
                     )
@@ -1882,13 +1966,13 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                 continue
 
-        reason = _structural_raster_reason(node)
-        fill: Fill | None = None
-        if reason is None:
-            fill, reason = _resolve_fill(node, rendered)
+        # The entry raster decision is the shared planner's (_raster_entry): capture
+        # isolates exactly the nodes this can mark, so a raster branch below always
+        # finds its isolated capture — or records an explicit coverage failure.
+        reason, fill = _raster_entry(node, rendered)
 
-        # If the structural check let a polygon clip-path through, try to match it to a preset.
-        # If matching fails, fall back to raster (overwrite reason).
+        # If a polygon clip-path survived the entry check, match it to a preset
+        # geometry for the native path.
         clip = node.styles.get("clipPath", "none")
         has_polygon_clip = clip not in ("none", "") and (
             clip.strip().lower().startswith("polygon(") or "polygon(" in clip
@@ -1897,8 +1981,6 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         polygon_matched = False
         if has_polygon_clip and reason is None:
             preset_geom, polygon_matched = _resolve_preset_geom(node)
-            if not polygon_matched:
-                reason = "clip-path polygon does not match any known preset geometry"
 
         if reason is not None:
             label = _label(node)
@@ -1907,7 +1989,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             if shape is None:
                 warnings.append(
                     ConversionWarning(
-                        message=f"dropped — empty raster region ({reason})", element=label
+                        message=f"dropped — no isolated raster captured ({reason})", element=label
                     )
                 )
                 # Record coverage even when rasterization fails

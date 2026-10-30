@@ -12,6 +12,7 @@ from PIL import Image
 
 from domoxml.core.ir import extract_slide
 from domoxml.core.ir.effect_payload import decode_effect_payload, encode_effects
+from domoxml.core.ir.extract import RasterNeed, plan_raster_need
 from domoxml.core.ir.model import (
     Blur,
     Box,
@@ -43,7 +44,6 @@ from domoxml.core.render.browser import (
     RenderedNode,
     RenderedRaster,
     RenderedSlide,
-    _needs_isolated_raster,
     _raster_bounds,
 )
 from domoxml.core.units import px_to_emu
@@ -59,6 +59,23 @@ def _png(width: int = 40, height: int = 30) -> bytes:
 
 def _slide(*nodes: RenderedNode) -> RenderedSlide:
     return RenderedSlide(png=_png(), width=20, height=15, scale=2.0, nodes=nodes)
+
+
+def _captured(*nodes: RenderedNode) -> RenderedSlide:
+    """The slide as the capture pipeline delivers it under the shared raster
+    planner: every node carries its own isolated raster, so extraction never
+    needs to crop the composite slide screenshot (the ownership invariant)."""
+    rasters = {
+        node.index: RenderedRaster(
+            png=_png(max(1, round(node.width * 2)), max(1, round(node.height * 2))),
+            x=node.x,
+            y=node.y,
+            width=node.width,
+            height=node.height,
+        )
+        for node in nodes
+    }
+    return _slide(*nodes).model_copy(update={"rasters": rasters})
 
 
 # --------------------------------------------------------------------------- gradient parsing
@@ -249,7 +266,7 @@ def test_css_blur_filter_is_native_and_editable() -> None:
         index=0,
         styles={"filter": "blur(4px)", "backgroundColor": "rgb(1,2,3)"},
     )
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
     shape = result.slide.shapes[0]
     assert isinstance(shape.fill, SolidFill)
     assert shape.effects == (Blur(radius_emu=38100),)
@@ -372,7 +389,7 @@ def test_css_fill_overlay_is_native_with_shape_bound_fallback() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
 
     shape = result.slide.shapes[0]
     parsed = parse_fill_overlay(
@@ -449,7 +466,7 @@ def test_encoded_fill_overlay_recovers_stacked_gradient_base() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
 
     shape = result.slide.shapes[0]
     assert isinstance(shape.fill, GradientFill)
@@ -477,7 +494,7 @@ def test_gradient_background_blend_is_native_with_shape_bound_fallback() -> None
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
 
     shape = result.slide.shapes[0]
     assert shape.fill == SolidFill(color=Rgba(r=20, g=60, b=140))
@@ -512,7 +529,7 @@ def test_conic_background_blend_uses_visible_element_layer() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -537,7 +554,7 @@ def test_authored_gradient_base_fill_overlay_uses_visible_element_layer() -> Non
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -565,7 +582,7 @@ def test_transparent_picture_overlay_with_visible_background_uses_element_layer(
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -590,7 +607,7 @@ def test_partial_uniform_background_blend_uses_visible_element_layer() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -617,7 +634,7 @@ def test_stale_encoded_fill_overlay_uses_visible_element_layer() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -639,7 +656,7 @@ def test_unmapped_css_mask_uses_visible_element_layer() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -657,7 +674,7 @@ def test_unsupported_css_filter_rasterises_and_warns() -> None:
         index=0,
         styles={"filter": "brightness(0.8)", "backgroundColor": "rgb(1,2,3)"},
     )
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
     assert result.coverage[0].editability is Editability.LAYERS
@@ -709,7 +726,7 @@ def test_unmappable_custom_svg_paint_uses_element_layer_instead_of_omitting_it()
         styles={"fill": "url(#gradient)"},
     )
 
-    result = extract_slide(_slide(svg, path))
+    result = extract_slide(_captured(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -782,7 +799,7 @@ def test_custom_svg_compound_filter_and_reflection_uses_element_layer() -> None:
         styles={"fill": "rgb(68, 114, 196)"},
     )
 
-    result = extract_slide(_slide(svg, path))
+    result = extract_slide(_captured(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -823,7 +840,7 @@ def test_custom_svg_nonstandard_soft_edge_filter_uses_element_layer() -> None:
         },
     )
 
-    result = extract_slide(_slide(svg, path))
+    result = extract_slide(_captured(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -865,7 +882,7 @@ def test_custom_svg_soft_edge_does_not_mix_outer_and_path_filter_sources() -> No
         },
     )
 
-    result = extract_slide(_slide(svg, path))
+    result = extract_slide(_captured(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -907,7 +924,7 @@ def test_custom_svg_nonstandard_fill_overlay_filter_uses_element_layer() -> None
         },
     )
 
-    result = extract_slide(_slide(svg, path))
+    result = extract_slide(_captured(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -1054,7 +1071,7 @@ def test_inset_css_shadow_is_native_with_isolated_portable_fallback() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured(node))
 
     [shape] = result.slide.shapes
     assert isinstance(shape.fill, SolidFill)
@@ -1081,7 +1098,7 @@ def test_browser_requests_isolated_raster_for_inset_shadow() -> None:
         styles={"boxShadow": "rgb(0, 0, 0) 2px 2px 4px inset"},
     )
 
-    assert _needs_isolated_raster(node)
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.ISOLATED
 
 
 def test_unsupported_css_filter_uses_isolated_raster_region_when_available() -> None:
@@ -1114,7 +1131,7 @@ def test_browser_requests_isolated_renderer_fallback_for_native_css_blur() -> No
         styles={"filter": "blur(4px)"},
     )
 
-    assert _needs_isolated_raster(node)
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.ISOLATED
 
 
 def test_browser_multi_shadow_fallback_bounds_include_every_layer() -> None:
@@ -1129,8 +1146,226 @@ def test_browser_multi_shadow_fallback_bounds_include_every_layer() -> None:
         },
     )
 
-    assert _needs_isolated_raster(node)
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.ISOLATED
     assert _raster_bounds(node, slide_width=200, slide_height=180) == (9, 43, 172, 145)
+
+
+def test_browser_requests_isolated_raster_for_unmappable_repeating_gradient() -> None:
+    # A full-slide repeating-gradient overlay whose stripes are not a clean
+    # two-colour pattern: extraction can only rasterise it, and a crop of the
+    # full-slide screenshot would embed every other element's paint (the ghosting
+    # defect) — capture must isolate it so the raster is the gradient alone.
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=1600,
+        height=900,
+        styles={
+            "backgroundImage": (
+                "repeating-linear-gradient(90deg, rgba(0, 0, 0, 0) 0px, "
+                "rgba(0, 0, 0, 0) 159px, rgba(23, 32, 31, 0.028) 159px, "
+                "rgba(23, 32, 31, 0.028) 160px)"
+            )
+        },
+    )
+
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.ISOLATED
+
+
+def test_browser_skips_isolated_raster_for_pattern_mappable_repeating_gradient() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        styles={
+            "backgroundImage": (
+                "repeating-linear-gradient(0deg,rgb(244,63,94) 0px,"
+                "rgb(244,63,94) 1px,rgb(254,226,226) 1px,rgb(254,226,226) 4px)"
+            )
+        },
+    )
+
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.NONE
+
+
+def test_browser_requests_isolated_raster_for_conic_gradient_only() -> None:
+    conic = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        styles={"backgroundImage": "conic-gradient(rgb(1,2,3), rgb(4,5,6))"},
+    )
+    linear = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        styles={"backgroundImage": "linear-gradient(180deg, rgb(1,2,3) 0%, rgb(4,5,6) 100%)"},
+    )
+
+    assert plan_raster_need(conic, _slide(conic)) is RasterNeed.ISOLATED
+    assert plan_raster_need(linear, _slide(linear)) is RasterNeed.NONE
+
+
+def test_browser_requests_isolated_raster_for_flipped_text() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        text="hello",
+        styles={"transform": "matrix(-1, 0, 0, 1, 0, 0)"},
+    )
+
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.ISOLATED
+
+
+def test_browser_requests_isolated_raster_for_non_center_transform_origin() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        styles={"transform": "rotate(10deg)", "transformOrigin": "left top"},
+    )
+
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.ISOLATED
+
+
+def test_planner_isolates_uncaptured_background_image() -> None:
+    # The planner evaluates the extractor's own fill resolution against the captured
+    # slide: a background image that was not captured can only rasterise, so the
+    # node is marked for isolation.
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={"backgroundImage": 'url("https://example.com/x.png")'},
+    )
+
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.ISOLATED
+
+
+def test_unmappable_gradient_uses_isolated_raster_not_screenshot_crop() -> None:
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=20,
+        height=15,
+        index=0,
+        styles={
+            "backgroundImage": (
+                "repeating-linear-gradient(90deg, rgba(0, 0, 0, 0) 0px, "
+                "rgba(0, 0, 0, 0) 9px, rgba(23, 32, 31, 0.028) 9px, "
+                "rgba(23, 32, 31, 0.028) 10px)"
+            )
+        },
+    )
+    raster = RenderedRaster(png=_png(40, 30), x=0, y=0, width=20, height=15)
+    rendered = _slide(node).model_copy(update={"rasters": {0: raster}})
+    result = extract_slide(rendered)
+    shape = result.slide.shapes[0]
+    assert isinstance(shape.fill, PictureFill) and shape.fill.data == raster.png
+
+
+def _stripes_png(width: int, height: int) -> bytes:
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    for x in range(0, width, 10):
+        for y in range(height):
+            image.putpixel((x, y), (23, 32, 31, 90))
+    buffer = io.BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def _overlapping_overlay_fixture(*, with_raster: bool) -> RenderedSlide:
+    """Native text overlapped by an unsupported (unmappable-gradient) element.
+
+    The slide PNG stands in for the composite screenshot: the text's paint (a solid
+    red block) sits inside the overlay's region. The overlay's isolated capture
+    contains only its own stripes.
+    """
+    screenshot = Image.new("RGB", (100, 60), (250, 248, 240))
+    for x in range(10, 90):
+        for y in range(10, 30):
+            screenshot.putpixel((x, y), (255, 0, 0))
+    buffer = io.BytesIO()
+    screenshot.save(buffer, "PNG")
+    text_node = RenderedNode(tag="div", x=10, y=10, width=80, height=20, index=0, text="HEADLINE")
+    overlay = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=100,
+        height=60,
+        index=1,
+        styles={
+            "backgroundImage": (
+                "repeating-linear-gradient(90deg, rgba(0, 0, 0, 0) 0px, "
+                "rgba(0, 0, 0, 0) 9px, rgba(23, 32, 31, 0.028) 9px, "
+                "rgba(23, 32, 31, 0.028) 10px)"
+            )
+        },
+    )
+    rasters = (
+        {1: RenderedRaster(png=_stripes_png(100, 60), x=0, y=0, width=100, height=60)}
+        if with_raster
+        else {}
+    )
+    return RenderedSlide(
+        png=buffer.getvalue(),
+        width=100,
+        height=60,
+        scale=1.0,
+        nodes=(text_node, overlay),
+        rasters=rasters,
+    )
+
+
+def test_overlapping_unsupported_element_raster_contains_no_text_pixels() -> None:
+    # Regression fixture for the ghosting defect: the overlay's emitted picture must
+    # be its isolated capture (stripes only) — no pixels of the text it overlaps.
+    rendered = _overlapping_overlay_fixture(with_raster=True)
+    overlay = rendered.nodes[1]
+    assert plan_raster_need(overlay, rendered) is RasterNeed.ISOLATED
+
+    result = extract_slide(rendered)
+    pictures = [shape for shape in result.slide.shapes if isinstance(shape.fill, PictureFill)]
+    assert len(pictures) == 1
+    picture = pictures[0]
+    assert isinstance(picture.fill, PictureFill)
+    assert picture.fill.data == rendered.rasters[1].png
+    pixels = Image.open(io.BytesIO(picture.fill.data)).convert("RGB")
+    colors = pixels.getcolors(maxcolors=100_000)
+    assert colors is not None
+    assert all(color != (255, 0, 0) for _count, color in colors)
+    # The overlapped text still converts natively, exactly once.
+    assert any(item.representation.value == "element_layer" for item in result.coverage)
+
+
+def test_rasterised_element_without_isolated_capture_fails_coverage_not_crop() -> None:
+    # Ownership invariant: with no isolated capture, extraction must record an
+    # explicit failure — never crop the composite screenshot (whose red text block
+    # would otherwise be baked into the overlay's picture).
+    rendered = _overlapping_overlay_fixture(with_raster=False)
+    result = extract_slide(rendered)
+    assert not any(isinstance(shape.fill, PictureFill) for shape in result.slide.shapes)
+    failed = [item for item in result.coverage if item.representation.value == "failed"]
+    assert len(failed) == 1
+    assert "no isolated raster was captured" in (failed[0].reason or "")
+    assert any("no isolated raster captured" in w.message for w in result.warnings)
 
 
 def test_multiple_css_shadows_become_a_hybrid_sibling_effect_graph() -> None:
@@ -1274,7 +1509,7 @@ def test_browser_requests_isolated_renderer_fallback_for_css_mask() -> None:
         styles={"maskImage": "linear-gradient(rgb(0,0,0), rgba(0,0,0,0))"},
     )
 
-    assert _needs_isolated_raster(node)
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.ISOLATED
     assert _raster_bounds(node, slide_width=20, slide_height=20) == (0, 0, 10, 10)
 
 
@@ -1288,7 +1523,7 @@ def test_browser_raster_bounds_honor_normalized_owned_layer_metadata() -> None:
         styles={"domoxmlRasterBounds": "80 70 250 140"},
     )
 
-    assert _needs_isolated_raster(node)
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.ISOLATED
     assert _raster_bounds(node, slide_width=320, slide_height=180) == (80, 70, 320, 180)
 
     outside = node.model_copy(update={"styles": {"domoxmlRasterBounds": "400 -40 50 20"}})
@@ -1307,7 +1542,7 @@ def test_browser_reflection_fallback_bounds_include_reflected_copy() -> None:
         },
     )
 
-    assert _needs_isolated_raster(node)
+    assert plan_raster_need(node, _slide(node)) is RasterNeed.ISOLATED
     assert _raster_bounds(node, slide_width=200, slide_height=150) == (20, 30, 100, 116)
 
 
@@ -1367,7 +1602,7 @@ def test_rasterised_parent_consumes_its_subtree() -> None:
         text="hi",
         styles={"backgroundColor": "rgb(9,9,9)"},
     )
-    result = extract_slide(_slide(parent, child))
+    result = extract_slide(_captured(parent, child))
     # Only the parent's raster shape — the child is baked into it, not emitted twice.
     assert len(result.slide.shapes) == 1
     assert isinstance(result.slide.shapes[0].fill, PictureFill)

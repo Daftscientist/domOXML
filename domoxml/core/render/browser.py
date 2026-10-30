@@ -656,24 +656,6 @@ def parse_native_transform(value: str | None) -> tuple[float, bool, bool]:
     return rotation_deg, flip_h, flip_v
 
 
-def _needs_isolated_raster(node: RenderedNode) -> bool:
-    styles = node.styles
-    shadows = parse_shadows(styles.get("boxShadow"))
-    return (
-        node.tag in {"svg", "canvas", "video", "iframe"}
-        or "inset" in styles.get("boxShadow", "").lower()
-        or len(shadows) > 1
-        or styles.get("clipPath", "none") not in ("none", "")
-        or styles.get("mixBlendMode", "normal") not in ("normal", "")
-        or styles.get("backdropFilter", "none") not in ("none", "")
-        or styles.get("filter", "none") not in ("none", "")
-        or styles.get("maskImage", "none") not in ("none", "")
-        or styles.get("webkitBoxReflect", "none") not in ("none", "")
-        or bool(styles.get("domoxmlReflectionDistance"))
-        or is_complex_transform(styles.get("transform"))
-    )
-
-
 class BrowserSession:
     """A warm headless-Chromium session. Use as an async context manager and call
     :meth:`render` once per slide::
@@ -753,9 +735,23 @@ class BrowserSession:
             png = await page.screenshot(type="png")
             raw: list[dict[str, Any]] = await page.evaluate(_SNAPSHOT_JS)
             nodes = tuple(RenderedNode.model_validate(node) for node in raw)
+            # Probe slide (no rasters yet) for the shared raster planner: capture
+            # isolates exactly the nodes extraction's plan marks, so an element
+            # raster always contains only that element's own rendering. The import
+            # is lazy because domoxml.core.ir.extract imports this module.
+            from domoxml.core.ir.extract import RasterNeed, plan_raster_need
+
+            probe = RenderedSlide(
+                png=png,
+                width=width,
+                height=height,
+                scale=self._scale,
+                nodes=nodes,
+                resources=resources,
+            )
             rasters: dict[int, RenderedRaster] = {}
             for node in nodes:
-                if not _needs_isolated_raster(node):
+                if plan_raster_need(node, probe) is not RasterNeed.ISOLATED:
                     continue
                 restore = await page.evaluate_handle(_ISOLATE_JS, node.index)
                 try:

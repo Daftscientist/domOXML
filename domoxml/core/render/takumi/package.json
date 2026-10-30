@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Optional Takumi renderer for domOXML; install locally with npm install",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "takumi-js": "2.19.0",
+    "takumi-paint": "0.5.0"
+  }
+}

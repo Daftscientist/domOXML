@@ -21,7 +21,6 @@ from domoxml.core.render.browser import (
     _SNAPSHOT_JS,
     BrowserSession,
     RenderedSlide,
-    _needs_isolated_raster,
     _raster_bounds,
     fixed_canvas_size,
     nodes_from_snapshot,
@@ -68,16 +67,35 @@ def open_session(
 
 
 def isolated_raster_plan(
-    raw: Iterable[dict[str, Any]], *, slide_width: int, slide_height: int
+    raw: Iterable[dict[str, Any]],
+    *,
+    slide_width: int,
+    slide_height: int,
+    resources: Mapping[str, bytes] | None = None,
+    scale: float = 2.0,
 ) -> dict[int, tuple[float, float, float, float]]:
     """Map node index → raster bounds ``(x, y, width, height)`` in CSS px for every
-    snapshot node the extractor would isolate, using the same predicate
-    (:func:`_needs_isolated_raster`) and bounds (:func:`_raster_bounds`) as the
-    Playwright path. The host rasterises each planned region and returns PNGs keyed by
-    the same indices to :func:`slide_from_snapshot`."""
+    snapshot node the shared raster planner marks for isolation
+    (:func:`domoxml.core.ir.extract.plan_raster_need`, the same decision the
+    Playwright path and extraction itself derive from), with bounds from
+    :func:`_raster_bounds`. The host rasterises each planned region and returns PNGs
+    keyed by the same indices to :func:`slide_from_snapshot`. ``resources`` (the
+    page's captured data: URLs) feeds the planner's probe slide, as on the server
+    path."""
+    from domoxml.core.ir.extract import RasterNeed, plan_raster_need
+
+    nodes = nodes_from_snapshot(raw)
+    probe = RenderedSlide(
+        png=b"",
+        width=slide_width,
+        height=slide_height,
+        scale=scale,
+        nodes=nodes,
+        resources=dict(resources or {}),
+    )
     plan: dict[int, tuple[float, float, float, float]] = {}
-    for node in nodes_from_snapshot(raw):
-        if not _needs_isolated_raster(node):
+    for node in nodes:
+        if plan_raster_need(node, probe) is not RasterNeed.ISOLATED:
             continue
         x, y, right, bottom = _raster_bounds(
             node, slide_width=slide_width, slide_height=slide_height
@@ -297,7 +315,14 @@ class HostCaptureSession:
             await idoc.fonts.ready
             raw = iwin.eval(_SNAPSHOT_JS)().to_py()
             nodes = nodes_from_snapshot(raw)
-            plan = isolated_raster_plan(raw, slide_width=width, slide_height=height)
+            resources = resources_from_base64(iwin.eval(_RESOURCES_JS)(idoc).to_py())
+            plan = isolated_raster_plan(
+                raw,
+                slide_width=width,
+                slide_height=height,
+                resources=resources,
+                scale=self._scale,
+            )
 
             raster_pngs: dict[int, bytes] = {}
             slide_png = b""
@@ -312,7 +337,6 @@ class HostCaptureSession:
                 slide_png = (
                     await self._rasterise_region(iwin, idoc.body, width, height) or b""
                 )
-            resources = resources_from_base64(iwin.eval(_RESOURCES_JS)(idoc).to_py())
             return slide_from_snapshot(
                 raw,
                 width=width,

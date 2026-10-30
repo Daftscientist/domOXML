@@ -16,7 +16,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Self, cast
 
 from domoxml.core.ir.extract import ExtractResult
 from domoxml.core.ir.model import (
@@ -57,15 +57,16 @@ class TakumiRenderedSlide:
     steps: tuple[dict[str, Any], ...]
 
 
-def _decode_worker_reply(stdout: bytes, stderr: bytes, status: int) -> dict[str, Any]:
+def decode_takumi_worker_reply(stdout: bytes, stderr: bytes, status: int) -> dict[str, Any]:
     """Preserve the original Takumi error, including CSS parse errors, for callers."""
     try:
-        reply = json.loads(stdout)
+        parsed: Any = json.loads(stdout)
     except (UnicodeDecodeError, ValueError) as exc:
         detail = stderr.decode("utf-8", errors="replace").strip()
         raise TakumiRenderError("bridge", detail or "worker did not return valid JSON") from exc
-    if not isinstance(reply, dict):
+    if not isinstance(parsed, dict):
         raise TakumiRenderError("bridge", "worker returned a non-object response")
+    reply = cast(dict[str, Any], parsed)
     if not reply.get("ok"):
         stage = str(reply.get("stage", "render"))
         message = str(reply.get("message", "unknown error"))
@@ -130,7 +131,7 @@ class TakumiSession:
                 "timeout", f"render exceeded {self.timeout_seconds:g}s"
             ) from exc
 
-        reply = _decode_worker_reply(stdout, stderr, process.returncode or 0)
+        reply = decode_takumi_worker_reply(stdout, stderr, process.returncode or 0)
         encoded = reply.get("png")
         if not isinstance(encoded, str):
             raise TakumiRenderError("bridge", "worker did not return a PNG")
@@ -140,10 +141,15 @@ class TakumiSession:
             raise TakumiRenderError("bridge", "invalid base64 PNG returned") from exc
         if not png.startswith(b"\x89PNG\r\n\x1a\n"):
             raise TakumiRenderError("bridge", "worker returned invalid PNG bytes")
-        steps = reply.get("steps")
-        if not isinstance(steps, list) or not all(isinstance(step, dict) for step in steps):
+        raw_steps: Any = reply.get("steps")
+        if not isinstance(raw_steps, list):
             raise TakumiRenderError("bridge", "worker returned an invalid paint step list")
-        return TakumiRenderedSlide(png=png, width=width, height=height, steps=tuple(steps))
+        steps = cast(list[Any], raw_steps)
+        if not all(isinstance(step, dict) for step in steps):
+            raise TakumiRenderError("bridge", "worker returned an invalid paint step list")
+        return TakumiRenderedSlide(
+            png=png, width=width, height=height, steps=tuple(cast(list[dict[str, Any]], steps))
+        )
 
 
 def _rgba(raw: Any) -> Rgba:
@@ -153,13 +159,15 @@ def _rgba(raw: Any) -> Rgba:
         or not all(isinstance(n, int) and 0 <= n <= 255 for n in raw)
     ):
         raise ValueError("invalid Takumi RGBA colour")
-    return Rgba(r=raw[0], g=raw[1], b=raw[2], a=raw[3] / 255.0)
+    rgba = cast(list[int], raw)
+    return Rgba(r=rgba[0], g=rgba[1], b=rgba[2], a=rgba[3] / 255.0)
 
 
 def _box(raw: Any) -> Box:
     if not isinstance(raw, dict):
         raise ValueError("invalid Takumi paint bounds")
-    x, y, width, height = (float(raw[key]) for key in ("x", "y", "width", "height"))
+    bounds = cast(dict[str, Any], raw)
+    x, y, width, height = (float(bounds[key]) for key in ("x", "y", "width", "height"))
     if not all(-1000000 < val < 1000000 for val in (x, y, width, height)):
         raise ValueError("Takumi paint bounds out of range")
     if width <= 0 or height <= 0:

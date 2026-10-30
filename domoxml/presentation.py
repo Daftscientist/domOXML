@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from domoxml.core.fonts import resolve_faces
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import extract_slide
 from domoxml.core.render import BrowserSession, RenderedSlide, compose_page
+from domoxml.core.render.takumi_backend import TakumiRenderedSlide, TakumiSession, extract_takumi
 from domoxml.core.units import pixels
 from domoxml.slides import build_pptx, read_pptx_result
 from domoxml.types import (
@@ -45,7 +46,11 @@ class Presentation:
         theme: Theme | None = None,
         size: SizeSpec = SlideSize.WIDE_16_9,
         css: str | None = None,
+        render_engine: Literal["chromium", "takumi"] = "chromium",
     ) -> None:
+        if render_engine not in ("chromium", "takumi"):
+            raise ValueError(f"unsupported render_engine: {render_engine}")
+        self.render_engine = render_engine
         self.theme: Theme = theme or Theme()
         self.size: SizeSpec = size
         self.css: str | None = css
@@ -95,7 +100,11 @@ class Presentation:
         warnings: list[ConversionWarning] = []
         needs_extract = bool(formats & {OutputFormat.PPTX, OutputFormat.HTML})
         if needs_extract and rendered:
-            extracts = [extract_slide(slide) for slide in rendered]
+            extracts = [
+                extract_takumi(slide) if isinstance(slide, TakumiRenderedSlide)
+                else extract_slide(slide)
+                for slide in rendered
+            ]
             for extracted in extracts:
                 coverage.extend(extracted.coverage)
                 warnings.extend(extracted.warnings)
@@ -107,7 +116,8 @@ class Presentation:
         if OutputFormat.PPTX in formats and rendered:
             captured_fonts: dict[str, bytes] = {}
             for slide in rendered:
-                captured_fonts.update(slide.resources)
+                if isinstance(slide, RenderedSlide):
+                    captured_fonts.update(slide.resources)
             faces, font_warnings = resolve_faces(slide_irs, captured_fonts=captured_fonts)
             warnings.extend(font_warnings)
             pptx = build_pptx(slide_irs, faces=faces)
@@ -134,7 +144,9 @@ class Presentation:
         for index, png in enumerate(result.pngs, start=1):
             (directory / f"slide-{index:02d}.png").write_bytes(png)
 
-    async def _render(self, indices: set[int] | None) -> list[RenderedSlide]:
+    async def _render(
+        self, indices: set[int] | None
+    ) -> list[RenderedSlide | TakumiRenderedSlide]:
         if indices is None:
             chosen = self.slides
         else:
@@ -146,8 +158,11 @@ class Presentation:
         if not chosen:  # nothing to render — don't spin up a browser
             return []
 
-        rendered: list[RenderedSlide] = []
-        async with BrowserSession() as session:
+        rendered: list[RenderedSlide | TakumiRenderedSlide] = []
+        session_backend = (
+            BrowserSession() if self.render_engine == "chromium" else TakumiSession()
+        )
+        async with session_backend as session:
             for slide in chosen:
                 width, height = pixels(slide.size or self.size)
                 page = compose_page(

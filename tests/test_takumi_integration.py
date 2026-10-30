@@ -26,6 +26,9 @@ def test_takumi_html_to_png_and_pptx() -> None:
     assert result.pptx is not None
     assert result.pptx.startswith(b"PK")
     assert result.coverage.items
+    assert any(
+        item.representation is Representation.NATIVE for item in result.coverage.items
+    ), result.warnings
     assert all(
         item.representation in (Representation.NATIVE, Representation.RASTERIZED)
         for item in result.coverage.items

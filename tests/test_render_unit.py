@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from domoxml import Presentation, Slide
+from domoxml.core.render.browser import RenderedNode, fixed_canvas_size
 from domoxml.core.render.page import compile_theme, compose_page
 from domoxml.core.units import pixels, px_to_emu
 from domoxml.types import CustomSize, OutputFormat, SlideSize, Theme
@@ -63,3 +64,70 @@ def test_theme_values_cannot_break_the_root_block() -> None:
     hostile = Theme.model_validate({"palette": {"accent": "red; } body { display:none"}})
     css = compile_theme(hostile)
     assert css.count("{") == 1 and css.count("}") == 1  # still one clean :root block
+
+
+def _node(index: int, parent: int, x: float, y: float, width: float, height: float) -> RenderedNode:
+    return RenderedNode(tag="div", x=x, y=y, width=width, height=height, index=index, parent=parent)
+
+
+def _body(width: float = 1280, height: float = 720) -> RenderedNode:
+    # The snapshot walk roots at <body> (parent -1) with the viewport-sized box.
+    return _node(0, -1, 0, 0, width, height)
+
+
+def test_fixed_canvas_detected_for_oversized_root() -> None:
+    # A 1600x900 <main> at the origin containing every other node, declared as 1280x720.
+    nodes = (
+        _body(),
+        _node(1, 0, 0, 0, 1600, 900),
+        _node(2, 1, 70, 188, 715, 80),
+        _node(3, 1, 859, 157, 621, 621),
+    )
+    assert fixed_canvas_size(nodes, width=1280, height=720) == (1600, 900)
+
+
+def test_fixed_canvas_detected_when_larger_in_one_dimension_only() -> None:
+    nodes = (_body(), _node(1, 0, 0, 0, 1600, 720), _node(2, 1, 70, 100, 700, 80))
+    assert fixed_canvas_size(nodes, width=1280, height=720) == (1600, 720)
+
+
+def test_fixed_canvas_none_when_canvas_matches_slide() -> None:
+    nodes = (_body(), _node(1, 0, 0, 0, 1280, 720), _node(2, 1, 70, 188, 715, 80))
+    assert fixed_canvas_size(nodes, width=1280, height=720) is None
+
+
+def test_fixed_canvas_none_for_fluid_content() -> None:
+    # No single root contains the layout: two side-by-side panels directly under body.
+    nodes = (
+        _body(),
+        _node(1, 0, 0, 0, 640, 720),
+        _node(2, 0, 640, 0, 640, 720),
+        _node(3, 1, 40, 40, 300, 60),
+    )
+    assert fixed_canvas_size(nodes, width=1280, height=720) is None
+
+
+def test_fixed_canvas_none_when_content_escapes_the_canvas() -> None:
+    # A node spilling past the root's right/bottom edges means the root is not the
+    # coordinate space for the whole slide.
+    nodes = (
+        _body(),
+        _node(1, 0, 0, 0, 1600, 900),
+        _node(2, 1, 1500, 800, 300, 200),
+    )
+    assert fixed_canvas_size(nodes, width=1280, height=720) is None
+
+
+def test_fixed_canvas_none_for_negative_offset_bleed() -> None:
+    # A body-level element bleeding off the left edge is outside the canvas too.
+    nodes = (
+        _body(),
+        _node(1, 0, 0, 0, 1600, 900),
+        _node(2, 0, -40, 0, 100, 100),
+    )
+    assert fixed_canvas_size(nodes, width=1280, height=720) is None
+
+
+def test_fixed_canvas_none_when_root_is_smaller_than_the_slide() -> None:
+    nodes = (_body(), _node(1, 0, 0, 0, 800, 600), _node(2, 1, 40, 40, 300, 60))
+    assert fixed_canvas_size(nodes, width=1280, height=720) is None

@@ -10,7 +10,7 @@ from typing import Self
 from domoxml.core.fonts import resolve_faces
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import extract_slide
-from domoxml.core.render import BrowserSession, RenderedSlide, compose_page
+from domoxml.core.render import BrowserSession, RenderedSlide, compose_page, fixed_canvas_size
 from domoxml.core.units import pixels
 from domoxml.slides import build_pptx, read_pptx_result
 from domoxml.types import (
@@ -153,7 +153,23 @@ class Presentation:
                 page = compose_page(
                     slide.html, css=self.css, theme=self.theme, width_px=width, height_px=height
                 )
-                rendered.append(await session.render(page, width=width, height=height))
+                captured = await session.render(page, width=width, height=height)
+                canvas = fixed_canvas_size(captured.nodes, width=width, height=height)
+                if canvas is not None:
+                    # The fragment is authored on a fixed-size canvas larger than the
+                    # declared slide (see fixed_canvas_size): re-capture at the canvas
+                    # size so the slide, the captured geometry and every
+                    # screenshot-derived layer share one coordinate space.
+                    canvas_width, canvas_height = canvas
+                    page = compose_page(
+                        slide.html,
+                        css=self.css,
+                        theme=self.theme,
+                        width_px=canvas_width,
+                        height_px=canvas_height,
+                    )
+                    captured = await session.render(page, width=canvas_width, height=canvas_height)
+                rendered.append(captured)
         return rendered
 
 

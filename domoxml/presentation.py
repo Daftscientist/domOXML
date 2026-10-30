@@ -101,7 +101,8 @@ class Presentation:
         needs_extract = bool(formats & {OutputFormat.PPTX, OutputFormat.HTML})
         if needs_extract and rendered:
             extracts = [
-                extract_takumi(slide) if isinstance(slide, TakumiRenderedSlide)
+                extract_takumi(slide)
+                if isinstance(slide, TakumiRenderedSlide)
                 else extract_slide(slide)
                 for slide in rendered
             ]
@@ -144,9 +145,7 @@ class Presentation:
         for index, png in enumerate(result.pngs, start=1):
             (directory / f"slide-{index:02d}.png").write_bytes(png)
 
-    async def _render(
-        self, indices: set[int] | None
-    ) -> list[RenderedSlide | TakumiRenderedSlide]:
+    async def _render(self, indices: set[int] | None) -> list[RenderedSlide | TakumiRenderedSlide]:
         if indices is None:
             chosen = self.slides
         else:
@@ -159,9 +158,7 @@ class Presentation:
             return []
 
         rendered: list[RenderedSlide | TakumiRenderedSlide] = []
-        session_backend = (
-            BrowserSession() if self.render_engine == "chromium" else TakumiSession()
-        )
+        session_backend = BrowserSession() if self.render_engine == "chromium" else TakumiSession()
         async with session_backend as session:
             for slide in chosen:
                 width, height = pixels(slide.size or self.size)

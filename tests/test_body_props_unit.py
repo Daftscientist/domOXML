@@ -103,12 +103,14 @@ def test_detect_anchor_flex_row_align_end() -> None:
     assert _detect_anchor(styles) == "bottom"
 
 
-def test_detect_autofit_default_normal() -> None:
-    assert _detect_autofit({}) == "normal"
+def test_detect_autofit_default_none() -> None:
+    # Captured text keeps its measured size: normAutofit would let a consumer
+    # re-fit with substituted font metrics and shrink it (0.51x measured).
+    assert _detect_autofit({}) == "none"
 
 
 def test_detect_autofit_overflow_hidden() -> None:
-    assert _detect_autofit({"overflow": "hidden"}) == "normal"
+    assert _detect_autofit({"overflow": "hidden"}) == "none"
 
 
 def test_detect_autofit_nowrap() -> None:

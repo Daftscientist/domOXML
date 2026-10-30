@@ -236,20 +236,21 @@ def _detect_text_align(
 
 
 def _detect_autofit(styles: dict[str, str]) -> Literal["none", "normal", "shape"]:
-    """Infer autofit mode from CSS overflow and white-space.
+    """Infer autofit mode from CSS white-space.
 
     Rules:
-    - ``overflow:hidden`` + fixed element → keep ``normal`` (normAutofit); text is clipped.
     - ``white-space:nowrap`` single-line → ``shape`` (spAutoFit) is acceptable.
-    - Default → ``normal`` (normAutofit).
+    - Default → ``none`` (noAutofit). The text body was laid out by Chromium inside
+      exactly this box, so it fits by construction in the captured metrics. Asking
+      the consumer to re-fit (``normAutofit``) makes it recompute fit with *its*
+      font metrics, and a substituted font can shrink captured text drastically —
+      measured at 0.51x for a Georgia headline rendered by LibreOffice, where the
+      full-size text fit the box — so the captured size is kept verbatim.
     """
-    overflow = (styles.get("overflow") or "").lower()
     white_space = (styles.get("whiteSpace") or "").lower()
-    if overflow == "hidden":
-        return "normal"
     if white_space == "nowrap":
         return "shape"
-    return "normal"
+    return "none"
 
 
 def _detect_columns(styles: dict[str, str]) -> tuple[int, int]:

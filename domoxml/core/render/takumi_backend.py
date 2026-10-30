@@ -126,7 +126,9 @@ class TakumiSession:
         except TimeoutError as exc:
             process.kill()
             await process.communicate()
-            raise TakumiRenderError("timeout", f"render exceeded {self.timeout_seconds:g}s") from exc
+            raise TakumiRenderError(
+                "timeout", f"render exceeded {self.timeout_seconds:g}s"
+            ) from exc
 
         reply = _decode_worker_reply(stdout, stderr, process.returncode or 0)
         encoded = reply.get("png")

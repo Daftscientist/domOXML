@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>domOXML in the browser — local test build</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js"></script>
+<style>
+  :root { --accent: #4da3ff; --ink: #14181d; --muted: #68707a; --line: #e3e7ec; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink);
+         margin: 0; padding: 48px 24px 96px; line-height: 1.5; }
+  main { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 19px; font-weight: 650; margin: 56px 0 4px; }
+  .badge { display: inline-block; vertical-align: 4px; margin-left: 10px; padding: 2px 9px;
+           border: 1px solid var(--accent); color: var(--accent); border-radius: 999px;
+           font-size: 12px; font-weight: 600; }
+  .sub { color: var(--muted); margin: 6px 0 0; }
+  #status { margin: 20px 0 0; padding: 10px 14px; background: #f4f8ff;
+            border: 1px solid #d8e8ff; border-radius: 8px; font-size: 14px; }
+  .editor { margin-top: 20px; }
+  .editor label { display: block; font-size: 13px; font-weight: 600; color: var(--muted);
+                  margin-bottom: 6px; }
+  textarea { width: 100%; min-height: 130px; padding: 12px; border: 1px solid var(--line);
+             border-radius: 8px; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+             resize: vertical; }
+  .row { display: flex; gap: 10px; margin-top: 20px; align-items: center; flex-wrap: wrap; }
+  button, .dl { appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+                padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 550;
+                cursor: pointer; text-decoration: none; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  .card { margin-top: 28px; border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  .card h3 { margin: 0 0 14px; font-size: 15px; font-weight: 650; }
+  .card img { display: block; max-width: 640px; width: 100%; border: 1px solid var(--line);
+              border-radius: 6px; }
+  .card iframe { display: block; width: 640px; max-width: 100%; border: 1px solid var(--line);
+                 border-radius: 6px; margin-top: 14px; background: #fff; }
+  .card .row { margin-top: 14px; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  input[type=file] { font-size: 14px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>domOXML in the browser<span class="badge">local test build</span></h1>
+  <p class="sub">The domOXML compiler running entirely on this page via Pyodide.
+     No server, no uploads: HTML becomes a native .pptx here, and a .pptx becomes HTML.</p>
+  <p id="status">Loading Pyodide…</p>
+
+  <h2>Create</h2>
+  <p class="sub">Write slide HTML, convert the deck in the browser.</p>
+  <div id="editors"></div>
+  <div class="row">
+    <button id="add-slide" disabled>Add slide</button>
+    <button id="convert-deck" class="primary" disabled>Convert deck</button>
+    <a id="deck-download" class="dl" download="deck.pptx" hidden>Download deck (.pptx)</a>
+  </div>
+  <div id="create-cards"></div>
+
+  <h2>Upload</h2>
+  <p class="sub">Read an existing .pptx back into per-slide HTML.</p>
+  <input id="upload-file" type="file" accept=".pptx" disabled>
+  <p id="upload-note" class="note"></p>
+  <div id="upload-cards"></div>
+</main>
+
+<script type="module">
+const RASTER_FILE = 'dom-to-image-more.min.js';
+const RASTER_URL = new URL(RASTER_FILE, location.href).href;
+const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+// The demo deck theme: the same tokens the verified server-side run used.
+const THEME = { palette: { background: '#0a1426', foreground: '#f5f8ff', accent: '#4da3ff' },
+                fonts: { heading: 'Noto Sans', body: 'Noto Sans' } };
+const DECK_W = 1280, DECK_H = 720;
+
+window.__domoxml_raster_url = RASTER_URL;  // how the package finds dom-to-image-more
+const statusEl = document.getElementById('status');
+const setStatus = (text) => { statusEl.textContent = text; };
+const demo = window.__demo = { ready: false, stage: 'boot', lastReport: null };
+
+// ---------------------------------------------------------------- Pyodide bridge
+let pyodide = null;
+async function callPy(name, args) {
+  for (const [key, value] of Object.entries(args)) pyodide.globals.set(key, value);
+  await pyodide.runPythonAsync(`await _dispatch(${JSON.stringify(name)})`);
+  const json = JSON.parse(pyodide.globals.get('RESULT_JSON') || '{}');
+  const take = (globalName) => {
+    const proxy = pyodide.globals.get(globalName);
+    if (proxy === null || proxy === undefined) return null;
+    const bytes = proxy.toJs();
+    if (proxy.destroy) proxy.destroy();
+    return bytes;
+  };
+  return { json, pptx: take('RESULT_PPTX'), reemit: take('RESULT_REEMIT') };
+}
+const blobUrl = (bytes, mime) => URL.createObjectURL(new Blob([bytes], { type: mime }));
+function bytesToB64(bytes) {
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    out += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(out);
+}
+
+// ------------------------------------------------- offscreen slide PNG (preview)
+async function loadIntoIframe(iframe, html) {
+  // The load event also fires for the initial about:blank document (which itself
+  // reports readyState 'complete' with a body), so poll until the frame location
+  // is about:srcdoc and that document is complete with a body.
+  iframe.srcdoc = html;
+  for (let i = 0; i < 600; i++) {
+    const win = iframe.contentWindow, doc = iframe.contentDocument;
+    if (win && win.location.href === 'about:srcdoc' &&
+        doc && doc.readyState === 'complete' && doc.body) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error('iframe never finished loading');
+}
+async function renderPng(pageHtml, width, height) {
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = `position:absolute;left:-100000px;top:0;border:0;width:${width}px;height:${height}px;`;
+  document.body.appendChild(iframe);
+  try {
+    await loadIntoIframe(iframe, pageHtml);
+    const idoc = iframe.contentDocument, iwin = iframe.contentWindow;
+    await idoc.fonts.ready;
+    await new Promise((resolve, reject) => {
+      const script = idoc.createElement('script');
+      script.src = RASTER_URL;
+      script.onload = resolve;
+      script.onerror = reject;
+      idoc.head.appendChild(script);
+    });
+    const blob = await iwin.domtoimage.toBlob(idoc.body, { width, height, scale: 1.0 });
+    return URL.createObjectURL(blob);
+  } finally {
+    iframe.remove();
+  }
+}
+
+// -------------------------------------------------------------------- UI: cards
+function makeCard({ title, pngUrl, iframeDoc, iframeW, iframeH, links }) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  const h = document.createElement('h3');
+  h.textContent = title;
+  card.appendChild(h);
+  if (pngUrl) {
+    const img = document.createElement('img');
+    img.src = pngUrl;
+    img.alt = title + ' (rendered PNG)';
+    card.appendChild(img);
+  }
+  if (iframeDoc !== undefined) {
+    const frame = document.createElement('iframe');
+    frame.srcdoc = iframeDoc;
+    frame.style.height = Math.round(640 * iframeH / iframeW) + 'px';
+    frame.title = title + ' (live HTML)';
+    card.appendChild(frame);
+  }
+  const row = document.createElement('div');
+  row.className = 'row';
+  for (const link of links) {
+    const a = document.createElement('a');
+    a.className = 'dl';
+    a.href = link.href;
+    a.download = link.name;
+    a.textContent = link.label;
+    row.appendChild(a);
+  }
+  card.appendChild(row);
+  return card;
+}
+
+// ------------------------------------------------------------------ UI: create
+const editorsEl = document.getElementById('editors');
+function addEditor(prefill = '') {
+  const wrap = document.createElement('div');
+  wrap.className = 'editor';
+  const label = document.createElement('label');
+  const area = document.createElement('textarea');
+  area.className = 'slide-html';
+  area.value = prefill;
+  area.spellcheck = false;
+  wrap.appendChild(label);
+  wrap.appendChild(area);
+  editorsEl.appendChild(wrap);
+  [...editorsEl.children].forEach((el, i) =>
+    el.querySelector('label').textContent = 'Slide ' + (i + 1) + ' HTML');
+  return area;
+}
+document.getElementById('add-slide').addEventListener('click', () => addEditor());
+
+document.getElementById('convert-deck').addEventListener('click', async () => {
+  const areas = [...editorsEl.querySelectorAll('textarea.slide-html')];
+  const fragments = areas.map((a) => a.value);
+  setStatus(`Converting ${fragments.length} slide(s) in the browser…`);
+  try {
+    const { json, pptx } = await callPy('convert', {
+      ARG_FRAGMENTS: JSON.stringify(fragments), ARG_W: DECK_W, ARG_H: DECK_H,
+      ARG_THEME: JSON.stringify(THEME),
+    });
+    demo.lastReport = json.report;
+    const deckUrl = blobUrl(pptx, PPTX_MIME);
+    const deckLink = document.getElementById('deck-download');
+    deckLink.href = deckUrl;
+    deckLink.hidden = false;
+    const cards = document.getElementById('create-cards');
+    cards.replaceChildren();
+    for (let i = 0; i < fragments.length; i++) {
+      const pngUrl = await renderPng(json.pages[i], DECK_W, DECK_H).catch(() => null);
+      cards.appendChild(makeCard({
+        title: 'Slide ' + (i + 1),
+        pngUrl,
+        iframeDoc: json.pages[i], iframeW: DECK_W, iframeH: DECK_H,
+        links: [
+          { href: blobUrl(new TextEncoder().encode(fragments[i]), 'text/html'),
+            name: `slide-${i + 1}.html`, label: 'Download HTML' },
+          { href: deckUrl, name: 'deck.pptx', label: 'Download PPTX' },
+        ],
+      }));
+    }
+    const r = json.report;
+    setStatus(`Done. ${fragments.length} slide(s) converted. Coverage: ${r.coverage_items} items, ` +
+              `native ${r.native_ratio.toFixed(3)}, editable ${r.editable_ratio.toFixed(3)}.` +
+              (r.warnings.length ? ` Warnings: ${r.warnings.length}.` : ''));
+  } catch (error) {
+    setStatus('Conversion failed: ' + error.message);
+    console.error(error);
+  }
+});
+
+// ------------------------------------------------------------------ UI: upload
+document.getElementById('upload-file').addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  setStatus(`Reading ${file.name} in the browser…`);
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const { json, reemit } = await callPy('read', { ARG_PPTX_B64: bytesToB64(bytes) });
+    const roundTripped = json.reemitted && reemit;
+    const pptxUrl = roundTripped ? blobUrl(reemit, PPTX_MIME) : URL.createObjectURL(file);
+    document.getElementById('upload-note').textContent = roundTripped
+      ? 'Download PPTX gives the deck re-emitted from the extracted HTML (the round-tripped deck).'
+      : 'Round-trip re-emission was not available for this deck, so Download PPTX gives the original file.';
+    const cards = document.getElementById('upload-cards');
+    cards.replaceChildren();
+    for (let i = 0; i < json.slides.length; i++) {
+      const slide = json.slides[i];
+      const doc = '<!doctype html><html><head><meta charset="utf-8">' +
+        '<style>html,body{margin:0;padding:0}</style><style>' + json.css + '</style>' +
+        '</head><body>' + slide.html + '</body></html>';
+      const pngUrl = await renderPng(doc, slide.width_px, slide.height_px).catch(() => null);
+      cards.appendChild(makeCard({
+        title: 'Slide ' + (i + 1),
+        pngUrl,
+        iframeDoc: doc, iframeW: slide.width_px, iframeH: slide.height_px,
+        links: [
+          { href: blobUrl(new TextEncoder().encode(slide.html), 'text/html'),
+            name: `slide-${i + 1}.html`, label: 'Download HTML' },
+          { href: pptxUrl, name: 'roundtripped.pptx', label: 'Download PPTX' },
+        ],
+      }));
+    }
+    const c = json.coverage;
+    setStatus(`Done. ${json.slides.length} slide(s) read. Reverse coverage: ${c.items} items, ` +
+              `native ${c.native_ratio.toFixed(3)}, editable ${c.editable_ratio.toFixed(3)}.`);
+  } catch (error) {
+    setStatus('Reading failed: ' + error.message);
+    console.error(error);
+  }
+});
+
+// ----------------------------------------------------------------------- boot
+async function boot() {
+  const stage = (name, text) => { demo.stage = name; setStatus(text); };
+  try {
+    stage('pyodide', 'Loading Pyodide…');
+    pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/' });
+    window.__pyodide = pyodide;
+    stage('packages', 'Loading Python packages (lxml, pydantic, pillow, fonttools)…');
+    await pyodide.loadPackage(['lxml', 'pydantic', 'pillow', 'fonttools', 'brotli', 'micropip']);
+    stage('python', 'Loading domOXML source…');
+    const source = await (await fetch('convert.py')).text();
+    await pyodide.runPythonAsync(source);
+    // Prefill slide 1 with the example slide that ships with this test build.
+    let prefill = '<h1 style="font-size:64px">Hello from the browser</h1>';
+    try {
+      const html = await (await fetch('slide.html')).text();
+      prefill = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
+    } catch { /* keep the fallback sample */ }
+    demo.slideFragment = prefill;
+    addEditor(prefill);
+    stage('ready', 'Ready. domOXML is running in this page (browser runtime, host-page capture).');
+    demo.ready = true;
+    document.getElementById('add-slide').disabled = false;
+    document.getElementById('convert-deck').disabled = false;
+    document.getElementById('upload-file').disabled = false;
+  } catch (error) {
+    demo.stage = 'error';
+    demo.error = String(error && error.message || error);
+    setStatus('Failed to start: ' + demo.error);
+    console.error(error);
+  }
+}
+boot();
+
+// Programmatic entry for the spike checks (not part of the demo flows): convert one
+// fragment through the package's low-level capture path and report capture details.
+demo.convertFragment = async (fragment, width = DECK_W, height = DECK_H) => {
+  const { json, pptx } = await callPy('fragment', {
+    ARG_FRAGMENT: fragment, ARG_W: width, ARG_H: height, ARG_THEME: JSON.stringify(THEME),
+  });
+  return { report: json.report, pptxB64: bytesToB64(pptx) };
+};
+</script>
+</body>
+</html>

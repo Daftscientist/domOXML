@@ -57,6 +57,12 @@ from domoxml.types import Editability, Representation, SlideSize, SourceRetentio
 pytestmark = pytest.mark.integration
 
 
+def _solid_shape(ir: SlideIR, hex_color: str) -> ShapeNode:
+    return next(
+        s for s in ir.shapes if isinstance(s.fill, SolidFill) and s.fill.color.hex == hex_color
+    )
+
+
 async def _render_and_extract(slide_html: str) -> SlideIR:
     width, height = pixels(SlideSize.WIDE_16_9)
     page = compose_page(slide_html, css=None, theme=Theme(), width_px=width, height_px=height)
@@ -154,6 +160,73 @@ async def test_unmappable_background_raster_excludes_overlapping_native_text() -
         s.text is not None and any("Overlap" in r.text for p in s.text.paragraphs for r in p.runs)
         for s in ir.shapes
     ), "the text stays a native, editable shape"
+
+
+async def test_descendants_of_a_rotated_element_keep_size_and_inherit_rotation() -> None:
+    # A child has no transform of its own, but it is drawn rotated by its ancestor. Its box must
+    # be its unrotated layout size (not the box enclosing the rotated shape) with the inherited
+    # rotation, because every shape on a slide is positioned absolutely, never nested.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:300px;top:200px;width:400px;height:300px;"
+        "transform:rotate(-13deg);background:#eee'>"
+        "<div style='position:absolute;left:30px;top:40px;width:200px;height:4px;"
+        "background:#123456'></div></div>"
+    )
+
+    bar = _solid_shape(ir, "123456")
+    assert abs(bar.box.width - px_to_emu(200)) <= px_to_emu(1)
+    assert abs(bar.box.height - px_to_emu(4)) <= px_to_emu(1)
+    assert bar.transform is not None
+    assert abs(bar.transform.rotation_deg - 347.0) < 0.5
+
+    # The bar's centre in the unrotated card is (30+100, 40+2) from the card's top-left.
+    # Rotating about the card centre (200, 150) by -13 degrees places it here on the slide.
+    import math
+
+    angle = math.radians(-13)
+    dx, dy = (30 + 100) - 200, (40 + 2) - 150
+    centre_x = 300 + 200 + dx * math.cos(angle) - dy * math.sin(angle)
+    centre_y = 200 + 150 + dx * math.sin(angle) + dy * math.cos(angle)
+    assert abs(bar.box.x + bar.box.width / 2 - px_to_emu(centre_x)) <= px_to_emu(1)
+    assert abs(bar.box.y + bar.box.height / 2 - px_to_emu(centre_y)) <= px_to_emu(1)
+
+
+async def test_nested_rotations_compose_and_cancelling_rotations_leave_no_transform() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:200px;top:150px;width:400px;height:300px;"
+        "transform:rotate(30deg)'>"
+        "<div style='position:absolute;left:20px;top:20px;width:100px;height:40px;"
+        "transform:rotate(15deg);background:#aa0000'></div>"
+        "<div style='position:absolute;left:20px;top:100px;width:100px;height:40px;"
+        "transform:rotate(-30deg);background:#00aa00'></div></div>"
+    )
+
+    composed = _solid_shape(ir, "AA0000")
+    assert composed.transform is not None
+    assert abs(composed.transform.rotation_deg - 45.0) < 0.5
+    assert abs(composed.box.width - px_to_emu(100)) <= px_to_emu(1)
+
+    upright = _solid_shape(ir, "00AA00")
+    assert upright.transform is None
+    assert abs(upright.box.width - px_to_emu(100)) <= px_to_emu(1)
+    assert abs(upright.box.height - px_to_emu(40)) <= px_to_emu(1)
+
+
+async def test_text_inside_a_rotated_element_is_rotated_with_it() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:200px;top:150px;width:400px;height:300px;"
+        "transform:rotate(10deg)'>"
+        "<div style='position:absolute;left:20px;top:20px;font-size:32px;color:#111'>"
+        "Tilted</div></div>"
+    )
+
+    label = next(
+        s
+        for s in ir.shapes
+        if s.text is not None and any("Tilted" in r.text for p in s.text.paragraphs for r in p.runs)
+    )
+    assert label.transform is not None
+    assert abs(label.transform.rotation_deg - 10.0) < 0.5
 
 
 async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:

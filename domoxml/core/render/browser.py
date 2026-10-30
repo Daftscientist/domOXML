@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import math
 import re
+from collections.abc import Callable, Collection
 from types import TracebackType
 from typing import Any, Self
 from urllib.parse import urlsplit
@@ -363,6 +364,10 @@ class RenderedNode(BaseModel):
     text_runs: tuple[RenderedTextRun, ...] = Field(default_factory=tuple, alias="textRuns")
 
 
+type RasterPlanner = Callable[["RenderedSlide"], Collection[int]]
+"""Names the nodes of a snapshot whose fallback pixels must be captured in isolation."""
+
+
 class RenderedRaster(BaseModel):
     """One isolated raster fallback region, including effect overflow."""
 
@@ -656,24 +661,6 @@ def parse_native_transform(value: str | None) -> tuple[float, bool, bool]:
     return rotation_deg, flip_h, flip_v
 
 
-def _needs_isolated_raster(node: RenderedNode) -> bool:
-    styles = node.styles
-    shadows = parse_shadows(styles.get("boxShadow"))
-    return (
-        node.tag in {"svg", "canvas", "video", "iframe"}
-        or "inset" in styles.get("boxShadow", "").lower()
-        or len(shadows) > 1
-        or styles.get("clipPath", "none") not in ("none", "")
-        or styles.get("mixBlendMode", "normal") not in ("normal", "")
-        or styles.get("backdropFilter", "none") not in ("none", "")
-        or styles.get("filter", "none") not in ("none", "")
-        or styles.get("maskImage", "none") not in ("none", "")
-        or styles.get("webkitBoxReflect", "none") not in ("none", "")
-        or bool(styles.get("domoxmlReflectionDistance"))
-        or is_complex_transform(styles.get("transform"))
-    )
-
-
 class BrowserSession:
     """A warm headless-Chromium session. Use as an async context manager and call
     :meth:`render` once per slide::
@@ -709,9 +696,21 @@ class BrowserSession:
         if self._playwright is not None:
             await self._playwright.stop()
 
-    async def render(self, html: str, *, width: int, height: int) -> RenderedSlide:
+    async def render(
+        self,
+        html: str,
+        *,
+        width: int,
+        height: int,
+        raster_planner: RasterPlanner | None = None,
+    ) -> RenderedSlide:
         """Render ``html`` at ``width`` x ``height`` CSS px → PNG + captured layout + the
-        image/font bytes the page fetched (so they can be embedded natively downstream)."""
+        image/font bytes the page fetched (so they can be embedded natively downstream).
+
+        ``raster_planner`` names the nodes that need pixels captured in isolation. It defaults
+        to the extractor's own plan, so the code that consumes a raster is the code that decides
+        one is needed.
+        """
         if self._browser is None:
             raise RuntimeError("BrowserSession must be entered via 'async with' before render()")
         context = await self._browser.new_context(
@@ -753,9 +752,22 @@ class BrowserSession:
             png = await page.screenshot(type="png")
             raw: list[dict[str, Any]] = await page.evaluate(_SNAPSHOT_JS)
             nodes = tuple(RenderedNode.model_validate(node) for node in raw)
+            snapshot = RenderedSlide(
+                png=png,
+                width=width,
+                height=height,
+                scale=self._scale,
+                nodes=nodes,
+                resources=resources,
+            )
+            if raster_planner is None:
+                from domoxml.core.ir.extract import plan_isolated_rasters
+
+                raster_planner = plan_isolated_rasters
+            requested = raster_planner(snapshot)
             rasters: dict[int, RenderedRaster] = {}
             for node in nodes:
-                if not _needs_isolated_raster(node):
+                if node.index not in requested:
                     continue
                 restore = await page.evaluate_handle(_ISOLATE_JS, node.index)
                 try:
@@ -775,14 +787,6 @@ class BrowserSession:
                     rasters[node.index] = RenderedRaster(
                         png=crop, x=x, y=y, width=right - x, height=bottom - y
                     )
-            return RenderedSlide(
-                png=png,
-                width=width,
-                height=height,
-                scale=self._scale,
-                nodes=nodes,
-                resources=resources,
-                rasters=rasters,
-            )
+            return snapshot.model_copy(update={"rasters": rasters})
         finally:
             await context.close()

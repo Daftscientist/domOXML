@@ -11,8 +11,10 @@ raster/approximation yields a :class:`ConversionWarning`.
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import re
+from contextvars import ContextVar
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -127,6 +129,14 @@ from domoxml.types import (
 
 _DEFAULT_TEXT_COLOR = Rgba(r=0, g=0, b=0)
 _RASTER_TAGS = {"svg", "canvas", "video", "iframe"}
+# Set only while :func:`plan_isolated_rasters` dry-runs the extraction. Every raster is requested
+# through ``_raster_shape`` / ``_isolated_node_crop``, so recording their calls yields exactly
+# the nodes that need an isolated capture, with no second predicate to drift out of sync.
+_RASTER_REQUESTS: ContextVar[set[int] | None] = ContextVar("_RASTER_REQUESTS", default=None)
+# 1x1 transparent PNG standing in for pixels that do not exist yet while planning.
+_PLANNING_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
 _URL_RE = re.compile(r"""url\(\s*['"]?(.*?)['"]?\s*\)""", re.IGNORECASE | re.DOTALL)
 # Chromium reports logical alignments (start/end); map them to the IR's physical set.
 _ALIGN: dict[str, Literal["left", "center", "right", "justify"]] = {
@@ -722,7 +732,7 @@ def _resolve_svg_bytes(url: str, rendered: RenderedSlide) -> bytes | None:
 
 def _svg_to_png(svg_bytes: bytes, *, width_px: int, height_px: int) -> bytes | None:
     """Rasterise SVG to PNG via cairosvg if installed, else ``None`` (caller falls back to the
-    slide-PNG crop, which Chromium has already rendered)."""
+    image Chromium rendered in isolation)."""
     try:
         import cairosvg  # type: ignore[import-untyped]
     except ImportError:
@@ -820,14 +830,8 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
                 w_px, h_px = max(1, round(node.width)), max(1, round(node.height))
                 png = _svg_to_png(svg_bytes, width_px=w_px, height_px=h_px)
                 if png is None:
-                    # No SVG rasteriser — crop the region Chromium already rendered.
-                    png = crop_png(
-                        rendered.png,
-                        left=node.x * rendered.scale,
-                        top=node.y * rendered.scale,
-                        width=node.width * rendered.scale,
-                        height=node.height * rendered.scale,
-                    )
+                    # No SVG rasteriser — use the image as Chromium rendered it in isolation.
+                    png = _isolated_node_crop(node, rendered)
                 if png is not None:
                     return PictureFill(data=png, ext="png", svg_data=svg_bytes), None
             return None, "SVG image source was not captured"
@@ -1119,28 +1123,63 @@ def _is_plain_inline(node: RenderedNode, fill: Fill | None, line: Line | None) -
     )
 
 
+def plan_isolated_rasters(rendered: RenderedSlide) -> frozenset[int]:
+    """Return the nodes whose fallback pixels must be captured in isolation.
+
+    Dry-runs :func:`extract_slide` and records every raster it asks for, so the capture step
+    renders exactly what extraction will consume. The extractor is the only authority on what
+    needs a raster; the browser holds no predicate of its own.
+    """
+    requests: set[int] = set()
+    token = _RASTER_REQUESTS.set(requests)
+    try:
+        extract_slide(rendered)
+    finally:
+        _RASTER_REQUESTS.reset(token)
+    return frozenset(requests)
+
+
 def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
+    """The element-layer picture for ``node``, built only from pixels captured in isolation.
+
+    A raster owns its element's pixels, so it is never cropped from the composited slide: that
+    would bake overlapping text and shapes into the fallback and draw them twice. Without an
+    isolated capture this returns ``None`` and the caller records a visible failure.
+    """
+    requests = _RASTER_REQUESTS.get()
+    if requests is not None:
+        requests.add(node.index)
+        return ShapeNode(box=_box(node), fill=PictureFill(data=_PLANNING_PNG, ext="png"))
     isolated = rendered.rasters.get(node.index)
-    if isolated is not None:
-        return ShapeNode(
-            box=Box(
-                x=px_to_emu(isolated.x),
-                y=px_to_emu(isolated.y),
-                width=px_to_emu(isolated.width),
-                height=px_to_emu(isolated.height),
-            ),
-            fill=PictureFill(data=isolated.png, ext="png"),
-        )
-    crop = crop_png(
-        rendered.png,
-        left=node.x * rendered.scale,
-        top=node.y * rendered.scale,
+    if isolated is None:
+        return None
+    return ShapeNode(
+        box=Box(
+            x=px_to_emu(isolated.x),
+            y=px_to_emu(isolated.y),
+            width=px_to_emu(isolated.width),
+            height=px_to_emu(isolated.height),
+        ),
+        fill=PictureFill(data=isolated.png, ext="png"),
+    )
+
+
+def _isolated_node_crop(node: RenderedNode, rendered: RenderedSlide) -> bytes | None:
+    """``node``'s own box cut out of its isolated raster, or ``None`` if none was captured."""
+    requests = _RASTER_REQUESTS.get()
+    if requests is not None:
+        requests.add(node.index)
+        return _PLANNING_PNG
+    isolated = rendered.rasters.get(node.index)
+    if isolated is None:
+        return None
+    return crop_png(
+        isolated.png,
+        left=(node.x - isolated.x) * rendered.scale,
+        top=(node.y - isolated.y) * rendered.scale,
         width=node.width * rendered.scale,
         height=node.height * rendered.scale,
     )
-    if crop is None:
-        return None
-    return ShapeNode(box=_box(node), fill=PictureFill(data=crop, ext="png"))
 
 
 def _native_coverage(element: str) -> CoverageItem:

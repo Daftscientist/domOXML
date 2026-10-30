@@ -8,10 +8,13 @@ from __future__ import annotations
 import base64
 import io
 
+import pytest
 from PIL import Image
 
+from domoxml.core.images import crop_png
 from domoxml.core.ir import extract_slide
 from domoxml.core.ir.effect_payload import decode_effect_payload, encode_effects
+from domoxml.core.ir.extract import plan_isolated_rasters
 from domoxml.core.ir.model import (
     Blur,
     Box,
@@ -43,7 +46,6 @@ from domoxml.core.render.browser import (
     RenderedNode,
     RenderedRaster,
     RenderedSlide,
-    _needs_isolated_raster,
     _raster_bounds,
 )
 from domoxml.core.units import px_to_emu
@@ -59,6 +61,32 @@ def _png(width: int = 40, height: int = 30) -> bytes:
 
 def _slide(*nodes: RenderedNode) -> RenderedSlide:
     return RenderedSlide(png=_png(), width=20, height=15, scale=2.0, nodes=nodes)
+
+
+def _captured_slide(*nodes: RenderedNode) -> RenderedSlide:
+    """A slide as the browser delivers it: every node the extractor plans a raster for gets an
+    isolated capture (the test PNG stands in for the isolated screenshot)."""
+    slide = _slide(*nodes)
+    requested = plan_isolated_rasters(slide)
+    rasters: dict[int, RenderedRaster] = {}
+    for node in slide.nodes:
+        if node.index not in requested:
+            continue
+        x, y, right, bottom = _raster_bounds(
+            node, slide_width=slide.width, slide_height=slide.height
+        )
+        crop = crop_png(
+            slide.png,
+            left=x * slide.scale,
+            top=y * slide.scale,
+            width=(right - x) * slide.scale,
+            height=(bottom - y) * slide.scale,
+        )
+        if crop is not None:
+            rasters[node.index] = RenderedRaster(
+                png=crop, x=x, y=y, width=right - x, height=bottom - y
+            )
+    return slide.model_copy(update={"rasters": rasters})
 
 
 # --------------------------------------------------------------------------- gradient parsing
@@ -249,7 +277,7 @@ def test_css_blur_filter_is_native_and_editable() -> None:
         index=0,
         styles={"filter": "blur(4px)", "backgroundColor": "rgb(1,2,3)"},
     )
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
     shape = result.slide.shapes[0]
     assert isinstance(shape.fill, SolidFill)
     assert shape.effects == (Blur(radius_emu=38100),)
@@ -372,7 +400,7 @@ def test_css_fill_overlay_is_native_with_shape_bound_fallback() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
 
     shape = result.slide.shapes[0]
     parsed = parse_fill_overlay(
@@ -449,7 +477,7 @@ def test_encoded_fill_overlay_recovers_stacked_gradient_base() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
 
     shape = result.slide.shapes[0]
     assert isinstance(shape.fill, GradientFill)
@@ -477,7 +505,7 @@ def test_gradient_background_blend_is_native_with_shape_bound_fallback() -> None
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
 
     shape = result.slide.shapes[0]
     assert shape.fill == SolidFill(color=Rgba(r=20, g=60, b=140))
@@ -512,7 +540,7 @@ def test_conic_background_blend_uses_visible_element_layer() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -537,7 +565,7 @@ def test_authored_gradient_base_fill_overlay_uses_visible_element_layer() -> Non
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -565,7 +593,7 @@ def test_transparent_picture_overlay_with_visible_background_uses_element_layer(
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -590,7 +618,7 @@ def test_partial_uniform_background_blend_uses_visible_element_layer() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -617,7 +645,7 @@ def test_stale_encoded_fill_overlay_uses_visible_element_layer() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -639,7 +667,7 @@ def test_unmapped_css_mask_uses_visible_element_layer() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -657,7 +685,7 @@ def test_unsupported_css_filter_rasterises_and_warns() -> None:
         index=0,
         styles={"filter": "brightness(0.8)", "backgroundColor": "rgb(1,2,3)"},
     )
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
     assert result.coverage[0].editability is Editability.LAYERS
@@ -685,6 +713,70 @@ def test_empty_raster_region_is_recorded_as_failed_not_layered() -> None:
     assert result.coverage[0].output_count == 0
 
 
+def test_raster_without_isolated_capture_fails_visibly_instead_of_cropping_the_slide() -> None:
+    # The composited slide PNG holds whatever overlaps the element. Cropping it would bake that
+    # in as the element's own pixels, so a missing isolated capture must surface as a failure.
+    node = RenderedNode(
+        tag="div",
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        index=0,
+        styles={"filter": "brightness(0.8)", "backgroundColor": "rgb(1,2,3)"},
+    )
+
+    result = extract_slide(_slide(node))
+
+    assert result.slide.shapes == ()
+    assert result.coverage[0].representation is Representation.FAILED
+    assert node.index in plan_isolated_rasters(_slide(node))
+
+
+def test_planner_requests_exactly_the_nodes_the_extractor_rasterises() -> None:
+    plain = RenderedNode(
+        tag="div", x=0, y=0, width=5, height=5, index=0, styles={"backgroundColor": "rgb(1,2,3)"}
+    )
+    filtered = RenderedNode(
+        tag="div", x=5, y=5, width=5, height=5, index=1, styles={"filter": "brightness(0.8)"}
+    )
+
+    assert plan_isolated_rasters(_slide(plain, filtered)) == {1}
+
+
+def test_svg_image_fallback_uses_its_isolated_raster_not_the_composited_slide(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+
+    def no_rasteriser(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr("domoxml.core.ir.extract._svg_to_png", no_rasteriser)
+    node = RenderedNode(
+        tag="img",
+        x=2,
+        y=2,
+        width=6,
+        height=6,
+        index=0,
+        src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>",
+    )
+    slide = _slide(node)
+    assert plan_isolated_rasters(slide) == {0}
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (12, 12), (250, 10, 10)).save(buffer, "PNG")
+    raster = RenderedRaster(png=buffer.getvalue(), x=2, y=2, width=6, height=6)
+    shape = extract_slide(slide.model_copy(update={"rasters": {0: raster}})).slide.shapes[0]
+    assert isinstance(shape.fill, PictureFill)
+    with Image.open(io.BytesIO(shape.fill.data)) as picture:
+        assert picture.convert("RGB").getpixel((0, 0)) == (250, 10, 10)
+
+    missing = extract_slide(slide)
+    assert missing.slide.shapes == ()
+    assert any("not captured" in w.message for w in missing.warnings)
+
+
 def test_unmappable_custom_svg_paint_uses_element_layer_instead_of_omitting_it() -> None:
     svg = RenderedNode(
         tag="svg",
@@ -709,7 +801,7 @@ def test_unmappable_custom_svg_paint_uses_element_layer_instead_of_omitting_it()
         styles={"fill": "url(#gradient)"},
     )
 
-    result = extract_slide(_slide(svg, path))
+    result = extract_slide(_captured_slide(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -782,7 +874,7 @@ def test_custom_svg_compound_filter_and_reflection_uses_element_layer() -> None:
         styles={"fill": "rgb(68, 114, 196)"},
     )
 
-    result = extract_slide(_slide(svg, path))
+    result = extract_slide(_captured_slide(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -823,7 +915,7 @@ def test_custom_svg_nonstandard_soft_edge_filter_uses_element_layer() -> None:
         },
     )
 
-    result = extract_slide(_slide(svg, path))
+    result = extract_slide(_captured_slide(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -865,7 +957,7 @@ def test_custom_svg_soft_edge_does_not_mix_outer_and_path_filter_sources() -> No
         },
     )
 
-    result = extract_slide(_slide(svg, path))
+    result = extract_slide(_captured_slide(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -907,7 +999,7 @@ def test_custom_svg_nonstandard_fill_overlay_filter_uses_element_layer() -> None
         },
     )
 
-    result = extract_slide(_slide(svg, path))
+    result = extract_slide(_captured_slide(svg, path))
 
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
     assert result.coverage[0].representation is Representation.ELEMENT_LAYER
@@ -1054,7 +1146,7 @@ def test_inset_css_shadow_is_native_with_isolated_portable_fallback() -> None:
         },
     )
 
-    result = extract_slide(_slide(node))
+    result = extract_slide(_captured_slide(node))
 
     [shape] = result.slide.shapes
     assert isinstance(shape.fill, SolidFill)
@@ -1081,7 +1173,7 @@ def test_browser_requests_isolated_raster_for_inset_shadow() -> None:
         styles={"boxShadow": "rgb(0, 0, 0) 2px 2px 4px inset"},
     )
 
-    assert _needs_isolated_raster(node)
+    assert node.index in plan_isolated_rasters(_slide(node))
 
 
 def test_unsupported_css_filter_uses_isolated_raster_region_when_available() -> None:
@@ -1114,7 +1206,7 @@ def test_browser_requests_isolated_renderer_fallback_for_native_css_blur() -> No
         styles={"filter": "blur(4px)"},
     )
 
-    assert _needs_isolated_raster(node)
+    assert node.index in plan_isolated_rasters(_slide(node))
 
 
 def test_browser_multi_shadow_fallback_bounds_include_every_layer() -> None:
@@ -1129,7 +1221,7 @@ def test_browser_multi_shadow_fallback_bounds_include_every_layer() -> None:
         },
     )
 
-    assert _needs_isolated_raster(node)
+    assert node.index in plan_isolated_rasters(_slide(node))
     assert _raster_bounds(node, slide_width=200, slide_height=180) == (9, 43, 172, 145)
 
 
@@ -1274,7 +1366,7 @@ def test_browser_requests_isolated_renderer_fallback_for_css_mask() -> None:
         styles={"maskImage": "linear-gradient(rgb(0,0,0), rgba(0,0,0,0))"},
     )
 
-    assert _needs_isolated_raster(node)
+    assert node.index in plan_isolated_rasters(_slide(node))
     assert _raster_bounds(node, slide_width=20, slide_height=20) == (0, 0, 10, 10)
 
 
@@ -1288,7 +1380,7 @@ def test_browser_raster_bounds_honor_normalized_owned_layer_metadata() -> None:
         styles={"domoxmlRasterBounds": "80 70 250 140"},
     )
 
-    assert _needs_isolated_raster(node)
+    assert node.index in plan_isolated_rasters(_slide(node))
     assert _raster_bounds(node, slide_width=320, slide_height=180) == (80, 70, 320, 180)
 
     outside = node.model_copy(update={"styles": {"domoxmlRasterBounds": "400 -40 50 20"}})
@@ -1307,7 +1399,7 @@ def test_browser_reflection_fallback_bounds_include_reflected_copy() -> None:
         },
     )
 
-    assert _needs_isolated_raster(node)
+    assert node.index in plan_isolated_rasters(_slide(node))
     assert _raster_bounds(node, slide_width=200, slide_height=150) == (20, 30, 100, 116)
 
 
@@ -1367,7 +1459,7 @@ def test_rasterised_parent_consumes_its_subtree() -> None:
         text="hi",
         styles={"backgroundColor": "rgb(9,9,9)"},
     )
-    result = extract_slide(_slide(parent, child))
+    result = extract_slide(_captured_slide(parent, child))
     # Only the parent's raster shape — the child is baked into it, not emitted twice.
     assert len(result.slide.shapes) == 1
     assert isinstance(result.slide.shapes[0].fill, PictureFill)

@@ -137,18 +137,17 @@ async def test_extracts_css_reflection_with_complete_isolated_paint_bounds() -> 
 
 
 async def test_unmappable_background_raster_excludes_overlapping_native_text() -> None:
-    # The stripe pattern has no native mapping, so the full-slide div is rasterised. Text drawn
-    # over it is its own native shape; baking it into the raster too would draw it twice.
+    # A <canvas> is raster by nature and will never map natively, so it stays a fixed example of an
+    # element layer. Text drawn over it is its own native shape; baking it into the raster too would
+    # draw it twice.
     ir = await _render_and_extract(
-        "<div style='position:absolute;left:0;top:0;width:1280px;height:720px;"
-        "background:repeating-linear-gradient(90deg,transparent 0px,transparent 39px,"
-        "rgba(24,31,26,.2) 39px,rgba(24,31,26,.2) 40px,rgba(200,30,30,.3) 41px)'></div>"
+        "<canvas width='1280' height='720' style='position:absolute;left:0;top:0'></canvas>"
         "<div style='position:absolute;left:100px;top:100px;font-size:96px;font-weight:800;"
         "color:#111'>Overlap</div>"
     )
 
     pictures = [s for s in ir.shapes if isinstance(s.fill, PictureFill)]
-    assert pictures, "the unmappable gradient should be an element layer"
+    assert pictures, "the canvas should be an element layer"
     for picture in pictures:
         assert isinstance(picture.fill, PictureFill)
         with Image.open(BytesIO(picture.fill.data)) as image:
@@ -544,6 +543,40 @@ async def test_rotated_plain_text_keeps_its_anchor_point_despite_lopsided_slack(
         actual = rendered(x, y, w, h, x + (w if anchor_is_right else 0), y)
         assert abs(actual[0] - expected[0]) < 1.0, (text, actual, expected)
         assert abs(actual[1] - expected[1]) < 1.0, (text, actual, expected)
+
+
+async def test_repeating_stripes_become_one_native_gradient_that_survives_both_ways() -> None:
+    # A repeating gradient is one ramp tiled along the gradient line. Over a known box it is a plain
+    # many-stop gradient, which PowerPoint renders natively, so nothing needs a raster.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:0;top:0;width:1280px;height:720px;opacity:.58;"
+        "background:repeating-linear-gradient(90deg,transparent 0px,transparent 399px,"
+        "rgba(24,31,26,.2) 399px,rgba(24,31,26,.2) 400px)'></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    [stripes] = [s for s in ir.shapes if isinstance(s.fill, GradientFill)]
+    assert isinstance(stripes.fill, GradientFill)
+    assert len(stripes.fill.stops) >= 12
+    assert stripes.opacity == 0.58
+
+    # PPTX -> IR: the stops, including the hard edges, survive the file.
+    pptx = build_pptx([ir], faces=[])
+    [recovered] = [
+        s for s in read_pptx(pptx)[0].contents if isinstance(s, ShapeNode) and s.fill is not None
+    ][-1:]
+    assert isinstance(recovered.fill, GradientFill)
+    assert len(recovered.fill.stops) == len(stripes.fill.stops), "no stop multiplication"
+    hard_edges = [
+        (a, b)
+        for a, b in zip(recovered.fill.stops, recovered.fill.stops[1:], strict=False)
+        if b.pos - a.pos < 1e-3 and a.color != b.color
+    ]
+    assert len(hard_edges) >= 3, "the stripe edges stay hard through the PPTX"
+
+    # IR -> HTML: it is written as one CSS gradient, not a picture.
+    html = serialize_canvas([ir]).slides[0].html
+    assert "linear-gradient(90deg" in html and "<img" not in html
 
 
 async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:

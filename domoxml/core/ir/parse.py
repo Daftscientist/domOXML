@@ -739,6 +739,153 @@ def parse_gradient(value: str | None) -> GradientFill | None:
     return GradientFill(stops=stops, angle_deg=angle, radial=radial)
 
 
+_REPEATING_RE = re.compile(r"^\s*repeating-linear-gradient\s*\(", re.IGNORECASE)
+_STOP_LENGTHS_RE = re.compile(r"((?:\s+-?[\d.]+(?:px|%))+)\s*$", re.IGNORECASE)
+_TRAILING_TOKEN_RE = re.compile(r"\s+-?[\d.]+[a-z%]*\s*$", re.IGNORECASE)
+_STOP_LENGTH_RE = re.compile(r"(-?[\d.]+)(px|%)", re.IGNORECASE)
+# One OOXML gradient position unit is 1/100000 of the line, the smallest step PowerPoint keeps.
+_POSITION_STEP = 1e-5
+# Real PowerPoint renders 121 stops; this leaves headroom and stops runaway expansion.
+_MAX_REPEATING_STOPS = 256
+
+
+def _lerp_color(a: Rgba, b: Rgba, t: float) -> Rgba:
+    def mix(x: int, y: int) -> int:
+        return round(x + (y - x) * t)
+
+    return Rgba(r=mix(a.r, b.r), g=mix(a.g, b.g), b=mix(a.b, b.b), a=a.a + (b.a - a.a) * t)
+
+
+def _resolve_stop_positions(
+    raw: list[tuple[Rgba, float | None]], line: float
+) -> list[tuple[Rgba, float]] | None:
+    """Fill in CSS's default stop positions.
+
+    The first stop is 0, the last is the full line, and unpositioned stops between two positioned
+    ones are spread evenly. Positions never go backward.
+    """
+    if len(raw) < 2:
+        return None
+    pinned = list(raw)
+    if pinned[0][1] is None:
+        pinned[0] = (pinned[0][0], 0.0)
+    if pinned[-1][1] is None:
+        pinned[-1] = (pinned[-1][0], line)
+    resolved: list[tuple[Rgba, float]] = []
+    index = 0
+    while index < len(pinned):
+        color, position = pinned[index]
+        floor = resolved[-1][1] if resolved else 0.0
+        if position is not None:
+            resolved.append((color, max(position, floor)))
+            index += 1
+            continue
+        end = next(j for j in range(index, len(pinned)) if pinned[j][1] is not None)
+        high = max(pinned[end][1] or 0.0, floor)
+        for offset, step in enumerate(range(index, end), start=1):
+            resolved.append((pinned[step][0], floor + (high - floor) * offset / (end - index + 1)))
+        index = end
+    return resolved
+
+
+def parse_repeating_gradient(
+    value: str | None, *, width_px: float, height_px: float
+) -> GradientFill | None:
+    """Expand one ``repeating-linear-gradient`` into a plain many-stop :class:`GradientFill`.
+
+    A repeating gradient is the same colour ramp tiled along the gradient line, so over a box of
+    known size it is an ordinary gradient with the ramp written out. PowerPoint renders such
+    fills natively (40 hard-edged stops and a 121-stop ramp were checked against real
+    PowerPoint), so no raster is needed. Returns ``None`` for anything that cannot be expanded
+    exactly: other units, unknown stop colours, a non-repeating period, or too many stops.
+    """
+    if not value or _REPEATING_RE.match(value) is None or width_px <= 0 or height_px <= 0:
+        return None
+    if len(_split_top_level(value)) > 1:
+        return None
+    start = value.index("(") + 1
+    depth, end = 1, -1
+    for i in range(start, len(value)):
+        depth += (value[i] == "(") - (value[i] == ")")
+        if depth == 0:
+            end = i
+            break
+    if end < 0:
+        return None
+    args = _split_top_level(value[start:end])
+    angle = 180.0
+    if args and _ANGLE_RE.search(args[0]) and parse_color(args[0]) is None:
+        angle = float(_ANGLE_RE.search(args[0]).group(1))  # type: ignore[union-attr]
+        args = args[1:]
+    elif args and "to " in args[0].lower() and parse_color(args[0]) is None:
+        angle = _KEYWORD_ANGLE.get(args[0].strip().lower(), 180.0)
+        args = args[1:]
+    radians = math.radians(angle)
+    line = abs(width_px * math.sin(radians)) + abs(height_px * math.cos(radians))
+    if line <= 0:
+        return None
+
+    raw: list[tuple[Rgba, float | None]] = []
+    for arg in args:
+        lengths = _STOP_LENGTHS_RE.search(arg)
+        color_text = arg[: lengths.start()] if lengths else arg
+        # parse_color ignores trailing text, so a stop position in any other unit (em, unitless
+        # 0, ...) must be refused here or it would silently count as "no position".
+        if _TRAILING_TOKEN_RE.search(color_text):
+            return None
+        color = parse_color(color_text)
+        if color is None:
+            return None
+        positions: list[float] = []
+        for amount, unit in _STOP_LENGTH_RE.findall(lengths.group(1) if lengths else ""):
+            positions.append(float(amount) * (line / 100.0 if unit == "%" else 1.0))
+        if len(positions) > 2:
+            return None
+        if positions:
+            raw.extend((color, position) for position in positions)
+        else:
+            raw.append((color, None))
+    resolved = _resolve_stop_positions(raw, line)
+    if resolved is None:
+        return None
+    period = resolved[-1][1] - resolved[0][1]
+    if period <= 0:
+        return None
+
+    first_tile = math.floor((0.0 - resolved[-1][1]) / period)
+    last_tile = math.ceil((line - resolved[0][1]) / period)
+    if (last_tile - first_tile + 1) * len(resolved) > _MAX_REPEATING_STOPS * 4:
+        return None
+    flat: list[tuple[Rgba, float]] = [
+        (color, position + tile * period)
+        for tile in range(first_tile, last_tile + 1)
+        for color, position in resolved
+    ]
+    # Clip to [0, line], adding interpolated boundary stops so the ends are exact.
+    inside = [(c, p) for c, p in flat if 0.0 < p < line]
+    before = [(c, p) for c, p in flat if p <= 0.0]
+    after = [(c, p) for c, p in flat if p >= line]
+    if not before or not after:
+        return None
+
+    def boundary(x: float, left: tuple[Rgba, float], right: tuple[Rgba, float]) -> Rgba:
+        span = right[1] - left[1]
+        return left[0] if span <= 0 else _lerp_color(left[0], right[0], (x - left[1]) / span)
+
+    head = (boundary(0.0, before[-1], (inside[0] if inside else after[0])), 0.0)
+    tail = (boundary(line, (inside[-1] if inside else before[-1]), after[0]), line)
+    ordered = [head, *inside, tail]
+    if len(ordered) > _MAX_REPEATING_STOPS:
+        return None
+    stops: list[GradientStop] = []
+    for color, position in ordered:
+        fraction = min(1.0, max(0.0, position / line))
+        if stops and fraction <= stops[-1].pos:
+            fraction = min(1.0, stops[-1].pos + _POSITION_STEP)  # a hard edge stays a hard edge
+        stops.append(GradientStop(pos=fraction, color=color))
+    return GradientFill(stops=tuple(stops), angle_deg=angle) if len(stops) >= 2 else None
+
+
 def parse_fill_overlay(
     background_image: str | None,
     background_color: str | None,

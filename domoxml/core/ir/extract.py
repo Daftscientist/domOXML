@@ -99,6 +99,7 @@ from domoxml.core.ir.parse import (
     parse_margin_pt,
     parse_polygon,
     parse_radius_px,
+    parse_repeating_gradient,
     parse_shadow,
     parse_shadows,
     parse_soft_edge_mask,
@@ -120,7 +121,7 @@ from domoxml.core.render.browser import (
     parse_native_transform,
 )
 from domoxml.core.svg_stroke import parse_svg_dasharray
-from domoxml.core.units import px_to_emu, px_to_pt
+from domoxml.core.units import emu_to_px, px_to_emu, px_to_pt
 from domoxml.types import (
     ConversionWarning,
     CoverageItem,
@@ -945,7 +946,16 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
         pattern = match_pattern_fill(background_image)
         if pattern is not None:
             return pattern, None
-        # Not a clean two-colour stripe; fall through to the raster/warning path unchanged.
+        # Otherwise the ramp is tiled along the gradient line, which over a box of known size is
+        # an ordinary gradient with the ramp written out. A tiled background-size is a different
+        # thing, so only a gradient spanning the whole box qualifies.
+        if styles.get("backgroundSize", "auto") in ("auto", "auto auto", ""):
+            box = _box(node)
+            expanded = parse_repeating_gradient(
+                background_image, width_px=emu_to_px(box.width), height_px=emu_to_px(box.height)
+            )
+            if expanded is not None:
+                return expanded, None
         return None, "repeating gradient is not a clean two-colour pattern (rasterised)"
     if "gradient" in background_image:
         gradient: GradientFill | None = parse_gradient(background_image)

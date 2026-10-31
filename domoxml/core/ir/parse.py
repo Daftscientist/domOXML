@@ -750,10 +750,45 @@ _MAX_REPEATING_STOPS = 256
 
 
 def _lerp_color(a: Rgba, b: Rgba, t: float) -> Rgba:
-    def mix(x: int, y: int) -> int:
-        return round(x + (y - x) * t)
+    """Interpolate in premultiplied alpha, as CSS does, so a clipped ramp keeps the right colour.
 
-    return Rgba(r=mix(a.r, b.r), g=mix(a.g, b.g), b=mix(a.b, b.b), a=a.a + (b.a - a.a) * t)
+    Mixing the channels straight would turn a transparent-to-blue ramp purple at its midpoint.
+    """
+    alpha = a.a + (b.a - a.a) * t
+
+    def mix(x: int, y: int) -> int:
+        if alpha <= 0.0:
+            return round(x + (y - x) * t)
+        return round((x * a.a * (1.0 - t) + y * b.a * t) / alpha)
+
+    return Rgba(r=mix(a.r, b.r), g=mix(a.g, b.g), b=mix(a.b, b.b), a=alpha)
+
+
+def _corner_angle(keyword: str, width_px: float, height_px: float) -> float | None:
+    """CSS angle for ``to <side>`` / ``to <corner>``, or ``None`` if it is not a valid keyword.
+
+    A corner's gradient line is perpendicular to the diagonal through the other two corners, so
+    its angle depends on the box's aspect ratio (45 degrees only for a square).
+    """
+    words = keyword.lower().split()
+    if not words or words[0] != "to" or len(words) not in (2, 3):
+        return None
+    sides = set(words[1:])
+    if len(sides) != len(words) - 1 or not sides <= {"top", "bottom", "left", "right"}:
+        return None
+    vertical, horizontal = sides & {"top", "bottom"}, sides & {"left", "right"}
+    if len(sides) == 1:
+        return {"top": 0.0, "right": 90.0, "bottom": 180.0, "left": 270.0}[next(iter(sides))]
+    if len(vertical) != 1 or len(horizontal) != 1:
+        return None
+    lean = math.degrees(math.atan2(height_px, width_px))
+    corner = (next(iter(vertical)), next(iter(horizontal)))
+    return {
+        ("top", "right"): lean,
+        ("bottom", "right"): 180.0 - lean,
+        ("bottom", "left"): 180.0 + lean,
+        ("top", "left"): 360.0 - lean,
+    }[corner]
 
 
 def _resolve_stop_positions(
@@ -775,7 +810,7 @@ def _resolve_stop_positions(
     index = 0
     while index < len(pinned):
         color, position = pinned[index]
-        floor = resolved[-1][1] if resolved else 0.0
+        floor = resolved[-1][1] if resolved else (position if position is not None else 0.0)
         if position is not None:
             resolved.append((color, max(position, floor)))
             index += 1
@@ -818,7 +853,10 @@ def parse_repeating_gradient(
         angle = float(_ANGLE_RE.search(args[0]).group(1))  # type: ignore[union-attr]
         args = args[1:]
     elif args and "to " in args[0].lower() and parse_color(args[0]) is None:
-        angle = _KEYWORD_ANGLE.get(args[0].strip().lower(), 180.0)
+        corner_angle = _corner_angle(args[0], width_px, height_px)
+        if corner_angle is None:
+            return None
+        angle = corner_angle
         args = args[1:]
     radians = math.radians(angle)
     line = abs(width_px * math.sin(radians)) + abs(height_px * math.cos(radians))

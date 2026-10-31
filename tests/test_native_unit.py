@@ -157,6 +157,60 @@ def test_repeating_gradient_resolves_percentages_and_default_positions() -> None
     assert [round(stop.pos * 200) for stop in gradient.stops][:4] == [0, 50, 50, 100]
 
 
+def test_repeating_gradient_keeps_a_negative_first_stop_so_phase_and_period_are_right() -> None:
+    gradient = parse_repeating_gradient(
+        "repeating-linear-gradient(90deg, rgb(255, 0, 0) -50px, rgb(0, 0, 255) 50px)",
+        width_px=200,
+        height_px=10,
+    )
+
+    assert gradient is not None
+    # Period 100px, so at x=0 the ramp is already halfway; the next seam is at x=50.
+    first, second = gradient.stops[0], gradient.stops[1]
+    assert (first.color.r, first.color.b) == (128, 128) or abs(first.color.r - 128) <= 1
+    assert round(second.pos * 200) == 50 and second.color.b == 255
+
+
+def test_repeating_gradient_boundary_colour_is_premultiplied() -> None:
+    gradient = parse_repeating_gradient(
+        "repeating-linear-gradient(90deg, rgba(255, 0, 0, 0) 0px, rgb(0, 0, 255) 100px)",
+        width_px=50,
+        height_px=10,
+    )
+
+    assert gradient is not None
+    tail = gradient.stops[-1]
+    # Half way up a transparent-to-blue ramp is blue at half alpha, not purple.
+    assert (tail.color.r, tail.color.g, tail.color.b) == (0, 0, 255)
+    assert abs(tail.color.a - 0.5) < 0.01
+
+
+def test_repeating_gradient_corner_keywords_follow_the_box_aspect_ratio() -> None:
+    wide = parse_repeating_gradient(
+        "repeating-linear-gradient(to top right, rgb(255, 0, 0) 0px, rgb(0, 0, 255) 100px)",
+        width_px=200,
+        height_px=100,
+    )
+    reordered = parse_repeating_gradient(
+        "repeating-linear-gradient(to right top, rgb(255, 0, 0) 0px, rgb(0, 0, 255) 100px)",
+        width_px=200,
+        height_px=100,
+    )
+
+    assert wide is not None and reordered is not None
+    assert abs(wide.angle_deg - 26.565) < 0.01, "not the 45 degrees of a square"
+    assert reordered.angle_deg == wide.angle_deg
+    for bad in ("to top top", "to up", "to top bottom", "to"):
+        assert (
+            parse_repeating_gradient(
+                f"repeating-linear-gradient({bad}, rgb(255, 0, 0) 0px, rgb(0, 0, 255) 10px)",
+                width_px=100,
+                height_px=100,
+            )
+            is None
+        ), bad
+
+
 def test_repeating_gradient_refuses_what_it_cannot_expand_exactly() -> None:
     def parse(value: str) -> object:
         return parse_repeating_gradient(value, width_px=100, height_px=100)

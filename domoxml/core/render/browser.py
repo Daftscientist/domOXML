@@ -10,10 +10,10 @@ from types import TracebackType
 from typing import Any, Self
 from urllib.parse import urlsplit
 
-from playwright.async_api import Browser, Playwright, Route, async_playwright
+from playwright.async_api import Browser, Page, Playwright, Route, async_playwright
 from pydantic import BaseModel, ConfigDict, Field
 
-from domoxml.core.images import crop_png
+from domoxml.core.images import apply_alpha_mask, crop_png
 from domoxml.core.ir.parse import parse_shadows
 from domoxml.core.units import emu_to_px
 
@@ -501,6 +501,69 @@ _ISOLATE_JS = """
 """
 
 
+# `backdrop-filter` blurs whatever is painted behind an element, so the blurred backdrop is the
+# one piece of a glass element PowerPoint cannot express. It is captured on its own: everything
+# painted before the element (document order, the stacking order the extractor models) stays, what
+# is painted after is hidden, and the element's own paint and descendants are neutralised so only
+# the blurred backdrop remains. The element itself, its tint, border, shadow and children, is
+# extracted as ordinary native shapes on top.
+_BACKDROP_JS = """
+(args) => {
+  const [index, mode] = args;
+  const selected = document.querySelector(`[data-domoxml-capture-index="${index}"]`);
+  if (!selected) return () => {};
+  const changed = [];
+  const hide = (element) => {
+    changed.push([
+      element,
+      element.style.getPropertyValue('visibility'),
+      element.style.getPropertyPriority('visibility'),
+    ]);
+    element.style.setProperty('visibility', 'hidden', 'important');
+  };
+  for (const element of document.body.querySelectorAll('*')) {
+    if (element === selected) continue;
+    const inside = selected.contains(element);
+    const around = element.contains(selected);
+    const later = !inside && !around
+      && (selected.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    if (mode === 'shape' || inside || later) hide(element);
+  }
+  const rootStyles = [
+    [document.documentElement, document.documentElement.style.cssText],
+    [document.body, document.body.style.cssText],
+  ];
+  if (mode === 'shape') {
+    for (const [element] of rootStyles) {
+      element.style.setProperty('background', 'transparent', 'important');
+      element.style.setProperty('background-image', 'none', 'important');
+    }
+  }
+  const original = selected.style.cssText;
+  const own = {
+    'box-shadow': 'none', 'border-color': 'transparent', outline: 'none',
+    color: 'transparent', 'text-shadow': 'none',
+    background: mode === 'shape' ? '#000' : 'transparent',
+  };
+  if (mode === 'shape') {
+    own['backdrop-filter'] = 'none';
+    own.visibility = 'visible';
+  }
+  for (const [name, value] of Object.entries(own)) {
+    selected.style.setProperty(name, value, 'important');
+  }
+  return () => {
+    selected.style.cssText = original;
+    for (const [element, visibility, priority] of changed) {
+      if (visibility) element.style.setProperty('visibility', visibility, priority);
+      else element.style.removeProperty('visibility');
+    }
+    for (const [element, cssText] of rootStyles) element.style.cssText = cssText;
+  };
+}
+"""
+
+
 class RenderedTextRun(BaseModel):
     """One ordered inline text fragment with Chromium-resolved typography."""
 
@@ -558,6 +621,7 @@ class RenderedSlide(BaseModel):
     nodes: tuple[RenderedNode, ...]
     resources: dict[str, bytes] = Field(default_factory=dict)
     rasters: dict[int, RenderedRaster] = Field(default_factory=dict[int, RenderedRaster])
+    backdrops: dict[int, RenderedRaster] = Field(default_factory=dict[int, RenderedRaster])
 
 
 def _raster_bounds(
@@ -861,6 +925,31 @@ class BrowserSession:
         if self._playwright is not None:
             await self._playwright.stop()
 
+    async def _capture_backdrop(
+        self, page: Page, node: RenderedNode, *, width: int, height: int
+    ) -> RenderedRaster | None:
+        """The blurred backdrop an element sits over, cut to the element's own border-box shape."""
+        x, y, right, bottom = _raster_bounds(node, slide_width=width, slide_height=height)
+        region = {
+            "left": x * self._scale,
+            "top": y * self._scale,
+            "width": (right - x) * self._scale,
+            "height": (bottom - y) * self._scale,
+        }
+        shots: list[bytes] = []
+        for mode, omit_background in (("layer", False), ("shape", True)):
+            restore = await page.evaluate_handle(_BACKDROP_JS, [node.index, mode])
+            try:
+                shots.append(await page.screenshot(type="png", omit_background=omit_background))
+            finally:
+                await restore.evaluate("(restore) => restore()")
+                await restore.dispose()
+        layer, shape = (crop_png(shot, **region) for shot in shots)
+        masked = apply_alpha_mask(layer, shape) if layer is not None and shape is not None else None
+        if masked is None:
+            return None
+        return RenderedRaster(png=masked, x=x, y=y, width=right - x, height=bottom - y)
+
     async def render(
         self,
         html: str,
@@ -868,13 +957,14 @@ class BrowserSession:
         width: int,
         height: int,
         raster_planner: RasterPlanner | None = None,
+        backdrop_planner: RasterPlanner | None = None,
     ) -> RenderedSlide:
         """Render ``html`` at ``width`` x ``height`` CSS px → PNG + captured layout + the
         image/font bytes the page fetched (so they can be embedded natively downstream).
 
         ``raster_planner`` names the nodes that need pixels captured in isolation. It defaults
         to the extractor's own plan, so the code that consumes a raster is the code that decides
-        one is needed.
+        one is needed. ``backdrop_planner`` does the same for blurred-backdrop layers.
         """
         if self._browser is None:
             raise RuntimeError("BrowserSession must be entered via 'async with' before render()")
@@ -952,6 +1042,18 @@ class BrowserSession:
                     rasters[node.index] = RenderedRaster(
                         png=crop, x=x, y=y, width=right - x, height=bottom - y
                     )
-            return snapshot.model_copy(update={"rasters": rasters})
+            backdrops: dict[int, RenderedRaster] = {}
+            if backdrop_planner is None:
+                from domoxml.core.ir.extract import plan_backdrop_layers
+
+                backdrop_planner = plan_backdrop_layers
+            wanted = backdrop_planner(snapshot)
+            for node in nodes:
+                if node.index not in wanted:
+                    continue
+                layer = await self._capture_backdrop(page, node, width=width, height=height)
+                if layer is not None:
+                    backdrops[node.index] = layer
+            return snapshot.model_copy(update={"rasters": rasters, "backdrops": backdrops})
         finally:
             await context.close()

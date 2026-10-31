@@ -68,6 +68,32 @@ def crop_png(png: bytes, *, left: float, top: float, width: float, height: float
         return None
 
 
+# Lookup table mapping any non-zero alpha to fully opaque.
+_ANY_ALPHA_TO_OPAQUE = bytes([0] + [255] * 255)
+
+
+def apply_alpha_mask(png: bytes, mask_png: bytes) -> bytes | None:
+    """``png`` made fully opaque wherever ``mask_png`` paints anything, transparent elsewhere.
+
+    Returns ``None`` if either image cannot be decoded or their sizes differ.
+    """
+    try:
+        with Image.open(BytesIO(png)) as image, Image.open(BytesIO(mask_png)) as mask:
+            rgba = image.convert("RGBA")
+            if mask.size != rgba.size:
+                return None
+            alpha = mask.convert("RGBA").getchannel("A")
+            painted = Image.frombytes(
+                "L", alpha.size, alpha.tobytes().translate(_ANY_ALPHA_TO_OPAQUE)
+            )
+            rgba.putalpha(painted)
+            buffer = BytesIO()
+            rgba.save(buffer, "PNG")
+            return buffer.getvalue()
+    except (OSError, ValueError):
+        return None
+
+
 def crop_slide_region(
     png: bytes,
     *,

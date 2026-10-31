@@ -331,6 +331,46 @@ async def test_shape_bleeding_past_the_slide_edge_is_not_treated_as_clipped() ->
     assert _solid_shape(ir, "CC2200").box.width == px_to_emu(200)
 
 
+async def test_backdrop_filter_becomes_a_blurred_layer_under_a_native_glass() -> None:
+    # PowerPoint cannot blur what is behind a shape, so the blurred backdrop is one picture cut to
+    # the glass's own rounded shape. The glass (tint, border, text) stays a native shape above it,
+    # the content below stays native, and content painted above the glass is not baked in.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
+        "background:#cc2200'></div>"
+        "<div style='position:absolute;left:150px;top:120px;width:300px;height:80px;"
+        "border-radius:20px;background:rgba(255,255,255,.4);backdrop-filter:blur(6px)'></div>"
+        "<div style='position:absolute;left:200px;top:140px;width:60px;height:20px;"
+        "background:#000000'></div>"
+    )
+
+    [layer] = [
+        s
+        for s in ir.shapes
+        if isinstance(s.fill, PictureFill) and s.fill.raster_role == "backdrop-layer"
+    ]
+    assert isinstance(layer.fill, PictureFill)
+    with Image.open(BytesIO(layer.fill.data)) as image:
+        width = image.width
+        rgba = image.convert("RGBA").tobytes()
+
+    def pixel(x: float, y: float) -> tuple[int, int, int, int]:
+        scale = width / (layer.box.width / px_to_emu(1))
+        offset = (int(y * scale) * width + int(x * scale)) * 4
+        return rgba[offset], rgba[offset + 1], rgba[offset + 2], rgba[offset + 3]
+
+    red, green, _, alpha = pixel(20, 20)  # over the red box, inside the glass
+    assert alpha == 255 and red - green > 100, "the layer is the backdrop, with no glass tint"
+    assert pixel(0, 0)[3] == 0, "outside the rounded corner stays transparent"
+    assert max(pixel(70, 30)[:3]) > 80, "content painted above the glass is not baked in"
+
+    glass = _solid_shape(ir, "FFFFFF")
+    assert glass.fill is not None and not isinstance(glass.fill, PictureFill)
+    assert glass.corner_radius_emu > 0
+    assert ir.shapes.index(layer) < ir.shapes.index(glass), "the layer sits beneath the glass"
+    assert _solid_shape(ir, "CC2200").box.width == px_to_emu(200)
+
+
 async def test_body_background_becomes_the_native_slide_background() -> None:
     ir = await _render_and_extract(
         "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"

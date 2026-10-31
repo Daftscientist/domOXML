@@ -6,7 +6,7 @@ from io import BytesIO
 
 from PIL import Image
 
-from domoxml.core.images import crop_slide_region
+from domoxml.core.images import apply_alpha_mask, crop_slide_region
 
 
 def _png() -> bytes:
@@ -98,3 +98,34 @@ def test_slide_region_mask_uses_the_rounded_absolute_crop_origin() -> None:
         assert isinstance(painted, tuple)
         assert transparent[3] == 0
         assert painted == (42, 127, 98, 255)
+
+
+def test_apply_alpha_mask_is_opaque_only_where_the_mask_paints() -> None:
+    def encode(image: Image.Image) -> bytes:
+        buffer = BytesIO()
+        image.save(buffer, "PNG")
+        return buffer.getvalue()
+
+    colour = Image.new("RGBA", (4, 2), (10, 20, 30, 40))
+    mask = Image.new("RGBA", (4, 2), (0, 0, 0, 0))
+    mask.putpixel((1, 0), (255, 255, 255, 1))  # faintest paint still counts
+    mask.putpixel((2, 0), (255, 255, 255, 255))
+
+    result = apply_alpha_mask(encode(colour), encode(mask))
+
+    assert result is not None
+    with Image.open(BytesIO(result)) as image:
+        alpha = image.convert("RGBA").getchannel("A").tobytes()
+        assert image.convert("RGBA").tobytes()[:3] == bytes([10, 20, 30])
+    assert alpha == bytes([0, 255, 255, 0, 0, 0, 0, 0])
+
+
+def test_apply_alpha_mask_rejects_mismatched_or_undecodable_inputs() -> None:
+    buffer = BytesIO()
+    Image.new("RGBA", (2, 2)).save(buffer, "PNG")
+    small = buffer.getvalue()
+    buffer = BytesIO()
+    Image.new("RGBA", (3, 3)).save(buffer, "PNG")
+
+    assert apply_alpha_mask(small, buffer.getvalue()) is None
+    assert apply_alpha_mask(small, b"not a png") is None

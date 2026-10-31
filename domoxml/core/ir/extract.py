@@ -1509,14 +1509,18 @@ def _reconstruct_groups(
     return contents, coverage, tuple(extra_warnings)
 
 
-def _covers_slide(node: RenderedNode, rendered: RenderedSlide) -> bool:
-    """Whether ``node`` is an unrotated box spanning the whole slide."""
+def _spans_slide(node: RenderedNode, rendered: RenderedSlide) -> bool:
+    """Whether ``node`` is exactly the slide's box.
+
+    Equal bounds are required, not mere coverage: a gradient or picture on a box that is offset or
+    larger than the slide would be moved and rescaled if it became the slide background.
+    """
     tolerance = 0.5
     return (
-        node.x <= tolerance
-        and node.y <= tolerance
-        and node.x + node.width >= rendered.width - tolerance
-        and node.y + node.height >= rendered.height - tolerance
+        abs(node.x) <= tolerance
+        and abs(node.y) <= tolerance
+        and abs(node.width - rendered.width) <= tolerance
+        and abs(node.height - rendered.height) <= tolerance
     )
 
 
@@ -1535,6 +1539,8 @@ def _paints_only_a_fill(node: RenderedNode) -> bool:
         and styles.get("maskImage", "none") in ("none", "")
         and styles.get("backdropFilter", "none") in ("none", "")
         and styles.get("mixBlendMode", "normal") in ("normal", "")
+        and styles.get("backgroundBlendMode", "normal") in ("normal", "")
+        and not styles.get("domoxmlEffects")
         and styles.get("opacity", "1") in ("1", "")
         and parse_radius_px(styles.get("borderRadius"), shorter_side_px=1.0) == 0
         and all(
@@ -1558,10 +1564,12 @@ def _canvas_background(
     rather than a shape that sits on top of one.
     """
     body = next((node for node in nodes if node.tag == "body"), None)
-    if body is None or not _covers_slide(body, rendered) or not _paints_only_a_fill(body):
+    if body is None or not _spans_slide(body, rendered) or not _paints_only_a_fill(body):
         return None
     fill, reason = _resolve_fill(body, rendered)
-    if fill is None or reason is not None:
+    # A picture's crop and placement are not carried by the native background, so a body with an
+    # image background stays a shape.
+    if fill is None or reason is not None or isinstance(fill, PictureFill):
         return None
     return body, SlideBackground(fill=fill)
 
@@ -1572,7 +1580,7 @@ def _repeats_slide_background(
     """Whether ``node`` only repaints the slide background's exact opaque colour."""
     if background is None or not isinstance(background.fill, SolidFill):
         return False
-    if background.fill.color.a < 1.0 or not _covers_slide(node, rendered):
+    if background.fill.color.a < 1.0 or not _spans_slide(node, rendered):
         return False
     if not _paints_only_a_fill(node) or node.styles.get("backgroundImage", "none") != "none":
         return False

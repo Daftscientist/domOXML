@@ -390,6 +390,46 @@ async def test_translucent_or_rounded_full_slide_shape_is_not_folded() -> None:
     assert len(ir.shapes) == 1
 
 
+async def test_oversized_gradient_body_is_not_rescaled_into_the_slide_background() -> None:
+    # Promoting this body would stretch its gradient from 1380px down to the 1280px slide and
+    # shift it, so it stays the positioned shape it is.
+    ir = await _render_and_extract(
+        "<style>body{margin-left:-100px;width:1380px;"
+        "background:linear-gradient(90deg,#102030,#405060)}</style>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert ir.background is None
+    assert any(isinstance(s.fill, GradientFill) for s in ir.shapes)
+
+
+async def test_blended_body_background_is_never_promoted() -> None:
+    # background-blend-mode needs a fill overlay that the native background cannot carry.
+    ir = await _render_and_extract(
+        "<style>body{background:linear-gradient(90deg,#ff0000,#0000ff),#cc2200;"
+        "background-blend-mode:multiply}</style>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert ir.background is None
+
+
+async def test_picture_body_background_stays_a_shape() -> None:
+    png = BytesIO()
+    Image.new("RGB", (40, 10), (200, 30, 30)).save(png, "PNG")
+    encoded = base64.b64encode(png.getvalue()).decode()
+    ir = await _render_and_extract(
+        f"<style>body{{background:url(data:image/png;base64,{encoded}) center/cover}}</style>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert ir.background is None
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
 async def test_gradient_body_background_is_a_native_gradient_slide_background() -> None:
     ir = await _render_and_extract(
         "<style>body{background:linear-gradient(90deg,#102030,#405060)}</style>"

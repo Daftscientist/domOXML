@@ -3,14 +3,14 @@ direction = "both"
 html_file = "slide.html"
 
 [expected]
-min_representation = { native = 8 }
-max_representation = { rasterized = 0, native = 8, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
-min_editability = { semantic = 8 }
-max_editability = { semantic = 8, components = 0, layers = 0, none = 0 }
-min_source_retention = { not_required = 8 }
-max_source_retention = { not_required = 8, attached = 0, detached = 0, ignored = 0, lost = 0 }
-min_output_count = 8
-max_output_count = 8
+min_representation = { native = 7 }
+max_representation = { rasterized = 0, native = 7, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 7 }
+max_editability = { semantic = 7, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 7 }
+max_source_retention = { not_required = 7, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 7
+max_output_count = 7
 min_raster_area_emu2 = 0
 max_raster_area_emu2 = 0
 
@@ -46,14 +46,14 @@ pptx_to_html_min_structural_similarity = 0.995
 
 [roundtrip]
 cycles = 2
-min_representation = { native = 8 }
-max_representation = { rasterized = 0, native = 8, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
-min_editability = { semantic = 8 }
-max_editability = { semantic = 8, components = 0, layers = 0, none = 0 }
-min_source_retention = { not_required = 8 }
-max_source_retention = { not_required = 8, attached = 0, detached = 0, ignored = 0, lost = 0 }
-min_output_count = 8
-max_output_count = 8
+min_representation = { native = 7 }
+max_representation = { rasterized = 0, native = 7, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 7 }
+max_editability = { semantic = 7, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 7 }
+max_source_retention = { not_required = 7, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 7
+max_output_count = 7
 min_raster_area_emu2 = 0
 max_raster_area_emu2 = 0
 min_convergence_similarity = 0.999

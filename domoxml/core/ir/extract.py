@@ -419,6 +419,25 @@ def _box(node: RenderedNode) -> Box:
     )
 
 
+_TEXT_SLACK_EMU = px_to_emu(8)
+
+
+def _text_slack(text: TextBody) -> tuple[int, int]:
+    """``(left, right)`` EMU to widen a plain text box by.
+
+    PowerPoint sets text a little wider than Chromium, so the box gets slack to avoid a stray
+    wrap. The slack goes on the side the text is not anchored to: widening a left-aligned box
+    to its left would move the text, so it goes right; a right-aligned box takes it on the left;
+    a centred one splits it. The text then stays exactly where the browser put it.
+    """
+    align = text.paragraphs[0].align if text.paragraphs else "left"
+    if align == "right":
+        return _TEXT_SLACK_EMU, 0
+    if align == "center":
+        return _TEXT_SLACK_EMU // 2, _TEXT_SLACK_EMU // 2
+    return 0, _TEXT_SLACK_EMU
+
+
 def _label(node: RenderedNode) -> str:
     snippet = node.text[:24].strip()
     node_id = node.styles.get("domoxmlNodeId", "").strip()
@@ -2180,8 +2199,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 any(paragraph.bullet is not None for paragraph in text.paragraphs)
                 and node.styles.get("listStylePosition", "outside") != "inside"
             )
-            left_padding = px_to_emu(18 if outside_bullet else 4)
-            right_padding = px_to_emu(4)
+            if outside_bullet:
+                # The marker gutter sits left of the text; the paragraph margin keeps the text.
+                left_padding, right_padding = px_to_emu(18), px_to_emu(4)
+            else:
+                left_padding, right_padding = _text_slack(text)
             box = box.model_copy(
                 update={
                     "x": box.x - left_padding,

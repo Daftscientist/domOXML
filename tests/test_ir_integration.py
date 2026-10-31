@@ -442,6 +442,39 @@ async def test_gradient_body_background_is_a_native_gradient_slide_background() 
     assert len(ir.shapes) == 1
 
 
+def _text_shape(ir: SlideIR, text: str) -> ShapeNode:
+    return next(
+        s
+        for s in ir.shapes
+        if s.text is not None and any(text in r.text for p in s.text.paragraphs for r in p.runs)
+    )
+
+
+async def test_plain_text_slack_never_moves_the_text_it_is_anchored_to() -> None:
+    # A fill-less text box is widened so PowerPoint's wider glyph metrics do not force a wrap. The
+    # extra width has to go on the side the text is not anchored to, or the text itself shifts.
+    def row(top: int, align: str, text: str) -> str:
+        return (
+            f"<div style='position:absolute;left:200px;top:{top}px;width:300px;"
+            f"text-align:{align}'>{text}</div>"
+        )
+
+    ir = await _render_and_extract(
+        row(100, "left", "Lefty") + row(200, "right", "Righty") + row(300, "center", "Mid")
+    )
+
+    def edges(text: str) -> tuple[float, float]:
+        box = _text_shape(ir, text).box
+        return box.x / px_to_emu(1), (box.x + box.width) / px_to_emu(1)
+
+    left_edge, left_right = edges("Lefty")
+    assert (left_edge, left_right) == (200.0, 508.0), "left-aligned: slack on the right only"
+    right_left, right_edge = edges("Righty")
+    assert (right_left, right_edge) == (192.0, 500.0), "right-aligned: slack on the left only"
+    mid_left, mid_right = edges("Mid")
+    assert (mid_left, mid_right) == (196.0, 504.0), "centred: slack split evenly"
+
+
 async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:
     result = await _render_and_extract_result(
         '<div style="position:relative;width:1280px;height:720px;background:#f7f8fb">'

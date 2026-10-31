@@ -13,6 +13,7 @@ from domoxml.core.drawingml.identity import node_identity_xml
 from domoxml.core.fonts import FontFace, load_faces
 from domoxml.core.ir.group import group_pptx_write_error
 from domoxml.core.ir.model import (
+    Blur,
     Box,
     Connector,
     FillOverlay,
@@ -427,6 +428,7 @@ def _slide(
             node.portable_fallback is not None
             and fallback_rid is not None
             and node.effect_container != "sibling"
+            and not _paints_native_backdrop_blur(node)
             and (
                 not (
                     node.effects and all(isinstance(effect, FillOverlay) for effect in node.effects)
@@ -539,6 +541,7 @@ def _slide(
                     node.portable_fallback is not None
                     and fallback_rid is not None
                     and node.effect_container != "sibling"
+                    and not _paints_native_backdrop_blur(node)
                     and (
                         not (
                             node.effects
@@ -673,6 +676,20 @@ def _slide(
         has_svg,
         preserved_parts,
         preserved_theme,
+    )
+
+
+def _paints_native_backdrop_blur(node: ShapeNode) -> bool:
+    """Whether ``node`` is the sharp backdrop picture PowerPoint should blur itself.
+
+    Other portable fallbacks show their exact baked picture in PowerPoint as well and keep the
+    native shape hidden. A backdrop blur is the opposite: the native, editable blur is the point,
+    so only renderers that ignore it fall back to the picture.
+    """
+    return (
+        isinstance(node.fill, PictureFill)
+        and node.fill.raster_role == "backdrop-layer"
+        and any(isinstance(effect, Blur) for effect in node.effects)
     )
 
 

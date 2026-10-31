@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 from playwright.async_api import Browser, Page, Playwright, Route, async_playwright
 from pydantic import BaseModel, ConfigDict, Field
 
-from domoxml.core.images import apply_alpha_mask, crop_png
+from domoxml.core.images import apply_alpha_mask, crop_png, unrotate_region
 from domoxml.core.ir.parse import parse_shadows
 from domoxml.core.units import emu_to_px
 
@@ -545,10 +545,8 @@ _BACKDROP_JS = """
     color: 'transparent', 'text-shadow': 'none',
     background: mode === 'shape' ? '#000' : 'transparent',
   };
-  if (mode === 'shape') {
-    own['backdrop-filter'] = 'none';
-    own.visibility = 'visible';
-  }
+  if (mode !== 'layer') own['backdrop-filter'] = 'none';
+  if (mode === 'shape') own.visibility = 'visible';
   for (const [name, value] of Object.entries(own)) {
     selected.style.setProperty(name, value, 'important');
   }
@@ -608,6 +606,21 @@ class RenderedRaster(BaseModel):
     height: float
 
 
+class RenderedBackdrop(BaseModel):
+    """What sits behind a ``backdrop-filter`` element, captured two ways.
+
+    ``blurred`` is the backdrop as the browser paints it, cut to the element's shape in slide
+    coordinates: exact in place for any renderer that cannot blur. ``sharp`` is the same backdrop
+    before blurring, sampled upright in the element's own frame (device pixels), for PowerPoint to
+    blur itself; it is ``None`` when the element's transform cannot be undone as a plain rotation.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    blurred: RenderedRaster
+    sharp: bytes | None = None
+
+
 class RenderedSlide(BaseModel):
     """The render of one slide: its PNG, the captured layout tree, the resources Chromium
     fetched (image/font bytes keyed by URL), and the device scale the PNG was taken at."""
@@ -621,7 +634,7 @@ class RenderedSlide(BaseModel):
     nodes: tuple[RenderedNode, ...]
     resources: dict[str, bytes] = Field(default_factory=dict)
     rasters: dict[int, RenderedRaster] = Field(default_factory=dict[int, RenderedRaster])
-    backdrops: dict[int, RenderedRaster] = Field(default_factory=dict[int, RenderedRaster])
+    backdrops: dict[int, RenderedBackdrop] = Field(default_factory=dict[int, RenderedBackdrop])
 
 
 def _raster_bounds(
@@ -927,8 +940,8 @@ class BrowserSession:
 
     async def _capture_backdrop(
         self, page: Page, node: RenderedNode, *, width: int, height: int
-    ) -> RenderedRaster | None:
-        """The blurred backdrop an element sits over, cut to the element's own border-box shape."""
+    ) -> RenderedBackdrop | None:
+        """The backdrop an element blurs, blurred (cut to its shape) and sharp (upright)."""
         x, y, right, bottom = _raster_bounds(node, slide_width=width, slide_height=height)
         region = {
             "left": x * self._scale,
@@ -936,19 +949,42 @@ class BrowserSession:
             "width": (right - x) * self._scale,
             "height": (bottom - y) * self._scale,
         }
-        shots: list[bytes] = []
-        for mode, omit_background in (("layer", False), ("shape", True)):
+        shots: dict[str, bytes] = {}
+        for mode, omit_background in (("layer", False), ("shape", True), ("sharp", False)):
             restore = await page.evaluate_handle(_BACKDROP_JS, [node.index, mode])
             try:
-                shots.append(await page.screenshot(type="png", omit_background=omit_background))
+                shots[mode] = await page.screenshot(type="png", omit_background=omit_background)
             finally:
                 await restore.evaluate("(restore) => restore()")
                 await restore.dispose()
-        layer, shape = (crop_png(shot, **region) for shot in shots)
+        layer, shape = crop_png(shots["layer"], **region), crop_png(shots["shape"], **region)
         masked = apply_alpha_mask(layer, shape) if layer is not None and shape is not None else None
         if masked is None:
             return None
-        return RenderedRaster(png=masked, x=x, y=y, width=right - x, height=bottom - y)
+        blurred = RenderedRaster(png=masked, x=x, y=y, width=right - x, height=bottom - y)
+        return RenderedBackdrop(blurred=blurred, sharp=self._upright_backdrop(node, shots["sharp"]))
+
+    def _upright_backdrop(self, node: RenderedNode, sharp_page: bytes) -> bytes | None:
+        """The sharp backdrop in the element's own frame, or ``None`` if not a plain rotation."""
+        transform = node.styles.get("transform", "none")
+        rotation, flip_h, flip_v = (0.0, False, False)
+        if transform not in ("", "none"):
+            if is_complex_transform(transform):
+                return None
+            rotation, flip_h, flip_v = parse_native_transform(transform)
+        if flip_h or flip_v:
+            return None
+        layout_w = float(node.styles.get("domoxmlLayoutWidth", node.width))
+        layout_h = float(node.styles.get("domoxmlLayoutHeight", node.height))
+        return unrotate_region(
+            sharp_page,
+            center_x=node.x + node.width / 2,
+            center_y=node.y + node.height / 2,
+            width=layout_w,
+            height=layout_h,
+            rotation_deg=rotation,
+            scale=self._scale,
+        )
 
     async def render(
         self,
@@ -1042,7 +1078,7 @@ class BrowserSession:
                     rasters[node.index] = RenderedRaster(
                         png=crop, x=x, y=y, width=right - x, height=bottom - y
                     )
-            backdrops: dict[int, RenderedRaster] = {}
+            backdrops: dict[int, RenderedBackdrop] = {}
             if backdrop_planner is None:
                 from domoxml.core.ir.extract import plan_backdrop_layers
 

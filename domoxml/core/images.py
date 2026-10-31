@@ -4,6 +4,7 @@ region out of a rendered slide PNG for the raster fallback."""
 from __future__ import annotations
 
 import base64
+import math
 from io import BytesIO
 from typing import Literal
 
@@ -89,6 +90,47 @@ def apply_alpha_mask(png: bytes, mask_png: bytes) -> bytes | None:
             rgba.putalpha(painted)
             buffer = BytesIO()
             rgba.save(buffer, "PNG")
+            return buffer.getvalue()
+    except (OSError, ValueError):
+        return None
+
+
+def unrotate_region(
+    png: bytes,
+    *,
+    center_x: float,
+    center_y: float,
+    width: float,
+    height: float,
+    rotation_deg: float,
+    scale: float,
+) -> bytes | None:
+    """Sample a rotated rectangle out of ``png`` into an upright ``width`` x ``height`` image.
+
+    ``center_*``, ``width`` and ``height`` are in CSS px and ``scale`` is the device scale of
+    ``png``. The rectangle is rotated ``rotation_deg`` clockwise about its centre on the slide, so
+    the result is that content in the rectangle's own frame, ready to be placed on a shape that
+    PowerPoint then rotates by the same angle. Returns ``None`` if ``png`` cannot be decoded.
+    """
+    out_w, out_h = max(1, round(width * scale)), max(1, round(height * scale))
+    cos, sin = math.cos(math.radians(rotation_deg)), math.sin(math.radians(rotation_deg))
+    try:
+        with Image.open(BytesIO(png)) as image:
+            upright = image.convert("RGBA").transform(
+                (out_w, out_h),
+                Image.Transform.AFFINE,
+                (
+                    cos,
+                    -sin,
+                    scale * center_x - cos * out_w / 2 + sin * out_h / 2,
+                    sin,
+                    cos,
+                    scale * center_y - sin * out_w / 2 - cos * out_h / 2,
+                ),
+                resample=Image.Resampling.BICUBIC,
+            )
+            buffer = BytesIO()
+            upright.save(buffer, "PNG")
             return buffer.getvalue()
     except (OSError, ValueError):
         return None

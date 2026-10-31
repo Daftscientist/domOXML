@@ -165,7 +165,12 @@ def read_effects(
             color = color_for(child) or Rgba(r=0, g=0, b=0, a=0.5)
             effects.append(Glow(color=color, radius_emu=_int_attr(child, "rad")))
         elif kind == "blur":
-            effects.append(Blur(radius_emu=_int_attr(child, "rad")))
+            effects.append(
+                Blur(
+                    radius_emu=_int_attr(child, "rad"),
+                    grow=child.get("grow", "1") not in ("0", "false"),
+                )
+            )
             warnings.append(
                 ConversionWarning(
                     message=(

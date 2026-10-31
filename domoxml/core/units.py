@@ -54,3 +54,10 @@ def pt_to_emu(pt: float) -> int:
 def emu_to_pt(emu: int) -> float:
     """Convert EMUs to typographic points."""
     return emu / _EMU_PER_PT
+
+
+# PowerPoint's ``a:blur rad`` is 3x the CSS blur standard deviation. Measured against Chrome in real
+# PowerPoint with ``grow="0"`` blurs of a sharp test picture: at sigma 4, 8 and 16 px the best scale
+# was 3 each time (error 6.6, 4.2 and 1.5 against 14-54 for 1x and 2x), and on the showcase glass
+# 3x scored within noise of the browser's own pixels.
+DRAWINGML_BLUR_RADIUS_PER_CSS_SIGMA = 3.0

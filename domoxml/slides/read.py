@@ -28,6 +28,7 @@ from domoxml.core.ir.model import (
     CubicTo,
     CustomGeometry,
     Effect,
+    Fill,
     FillOverlay,
     Geometry,
     GeometryKind,
@@ -422,7 +423,7 @@ def _shape(
                 box=box,
                 geom=geom,
                 custom_geom=custom_geom,
-                fill=_fill(properties, package, slide_part, colors),
+                fill=_shape_picture_role(_fill(properties, package, slide_part, colors), element),
                 line=_line(properties, colors),
                 effects=shape_effects,
                 effect_container=(
@@ -466,6 +467,17 @@ def _raster_role(element: Element) -> str | None:
     if descr.startswith(_RASTER_MARKER_PREFIX):
         return descr.removeprefix(_RASTER_MARKER_PREFIX) or "decorative"
     return None
+
+
+def _shape_picture_role(fill: Fill | None, element: Element) -> Fill | None:
+    """Restore the raster-role marker the writer leaves on a picture-filled ``p:sp``."""
+    if not isinstance(fill, PictureFill) or fill.raster_role is not None:
+        return fill
+    cnvpr = element.find("p:nvSpPr/p:cNvPr", _NS)
+    descr = cnvpr.get("descr", "") if cnvpr is not None else ""
+    if not descr.startswith(_RASTER_MARKER_PREFIX):
+        return fill
+    return fill.model_copy(update={"raster_role": descr.removeprefix(_RASTER_MARKER_PREFIX)})
 
 
 def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> ShapeNode | None:

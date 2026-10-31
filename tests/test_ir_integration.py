@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import math
+from collections.abc import Callable
 from io import BytesIO
 
 import pytest
@@ -330,10 +331,27 @@ async def test_shape_bleeding_past_the_slide_edge_is_not_treated_as_clipped() ->
     assert _solid_shape(ir, "CC2200").box.width == px_to_emu(200)
 
 
-async def test_backdrop_filter_becomes_a_blurred_layer_under_a_native_glass() -> None:
-    # PowerPoint cannot blur what is behind a shape, so the blurred backdrop is one picture cut to
-    # the glass's own rounded shape. The glass (tint, border, text) stays a native shape above it,
-    # the content below stays native, and content painted above the glass is not baked in.
+type Pixel = tuple[int, int, int, int]
+
+
+def _probe(data: bytes) -> Callable[[float, float, float], Pixel]:
+    """A ``pixel(x, y, scale)`` reader over a PNG, addressed in CSS px."""
+    with Image.open(BytesIO(data)) as image:
+        width = image.width
+        raw = image.convert("RGBA").tobytes()
+
+    def pixel(x: float, y: float, scale: float) -> Pixel:
+        offset = (int(y * scale) * width + int(x * scale)) * 4
+        return raw[offset], raw[offset + 1], raw[offset + 2], raw[offset + 3]
+
+    return pixel
+
+
+async def test_backdrop_filter_becomes_a_native_clipped_blur_on_the_sharp_backdrop() -> None:
+    # PowerPoint cannot read what is behind a shape, but it can blur a picture itself. The glass's
+    # backdrop is a picture shape holding the SHARP pixels with a native a:blur that stays inside
+    # the shape; the blurred pixels the browser painted ride along as the owned fallback. The glass
+    # (tint, border, text) stays a native shape above it and content below is untouched.
     ir = await _render_and_extract(
         "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
         "background:#cc2200'></div>"
@@ -349,25 +367,109 @@ async def test_backdrop_filter_becomes_a_blurred_layer_under_a_native_glass() ->
         if isinstance(s.fill, PictureFill) and s.fill.raster_role == "backdrop-layer"
     ]
     assert isinstance(layer.fill, PictureFill)
-    with Image.open(BytesIO(layer.fill.data)) as image:
-        width = image.width
-        rgba = image.convert("RGBA").tobytes()
+    # PowerPoint's blur radius is 3x the CSS sigma (measured in real PowerPoint).
+    assert layer.effects == (Blur(radius_emu=px_to_emu(6 * 3), grow=False),)
+    assert layer.corner_radius_emu == px_to_emu(20) and layer.geom == "roundRect"
+    assert layer.box.width == px_to_emu(300) and layer.box.height == px_to_emu(80)
 
-    def pixel(x: float, y: float) -> tuple[int, int, int, int]:
-        scale = width / (layer.box.width / px_to_emu(1))
-        offset = (int(y * scale) * width + int(x * scale)) * 4
-        return rgba[offset], rgba[offset + 1], rgba[offset + 2], rgba[offset + 3]
+    sharp = _probe(layer.fill.data)  # local frame: x=0 is the glass's left edge (abs 150)
+    assert sharp(146, 40, 2)[1] < 60, "left of the red box's edge is still red"
+    assert sharp(156, 40, 2)[1] > 200, "right of it is the white page: the edge is sharp"
+    assert max(sharp(70, 30, 2)[:3]) > 80, "content painted above the glass is not baked in"
 
-    red, green, _, alpha = pixel(20, 20)  # over the red box, inside the glass
-    assert alpha == 255 and red - green > 100, "the layer is the backdrop, with no glass tint"
-    assert pixel(0, 0)[3] == 0, "outside the rounded corner stays transparent"
-    assert max(pixel(70, 30)[:3]) > 80, "content painted above the glass is not baked in"
+    fallback = layer.portable_fallback
+    assert fallback is not None and fallback.picture.raster_role == "portable-blur-fallback"
+    baked = _probe(fallback.picture.data)
+    assert 90 < baked(150, 40, 2)[1] < 200, "the fallback carries the blurred edge"
+    assert baked(0, 0, 2)[3] == 0, "outside the rounded corner stays transparent"
 
     glass = _solid_shape(ir, "FFFFFF")
     assert glass.fill is not None and not isinstance(glass.fill, PictureFill)
-    assert glass.corner_radius_emu > 0
     assert ir.shapes.index(layer) < ir.shapes.index(glass), "the layer sits beneath the glass"
     assert _solid_shape(ir, "CC2200").box.width == px_to_emu(200)
+
+
+async def test_backdrop_blur_stays_baked_where_a_native_blur_would_not_be_exact() -> None:
+    # The native layer is a rounded rectangle blurred at full strength, so a clip-path (it would
+    # blur outside the clip) or an element opacity (it would blur at full strength) keeps the
+    # browser's own pixels instead.
+    behind = (
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
+        "background:#cc2200'></div>"
+    )
+    for extra in ("clip-path:polygon(50% 0, 100% 100%, 0 100%)", "opacity:.4"):
+        ir = await _render_and_extract(
+            behind + "<div style='position:absolute;left:150px;top:120px;width:300px;height:80px;"
+            f"background:rgba(255,255,255,.4);backdrop-filter:blur(6px);{extra}'></div>"
+        )
+
+        layers = [
+            s
+            for s in ir.shapes
+            if isinstance(s.fill, PictureFill) and s.fill.raster_role == "backdrop-layer"
+        ]
+        assert layers, extra
+        assert all(s.effects == () and s.portable_fallback is None for s in layers), extra
+
+
+async def test_backdrop_blur_round_trips_through_pptx_and_html() -> None:
+    glass_html = (
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
+        "background:#cc2200'></div>"
+        "<div style='position:absolute;left:150px;top:120px;width:300px;height:80px;"
+        "border-radius:20px;transform:rotate(-12deg);background:rgba(255,255,255,.4);"
+        "backdrop-filter:blur(6px)'></div>"
+    )
+    first = await _render_and_extract_result(glass_html)
+
+    def backdrop(ir: SlideIR) -> ShapeNode:
+        return next(
+            s
+            for s in ir.shapes
+            if isinstance(s.fill, PictureFill) and s.fill.raster_role == "backdrop-layer"
+        )
+
+    layer = backdrop(first.slide)
+    assert layer.transform is not None and abs(layer.transform.rotation_deg - 348) < 0.5
+
+    # PPTX -> IR: the blur stays a native, clipped blur on a picture that keeps its role.
+    recovered = next(
+        s
+        for s in read_pptx(build_pptx([first.slide], faces=[]))[0].contents
+        if isinstance(s, ShapeNode) and s.effects and isinstance(s.effects[0], Blur)
+    )
+    assert recovered.effects == layer.effects
+    assert (
+        isinstance(recovered.fill, PictureFill) and recovered.fill.raster_role == "backdrop-layer"
+    )
+
+    # IR -> HTML: a live CSS backdrop filter at the original sigma, not a picture or a filter.
+    serialized = inline_assets(serialize_canvas([first.slide]))
+    html = serialized.slides[0].html
+    assert "backdrop-filter:blur(6px)" in html
+    assert "filter:blur" not in html.replace("backdrop-filter:blur", "")
+
+    # ... and that HTML renders back to the same native blur: the cycle converges.
+    second = await _render_and_extract_result(serialized.slides[0].html, css=serialized.css)
+    assert backdrop(second.slide).effects == layer.effects
+
+
+async def test_backdrop_filter_with_other_functions_keeps_only_the_baked_layer() -> None:
+    # A native blur can only carry a plain blur(Npx); anything else (saturate, brightness) would
+    # be lost, so the browser's exact pixels stay as one picture.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
+        "background:#cc2200'></div>"
+        "<div style='position:absolute;left:150px;top:120px;width:300px;height:80px;"
+        "background:rgba(255,255,255,.4);backdrop-filter:blur(6px) saturate(180%)'></div>"
+    )
+
+    [layer] = [
+        s
+        for s in ir.shapes
+        if isinstance(s.fill, PictureFill) and s.fill.raster_role == "backdrop-layer"
+    ]
+    assert layer.effects == () and layer.portable_fallback is None
 
 
 async def test_body_background_becomes_the_native_slide_background() -> None:

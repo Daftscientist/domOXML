@@ -299,12 +299,18 @@ class Glow(BaseModel):
 
 
 class Blur(BaseModel):
-    """A blur effect (``a:blur``). ``radius_emu`` is the blur radius."""
+    """A blur effect (``a:blur``). ``radius_emu`` is the blur radius.
+
+    ``grow`` is DrawingML's flag for whether the blurred result may spread past the shape's own
+    bounds. ``False`` clips the blur to the shape, which is how a blurred backdrop picture stays
+    inside its glass.
+    """
 
     model_config = _FROZEN
 
     kind: Literal["blur"] = "blur"
     radius_emu: int = Field(ge=0)
+    grow: bool = True
 
 
 class SoftEdge(BaseModel):

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import math
 import re
 from contextvars import ContextVar
 from typing import Literal
@@ -416,6 +417,42 @@ def _box(node: RenderedNode) -> Box:
         y=px_to_emu(node.y),
         width=px_to_emu(node.width),
         height=px_to_emu(node.height),
+    )
+
+
+_TEXT_SLACK_EMU = px_to_emu(8)
+
+
+def _text_slack(text: TextBody) -> tuple[int, int]:
+    """``(left, right)`` EMU to widen a plain text box by.
+
+    PowerPoint sets text a little wider than Chromium, so the box gets slack to avoid a stray
+    wrap. The slack goes on the side the text is not anchored to: widening a left-aligned box
+    to its left would move the text, so it goes right; a right-aligned box takes it on the left;
+    a centred one splits it. The text then stays exactly where the browser put it.
+    """
+    align = text.paragraphs[0].align if text.paragraphs else "left"
+    if align == "right":
+        return _TEXT_SLACK_EMU, 0
+    if align == "center":
+        return _TEXT_SLACK_EMU // 2, _TEXT_SLACK_EMU // 2
+    return 0, _TEXT_SLACK_EMU
+
+
+def _anchor_rotated_slack(box: Box, left: int, right: int, rotation_deg: float) -> Box:
+    """Shift ``box`` so lopsided slack does not move rotated text.
+
+    PowerPoint rotates a shape about its centre. Widening one side moves that centre by
+    ``d = (right - left) / 2`` along the box's own x axis, which displaces the rotated text by
+    ``(R - I) d`` where ``R`` is the rotation. Translating by that same vector puts it back.
+    """
+    half_shift = (right - left) / 2
+    angle = math.radians(rotation_deg)
+    return box.model_copy(
+        update={
+            "x": box.x + round(half_shift * (math.cos(angle) - 1)),
+            "y": box.y + round(half_shift * math.sin(angle)),
+        }
     )
 
 
@@ -2180,14 +2217,22 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 any(paragraph.bullet is not None for paragraph in text.paragraphs)
                 and node.styles.get("listStylePosition", "outside") != "inside"
             )
-            left_padding = px_to_emu(18 if outside_bullet else 4)
-            right_padding = px_to_emu(4)
+            if outside_bullet:
+                # The marker gutter sits left of the text; the paragraph margin keeps the text.
+                left_padding, right_padding = px_to_emu(18), px_to_emu(4)
+            else:
+                left_padding, right_padding = _text_slack(text)
             box = box.model_copy(
                 update={
                     "x": box.x - left_padding,
                     "width": box.width + left_padding + right_padding,
                 }
             )
+            slack_transform = _parse_transform(node.styles)
+            if slack_transform is not None and slack_transform.rotation_deg:
+                box = _anchor_rotated_slack(
+                    box, left_padding, right_padding, slack_transform.rotation_deg
+                )
         encoded_effect_payload = decode_effect_payload(node.styles.get("domoxmlEffects"))
         encoded_effects = (
             encoded_effect_payload.effects if encoded_effect_payload is not None else None

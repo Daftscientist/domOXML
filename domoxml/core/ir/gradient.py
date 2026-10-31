@@ -6,6 +6,11 @@ import math
 
 from domoxml.core.ir.model import Box, GradientFill, GradientStop, Rgba
 
+# OOXML writes gradient positions in 1/100000ths, and anything narrower than this many of them is a
+# step rather than a ramp.
+_POSITION_UNITS = 100_000
+_MIN_RAMP_UNITS = 2
+
 
 def _premultiplied_channel(
     start_channel: int,
@@ -25,8 +30,13 @@ def _premultiplied_channel(
 def _subdivide_srgb_stops(gradient: GradientFill) -> tuple[GradientStop, ...]:
     """Subdivide CSS sRGB stops so PowerPoint's interpolation tracks browser paint."""
     expanded: list[GradientStop] = []
-    subdivisions = 8
     for index, (start, end) in enumerate(zip(gradient.stops, gradient.stops[1:], strict=False)):
+        # Interpolation only differs between engines across a ramp. A flat run (same colour at both
+        # ends) and a hard edge (a step one OOXML position unit wide) have nothing to subdivide, so
+        # repeating patterns made of them do not multiply their stop count.
+        flat = start.color == end.color
+        hard_edge = (end.pos - start.pos) * _POSITION_UNITS < _MIN_RAMP_UNITS
+        subdivisions = 1 if flat or hard_edge else 8
         for step in range(subdivisions + 1):
             if index > 0 and step == 0:
                 continue

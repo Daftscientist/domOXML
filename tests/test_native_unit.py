@@ -37,6 +37,7 @@ from domoxml.core.ir.parse import (
     parse_box_reflection,
     parse_fill_overlay,
     parse_gradient,
+    parse_repeating_gradient,
     parse_shadow,
     parse_soft_edge_mask,
 )
@@ -100,6 +101,132 @@ def test_parse_linear_gradient_angle_and_stops() -> None:
     assert len(gradient.stops) == 2
     assert gradient.stops[0].color.hex == "FF0000" and gradient.stops[0].pos == 0.0
     assert gradient.stops[1].color.hex == "0000FF" and gradient.stops[1].pos == 1.0
+
+
+STRIPES = (
+    "repeating-linear-gradient(90deg, rgba(0, 0, 0, 0) 0px, rgba(0, 0, 0, 0) 399px, "
+    "rgba(24, 31, 26, 0.027) 399px, rgba(24, 31, 26, 0.027) 400px)"
+)
+
+
+def test_repeating_gradient_expands_to_hard_edged_stops_across_the_box() -> None:
+    gradient = parse_repeating_gradient(STRIPES, width_px=1600, height_px=900)
+
+    assert gradient is not None and gradient.angle_deg == 90.0
+    assert len(gradient.stops) == 16
+    # Four tiles of period 400px; each transition is one position step wide, so edges stay hard.
+    assert [round(stop.pos * 1600) for stop in gradient.stops[:5]] == [0, 399, 399, 400, 400]
+    assert [stop.color.a for stop in gradient.stops[:4]] == [0.0, 0.0, 0.027, 0.027]
+    assert gradient.stops[-1].pos == 1.0
+    assert all(b.pos > a.pos for a, b in zip(gradient.stops, gradient.stops[1:], strict=False))
+
+
+def test_repeating_gradient_clips_a_partial_final_tile_with_an_exact_boundary_colour() -> None:
+    gradient = parse_repeating_gradient(
+        "repeating-linear-gradient(90deg, rgb(0, 0, 0) 0px, rgb(100, 100, 100) 100px)",
+        width_px=150,
+        height_px=10,
+    )
+
+    assert gradient is not None
+    # Half way through the second tile the ramp is back at 50: the end stop must say so.
+    assert gradient.stops[-1].pos == 1.0
+    assert abs(gradient.stops[-1].color.r - 50) <= 1
+
+
+def test_repeating_gradient_gradient_line_length_follows_the_angle() -> None:
+    # A 45 degree line across a 100x100 box is 141.4px long, so 20px tiles repeat ~7 times.
+    gradient = parse_repeating_gradient(
+        "repeating-linear-gradient(45deg, rgb(0, 0, 0) 0px 10px, rgb(255, 255, 255) 10px 20px)",
+        width_px=100,
+        height_px=100,
+    )
+
+    assert gradient is not None
+    assert 28 <= len(gradient.stops) <= 32
+
+
+def test_repeating_gradient_resolves_percentages_and_default_positions() -> None:
+    gradient = parse_repeating_gradient(
+        "repeating-linear-gradient(90deg, rgb(255, 0, 0), rgb(0, 0, 255) 25%)",
+        width_px=200,
+        height_px=10,
+    )
+
+    assert gradient is not None
+    assert [round(stop.pos * 200) for stop in gradient.stops][:4] == [0, 50, 50, 100]
+
+
+def test_repeating_gradient_keeps_a_negative_first_stop_so_phase_and_period_are_right() -> None:
+    gradient = parse_repeating_gradient(
+        "repeating-linear-gradient(90deg, rgb(255, 0, 0) -50px, rgb(0, 0, 255) 50px)",
+        width_px=200,
+        height_px=10,
+    )
+
+    assert gradient is not None
+    # Period 100px, so at x=0 the ramp is already halfway; the next seam is at x=50.
+    first, second = gradient.stops[0], gradient.stops[1]
+    assert (first.color.r, first.color.b) == (128, 128) or abs(first.color.r - 128) <= 1
+    assert round(second.pos * 200) == 50 and second.color.b == 255
+
+
+def test_repeating_gradient_boundary_colour_is_premultiplied() -> None:
+    gradient = parse_repeating_gradient(
+        "repeating-linear-gradient(90deg, rgba(255, 0, 0, 0) 0px, rgb(0, 0, 255) 100px)",
+        width_px=50,
+        height_px=10,
+    )
+
+    assert gradient is not None
+    tail = gradient.stops[-1]
+    # Half way up a transparent-to-blue ramp is blue at half alpha, not purple.
+    assert (tail.color.r, tail.color.g, tail.color.b) == (0, 0, 255)
+    assert abs(tail.color.a - 0.5) < 0.01
+
+
+def test_repeating_gradient_corner_keywords_follow_the_box_aspect_ratio() -> None:
+    wide = parse_repeating_gradient(
+        "repeating-linear-gradient(to top right, rgb(255, 0, 0) 0px, rgb(0, 0, 255) 100px)",
+        width_px=200,
+        height_px=100,
+    )
+    reordered = parse_repeating_gradient(
+        "repeating-linear-gradient(to right top, rgb(255, 0, 0) 0px, rgb(0, 0, 255) 100px)",
+        width_px=200,
+        height_px=100,
+    )
+
+    assert wide is not None and reordered is not None
+    assert abs(wide.angle_deg - 26.565) < 0.01, "not the 45 degrees of a square"
+    assert reordered.angle_deg == wide.angle_deg
+    for bad in ("to top top", "to up", "to top bottom", "to"):
+        assert (
+            parse_repeating_gradient(
+                f"repeating-linear-gradient({bad}, rgb(255, 0, 0) 0px, rgb(0, 0, 255) 10px)",
+                width_px=100,
+                height_px=100,
+            )
+            is None
+        ), bad
+
+
+def test_repeating_gradient_refuses_what_it_cannot_expand_exactly() -> None:
+    def parse(value: str) -> object:
+        return parse_repeating_gradient(value, width_px=100, height_px=100)
+
+    assert parse("repeating-linear-gradient(rgb(0,0,0) 0, rgb(9,9,9) 5em)") is None
+    assert parse("repeating-linear-gradient(rgb(0,0,0) 10px, rgb(9,9,9) 10px)") is None
+    assert parse("linear-gradient(rgb(0,0,0), rgb(9,9,9))") is None
+    assert parse("repeating-linear-gradient(rgb(0,0,0) 0px, rgb(9,9,9) 1px), none") is None
+    assert (
+        parse_repeating_gradient(
+            "repeating-linear-gradient(90deg, rgb(0,0,0) 0px, rgb(9,9,9) 1px)",
+            width_px=5000,
+            height_px=10,
+        )
+        is None
+    ), "5000 tiles would exceed the stop budget"
 
 
 def test_parse_gradient_fills_missing_stop_positions_evenly() -> None:

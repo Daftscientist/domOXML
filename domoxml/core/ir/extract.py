@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import math
 import re
 from contextvars import ContextVar
 from typing import Literal
@@ -436,6 +437,23 @@ def _text_slack(text: TextBody) -> tuple[int, int]:
     if align == "center":
         return _TEXT_SLACK_EMU // 2, _TEXT_SLACK_EMU // 2
     return 0, _TEXT_SLACK_EMU
+
+
+def _anchor_rotated_slack(box: Box, left: int, right: int, rotation_deg: float) -> Box:
+    """Shift ``box`` so lopsided slack does not move rotated text.
+
+    PowerPoint rotates a shape about its centre. Widening one side moves that centre by
+    ``d = (right - left) / 2`` along the box's own x axis, which displaces the rotated text by
+    ``(R - I) d`` where ``R`` is the rotation. Translating by that same vector puts it back.
+    """
+    half_shift = (right - left) / 2
+    angle = math.radians(rotation_deg)
+    return box.model_copy(
+        update={
+            "x": box.x + round(half_shift * (math.cos(angle) - 1)),
+            "y": box.y + round(half_shift * math.sin(angle)),
+        }
+    )
 
 
 def _label(node: RenderedNode) -> str:
@@ -2210,6 +2228,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     "width": box.width + left_padding + right_padding,
                 }
             )
+            slack_transform = _parse_transform(node.styles)
+            if slack_transform is not None and slack_transform.rotation_deg:
+                box = _anchor_rotated_slack(
+                    box, left_padding, right_padding, slack_transform.rotation_deg
+                )
         encoded_effect_payload = decode_effect_payload(node.styles.get("domoxmlEffects"))
         encoded_effects = (
             encoded_effect_payload.effects if encoded_effect_payload is not None else None

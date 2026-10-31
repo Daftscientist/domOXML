@@ -154,14 +154,23 @@ def office_error(path: Path) -> str:
 
 
 def render(path: Path, *, graph: bool) -> list[Path]:
-    """Render ``path`` in LibreOffice and optionally real PowerPoint; return the PNGs made."""
+    """Render ``path`` in LibreOffice and optionally real PowerPoint; return the PNGs made.
+
+    Every artifact of a previous run is deleted first, and only files this run produced are used.
+    Otherwise a deck Office now rejects would be silently shown as its earlier, valid render, which
+    is the opposite of what a schema-checking lab is for.
+    """
+    for stale in OUT.glob(f"*{path.stem}.pdf"):
+        stale.unlink()
+    for stale in OUT.glob(f"*-{path.stem}.png"):
+        stale.unlink()
     made: list[Path] = []
     subprocess.run(
         ["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(OUT), str(path)],
         capture_output=True,
         check=False,
     )
-    pngs = {"lo": OUT / f"{path.stem}.pdf"}
+    pdfs = {"lo": OUT / f"{path.stem}.pdf"}
     if graph and GRAPH_TOOL.exists():
         target = OUT / f"gp-{path.stem}.pdf"
         subprocess.run(
@@ -170,15 +179,19 @@ def render(path: Path, *, graph: bool) -> list[Path]:
             check=False,
         )
         if target.exists():
-            pngs["gp"] = target
+            pdfs["gp"] = target
         else:
             print(f"  real PowerPoint refused {path.name}: {office_error(path)}")
-    for tag, pdf in pngs.items():
+    for tag, pdf in pdfs.items():
+        if not pdf.exists():
+            print(f"  {tag} produced no PDF for {path.name}")
+            continue
         stem = OUT / f"{tag}-{path.stem}"
         subprocess.run(
             ["pdftoppm", "-png", "-r", "70", "-singlefile", str(pdf), str(stem)], check=False
         )
-        made.append(stem.with_suffix(".png"))
+        if stem.with_suffix(".png").exists():
+            made.append(stem.with_suffix(".png"))
     return made
 
 
@@ -377,6 +390,10 @@ def probe_blur_scale() -> Path:
     """How PowerPoint's blur radius maps to a CSS sigma, scored against Chrome (best scale wins)."""
     from playwright.sync_api import sync_playwright
 
+    if not _GRAPH:
+        message = "blur-scale compares against real PowerPoint, so it is skipped with --no-graph"
+        print(message)
+        return OUT / "blur-scale.txt"
     image = stripes()
     scales = (1.0, 2.0, 3.0, 4.0)
     width, height = 560, 280
@@ -414,7 +431,7 @@ def probe_blur_scale() -> Path:
                 )
 
         path = _deck(f"lab_blur_scale_{sigma}", build, 1280 / 96, 720 / 96)
-        made = render(path, graph=True)
+        made = render(path, graph=_GRAPH)
         candidates = [p for p in made if p.name.startswith("gp-")]
         if not candidates:
             lines.append(f"sigma {sigma}: needs real PowerPoint (set up .local/graph_render.py)")

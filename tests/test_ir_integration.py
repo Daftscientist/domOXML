@@ -449,9 +449,17 @@ async def test_backdrop_blur_round_trips_through_pptx_and_html() -> None:
     assert "backdrop-filter:blur(6px)" in html
     assert "filter:blur" not in html.replace("backdrop-filter:blur", "")
 
-    # ... and that HTML renders back to the same native blur: the cycle converges.
-    second = await _render_and_extract_result(serialized.slides[0].html, css=serialized.css)
-    assert backdrop(second.slide).effects == layer.effects
+    # ... and that HTML renders back to the same native blur, with the same shapes under the same
+    # ids, cycle after cycle: the generated carrier must not be extracted as an extra shape.
+    def structure(ir: SlideIR) -> list[tuple[str, str]]:
+        return [(s.node_id or "", type(s.fill).__name__) for s in ir.shapes]
+
+    current = first
+    for _ in range(3):
+        serialized = inline_assets(serialize_canvas([current.slide]))
+        current = await _render_and_extract_result(serialized.slides[0].html, css=serialized.css)
+        assert backdrop(current.slide).effects == layer.effects
+    assert structure(current.slide) == structure(first.slide)
 
 
 async def test_backdrop_filter_with_other_functions_keeps_only_the_baked_layer() -> None:

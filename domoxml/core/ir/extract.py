@@ -2212,6 +2212,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # the element's shape, drawn beneath the glass. The glass itself (tint, border, shadow,
         # text) stays native and editable on top of it.
         if node.styles.get("backdropFilter", "none") not in ("none", ""):
+            # The HTML writer emits the backdrop layer as a transparent element carrying the layer
+            # role. Extracting that carrier must give the layer back under its own identity and
+            # nothing else, or every round trip would add another shape and nest the id.
+            is_carrier = node.styles.get("domoxmlLayerRole") == "backdrop"
             backdrop_label = _label(node)
             layer = _backdrop_layer(node, rendered)
             if layer is None:
@@ -2223,12 +2227,15 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 )
             else:
                 backdrop, native_blur = layer
-                contents.append(identities.apply(backdrop, node, role="backdrop"))
+                contents.append(
+                    identities.apply(backdrop, node, role=None if is_carrier else "backdrop")
+                )
+                layer_name = backdrop_label if is_carrier else f"{backdrop_label}:backdrop"
                 if native_blur and backdrop.portable_fallback is not None:
                     fallback_box = backdrop.portable_fallback.box
                     coverage.append(
                         CoverageItem(
-                            element=f"{backdrop_label}:backdrop",
+                            element=layer_name,
                             representation=Representation.HYBRID,
                             editability=Editability.COMPONENTS,
                             output_count=2,
@@ -2242,11 +2249,15 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 else:
                     coverage.append(
                         _element_layer_coverage(
-                            f"{backdrop_label}:backdrop",
+                            layer_name,
                             backdrop,
                             "backdrop-filter blur baked as a layer beneath the native glass",
                         )
                     )
+                if is_carrier:
+                    continue
+            if is_carrier:
+                continue
 
         box = _box(node)
         # Resolve borders: uniform borders use a single a:ln; per-side borders without

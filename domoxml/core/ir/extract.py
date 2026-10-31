@@ -1219,8 +1219,8 @@ def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> tuple[ShapeN
     picture shape holding the *sharp* backdrop with a native ``a:blur`` that does not grow past
     the shape, so PowerPoint blurs it itself (the radius stays editable, and it reads back as CSS).
     The pixels the browser blurred ride along as the owned fallback for renderers that ignore the
-    effect. Any other backdrop filter, or a transform that cannot be undone, keeps only the baked
-    picture.
+    effect. Any other backdrop filter, a transform that cannot be undone, a clip-path or an element
+    opacity keeps only the baked picture.
     """
     requests = _BACKDROP_REQUESTS.get()
     if requests is not None:
@@ -1237,7 +1237,12 @@ def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> tuple[ShapeN
         height=px_to_emu(blurred.height),
     )
     match = _BACKDROP_BLUR_RE.match(node.styles.get("backdropFilter", ""))
-    if backdrop.sharp is None or match is None:
+    # The native layer is a rounded rectangle blurred at full strength. A clip-path or an element
+    # opacity changes what the browser composites, which only the baked pixels reproduce exactly.
+    exact_in_native = (
+        node.styles.get("clipPath", "none") in ("none", "") and _opacity(node.styles) == 1.0
+    )
+    if backdrop.sharp is None or match is None or not exact_in_native:
         baked = PictureFill(data=blurred.png, ext="png", raster_role="backdrop-layer")
         return ShapeNode(box=baked_box, fill=baked), False
     box = _box(node)

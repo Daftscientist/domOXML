@@ -389,6 +389,29 @@ async def test_backdrop_filter_becomes_a_native_clipped_blur_on_the_sharp_backdr
     assert _solid_shape(ir, "CC2200").box.width == px_to_emu(200)
 
 
+async def test_backdrop_blur_stays_baked_where_a_native_blur_would_not_be_exact() -> None:
+    # The native layer is a rounded rectangle blurred at full strength, so a clip-path (it would
+    # blur outside the clip) or an element opacity (it would blur at full strength) keeps the
+    # browser's own pixels instead.
+    behind = (
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
+        "background:#cc2200'></div>"
+    )
+    for extra in ("clip-path:polygon(50% 0, 100% 100%, 0 100%)", "opacity:.4"):
+        ir = await _render_and_extract(
+            behind + "<div style='position:absolute;left:150px;top:120px;width:300px;height:80px;"
+            f"background:rgba(255,255,255,.4);backdrop-filter:blur(6px);{extra}'></div>"
+        )
+
+        layers = [
+            s
+            for s in ir.shapes
+            if isinstance(s.fill, PictureFill) and s.fill.raster_role == "backdrop-layer"
+        ]
+        assert layers, extra
+        assert all(s.effects == () and s.portable_fallback is None for s in layers), extra
+
+
 async def test_backdrop_blur_round_trips_through_pptx_and_html() -> None:
     glass_html = (
         "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"

@@ -330,6 +330,38 @@ async def test_shape_bleeding_past_the_slide_edge_is_not_treated_as_clipped() ->
     assert _solid_shape(ir, "CC2200").box.width == px_to_emu(200)
 
 
+async def test_backdrop_filter_raster_carries_the_blurred_backdrop_in_its_own_shape() -> None:
+    # A backdrop blur has nothing to blur once the element is captured alone, so its layer is a
+    # composite of what is painted below it, cut to the element's own rounded shape. Content
+    # painted above it must stay out.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
+        "background:#cc2200'></div>"
+        "<div style='position:absolute;left:150px;top:120px;width:300px;height:80px;"
+        "border-radius:20px;background:rgba(255,255,255,.4);backdrop-filter:blur(6px)'></div>"
+        "<div style='position:absolute;left:200px;top:140px;width:60px;height:20px;"
+        "background:#000000'></div>"
+    )
+
+    [glass] = [s for s in ir.shapes if isinstance(s.fill, PictureFill)]
+    assert isinstance(glass.fill, PictureFill)
+    with Image.open(BytesIO(glass.fill.data)) as image:
+        width = image.width
+        rgba = image.convert("RGBA").tobytes()
+
+    def pixel(x: float, y: float) -> tuple[int, int, int, int]:
+        scale = width / (glass.box.width / px_to_emu(1))
+        offset = (int(y * scale) * width + int(x * scale)) * 4
+        return rgba[offset], rgba[offset + 1], rgba[offset + 2], rgba[offset + 3]
+
+    red, green, _, alpha = pixel(20, 20)  # over the red box, inside the glass
+    assert alpha == 255 and red - green > 40, "the backdrop is baked into the glass layer"
+    assert pixel(0, 0)[3] == 0, "outside the rounded corner stays transparent"
+    assert max(pixel(70, 30)[:3]) > 80, "content painted above the glass is not baked in"
+    # What is below the glass is still its own native, editable shape.
+    assert _solid_shape(ir, "CC2200").box.width == px_to_emu(200)
+
+
 async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:
     result = await _render_and_extract_result(
         '<div style="position:relative;width:1280px;height:720px;background:#f7f8fb">'

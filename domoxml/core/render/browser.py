@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 from playwright.async_api import Browser, Playwright, Route, async_playwright
 from pydantic import BaseModel, ConfigDict, Field
 
-from domoxml.core.images import crop_png
+from domoxml.core.images import apply_alpha_mask, crop_png
 from domoxml.core.ir.parse import parse_shadows
 from domoxml.core.units import emu_to_px
 
@@ -501,6 +501,37 @@ _ISOLATE_JS = """
 """
 
 
+# `backdrop-filter` is a function of whatever is painted behind the element, so an element on its
+# own has nothing to blur. This keeps everything painted before `selected` (document order, which
+# is the stacking order the extractor models) and hides what is painted after it.
+_BACKDROP_JS = """
+(index) => {
+  const selected = document.querySelector(`[data-domoxml-capture-index="${index}"]`);
+  if (!selected) return () => {};
+  const changed = [];
+  for (const element of document.body.querySelectorAll('*')) {
+    const related = element === selected || selected.contains(element)
+      || element.contains(selected);
+    const later = !related
+      && (selected.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    if (!later) continue;
+    changed.push([
+      element,
+      element.style.getPropertyValue('visibility'),
+      element.style.getPropertyPriority('visibility'),
+    ]);
+    element.style.setProperty('visibility', 'hidden', 'important');
+  }
+  return () => {
+    for (const [element, visibility, priority] of changed) {
+      if (visibility) element.style.setProperty('visibility', visibility, priority);
+      else element.style.removeProperty('visibility');
+    }
+  };
+}
+"""
+
+
 class RenderedTextRun(BaseModel):
     """One ordered inline text fragment with Chromium-resolved typography."""
 
@@ -941,13 +972,28 @@ class BrowserSession:
                     await restore.evaluate("(restore) => restore()")
                     await restore.dispose()
                 x, y, right, bottom = _raster_bounds(node, slide_width=width, slide_height=height)
-                crop = crop_png(
-                    isolated_page,
-                    left=x * self._scale,
-                    top=y * self._scale,
-                    width=(right - x) * self._scale,
-                    height=(bottom - y) * self._scale,
-                )
+                region = {
+                    "left": x * self._scale,
+                    "top": y * self._scale,
+                    "width": (right - x) * self._scale,
+                    "height": (bottom - y) * self._scale,
+                }
+                crop = crop_png(isolated_page, **region)
+                if crop is not None and node.styles.get("backdropFilter", "none") not in (
+                    "none",
+                    "",
+                ):
+                    # The blur only exists over a backdrop, so capture the element with what is
+                    # painted below it, cut to the element's own shape. The result is a baked
+                    # composite: it cannot re-blur if the content beneath it later moves.
+                    backdrop = await page.evaluate_handle(_BACKDROP_JS, node.index)
+                    try:
+                        composite_page = await page.screenshot(type="png")
+                    finally:
+                        await backdrop.evaluate("(restore) => restore()")
+                        await backdrop.dispose()
+                    composite = crop_png(composite_page, **region)
+                    crop = (apply_alpha_mask(composite, crop) if composite else None) or crop
                 if crop is not None:
                     rasters[node.index] = RenderedRaster(
                         png=crop, x=x, y=y, width=right - x, height=bottom - y

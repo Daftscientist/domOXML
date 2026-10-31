@@ -5,12 +5,12 @@ html_file = "slide.html"
 [expected]
 min_representation = { native = 3 }
 max_representation = { rasterized = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
-min_editability = { semantic = 14 }
-max_editability = { semantic = 14, components = 0, layers = 0, none = 0 }
-min_source_retention = { not_required = 14 }
-max_source_retention = { not_required = 14, attached = 0, detached = 0, ignored = 0, lost = 0 }
-min_output_count = 14
-max_output_count = 14
+min_editability = { semantic = 13 }
+max_editability = { semantic = 13, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 13 }
+max_source_retention = { not_required = 13, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 13
+max_output_count = 13
 min_raster_area_emu2 = 0
 max_raster_area_emu2 = 0
 
@@ -44,14 +44,14 @@ pptx_to_html_min_structural_similarity = 0.98
 
 [roundtrip]
 cycles = 2
-min_representation = { native = 14 }
-max_representation = { rasterized = 0, native = 14, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
-min_editability = { semantic = 14 }
-max_editability = { semantic = 14, components = 0, layers = 0, none = 0 }
-min_source_retention = { not_required = 14 }
-max_source_retention = { not_required = 14, attached = 0, detached = 0, ignored = 0, lost = 0 }
-min_output_count = 14
-max_output_count = 14
+min_representation = { native = 13 }
+max_representation = { rasterized = 0, native = 13, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+min_editability = { semantic = 13 }
+max_editability = { semantic = 13, components = 0, layers = 0, none = 0 }
+min_source_retention = { not_required = 13 }
+max_source_retention = { not_required = 13, attached = 0, detached = 0, ignored = 0, lost = 0 }
+min_output_count = 13
+max_output_count = 13
 min_raster_area_emu2 = 0
 max_raster_area_emu2 = 0
 min_convergence_similarity = 0.999

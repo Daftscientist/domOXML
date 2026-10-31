@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import math
 from io import BytesIO
 
 import pytest
@@ -360,6 +361,181 @@ async def test_backdrop_filter_raster_carries_the_blurred_backdrop_in_its_own_sh
     assert max(pixel(70, 30)[:3]) > 80, "content painted above the glass is not baked in"
     # What is below the glass is still its own native, editable shape.
     assert _solid_shape(ir, "CC2200").box.width == px_to_emu(200)
+
+
+async def test_body_background_becomes_the_native_slide_background() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert ir.background is not None
+    assert isinstance(ir.background.fill, SolidFill)
+    # No full-slide rectangle underneath the content: only the authored shape remains.
+    assert [s.box.width for s in ir.shapes] == [px_to_emu(200)]
+
+
+async def test_full_slide_container_repeating_the_background_colour_is_folded_in() -> None:
+    ir = await _render_and_extract(
+        "<style>body{background:#f2f1ea}</style>"
+        "<main style='position:relative;width:1280px;height:720px;background:#f2f1ea'>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div></main>"
+    )
+
+    assert ir.background is not None
+    assert isinstance(ir.background.fill, SolidFill)
+    assert ir.background.fill.color.hex == "F2F1EA"
+    assert [s.box.width for s in ir.shapes] == [px_to_emu(200)]
+
+
+async def test_full_slide_container_with_a_different_colour_stays_a_shape() -> None:
+    ir = await _render_and_extract(
+        "<style>body{background:#f2f1ea}</style>"
+        "<main style='position:relative;width:1280px;height:720px;background:#102030'></main>"
+    )
+
+    assert ir.background is not None
+    assert _solid_shape(ir, "102030").box.width == px_to_emu(1280)
+
+
+async def test_same_colour_full_slide_shape_drawn_over_other_content_is_kept() -> None:
+    # It covers the earlier shape, so removing it would reveal what it was hiding.
+    ir = await _render_and_extract(
+        "<style>body{background:#f2f1ea}</style>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+        "<div style='position:absolute;left:0;top:0;width:1280px;height:720px;"
+        "background:#f2f1ea'></div>"
+    )
+
+    assert len(ir.shapes) == 2
+    assert _solid_shape(ir, "F2F1EA").box.width == px_to_emu(1280)
+
+
+async def test_translucent_or_rounded_full_slide_shape_is_not_folded() -> None:
+    ir = await _render_and_extract(
+        "<style>body{background:#f2f1ea}</style>"
+        "<div style='position:absolute;left:0;top:0;width:1280px;height:720px;"
+        "background:#f2f1ea;border-radius:24px'></div>"
+    )
+
+    assert len(ir.shapes) == 1
+
+
+async def test_oversized_gradient_body_is_not_rescaled_into_the_slide_background() -> None:
+    # Promoting this body would stretch its gradient from 1380px down to the 1280px slide and
+    # shift it, so it stays the positioned shape it is.
+    ir = await _render_and_extract(
+        "<style>body{margin-left:-100px;width:1380px;"
+        "background:linear-gradient(90deg,#102030,#405060)}</style>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert ir.background is None
+    assert any(isinstance(s.fill, GradientFill) for s in ir.shapes)
+
+
+async def test_blended_body_background_is_never_promoted() -> None:
+    # background-blend-mode needs a fill overlay that the native background cannot carry.
+    ir = await _render_and_extract(
+        "<style>body{background:linear-gradient(90deg,#ff0000,#0000ff),#cc2200;"
+        "background-blend-mode:multiply}</style>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert ir.background is None
+
+
+async def test_picture_body_background_stays_a_shape() -> None:
+    png = BytesIO()
+    Image.new("RGB", (40, 10), (200, 30, 30)).save(png, "PNG")
+    encoded = base64.b64encode(png.getvalue()).decode()
+    ir = await _render_and_extract(
+        f"<style>body{{background:url(data:image/png;base64,{encoded}) center/cover}}</style>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert ir.background is None
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_gradient_body_background_is_a_native_gradient_slide_background() -> None:
+    ir = await _render_and_extract(
+        "<style>body{background:linear-gradient(90deg,#102030,#405060)}</style>"
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:80px;"
+        "background:#cc2200'></div>"
+    )
+
+    assert ir.background is not None
+    assert isinstance(ir.background.fill, GradientFill)
+    assert len(ir.shapes) == 1
+
+
+def _text_shape(ir: SlideIR, text: str) -> ShapeNode:
+    return next(
+        s
+        for s in ir.shapes
+        if s.text is not None and any(text in r.text for p in s.text.paragraphs for r in p.runs)
+    )
+
+
+async def test_plain_text_slack_never_moves_the_text_it_is_anchored_to() -> None:
+    # A fill-less text box is widened so PowerPoint's wider glyph metrics do not force a wrap. The
+    # extra width has to go on the side the text is not anchored to, or the text itself shifts.
+    def row(top: int, align: str, text: str) -> str:
+        return (
+            f"<div style='position:absolute;left:200px;top:{top}px;width:300px;"
+            f"text-align:{align}'>{text}</div>"
+        )
+
+    ir = await _render_and_extract(
+        row(100, "left", "Lefty") + row(200, "right", "Righty") + row(300, "center", "Mid")
+    )
+
+    def edges(text: str) -> tuple[float, float]:
+        box = _text_shape(ir, text).box
+        return box.x / px_to_emu(1), (box.x + box.width) / px_to_emu(1)
+
+    left_edge, left_right = edges("Lefty")
+    assert (left_edge, left_right) == (200.0, 508.0), "left-aligned: slack on the right only"
+    right_left, right_edge = edges("Righty")
+    assert (right_left, right_edge) == (192.0, 500.0), "right-aligned: slack on the left only"
+    mid_left, mid_right = edges("Mid")
+    assert (mid_left, mid_right) == (196.0, 504.0), "centred: slack split evenly"
+
+
+async def test_rotated_plain_text_keeps_its_anchor_point_despite_lopsided_slack() -> None:
+    # PowerPoint rotates about the box centre, and one-sided slack moves that centre. The box is
+    # shifted to compensate, so the text's anchored corner must land where the browser draws it.
+    def row(top: int, align: str, text: str) -> str:
+        return (
+            f"<div style='position:absolute;left:300px;top:{top}px;width:300px;"
+            f"text-align:{align};transform:rotate(30deg)'>{text}</div>"
+        )
+
+    ir = await _render_and_extract(row(100, "left", "Lefty") + row(300, "right", "Righty"))
+    angle = math.radians(30)
+
+    def rendered(box_x: float, box_y: float, box_w: float, box_h: float, px: float, py: float):
+        cx, cy = box_x + box_w / 2, box_y + box_h / 2
+        dx, dy = px - cx, py - cy
+        return (
+            cx + dx * math.cos(angle) - dy * math.sin(angle),
+            cy + dx * math.sin(angle) + dy * math.cos(angle),
+        )
+
+    for text, top, anchor_is_right in (("Lefty", 100, False), ("Righty", 300, True)):
+        box = _text_shape(ir, text).box
+        x, y, w, h = (v / px_to_emu(1) for v in (box.x, box.y, box.width, box.height))
+        # Where the browser draws the element's anchored top corner (box is 300 wide, unslacked).
+        expected = rendered(300, top, 300, h, 300 + (300 if anchor_is_right else 0), top)
+        actual = rendered(x, y, w, h, x + (w if anchor_is_right else 0), y)
+        assert abs(actual[0] - expected[0]) < 1.0, (text, actual, expected)
+        assert abs(actual[1] - expected[1]) < 1.0, (text, actual, expected)
 
 
 async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:

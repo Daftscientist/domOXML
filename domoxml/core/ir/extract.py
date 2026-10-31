@@ -135,6 +135,8 @@ _RASTER_TAGS = {"svg", "canvas", "video", "iframe"}
 # through ``_raster_shape`` / ``_isolated_node_crop``, so recording their calls yields exactly
 # the nodes that need an isolated capture, with no second predicate to drift out of sync.
 _RASTER_REQUESTS: ContextVar[set[int] | None] = ContextVar("_RASTER_REQUESTS", default=None)
+# The same dry-run trick for blurred-backdrop layers, which are captured separately from rasters.
+_BACKDROP_REQUESTS: ContextVar[set[int] | None] = ContextVar("_BACKDROP_REQUESTS", default=None)
 # 1x1 transparent PNG standing in for pixels that do not exist yet while planning.
 _PLANNING_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
@@ -651,8 +653,6 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
         return "CSS normal fill overlay is only typed for square-cornered rectangles"
     if blend_mode not in ("normal", "") and authored_overlay is None and not has_normalized_overlay:
         return "background-blend-mode has no native fill-overlay mapping"
-    if styles.get("backdropFilter", "none") not in ("none", ""):
-        return "backdrop-filter has no native mapping"
     filter_value = styles.get("filter", "none")
     if filter_value not in ("none", "") and parse_blur_filter(filter_value) is None:
         return "CSS filter has no native mapping"
@@ -1161,6 +1161,24 @@ def _is_plain_inline(node: RenderedNode, fill: Fill | None, line: Line | None) -
     )
 
 
+def _dry_run(rendered: RenderedSlide) -> tuple[frozenset[int], frozenset[int]]:
+    """Run extraction once with placeholder pixels and report what it asked to have captured.
+
+    Returns ``(isolated rasters, blurred backdrop layers)``. Both trackers are active together
+    because what one requests can depend on the other being satisfied.
+    """
+    rasters: set[int] = set()
+    backdrops: set[int] = set()
+    raster_token = _RASTER_REQUESTS.set(rasters)
+    backdrop_token = _BACKDROP_REQUESTS.set(backdrops)
+    try:
+        extract_slide(rendered)
+    finally:
+        _BACKDROP_REQUESTS.reset(backdrop_token)
+        _RASTER_REQUESTS.reset(raster_token)
+    return frozenset(rasters), frozenset(backdrops)
+
+
 def plan_isolated_rasters(rendered: RenderedSlide) -> frozenset[int]:
     """Return the nodes whose fallback pixels must be captured in isolation.
 
@@ -1168,13 +1186,32 @@ def plan_isolated_rasters(rendered: RenderedSlide) -> frozenset[int]:
     renders exactly what extraction will consume. The extractor is the only authority on what
     needs a raster; the browser holds no predicate of its own.
     """
-    requests: set[int] = set()
-    token = _RASTER_REQUESTS.set(requests)
-    try:
-        extract_slide(rendered)
-    finally:
-        _RASTER_REQUESTS.reset(token)
-    return frozenset(requests)
+    return _dry_run(rendered)[0]
+
+
+def plan_backdrop_layers(rendered: RenderedSlide) -> frozenset[int]:
+    """Return the nodes whose blurred backdrop must be captured, by the same dry run."""
+    return _dry_run(rendered)[1]
+
+
+def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
+    """The blurred backdrop behind ``node`` as a picture cut to its shape, or ``None``."""
+    requests = _BACKDROP_REQUESTS.get()
+    if requests is not None:
+        requests.add(node.index)
+        return ShapeNode(box=_box(node), fill=PictureFill(data=_PLANNING_PNG, ext="png"))
+    layer = rendered.backdrops.get(node.index)
+    if layer is None:
+        return None
+    return ShapeNode(
+        box=Box(
+            x=px_to_emu(layer.x),
+            y=px_to_emu(layer.y),
+            width=px_to_emu(layer.width),
+            height=px_to_emu(layer.height),
+        ),
+        fill=PictureFill(data=layer.png, ext="png", raster_role="backdrop-layer"),
+    )
 
 
 def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
@@ -2113,6 +2150,29 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             coverage.append(_element_layer_coverage(label, shape, reason))
             warnings.append(ConversionWarning(message=f"rasterised — {reason}", element=label))
             continue
+
+        # A backdrop blur has no OOXML equivalent, so the blurred backdrop becomes a picture cut to
+        # the element's shape, drawn beneath the glass. The glass itself (tint, border, shadow,
+        # text) stays native and editable on top of it.
+        if node.styles.get("backdropFilter", "none") not in ("none", ""):
+            backdrop_label = _label(node)
+            backdrop = _backdrop_layer(node, rendered)
+            if backdrop is None:
+                warnings.append(
+                    ConversionWarning(
+                        message="backdrop-filter blur could not be captured; glass left unblurred",
+                        element=backdrop_label,
+                    )
+                )
+            else:
+                contents.append(identities.apply(backdrop, node, role="backdrop"))
+                coverage.append(
+                    _element_layer_coverage(
+                        f"{backdrop_label}:backdrop",
+                        backdrop,
+                        "backdrop-filter blur baked as a layer beneath the native glass",
+                    )
+                )
 
         box = _box(node)
         # Resolve borders: uniform borders use a single a:ln; per-side borders without

@@ -64,7 +64,7 @@ from domoxml.core.ir.text_payload import encode_text_body
 from domoxml.core.opc import encode_payload
 from domoxml.core.svg_path import commands_to_svg_d
 from domoxml.core.svg_stroke import svg_dash_lengths
-from domoxml.core.units import emu_to_px
+from domoxml.core.units import DRAWINGML_BLUR_RADIUS_PER_CSS_SIGMA, emu_to_px
 from domoxml.types import (
     ConversionWarning,
     CoverageReport,
@@ -259,6 +259,10 @@ def _shape_style(
         styles.append(f"background-color:{_rgba(node.fill.color, opacity=node.opacity)}")
     elif isinstance(node.fill, GradientFill):
         styles.append(f"background-image:{_gradient(node.fill, opacity=node.opacity)}")
+    elif isinstance(node.fill, PictureFill) and _is_backdrop_blur_layer(node):
+        # The sharp backdrop picture exists only so PowerPoint can blur it. In HTML the element is
+        # transparent and `backdrop-filter` blurs whatever really is behind it.
+        pass
     elif isinstance(node.fill, PictureFill):
         asset = _asset(node.fill)
         assets.setdefault(asset.path, asset)
@@ -353,6 +357,15 @@ def _shape_style(
     return ";".join(styles)
 
 
+def _is_backdrop_blur_layer(node: ShapeNode) -> bool:
+    """Whether ``node`` is a sharp backdrop picture with a native blur (a CSS backdrop filter)."""
+    return (
+        isinstance(node.fill, PictureFill)
+        and node.fill.raster_role == "backdrop-layer"
+        and any(isinstance(effect, Blur) for effect in node.effects)
+    )
+
+
 def _append_effect_styles(
     node: ShapeNode,
     styles: list[str],
@@ -386,6 +399,9 @@ def _append_effect_styles(
             box_shadows.append(
                 f"0px 0px {_number(rad_px)}px {_number(spread_px)}px {_rgba(effect.color)}"
             )
+        elif isinstance(effect, Blur) and _is_backdrop_blur_layer(node):
+            sigma = emu_to_px(effect.radius_emu) / DRAWINGML_BLUR_RADIUS_PER_CSS_SIGMA
+            styles.append(f"backdrop-filter:blur({_number(sigma)}px)")
         elif isinstance(effect, Blur):
             blur_filters.append(f"blur({_number(emu_to_px(effect.radius_emu))}px)")
             warnings.append(

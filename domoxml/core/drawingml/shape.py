@@ -305,7 +305,7 @@ def _effects_xml(node: ShapeNode) -> str:
         elif isinstance(effect, Glow):
             parts.append(f'<a:glow rad="{effect.radius_emu}">{_srgb(effect.color)}</a:glow>')
         elif isinstance(effect, Blur):
-            parts.append(f'<a:blur rad="{effect.radius_emu}" grow="1"/>')
+            parts.append(f'<a:blur rad="{effect.radius_emu}" grow="{int(effect.grow)}"/>')
         elif isinstance(effect, SoftEdge):
             parts.append(f'<a:softEdge rad="{effect.radius_emu}"/>')
         elif isinstance(effect, Reflection):
@@ -562,6 +562,9 @@ def shape_xml(
         box=node.box,
     )
     hidden_attr = ' hidden="1"' if hidden else ""
+    if isinstance(node.fill, PictureFill) and node.fill.raster_role is not None:
+        # A picture-filled shape is not a p:pic, so the role marker rides on the shape itself.
+        hidden_attr += f' descr="{_attr(f"domoxml-raster:{node.fill.raster_role}")}"'
     return (
         f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Shape {shape_id}"{hidden_attr}/>'
         f"<p:cNvSpPr/><p:nvPr>{node_identity_xml(node)}</p:nvPr></p:nvSpPr>"

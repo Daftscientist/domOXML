@@ -121,7 +121,12 @@ from domoxml.core.render.browser import (
     parse_native_transform,
 )
 from domoxml.core.svg_stroke import parse_svg_dasharray
-from domoxml.core.units import emu_to_px, px_to_emu, px_to_pt
+from domoxml.core.units import (
+    DRAWINGML_BLUR_RADIUS_PER_CSS_SIGMA,
+    emu_to_px,
+    px_to_emu,
+    px_to_pt,
+)
 from domoxml.types import (
     ConversionWarning,
     CoverageItem,
@@ -1204,24 +1209,61 @@ def plan_backdrop_layers(rendered: RenderedSlide) -> frozenset[int]:
     return _dry_run(rendered)[1]
 
 
-def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
-    """The blurred backdrop behind ``node`` as a picture cut to its shape, or ``None``."""
+_BACKDROP_BLUR_RE = re.compile(r"^\s*blur\(\s*([\d.]+)px\s*\)\s*$", re.IGNORECASE)
+
+
+def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> tuple[ShapeNode, bool] | None:
+    """The shape that stands in for the blurred backdrop behind ``node``, and whether it is native.
+
+    When the filter is a plain ``blur(Npx)`` and the backdrop could be sampled upright, this is a
+    picture shape holding the *sharp* backdrop with a native ``a:blur`` that does not grow past
+    the shape, so PowerPoint blurs it itself (the radius stays editable, and it reads back as CSS).
+    The pixels the browser blurred ride along as the owned fallback for renderers that ignore the
+    effect. Any other backdrop filter, or a transform that cannot be undone, keeps only the baked
+    picture.
+    """
     requests = _BACKDROP_REQUESTS.get()
     if requests is not None:
         requests.add(node.index)
-        return ShapeNode(box=_box(node), fill=PictureFill(data=_PLANNING_PNG, ext="png"))
-    layer = rendered.backdrops.get(node.index)
-    if layer is None:
+        return ShapeNode(box=_box(node), fill=PictureFill(data=_PLANNING_PNG, ext="png")), True
+    backdrop = rendered.backdrops.get(node.index)
+    if backdrop is None:
         return None
-    return ShapeNode(
-        box=Box(
-            x=px_to_emu(layer.x),
-            y=px_to_emu(layer.y),
-            width=px_to_emu(layer.width),
-            height=px_to_emu(layer.height),
-        ),
-        fill=PictureFill(data=layer.png, ext="png", raster_role="backdrop-layer"),
+    blurred = backdrop.blurred
+    baked_box = Box(
+        x=px_to_emu(blurred.x),
+        y=px_to_emu(blurred.y),
+        width=px_to_emu(blurred.width),
+        height=px_to_emu(blurred.height),
     )
+    match = _BACKDROP_BLUR_RE.match(node.styles.get("backdropFilter", ""))
+    if backdrop.sharp is None or match is None:
+        baked = PictureFill(data=blurred.png, ext="png", raster_role="backdrop-layer")
+        return ShapeNode(box=baked_box, fill=baked), False
+    box = _box(node)
+    corner = px_to_emu(
+        parse_radius_px(
+            node.styles.get("borderRadius"), shorter_side_px=min(node.width, node.height)
+        )
+    )
+    native = ShapeNode(
+        box=box,
+        geom=_geometry(box, corner),
+        corner_radius_emu=corner,
+        transform=_parse_transform(node.styles),
+        fill=PictureFill(data=backdrop.sharp, ext="png", raster_role="backdrop-layer"),
+        effects=(
+            Blur(
+                radius_emu=px_to_emu(float(match.group(1)) * DRAWINGML_BLUR_RADIUS_PER_CSS_SIGMA),
+                grow=False,
+            ),
+        ),
+        portable_fallback=PortableFallback(
+            box=baked_box,
+            picture=PictureFill(data=blurred.png, ext="png", raster_role="portable-blur-fallback"),
+        ),
+    )
+    return native, True
 
 
 def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
@@ -2166,8 +2208,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # text) stays native and editable on top of it.
         if node.styles.get("backdropFilter", "none") not in ("none", ""):
             backdrop_label = _label(node)
-            backdrop = _backdrop_layer(node, rendered)
-            if backdrop is None:
+            layer = _backdrop_layer(node, rendered)
+            if layer is None:
                 warnings.append(
                     ConversionWarning(
                         message="backdrop-filter blur could not be captured; glass left unblurred",
@@ -2175,14 +2217,31 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                 )
             else:
+                backdrop, native_blur = layer
                 contents.append(identities.apply(backdrop, node, role="backdrop"))
-                coverage.append(
-                    _element_layer_coverage(
-                        f"{backdrop_label}:backdrop",
-                        backdrop,
-                        "backdrop-filter blur baked as a layer beneath the native glass",
+                if native_blur and backdrop.portable_fallback is not None:
+                    fallback_box = backdrop.portable_fallback.box
+                    coverage.append(
+                        CoverageItem(
+                            element=f"{backdrop_label}:backdrop",
+                            representation=Representation.HYBRID,
+                            editability=Editability.COMPONENTS,
+                            output_count=2,
+                            raster_area_emu2=fallback_box.width * fallback_box.height,
+                            reason=(
+                                "backdrop blur is a native a:blur on the sharp backdrop picture, "
+                                "with the browser's blurred pixels as the owned fallback"
+                            ),
+                        )
                     )
-                )
+                else:
+                    coverage.append(
+                        _element_layer_coverage(
+                            f"{backdrop_label}:backdrop",
+                            backdrop,
+                            "backdrop-filter blur baked as a layer beneath the native glass",
+                        )
+                    )
 
         box = _box(node)
         # Resolve borders: uniform borders use a single a:ln; per-side borders without

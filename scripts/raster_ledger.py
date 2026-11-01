@@ -36,7 +36,9 @@ CASES_FILE = FIDELITY / "raster-cases.json"
 # A layered output holds raster content (types.CoverageItem requires a raster area), so it counts.
 NATIVE = {"native", "decomposed"}
 LOOKS_RIGHT = 0.97
-LOOK_TOLERANCE = 0.02
+# Text scores depend on which fonts the machine has: text-shadow measured 0.891 locally and 0.848
+# in CI. The tolerance absorbs that noise yet still catches a real loss (gradient text 0.98 -> 0.34).
+LOOK_TOLERANCE = 0.08
 BOX = "position:absolute;left:200px;top:150px;width:360px;height:220px;"
 
 

@@ -2312,3 +2312,95 @@ async def test_transition_root_background_does_not_emit_body_cover_shape() -> No
     assert result.slide.background is not None
     assert len(result.slide.shapes) == 1
     assert all(item.element != "<body>" for item in result.coverage)
+
+
+async def test_colour_filter_on_a_leaf_is_folded_into_its_fill_without_a_raster() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:200px;height:100px;"
+        "background:#ff0000;filter:grayscale(1)'></div>"
+    )
+
+    shape = next(s for s in ir.shapes if isinstance(s.fill, SolidFill))
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert shape.fill.color.r == shape.fill.color.g == shape.fill.color.b  # type: ignore[union-attr]
+
+
+async def test_colour_filter_on_a_parent_keeps_its_raster() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:200px;height:100px;"
+        "filter:sepia(1)'><div style='width:50px;height:50px;background:red'></div></div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_conic_and_layered_backgrounds_become_editable_shapes() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:200px;height:200px;"
+        "background:conic-gradient(red,blue,red)'></div>"
+        "<div style='position:absolute;left:300px;top:50px;width:200px;height:200px;"
+        "background:linear-gradient(90deg,rgba(255,0,0,.5),transparent),"
+        "linear-gradient(0deg,blue,green)'></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert _layer_count(ir) >= 3
+
+
+async def test_off_centre_elliptical_radial_gradient_becomes_banded_shapes() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:360px;height:220px;"
+        "background:radial-gradient(ellipse at 30% 40%,#f80,#306)'></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert _layer_count(ir) >= 24
+
+
+def _layer_count(ir: SlideIR) -> int:
+    return sum(
+        1
+        for s in ir.shapes
+        if s.provenance is not None and (s.provenance.role or "").startswith("layer-")
+    )
+
+
+_BOX = "position:absolute;left:50px;top:50px;width:200px;height:100px;"
+
+
+@pytest.mark.parametrize(
+    "style",
+    [
+        "background:red;mask-image:linear-gradient(90deg,black,transparent)",
+        "background:radial-gradient(circle at 30% 40%,rgba(255,0,0,.5),rgba(0,0,255,.5))",
+        "background:linear-gradient(red,blue) 0 0/20px 20px,linear-gradient(blue,red)",
+        "background:conic-gradient(red,blue,red);transform:rotate(20deg)",
+        "background:url(data:image/gif;base64,R0lGODlhAQABAAAAACw=);filter:grayscale(1)",
+    ],
+)
+async def test_unsafe_lowerings_stay_raster(style: str) -> None:
+    text = "Hi" if "mask-image" in style else ""
+    ir = await _render_and_extract(f"<div style='{_BOX}{style}'>{text}</div>")
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_brightness_on_a_gradient_keeps_the_clamped_ramp() -> None:
+    ir = await _render_and_extract(
+        f"<div style='{_BOX}background:linear-gradient(90deg,#000,#fff);"
+        "filter:brightness(2)'></div>"
+    )
+
+    gradient = next(s.fill for s in ir.shapes if isinstance(s.fill, GradientFill))
+    middle = min(gradient.stops, key=lambda stop: abs(stop.pos - 0.75))
+    assert middle.color.hex == "FFFFFF"
+
+
+async def test_text_drop_shadow_reaches_every_run() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;font-size:40px;"
+        "filter:drop-shadow(4px 4px 2px #000)'>Hello</div>"
+    )
+
+    runs = [r for s in ir.shapes if s.text for p in s.text.paragraphs for r in p.runs]
+    assert runs and all(r.shadow is not None for r in runs)

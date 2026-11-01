@@ -16,6 +16,7 @@ import contextlib
 import math
 import re
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -39,15 +40,35 @@ from domoxml.core.ir.effect_calibration import (
     CUSTOM_SHADOW_BLUR_TO_DML,
 )
 from domoxml.core.ir.effect_payload import decode_effect_payload, decode_effects
+from domoxml.core.ir.filters import apply_to_image
 from domoxml.core.ir.geometry_payload import decode_custom_geometry
 from domoxml.core.ir.group_payload import GroupMemberPayload, GroupPayload, decode_group_payload
+from domoxml.core.ir.layers import (
+    Wedge,
+    conic_wedges,
+    parse_conic,
+    parse_radial,
+    radial_bands,
+    stacked_gradients,
+)
+from domoxml.core.ir.lowering import (
+    colour_functions,
+    filter_functions,
+    is_leaf,
+    lower_drop_shadow,
+    lower_mask,
+    mark_leaves,
+    recolor_shape,
+)
 from domoxml.core.ir.model import (
     AutoNumberBullet,
     Blur,
     Box,
     CanvasNode,
     CharBullet,
+    ClosePath,
     Connector,
+    CustomGeometry,
     Fill,
     FillOverlay,
     Geometry,
@@ -57,9 +78,12 @@ from domoxml.core.ir.model import (
     Hyperlink,
     Line,
     LineSpacing,
+    LineTo,
+    MoveTo,
     Node,
     PatternFill,
     PictureFill,
+    Point,
     PortableFallback,
     PreservedNode,
     Reflection,
@@ -586,6 +610,25 @@ def _is_center_transform_origin(value: str | None) -> bool:
     return "px" in lower
 
 
+def _soft_edge_mask(node: RenderedNode) -> SoftEdge | None:
+    """The soft-edge feather this node's ``mask-image`` is, when it is one."""
+    styles = node.styles
+    corner = px_to_emu(
+        parse_radius_px(styles.get("borderRadius"), shorter_side_px=min(node.width, node.height))
+    )
+    return parse_soft_edge_mask(
+        styles.get("maskImage"),
+        styles.get("maskComposite"),
+        repeat=styles.get("maskRepeat"),
+        position=styles.get("maskPosition"),
+        size=styles.get("maskSize"),
+        origin=styles.get("maskOrigin"),
+        clip=styles.get("maskClip"),
+        mode=styles.get("maskMode"),
+        ellipse=_geometry(_box(node), corner) == "ellipse",
+    )
+
+
 def _structural_raster_reason(node: RenderedNode) -> str | None:
     """A reason this element can only be rasterised, independent of its fill, or ``None``."""
     styles = node.styles
@@ -607,6 +650,9 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     if styles.get("mixBlendMode", "normal") not in ("normal", ""):
         return "mix-blend-mode has no native mapping"
     blend_mode = styles.get("backgroundBlendMode", "normal")
+    # Chrome reports one blend mode per background layer ("normal, normal" for two layers).
+    if all(part.strip() in ("normal", "") for part in blend_mode.split(",")):
+        blend_mode = "normal"
     encoded_effect_payload = decode_effect_payload(styles.get("domoxmlEffects"))
     encoded_effects = encoded_effect_payload.effects if encoded_effect_payload is not None else None
     encoded_overlay = next(
@@ -692,26 +738,17 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     if blend_mode not in ("normal", "") and authored_overlay is None and not has_normalized_overlay:
         return "background-blend-mode has no native fill-overlay mapping"
     filter_value = styles.get("filter", "none")
-    if filter_value not in ("none", "") and parse_blur_filter(filter_value) is None:
+    if (
+        filter_value not in ("none", "")
+        and parse_blur_filter(filter_value) is None
+        and not filter_functions(node)
+    ):
         return "CSS filter has no native mapping"
     mask_value = styles.get("maskImage", "none")
-    mask_corner = px_to_emu(
-        parse_radius_px(styles.get("borderRadius"), shorter_side_px=min(node.width, node.height))
-    )
     if (
         mask_value not in ("none", "")
-        and parse_soft_edge_mask(
-            mask_value,
-            styles.get("maskComposite"),
-            repeat=styles.get("maskRepeat"),
-            position=styles.get("maskPosition"),
-            size=styles.get("maskSize"),
-            origin=styles.get("maskOrigin"),
-            clip=styles.get("maskClip"),
-            mode=styles.get("maskMode"),
-            ellipse=_geometry(_box(node), mask_corner) == "ellipse",
-        )
-        is None
+        and not (is_leaf(node) and parse_gradient(mask_value) is not None)
+        and _soft_edge_mask(node) is None
     ):
         return "CSS mask has no native mapping"
     reflection_value = styles.get("webkitBoxReflect", "none")
@@ -929,6 +966,12 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
         if resolved is None:
             return None, "image source was not captured"
         data, ext = resolved
+        # Colour filters on an image are a change to its pixels, which stay a native picture.
+        functions = colour_functions(node)
+        if functions:
+            filtered = apply_to_image(data, functions)
+            if filtered is not None:
+                data, ext = filtered, "png"
         crop = _img_crop(node, rendered)
         return PictureFill(data=data, ext=ext, crop=crop), None
 
@@ -1770,12 +1813,106 @@ def _repeats_slide_background(
     )
 
 
+_UNMAPPED_GRADIENT = "gradient has no native mapping (conic or layered)"
+
+
+@dataclass(frozen=True)
+class _LayerPlan:
+    """A background that is several shapes: full-box fills and conic wedges, bottom to top."""
+
+    top: Fill | None
+    beneath: tuple[Fill, ...] = ()
+    wedges: tuple[Wedge, ...] = ()
+
+
+def _default_background_geometry(styles: dict[str, str]) -> bool:
+    """Whether every background layer covers the whole box once (no tiling, sizing or offset)."""
+
+    def every(key: str, allowed: set[str]) -> bool:
+        parts = (styles.get(key) or "").split(",")
+        return all(part.strip() in allowed for part in parts)
+
+    return (
+        every("backgroundSize", {"", "auto", "auto auto"})
+        and every("backgroundPosition", {"", "0% 0%"})
+        and every("backgroundRepeat", {"", "repeat", "repeat repeat"})
+        and every("backgroundOrigin", {"", "padding-box"})
+        and every("backgroundClip", {"", "border-box"})
+    )
+
+
+def _plan_background_layers(node: RenderedNode) -> _LayerPlan | None:
+    """Decompose a stacked or conic background, when nothing else paints between its layers."""
+    styles = node.styles
+    quiet = (
+        styles.get("boxShadow", "none") in ("none", "")
+        and styles.get("filter", "none") in ("none", "")
+        and styles.get("maskImage", "none") in ("none", "")
+        and styles.get("backdropFilter", "none") in ("none", "")
+        and "text" not in (styles.get("backgroundClip") or "")
+        and styles.get("transform", "none") in ("none", "")
+        and _opacity(styles) == 1.0
+        and _default_background_geometry(styles)
+    )
+    if not quiet:
+        return None
+    background = parse_color(styles.get("backgroundColor"))
+    base: tuple[Fill, ...] = (
+        (SolidFill(color=background),) if background is not None and background.a > 0 else ()
+    )
+    image = styles.get("backgroundImage")
+    layers = stacked_gradients(image)
+    if layers is not None:
+        fills = [parse_gradient(layer) for layer in layers]
+        if any(fill is None for fill in fills):
+            return None
+        ordered = [fill for fill in fills if fill is not None]
+        return _LayerPlan(top=ordered[0], beneath=(*base, *reversed(ordered[1:])))
+    box = _box(node)
+    width, height = emu_to_px(box.width), emu_to_px(box.height)
+    radius = parse_radius_px(styles.get("borderRadius"), shorter_side_px=min(width, height))
+    conic = parse_conic(image, width_px=width, height_px=height)
+    if conic is not None:
+        wedges = conic_wedges(conic, width_px=width, height_px=height, radius_px=radius)
+        return _LayerPlan(top=None, beneath=base, wedges=tuple(wedges)) if wedges else None
+    radial = parse_radial(image, width_px=width, height_px=height)
+    if radial is None:
+        return None
+    bands = radial_bands(radial, width_px=width, height_px=height, radius_px=radius)
+    return _LayerPlan(top=None, beneath=base, wedges=tuple(bands)) if bands else None
+
+
+def _layer_shapes(
+    plan: _LayerPlan, node: RenderedNode, box: Box, geom: Geometry, corner: int
+) -> list[ShapeNode]:
+    """The shapes a layer plan puts beneath the main shape, bottom first."""
+    shapes: list[ShapeNode] = [
+        ShapeNode(box=box, geom=geom, fill=fill, corner_radius_emu=corner) for fill in plan.beneath
+    ]
+    for wedge in plan.wedges:
+        points = [Point(x=px_to_emu(x), y=px_to_emu(y)) for x, y in wedge.points]
+        path = (
+            MoveTo(to=points[0]),
+            *(LineTo(to=point) for point in points[1:]),
+            ClosePath(),
+        )
+        shapes.append(
+            ShapeNode(
+                box=box,
+                custom_geom=CustomGeometry(width_emu=box.width, height_emu=box.height, path=path),
+                fill=SolidFill(color=wedge.color),
+            )
+        )
+    return shapes
+
+
 def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     """Map every captured node to native OOXML where possible, rasterising only the residue.
 
     Stacking follows DOM order; a rasterised element consumes its whole subtree so its
     children aren't drawn twice over the baked-in pixels.
     """
+    rendered = mark_leaves(rendered)
     children = _children(rendered.nodes)
     consumed: set[int] = set()
     contents: list[Node] = []
@@ -2217,10 +2354,18 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                 continue
 
+        node = lower_drop_shadow(node)
         reason = _structural_raster_reason(node)
         fill: Fill | None = None
         if reason is None:
             fill, reason = _resolve_fill(node, rendered)
+            if reason is None and _soft_edge_mask(node) is None:
+                fill, reason = lower_mask(fill, node)
+        layer_plan: _LayerPlan | None = None
+        if reason == _UNMAPPED_GRADIENT:
+            layer_plan = _plan_background_layers(node)
+            if layer_plan is not None:
+                fill, reason = layer_plan.top, None
 
         # If the structural check let a polygon clip-path through, try to match it to a preset.
         # If matching fails, fall back to raster (overwrite reason).
@@ -2357,6 +2502,12 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 line_warning = line_warning or ConversionWarning(
                     message="non-uniform border with border-radius approximated by one outline"
                 )
+
+        if layer_plan is not None:
+            side_rect_shapes = [
+                identities.apply(shape, node, role=f"layer-{index}")
+                for index, shape in enumerate(_layer_shapes(layer_plan, node, box, geom, corner))
+            ] + side_rect_shapes
 
         # --- HR / thin-element connector detection ---
         # Check before emitting a ShapeNode; <hr> and thin unfilled elements become Connectors.
@@ -2582,20 +2733,23 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         contents.extend(side_rect_shapes)
         contents.append(
             identities.apply(
-                ShapeNode(
-                    box=box,
-                    geom=geom,
-                    fill=fill,
-                    line=line,
-                    effects=effects,
-                    effect_container=effect_container,
-                    effect_source_ref=effect_source_ref,
-                    native_effect_projection=native_effect_projection,
-                    portable_fallback=portable_fallback,
-                    corner_radius_emu=corner,
-                    opacity=_opacity(node.styles),
-                    text=text,
-                    transform=_parse_transform(node.styles),
+                recolor_shape(
+                    ShapeNode(
+                        box=box,
+                        geom=geom,
+                        fill=fill,
+                        line=line,
+                        effects=effects,
+                        effect_container=effect_container,
+                        effect_source_ref=effect_source_ref,
+                        native_effect_projection=native_effect_projection,
+                        portable_fallback=portable_fallback,
+                        corner_radius_emu=corner,
+                        opacity=_opacity(node.styles),
+                        text=text,
+                        transform=_parse_transform(node.styles),
+                    ),
+                    colour_functions(node),
                 ),
                 node,
             )
@@ -2609,7 +2763,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     representation=Representation.DECOMPOSED,
                     editability=Editability.COMPONENTS,
                     output_count=1 + len(side_rect_shapes),
-                    reason="non-uniform border decomposed into editable per-side rectangles",
+                    reason=(
+                        "background layers decomposed into editable shapes"
+                        if layer_plan is not None
+                        else "non-uniform border decomposed into editable per-side rectangles"
+                    ),
                 )
             )
         elif approximation_reasons:

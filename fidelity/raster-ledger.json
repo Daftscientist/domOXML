@@ -1,0 +1,226 @@
+{
+  "backdrop-saturate": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "backdrop-filter blur baked as a layer beneath the native glass"
+    ],
+    "similarity": 1.0
+  },
+  "box-reflect": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "CSS box reflection has no native mapping"
+    ],
+    "similarity": 0.996
+  },
+  "canvas": {
+    "inherent": true,
+    "non_native": 1,
+    "reasons": [
+      "<canvas> has no native OOXML mapping"
+    ],
+    "similarity": 1.0
+  },
+  "clip-path-circle": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "clip-path has no native mapping"
+    ],
+    "similarity": 0.997
+  },
+  "clip-path-inset": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "clip-path has no native mapping"
+    ],
+    "similarity": 0.998
+  },
+  "clip-path-polygon-custom": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "clip-path polygon does not match any known preset geometry"
+    ],
+    "similarity": 0.997
+  },
+  "clipped-by-ancestor": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "clipped by an ancestor's overflow has no native mapping"
+    ],
+    "similarity": 0.998
+  },
+  "conic-gradient": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "gradient has no native mapping (conic or layered)"
+    ],
+    "similarity": 0.997
+  },
+  "filter-brightness": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "CSS filter has no native mapping"
+    ],
+    "similarity": 0.998
+  },
+  "filter-drop-shadow": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "CSS filter has no native mapping"
+    ],
+    "similarity": 0.973
+  },
+  "filter-grayscale": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "CSS filter has no native mapping"
+    ],
+    "similarity": 0.997
+  },
+  "filter-hue-rotate": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "CSS filter has no native mapping"
+    ],
+    "similarity": 0.996
+  },
+  "flip-with-text": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "CSS flip mirrors text but PowerPoint keeps shape text readable"
+    ],
+    "similarity": 0.997
+  },
+  "layered-backgrounds": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "background-blend-mode has no native fill-overlay mapping"
+    ],
+    "similarity": 0.996
+  },
+  "mask-linear-fade": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "CSS mask has no native mapping"
+    ],
+    "similarity": 0.998
+  },
+  "mask-radial": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "CSS mask has no native mapping"
+    ],
+    "similarity": 0.999
+  },
+  "mix-blend-multiply": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "mix-blend-mode has no native mapping"
+    ],
+    "similarity": 0.902
+  },
+  "perspective-rotate-y": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "skew/perspective/shear transform has no native mapping"
+    ],
+    "similarity": 0.998
+  },
+  "radial-gradient-ellipse": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "gradient has no native mapping (conic or layered)"
+    ],
+    "similarity": 0.996
+  },
+  "repeating-gradient": {
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.998
+  },
+  "skew": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "skew/perspective/shear transform has no native mapping"
+    ],
+    "similarity": 0.997
+  },
+  "svg-blur-filter": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "SVG custom geometry paint cannot map natively: SVG CSS filter has no native custom-geometry mapping"
+    ],
+    "similarity": 0.998
+  },
+  "svg-dash-array": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "SVG custom geometry paint cannot map natively: SVG custom dash array has no native mapping"
+    ],
+    "similarity": 0.999
+  },
+  "svg-gradient-fill": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "SVG custom geometry paint cannot map natively: SVG fill paint has no native mapping"
+    ],
+    "similarity": 0.998
+  },
+  "svg-multi-path": {
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "SVG could not be converted to custom geometry; rasterised"
+    ],
+    "similarity": 0.998
+  },
+  "svg-turbulence": {
+    "inherent": true,
+    "non_native": 1,
+    "reasons": [
+      "SVG could not be converted to custom geometry; rasterised"
+    ],
+    "similarity": 0.998
+  },
+  "text-gradient-clip": {
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.542
+  },
+  "text-shadow": {
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.979
+  },
+  "text-stroke": {
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.986
+  }
+}

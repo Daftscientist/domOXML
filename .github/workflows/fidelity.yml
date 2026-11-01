@@ -58,6 +58,10 @@ jobs:
           uv run python scripts/capability_check.py
           --require-backend
           --out out/capabilities
+      - name: Check the raster ledger
+        if: always()
+        id: raster_ledger
+        run: uv run python scripts/raster_ledger.py --check
       - name: Run representative external PPTX round trips
         if: always()
         id: real_decks
@@ -82,6 +86,7 @@ jobs:
           FIDELITY_OUTCOME: ${{ steps.fidelity.outcome }}
           CAPABILITY_OUTCOME: ${{ steps.capabilities.outcome }}
           REAL_DECK_OUTCOME: ${{ steps.real_decks.outcome }}
+          RASTER_LEDGER_OUTCOME: ${{ steps.raster_ledger.outcome }}
         run: |
           python - <<'PY'
           import os
@@ -92,6 +97,7 @@ jobs:
           text += f"\n- Fidelity outcome: {os.environ['FIDELITY_OUTCOME']}\n"
           text += f"- Capability outcome: {os.environ['CAPABILITY_OUTCOME']}\n"
           text += f"- Real-deck outcome: {os.environ['REAL_DECK_OUTCOME']}\n"
+          text += f"- Raster ledger outcome: {os.environ['RASTER_LEDGER_OUTCOME']}\n"
           text += f"- Artifacts and logs: {os.environ['RUN_URL']}\n"
           Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(text)
           with Path(os.environ["GITHUB_OUTPUT"]).open("a") as fh:

@@ -348,6 +348,54 @@ def probe_gradients() -> Path:
     return sheet("gradients", render(_deck("lab_gradients", build), graph=_GRAPH))
 
 
+def probe_text_fill() -> Path:
+    """Run-level fills, outlines and shadows (gradient text, text stroke, text-shadow)."""
+    grad = (
+        '<a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:srgbClr val="CC2200"/></a:gs>'
+        '<a:gs pos="100000"><a:srgbClr val="0088FF"/></a:gs></a:gsLst><a:lin ang="0" scaled="0"/>'
+        "</a:gradFill>"
+    )
+
+    def outline(colour: str, width: int) -> str:
+        return f'<a:ln w="{width}"><a:solidFill><a:srgbClr val="{colour}"/></a:solidFill></a:ln>'
+
+    cases = [
+        ("solid", '<a:solidFill><a:srgbClr val="CC2200"/></a:solidFill>'),
+        ("gradient fill", grad),
+        ("outline only", outline("CC2200", 25400) + "<a:noFill/>"),
+        ("gradient + outline", outline("000000", 12700) + grad),
+        (
+            "text shadow",
+            '<a:solidFill><a:srgbClr val="CC2200"/></a:solidFill>'
+            '<a:effectLst><a:outerShdw blurRad="76200" dist="50800" dir="2700000" algn="tl" '
+            'rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="40000"/></a:srgbClr>'
+            "</a:outerShdw></a:effectLst>",
+        ),
+    ]
+
+    def build(_: PresentationType, slide: Slide) -> None:
+        for index, (label, markup) in enumerate(cases):
+            x, y = 0.4 + (index % 2) * 6.4, 0.4 + (index // 2) * 2.4
+            box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(6.0), Inches(1.5))
+            box.text_frame.text = "Gradient"
+            run = box.text_frame.paragraphs[0].runs[0]
+            run.font.size = Pt(60)
+            run.font.bold = True
+            properties = run._r.get_or_add_rPr()
+            for old in list(properties):
+                properties.remove(old)
+            for child in reversed(list(_xml_all(markup))):
+                properties.insert(0, child)
+            _caption(slide, label, x, y + 1.55)
+
+    return sheet("text-fill", render(_deck("lab_text_fill", build), graph=_GRAPH))
+
+
+def _xml_all(markup: str) -> list[Any]:
+    wrapper = etree.fromstring(f'<r xmlns:a="{A}" xmlns:p="{P}">{markup}</r>')
+    return list(wrapper)
+
+
 def probe_blur_edges() -> Path:
     """``a:blur`` on a picture, rotated and rounded, with ``grow`` 0 and 1 (backdrop-filter)."""
     image = stripes()
@@ -467,6 +515,7 @@ PROBES: dict[str, Callable[[], Path]] = {
     "colour": probe_colour,
     "scene3d": probe_scene3d,
     "gradients": probe_gradients,
+    "text-fill": probe_text_fill,
     "blur-edges": probe_blur_edges,
     "blur-scale": probe_blur_scale,
 }

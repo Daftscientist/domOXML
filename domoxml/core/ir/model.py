@@ -396,6 +396,15 @@ class Hyperlink(BaseModel):
     slide_index: int | None = Field(default=None, ge=0)
 
 
+class TextOutline(BaseModel):
+    """A text outline (``a:rPr/a:ln``) from CSS ``-webkit-text-stroke``."""
+
+    model_config = _FROZEN
+
+    width_pt: float = Field(gt=0)
+    color: Rgba
+
+
 class TextRun(BaseModel):
     """A run of text with its resolved typography.
 
@@ -417,6 +426,11 @@ class TextRun(BaseModel):
     letter_spacing_pt: float = 0.0
     color: Rgba = Rgba(r=0, g=0, b=0)
     hyperlink: Hyperlink | None = None
+    # Run-level effects PowerPoint paints natively. ``gradient`` replaces the solid fill (``color``
+    # then holds its first stop, which is what a renderer that ignores gradient text shows).
+    gradient: GradientFill | None = None
+    outline: TextOutline | None = None
+    shadow: Shadow | None = None
 
 
 class LineSpacing(BaseModel):

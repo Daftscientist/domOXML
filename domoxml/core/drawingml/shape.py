@@ -403,6 +403,15 @@ def _hyperlink_xml(hyperlink: Hyperlink | None, rid: str | None) -> str:
     return f'<a:hlinkClick r:id="{rid}"/>'
 
 
+def _text_shadow_xml(shadow: Shadow) -> str:
+    """``a:outerShdw`` for one text run: no shape to spread over, so only offset and blur."""
+    direction = round((shadow.direction_deg % 360.0) * 60_000)
+    return (
+        f'<a:outerShdw blurRad="{shadow.blur_emu}" dist="{shadow.distance_emu}" dir="{direction}" '
+        f'algn="tl" rotWithShape="0">{_srgb(shadow.color)}</a:outerShdw>'
+    )
+
+
 def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:
     rid = hyperlink_rid(run.hyperlink) if run.hyperlink is not None else None
     decorations = _underline_attr(run.underline)
@@ -414,10 +423,22 @@ def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:
         # a:rPr spc is in 1/100 pt (ECMA-376 §21.1.2.3.9), may be negative.
         decorations += f' spc="{round(run.letter_spacing_pt * 100)}"'
     bold = "" if run.bold_inherited else f' b="{1 if run.bold else 0}"'
+    # Schema order inside a:rPr: outline, fill, effects, then font and link.
+    outline = (
+        f'<a:ln w="{pt_to_emu(run.outline.width_pt)}">{_solid_fill(run.outline.color)}</a:ln>'
+        if run.outline is not None
+        else ""
+    )
+    fill = (
+        _gradient_fill(run.gradient, opacity=run.color.a)
+        if run.gradient is not None
+        else _solid_fill(run.color)
+    )
+    shadow = f"<a:effectLst>{_text_shadow_xml(run.shadow)}</a:effectLst>" if run.shadow else ""
     rpr = (
         f'<a:rPr lang="en-US" sz="{round(run.size_pt * 100)}"{bold} '
         f'i="{1 if run.italic else 0}"{decorations} dirty="0">'
-        f"{_solid_fill(run.color)}"
+        f"{outline}{fill}{shadow}"
         f"{_hyperlink_xml(run.hyperlink, rid)}"
         f'<a:latin typeface="{_attr(run.font_family)}"/></a:rPr>'
     )

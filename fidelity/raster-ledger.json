@@ -1,5 +1,6 @@
 {
   "backdrop-saturate": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -8,6 +9,7 @@
     "similarity": 0.995
   },
   "box-reflect": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -16,6 +18,7 @@
     "similarity": 0.979
   },
   "canvas": {
+    "dropped": false,
     "inherent": true,
     "non_native": 1,
     "reasons": [
@@ -24,6 +27,7 @@
     "similarity": 1.0
   },
   "clip-path-circle": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -32,6 +36,7 @@
     "similarity": 0.987
   },
   "clip-path-inset": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -40,6 +45,7 @@
     "similarity": 0.99
   },
   "clip-path-polygon-custom": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -48,6 +54,7 @@
     "similarity": 0.989
   },
   "clipped-by-ancestor": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -56,6 +63,7 @@
     "similarity": 0.99
   },
   "conic-gradient": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -64,6 +72,7 @@
     "similarity": 0.987
   },
   "filter-brightness": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -72,6 +81,7 @@
     "similarity": 0.985
   },
   "filter-drop-shadow": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -80,6 +90,7 @@
     "similarity": 0.878
   },
   "filter-grayscale": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -88,6 +99,7 @@
     "similarity": 0.984
   },
   "filter-hue-rotate": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -96,6 +108,7 @@
     "similarity": 0.981
   },
   "flip-with-text": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -104,6 +117,7 @@
     "similarity": 0.978
   },
   "layered-backgrounds": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -112,6 +126,7 @@
     "similarity": 0.985
   },
   "mask-linear-fade": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -120,6 +135,7 @@
     "similarity": 0.99
   },
   "mask-radial": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -128,6 +144,7 @@
     "similarity": 0.992
   },
   "mix-blend-multiply": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -136,6 +153,7 @@
     "similarity": 0.792
   },
   "perspective-rotate-y": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -144,6 +162,7 @@
     "similarity": 0.986
   },
   "radial-gradient-ellipse": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -152,12 +171,14 @@
     "similarity": 0.981
   },
   "repeating-gradient": {
+    "dropped": false,
     "inherent": false,
     "non_native": 0,
     "reasons": [],
     "similarity": 0.996
   },
   "skew": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -166,6 +187,7 @@
     "similarity": 0.983
   },
   "svg-blur-filter": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -174,6 +196,7 @@
     "similarity": 0.993
   },
   "svg-dash-array": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -182,6 +205,7 @@
     "similarity": 0.996
   },
   "svg-gradient-fill": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -190,6 +214,7 @@
     "similarity": 0.99
   },
   "svg-multi-path": {
+    "dropped": false,
     "inherent": false,
     "non_native": 1,
     "reasons": [
@@ -198,6 +223,7 @@
     "similarity": 0.994
   },
   "svg-turbulence": {
+    "dropped": false,
     "inherent": true,
     "non_native": 1,
     "reasons": [
@@ -206,18 +232,21 @@
     "similarity": 0.994
   },
   "text-gradient-clip": {
+    "dropped": false,
     "inherent": false,
     "non_native": 0,
     "reasons": [],
-    "similarity": 0.341
+    "similarity": 0.877
   },
   "text-shadow": {
+    "dropped": false,
     "inherent": false,
     "non_native": 0,
     "reasons": [],
     "similarity": 0.891
   },
   "text-stroke": {
+    "dropped": false,
     "inherent": false,
     "non_native": 0,
     "reasons": [],

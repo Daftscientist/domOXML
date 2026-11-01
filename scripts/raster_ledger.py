@@ -52,8 +52,15 @@ def load_cases() -> dict[str, tuple[str, bool]]:
     }
 
 
+def load_expectations() -> dict[str, str]:
+    """Cases whose text effect must reach the IR, by case name (``expect_run`` in the fixtures)."""
+    raw: dict[str, dict[str, object]] = json.loads(CASES_FILE.read_text())
+    return {name: str(case["expect_run"]) for name, case in raw.items() if "expect_run" in case}
+
+
 async def measure() -> dict[str, dict[str, object]]:
     results: dict[str, dict[str, object]] = {}
+    expectations = load_expectations()
     async with BrowserSession() as session:
         for name, (html, inherent) in load_cases().items():
             page = compose_page(html, css=None, theme=Theme(), width_px=1280, height_px=720)
@@ -61,7 +68,16 @@ async def measure() -> dict[str, dict[str, object]]:
             rasters = [
                 item for item in extracted.coverage if item.representation.value not in NATIVE
             ]
+            expected = expectations.get(name)
+            dropped = expected is not None and not any(
+                getattr(run, expected, None) is not None
+                for shape in extracted.slide.shapes
+                if shape.text is not None
+                for paragraph in shape.text.paragraphs
+                for run in paragraph.runs
+            )
             results[name] = {
+                "dropped": dropped,
                 "non_native": len(rasters),
                 "inherent": inherent,
                 "reasons": sorted({item.reason or item.representation.value for item in rasters})[

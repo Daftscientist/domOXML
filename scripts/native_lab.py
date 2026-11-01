@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # pyright: basic
+# ruff: noqa: E501
 # A dev tool built on python-pptx and lxml, which are only partly typed; ruff still applies.
 """Native-recipe lab: ask LibreOffice and real PowerPoint what an OOXML feature actually does.
 
@@ -543,6 +544,198 @@ def probe_blur_scale() -> Path:
     return report
 
 
+_SVG = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="220" viewBox="0 0 400 220">'
+    b'<defs><linearGradient id="g"><stop offset="0" stop-color="#0a0"/>'
+    b'<stop offset="1" stop-color="#0cf"/></linearGradient></defs>'
+    b'<rect width="400" height="220" fill="url(#g)"/>'
+    b'<circle cx="200" cy="110" r="70" fill="none" stroke="#fff" stroke-width="12" '
+    b'stroke-dasharray="20 10"/><path d="M40 190 L120 150 L200 190" stroke="#000" fill="none"/>'
+    b"</svg>"
+)
+_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def _part(slide: Slide, uri: str, content_type: str, blob: bytes, relationship: str) -> str:
+    """Add a raw package part to ``slide`` and return the relationship id that points at it."""
+    from pptx.opc.package import Part
+    from pptx.opc.packuri import PackURI
+
+    part = Part(PackURI(uri), content_type, slide.part.package, blob)
+    return slide.part.relate_to(part, relationship)
+
+
+def probe_svg_blip() -> Path:
+    """Does real PowerPoint draw the SVG in ``asvg:svgBlip`` (green) or the PNG fallback (red)?"""
+
+    def build(_: PresentationType, slide: Slide) -> None:
+        fallback = Image.new("RGB", (400, 220), (200, 30, 30))
+        picture = slide.shapes.add_picture(
+            BytesIO(_png(fallback)), Inches(0.5), Inches(0.5), Inches(5), Inches(2.75)
+        )
+        rid = _part(slide, "/ppt/media/probe.svg", "image/svg+xml", _SVG, f"{_REL}/image")
+        blip = picture._element.find(".//" + _q(A, "blip"))
+        blip.append(
+            etree.fromstring(
+                f'<a:extLst xmlns:a="{A}"><a:ext uri="{{96DAC541-7B7A-43D3-8B79-37D633B846F1}}">'
+                '<asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main"'
+                f' xmlns:r="{_REL}" r:embed="{rid}"/></a:ext></a:extLst>'
+            )
+        )
+        _caption(slide, "svgBlip: green gradient = SVG used, red = PNG fallback", 0.5, 3.4, 6)
+
+    return sheet("svg-blip", render(_deck("lab_svg_blip", build), graph=_GRAPH))
+
+
+def probe_online_video() -> Path:
+    """Does Office accept an online-video picture (poster + external video link)?"""
+
+    def build(_: PresentationType, slide: Slide) -> None:
+        poster = Image.new("RGB", (400, 220), (30, 30, 60))
+        ImageDraw.Draw(poster).polygon([(170, 70), (170, 150), (240, 110)], fill="white")
+        picture = slide.shapes.add_picture(
+            BytesIO(_png(poster)), Inches(0.5), Inches(0.5), Inches(5), Inches(2.75)
+        )
+        rid = slide.part.rels.get_or_add_ext_rel(
+            f"{_REL}/video", "https://www.youtube.com/embed/dQw4w9WgXcQ?feature=oembed"
+        )
+        non_visual = picture._element.find(".//" + _q(P, "nvPr"))
+        non_visual.append(
+            etree.fromstring(f'<a:videoFile xmlns:a="{A}" xmlns:r="{_REL}" r:link="{rid}"/>')
+        )
+        _caption(slide, "online video poster (accepted = Office loads it)", 0.5, 3.4, 6)
+
+    return sheet("online-video", render(_deck("lab_online_video", build), graph=_GRAPH))
+
+
+def _glb_triangle() -> bytes:
+    """The smallest valid binary glTF: one coloured triangle."""
+    import struct
+
+    positions = struct.pack("<9f", -1, -1, 0, 1, -1, 0, 0, 1, 0)
+    document = {
+        "asset": {"version": "2.0"},
+        "scene": 0,
+        "scenes": [{"nodes": [0]}],
+        "nodes": [{"mesh": 0}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "material": 0}]}],
+        "materials": [{"pbrMetallicRoughness": {"baseColorFactor": [0.2, 0.6, 1.0, 1.0]}}],
+        "accessors": [
+            {
+                "bufferView": 0,
+                "componentType": 5126,
+                "count": 3,
+                "type": "VEC3",
+                "min": [-1, -1, 0],
+                "max": [1, 1, 0],
+            }
+        ],
+        "bufferViews": [{"buffer": 0, "byteLength": len(positions)}],
+        "buffers": [{"byteLength": len(positions)}],
+    }
+    text = json.dumps(document).encode()
+    text += b" " * (-len(text) % 4)
+    body = struct.pack("<II", len(text), 0x4E4F534A) + text
+    body += struct.pack("<II", len(positions), 0x004E4942) + positions
+    return struct.pack("<III", 0x46546C67, 2, 12 + len(body)) + body
+
+
+def probe_model3d() -> Path:
+    """Does Office accept a 3D model part (GLB) with a PNG fallback?"""
+
+    def build(_: PresentationType, slide: Slide) -> None:
+        glb = _part(
+            slide,
+            "/ppt/media/probe.glb",
+            "model/gltf.binary",
+            _glb_triangle(),
+            "http://schemas.microsoft.com/office/2017/06/relationships/model3d",
+        )
+        poster = Image.new("RGB", (400, 220), (30, 90, 200))
+        rid = _part(slide, "/ppt/media/poster.png", "image/png", _png(poster), f"{_REL}/image")
+        cx, cy = Inches(5), Inches(2.75)
+        slide.shapes._spTree.append(
+            etree.fromstring(
+                '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+                f' xmlns:a="{A}" xmlns:p="{P}" xmlns:r="{_REL}">'
+                '<mc:Choice xmlns:am3d="http://schemas.microsoft.com/office/drawing/2017/model3d" Requires="am3d">'
+                '<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="50" name="3D Model"/>'
+                '<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/>'
+                f'</p:nvGraphicFramePr><p:xfrm><a:off x="{Inches(0.5)}" y="{Inches(0.5)}"/>'
+                f'<a:ext cx="{cx}" cy="{cy}"/></p:xfrm><a:graphic>'
+                '<a:graphicData uri="http://schemas.microsoft.com/office/drawing/2017/model3d">'
+                f'<am3d:model3d r:embed="{glb}"><am3d:spPr><a:xfrm><a:off x="0" y="0"/>'
+                f'<a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+                '</am3d:spPr><am3d:camera><am3d:pos x="0" y="0" z="4000000"/>'
+                '<am3d:up dx="0" dy="36000000" dz="0"/><am3d:lookAt x="0" y="0" z="0"/>'
+                '<am3d:perspective fov="2700000"/></am3d:camera><am3d:trans>'
+                '<am3d:meterPerModelUnit n="1000000" d="1000000"/><am3d:preTrans dx="0" dy="0" dz="0"/>'
+                '<am3d:scale><am3d:sx n="1000000" d="1000000"/><am3d:sy n="1000000" d="1000000"/>'
+                '<am3d:sz n="1000000" d="1000000"/></am3d:scale><am3d:rot ax="0" ay="0" az="0"/>'
+                '<am3d:postTrans dx="0" dy="0" dz="0"/></am3d:trans>'
+                f'<am3d:raster rName="Office3DRenderer" rVer="16.0.8326"><am3d:blip r:embed="{rid}"/>'
+                '</am3d:raster><am3d:objViewport viewportSz="0"/></am3d:model3d>'
+                "</a:graphicData></a:graphic></p:graphicFrame></mc:Choice><mc:Fallback>"
+                '<p:pic><p:nvPicPr><p:cNvPr id="51" name="3D Model"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>'
+                f'<p:blipFill><a:blip r:embed="{rid}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+                f'<p:spPr><a:xfrm><a:off x="{Inches(0.5)}" y="{Inches(0.5)}"/><a:ext cx="{cx}" cy="{cy}"/>'
+                '</a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>'
+                "</mc:Fallback></mc:AlternateContent>"
+            )
+        )
+        _caption(slide, "3D model part (accepted = Office loads it)", 0.5, 3.4, 6)
+
+    return sheet("model3d", render(_deck("lab_model3d", build), graph=_GRAPH))
+
+
+def probe_web_viewer() -> Path:
+    """Does Office accept a web-extension (Web Viewer add-in) frame with a snapshot?"""
+    we = "http://schemas.microsoft.com/office/webextensions/webextension/2010/11"
+
+    def build(_: PresentationType, slide: Slide) -> None:
+        from pptx.opc.package import Part
+        from pptx.opc.packuri import PackURI
+
+        package = slide.part.package
+        snapshot = Part(
+            PackURI("/ppt/media/snap.png"),
+            "image/png",
+            package,
+            _png(Image.new("RGB", (400, 220), "tan")),
+        )
+        extension = Part(
+            PackURI("/ppt/webextensions/webextension1.xml"),
+            "application/vnd.ms-office.webextension+xml",
+            package,
+            b"",
+        )
+        embed = extension.relate_to(snapshot, f"{_REL}/image")
+        extension._blob = (
+            f'<we:webextension xmlns:we="{we}" xmlns:r="{_REL}" '
+            'id="{6A1A2F8C-0C5E-4E7B-9E36-1B6C1D8C2A10}">'
+            '<we:reference id="WA104295837" version="1.0.0.0" store="en-US" storeType="OMEX"/>'
+            '<we:alternateReferences/><we:properties><we:property name="url" '
+            'value="&quot;https://example.com&quot;"/></we:properties><we:bindings/>'
+            f'<we:snapshot r:embed="{embed}"/></we:webextension>'
+        ).encode()
+        rid = slide.part.relate_to(
+            extension, "http://schemas.microsoft.com/office/2011/relationships/webextension"
+        )
+        slide.shapes._spTree.append(
+            etree.fromstring(
+                f'<p:graphicFrame xmlns:a="{A}" xmlns:p="{P}" xmlns:r="{_REL}">'
+                '<p:nvGraphicFramePr><p:cNvPr id="60" name="Web Viewer"/><p:cNvGraphicFramePr/><p:nvPr/>'
+                f'</p:nvGraphicFramePr><p:xfrm><a:off x="{Inches(0.5)}" y="{Inches(0.5)}"/>'
+                f'<a:ext cx="{Inches(5)}" cy="{Inches(2.75)}"/></p:xfrm><a:graphic>'
+                f'<a:graphicData uri="{we}"><we:webextensionref xmlns:we="{we}" r:id="{rid}"/>'
+                "</a:graphicData></a:graphic></p:graphicFrame>"
+            )
+        )
+        _caption(slide, "web extension frame (accepted = Office loads it)", 0.5, 3.4, 6)
+
+    return sheet("web-viewer", render(_deck("lab_web_viewer", build), graph=_GRAPH))
+
+
 PROBES: dict[str, Callable[[], Path]] = {
     "colour": probe_colour,
     "scene3d": probe_scene3d,
@@ -551,6 +744,10 @@ PROBES: dict[str, Callable[[], Path]] = {
     "text-fill": probe_text_fill,
     "blur-edges": probe_blur_edges,
     "blur-scale": probe_blur_scale,
+    "svg-blip": probe_svg_blip,
+    "online-video": probe_online_video,
+    "model3d": probe_model3d,
+    "web-viewer": probe_web_viewer,
 }
 _GRAPH = True
 

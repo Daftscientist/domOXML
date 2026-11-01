@@ -5,7 +5,7 @@
     "reasons": [
       "backdrop-filter blur baked as a layer beneath the native glass"
     ],
-    "similarity": 1.0
+    "similarity": 0.995
   },
   "box-reflect": {
     "inherent": false,
@@ -13,7 +13,7 @@
     "reasons": [
       "CSS box reflection has no native mapping"
     ],
-    "similarity": 0.996
+    "similarity": 0.979
   },
   "canvas": {
     "inherent": true,
@@ -29,7 +29,7 @@
     "reasons": [
       "clip-path has no native mapping"
     ],
-    "similarity": 0.997
+    "similarity": 0.987
   },
   "clip-path-inset": {
     "inherent": false,
@@ -37,7 +37,7 @@
     "reasons": [
       "clip-path has no native mapping"
     ],
-    "similarity": 0.998
+    "similarity": 0.99
   },
   "clip-path-polygon-custom": {
     "inherent": false,
@@ -45,7 +45,7 @@
     "reasons": [
       "clip-path polygon does not match any known preset geometry"
     ],
-    "similarity": 0.997
+    "similarity": 0.989
   },
   "clipped-by-ancestor": {
     "inherent": false,
@@ -53,7 +53,7 @@
     "reasons": [
       "clipped by an ancestor's overflow has no native mapping"
     ],
-    "similarity": 0.998
+    "similarity": 0.99
   },
   "conic-gradient": {
     "inherent": false,
@@ -61,7 +61,7 @@
     "reasons": [
       "gradient has no native mapping (conic or layered)"
     ],
-    "similarity": 0.997
+    "similarity": 0.987
   },
   "filter-brightness": {
     "inherent": false,
@@ -69,7 +69,7 @@
     "reasons": [
       "CSS filter has no native mapping"
     ],
-    "similarity": 0.998
+    "similarity": 0.985
   },
   "filter-drop-shadow": {
     "inherent": false,
@@ -77,7 +77,7 @@
     "reasons": [
       "CSS filter has no native mapping"
     ],
-    "similarity": 0.973
+    "similarity": 0.878
   },
   "filter-grayscale": {
     "inherent": false,
@@ -85,7 +85,7 @@
     "reasons": [
       "CSS filter has no native mapping"
     ],
-    "similarity": 0.997
+    "similarity": 0.984
   },
   "filter-hue-rotate": {
     "inherent": false,
@@ -93,7 +93,7 @@
     "reasons": [
       "CSS filter has no native mapping"
     ],
-    "similarity": 0.996
+    "similarity": 0.981
   },
   "flip-with-text": {
     "inherent": false,
@@ -101,7 +101,7 @@
     "reasons": [
       "CSS flip mirrors text but PowerPoint keeps shape text readable"
     ],
-    "similarity": 0.997
+    "similarity": 0.978
   },
   "layered-backgrounds": {
     "inherent": false,
@@ -109,7 +109,7 @@
     "reasons": [
       "background-blend-mode has no native fill-overlay mapping"
     ],
-    "similarity": 0.996
+    "similarity": 0.985
   },
   "mask-linear-fade": {
     "inherent": false,
@@ -117,7 +117,7 @@
     "reasons": [
       "CSS mask has no native mapping"
     ],
-    "similarity": 0.998
+    "similarity": 0.99
   },
   "mask-radial": {
     "inherent": false,
@@ -125,7 +125,7 @@
     "reasons": [
       "CSS mask has no native mapping"
     ],
-    "similarity": 0.999
+    "similarity": 0.992
   },
   "mix-blend-multiply": {
     "inherent": false,
@@ -133,7 +133,7 @@
     "reasons": [
       "mix-blend-mode has no native mapping"
     ],
-    "similarity": 0.902
+    "similarity": 0.792
   },
   "perspective-rotate-y": {
     "inherent": false,
@@ -141,7 +141,7 @@
     "reasons": [
       "skew/perspective/shear transform has no native mapping"
     ],
-    "similarity": 0.998
+    "similarity": 0.986
   },
   "radial-gradient-ellipse": {
     "inherent": false,
@@ -149,13 +149,13 @@
     "reasons": [
       "gradient has no native mapping (conic or layered)"
     ],
-    "similarity": 0.996
+    "similarity": 0.981
   },
   "repeating-gradient": {
     "inherent": false,
     "non_native": 0,
     "reasons": [],
-    "similarity": 0.998
+    "similarity": 0.996
   },
   "skew": {
     "inherent": false,
@@ -163,7 +163,7 @@
     "reasons": [
       "skew/perspective/shear transform has no native mapping"
     ],
-    "similarity": 0.997
+    "similarity": 0.983
   },
   "svg-blur-filter": {
     "inherent": false,
@@ -171,7 +171,7 @@
     "reasons": [
       "SVG custom geometry paint cannot map natively: SVG CSS filter has no native custom-geometry mapping"
     ],
-    "similarity": 0.998
+    "similarity": 0.993
   },
   "svg-dash-array": {
     "inherent": false,
@@ -179,7 +179,7 @@
     "reasons": [
       "SVG custom geometry paint cannot map natively: SVG custom dash array has no native mapping"
     ],
-    "similarity": 0.999
+    "similarity": 0.996
   },
   "svg-gradient-fill": {
     "inherent": false,
@@ -187,7 +187,7 @@
     "reasons": [
       "SVG custom geometry paint cannot map natively: SVG fill paint has no native mapping"
     ],
-    "similarity": 0.998
+    "similarity": 0.99
   },
   "svg-multi-path": {
     "inherent": false,
@@ -195,7 +195,7 @@
     "reasons": [
       "SVG could not be converted to custom geometry; rasterised"
     ],
-    "similarity": 0.998
+    "similarity": 0.994
   },
   "svg-turbulence": {
     "inherent": true,
@@ -203,24 +203,24 @@
     "reasons": [
       "SVG could not be converted to custom geometry; rasterised"
     ],
-    "similarity": 0.998
+    "similarity": 0.994
   },
   "text-gradient-clip": {
     "inherent": false,
     "non_native": 0,
     "reasons": [],
-    "similarity": 0.542
+    "similarity": 0.341
   },
   "text-shadow": {
     "inherent": false,
     "non_native": 0,
     "reasons": [],
-    "similarity": 0.979
+    "similarity": 0.891
   },
   "text-stroke": {
     "inherent": false,
     "non_native": 0,
     "reasons": [],
-    "similarity": 0.986
+    "similarity": 0.927
   }
 }

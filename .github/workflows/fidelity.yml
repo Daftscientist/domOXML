@@ -17,6 +17,10 @@ on:
       - "scripts/capability_check.py"
       - "scripts/fidelity_check.py"
       - "scripts/real_deck_check.py"
+      - "scripts/raster_ledger.py"
+      - "fidelity/raster-cases.json"
+      - "fidelity/raster-ledger.json"
+      - "domoxml/core/html.py"
       - ".github/workflows/fidelity.yml"
   workflow_dispatch:
 

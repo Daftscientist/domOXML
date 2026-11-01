@@ -33,7 +33,8 @@ from domoxml.types import OutputFormat, Theme
 FIDELITY = Path(__file__).resolve().parent.parent / "fidelity"
 BASELINE = FIDELITY / "raster-ledger.json"
 CASES_FILE = FIDELITY / "raster-cases.json"
-NATIVE = {"native", "decomposed", "layered"}
+# A layered output holds raster content (types.CoverageItem requires a raster area), so it counts.
+NATIVE = {"native", "decomposed"}
 LOOKS_RIGHT = 0.97
 LOOK_TOLERANCE = 0.02
 BOX = "position:absolute;left:200px;top:150px;width:360px;height:220px;"
@@ -79,7 +80,52 @@ async def similarity(html: str) -> float:
     assert rendered.pptx is not None and rendered.pngs
     candidate = render_pptx_to_pngs(rendered.pptx)[0]
     report = compare(rendered.pngs[0], candidate)
-    return round(min(report.similarity, report.regional_similarity), 3)
+    return round(min(report.similarity, report.regional_similarity, report.focused_similarity), 3)
+
+
+def compare_to_baseline(
+    results: dict[str, dict[str, object]], baseline: dict[str, dict[str, object]]
+) -> list[str]:
+    """Everything wrong relative to the baseline: regressions, and any case it does not cover."""
+    problems: list[str] = []
+    for name in sorted(set(results) - set(baseline)):
+        problems.append(f"{name}: no baseline entry (run --update after reviewing it)")
+    for name in sorted(set(baseline) - set(results)):
+        problems.append(f"{name}: baseline entry has no fixture")
+    for name, result in results.items():
+        before = baseline.get(name)
+        if before is None:
+            continue
+        old_count, old_look = before.get("non_native"), before.get("similarity")
+        count, look = result["non_native"], result["similarity"]
+        if not isinstance(old_count, int) or not isinstance(old_look, float):
+            problems.append(f"{name}: baseline entry is incomplete")
+            continue
+        if isinstance(count, int) and count > old_count:
+            problems.append(f"{name}: {count} non-native outputs, baseline {old_count}")
+        if isinstance(look, float) and look < old_look - LOOK_TOLERANCE:
+            problems.append(f"{name}: looks worse ({look:.3f}, baseline {old_look:.3f})")
+        if result.get("dropped"):
+            problems.append(f"{name}: its text effect is missing from the IR")
+    return problems
+
+
+def improved(
+    results: dict[str, dict[str, object]], baseline: dict[str, dict[str, object]]
+) -> dict[str, dict[str, object]]:
+    """The baseline with each metric moved only in the better direction."""
+    merged: dict[str, dict[str, object]] = {}
+    for name, result in results.items():
+        entry = dict(result)
+        before = baseline.get(name)
+        if before is not None:
+            old_count, old_look = before.get("non_native"), before.get("similarity")
+            if isinstance(old_count, int) and isinstance(entry["non_native"], int):
+                entry["non_native"] = min(old_count, entry["non_native"])
+            if isinstance(old_look, float) and isinstance(entry["similarity"], float):
+                entry["similarity"] = max(old_look, entry["similarity"])
+        merged[name] = entry
+    return merged
 
 
 def main() -> int:
@@ -94,31 +140,28 @@ def main() -> int:
         json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
     )
     width = max(map(len, results))
-    worse: list[str] = []
     for name, result in results.items():
-        before = baseline.get(name, {}).get("non_native")
-        before_look = baseline.get(name, {}).get("similarity")
-        now = result["non_native"]
-        look = result["similarity"]
-        mark = "native" if now == 0 else ("inherent" if result["inherent"] else "RASTER")
+        count, look = result["non_native"], result["similarity"]
+        mark = "native" if count == 0 else ("inherent" if result["inherent"] else "RASTER")
         flag = "  LOOKS WRONG" if isinstance(look, float) and look < LOOKS_RIGHT else ""
-        note = "" if before is None or before == now else f"  (baseline {before})"
-        print(f"{name:{width}}  {now}  {mark:8}  look {look:.3f}{flag}{note}")
-        if isinstance(before, int) and isinstance(now, int) and now > before:
-            worse.append(name)
-        if (
-            isinstance(before_look, float)
-            and isinstance(look, float)
-            and look < before_look - LOOK_TOLERANCE
-        ):
-            worse.append(f"{name} (looks worse)")
+        if result.get("dropped"):
+            flag += "  DROPPED (effect missing from the IR)"
+        print(f"{name:{width}}  {count}  {mark:8}  look {look:.3f}{flag}")
     total = sum(int(r["non_native"]) for r in results.values() if not r["inherent"])  # type: ignore[call-overload]
     print(f"\nnon-native outputs on features that have a native form: {total}")
+    problems = compare_to_baseline(results, baseline)
     if arguments.update:
-        BASELINE.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
+        regressions = [p for p in problems if "no baseline entry" not in p]
+        if regressions:
+            print("refusing to record a regression:", *regressions, sep="\n  ", file=sys.stderr)
+            return 1
+        BASELINE.write_text(
+            json.dumps(improved(results, baseline), indent=2, sort_keys=True) + "\n"
+        )
         print(f"wrote {BASELINE}")
-    if arguments.check and worse:
-        print("REGRESSED:", ", ".join(worse), file=sys.stderr)
+        return 0
+    if arguments.check and problems:
+        print("ledger check failed:", *problems, sep="\n  ", file=sys.stderr)
         return 1
     return 0
 

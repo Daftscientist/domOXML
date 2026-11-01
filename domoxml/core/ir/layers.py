@@ -208,6 +208,8 @@ def parse_radial(value: str | None, *, width_px: float, height_px: float) -> Rad
     fractions = _resolve_angles([(c, None if a is None else a * 360.0) for c, a in raw])
     if fractions is None:
         return None
+    if any(color.a < 1.0 for _, color in fractions):
+        return None  # stacked bands would compound the alpha; only opaque stops are exact
     return Radial(center, circle, extent, tuple((a / 360.0, c) for a, c in fractions))
 
 
@@ -236,7 +238,8 @@ def radial_bands(
     )
     stops = tuple((fraction * 360.0, color) for fraction, color in radial.stops)
     conic = Conic(0.0, (0.5, 0.5), stops)
-    facets: list[Wedge] = []
+    # Past the ending ellipse CSS keeps painting the last stop, so start from the whole box.
+    facets: list[Wedge] = [Wedge(tuple(window), radial.stops[-1][1])]
     for inner, outer in reversed(list(pairwise(edges))):
         outline = [
             (

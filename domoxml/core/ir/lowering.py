@@ -70,6 +70,8 @@ def filter_functions(node: RenderedNode) -> tuple[FilterFunction, ...]:
     functions = parse_filters(node.styles.get("filter"))
     if functions is None or not is_leaf(node) or not is_lowerable(functions):
         return ()
+    if "url(" in node.styles.get("backgroundImage", ""):
+        return ()  # a picture background would need its pixels filtered too
     return functions
 
 
@@ -137,7 +139,11 @@ def recolor_shape(shape: ShapeNode, functions: tuple[FilterFunction, ...]) -> Sh
 
 
 def _recolor_gradient(gradient: GradientFill, tone: Callable[[Rgba], Rgba]) -> GradientFill:
-    stops = tuple(stop.model_copy(update={"color": tone(stop.color)}) for stop in gradient.stops)
+    # Channel clamping bends the ramp between stops, so sample it finely before recolouring.
+    positions = sorted({stop.pos for stop in gradient.stops} | {i / 16 for i in range(17)})
+    stops = tuple(
+        GradientStop(pos=pos, color=tone(_sample(gradient.stops, pos))) for pos in positions
+    )
     return gradient.model_copy(update={"stops": stops})
 
 
@@ -205,7 +211,7 @@ def lower_mask(fill: Fill | None, node: RenderedNode) -> tuple[Fill | None, str 
     value = styles.get("maskImage", "none")
     if value in ("", "none"):
         return fill, None
-    mask = parse_gradient(value) if is_leaf(node) else None
+    mask = parse_gradient(value) if is_leaf(node) and _fill_only(node) else None
     if mask is None or any(
         styles.get(key, "") not in allowed for key, allowed in _MASK_DEFAULTS.items()
     ):
@@ -236,6 +242,17 @@ def lower_mask(fill: Fill | None, node: RenderedNode) -> tuple[Fill | None, str 
         )
         return fill.model_copy(update={"stops": folded}), None
     return fill, "CSS mask has no native mapping for this fill"
+
+
+def _fill_only(node: RenderedNode) -> bool:
+    """Whether the fill is all the node paints; a mask also fades its text, border and shadow."""
+    styles = node.styles
+    borders = any(
+        styles.get(f"border{side}Style", "none") not in ("none", "hidden")
+        and not styles.get(f"border{side}Width", "0px").startswith("0")
+        for side in ("Top", "Right", "Bottom", "Left")
+    )
+    return not node.text and not borders and styles.get("boxShadow", "none") in ("none", "")
 
 
 def _sample(stops: tuple[GradientStop, ...], position: float) -> Rgba:

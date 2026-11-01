@@ -2363,3 +2363,34 @@ def _layer_count(ir: SlideIR) -> int:
         for s in ir.shapes
         if s.provenance is not None and (s.provenance.role or "").startswith("layer-")
     )
+
+
+_BOX = "position:absolute;left:50px;top:50px;width:200px;height:100px;"
+
+
+@pytest.mark.parametrize(
+    "style",
+    [
+        "background:red;mask-image:linear-gradient(90deg,black,transparent)",
+        "background:radial-gradient(circle at 30% 40%,rgba(255,0,0,.5),rgba(0,0,255,.5))",
+        "background:linear-gradient(red,blue) 0 0/20px 20px,linear-gradient(blue,red)",
+        "background:conic-gradient(red,blue,red);transform:rotate(20deg)",
+        "background:url(data:image/gif;base64,R0lGODlhAQABAAAAACw=);filter:grayscale(1)",
+    ],
+)
+async def test_unsafe_lowerings_stay_raster(style: str) -> None:
+    text = "Hi" if "mask-image" in style else ""
+    ir = await _render_and_extract(f"<div style='{_BOX}{style}'>{text}</div>")
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_brightness_on_a_gradient_keeps_the_clamped_ramp() -> None:
+    ir = await _render_and_extract(
+        f"<div style='{_BOX}background:linear-gradient(90deg,#000,#fff);"
+        "filter:brightness(2)'></div>"
+    )
+
+    gradient = next(s.fill for s in ir.shapes if isinstance(s.fill, GradientFill))
+    middle = min(gradient.stops, key=lambda stop: abs(stop.pos - 0.75))
+    assert middle.color.hex == "FFFFFF"

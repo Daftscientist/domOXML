@@ -1825,6 +1825,22 @@ class _LayerPlan:
     wedges: tuple[Wedge, ...] = ()
 
 
+def _default_background_geometry(styles: dict[str, str]) -> bool:
+    """Whether every background layer covers the whole box once (no tiling, sizing or offset)."""
+
+    def every(key: str, allowed: set[str]) -> bool:
+        parts = (styles.get(key) or "").split(",")
+        return all(part.strip() in allowed for part in parts)
+
+    return (
+        every("backgroundSize", {"", "auto", "auto auto"})
+        and every("backgroundPosition", {"", "0% 0%"})
+        and every("backgroundRepeat", {"", "repeat", "repeat repeat"})
+        and every("backgroundOrigin", {"", "padding-box"})
+        and every("backgroundClip", {"", "border-box"})
+    )
+
+
 def _plan_background_layers(node: RenderedNode) -> _LayerPlan | None:
     """Decompose a stacked or conic background, when nothing else paints between its layers."""
     styles = node.styles
@@ -1834,7 +1850,9 @@ def _plan_background_layers(node: RenderedNode) -> _LayerPlan | None:
         and styles.get("maskImage", "none") in ("none", "")
         and styles.get("backdropFilter", "none") in ("none", "")
         and "text" not in (styles.get("backgroundClip") or "")
+        and styles.get("transform", "none") in ("none", "")
         and _opacity(styles) == 1.0
+        and _default_background_geometry(styles)
     )
     if not quiet:
         return None

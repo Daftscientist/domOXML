@@ -100,7 +100,14 @@ def lower_drop_shadow(node: RenderedNode) -> RenderedNode:
     existing = styles.get(key, "none")
     joined = ", ".join(shadows)
     styles[key] = joined if existing in ("", "none") else f"{existing}, {joined}"
-    return node.model_copy(update={"styles": styles})
+    update: dict[str, object] = {"styles": styles}
+    if key == "textShadow":
+        # Runs carry their own computed styles, so the shadow has to reach each of them too.
+        update["text_runs"] = tuple(
+            run.model_copy(update={"styles": {**run.styles, "textShadow": styles[key]}})
+            for run in node.text_runs
+        )
+    return node.model_copy(update=update)
 
 
 def _paints_a_box(node: RenderedNode) -> bool:

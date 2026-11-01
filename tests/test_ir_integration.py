@@ -2394,3 +2394,13 @@ async def test_brightness_on_a_gradient_keeps_the_clamped_ramp() -> None:
     gradient = next(s.fill for s in ir.shapes if isinstance(s.fill, GradientFill))
     middle = min(gradient.stops, key=lambda stop: abs(stop.pos - 0.75))
     assert middle.color.hex == "FFFFFF"
+
+
+async def test_text_drop_shadow_reaches_every_run() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;font-size:40px;"
+        "filter:drop-shadow(4px 4px 2px #000)'>Hello</div>"
+    )
+
+    runs = [r for s in ir.shapes if s.text for p in s.text.paragraphs for r in p.runs]
+    assert runs and all(r.shadow is not None for r in runs)

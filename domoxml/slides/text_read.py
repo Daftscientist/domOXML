@@ -13,12 +13,15 @@ from domoxml.core.ir.model import (
     Hyperlink,
     LineSpacing,
     Rgba,
+    Shadow,
     TextBody,
+    TextOutline,
     TextParagraph,
     TextRun,
 )
 from domoxml.core.units import emu_to_pt
 from domoxml.slides.appearance_read import ThemeColors, rgba
+from domoxml.slides.appearance_read import gradient as gradient_fill_for
 from domoxml.slides.inherit import (
     PlaceholderContext,
     ThemeContext,
@@ -63,6 +66,40 @@ def _caps(value: str | None) -> Literal["all", "small"] | None:
     return "small" if value == "small" else None
 
 
+def _outline(element: Element | None, colors: ThemeColors) -> TextOutline | None:
+    """A text run's ``a:ln`` as a :class:`TextOutline`, or ``None`` if it paints nothing."""
+    if element is None or element.find("a:noFill", _NS) is not None:
+        return None
+    color = (
+        rgba(element.find("a:solidFill", _NS), colors)
+        if element.find("a:solidFill", _NS) is not None
+        else None
+    )
+    width = int(element.get("w", "0") or "0")
+    if color is None or width <= 0:
+        return None
+    return TextOutline(width_pt=emu_to_pt(width), color=color)
+
+
+def _text_shadow(effects: Element | None, colors: ThemeColors) -> Shadow | None:
+    """The first ``a:outerShdw`` of a run's ``a:effectLst`` as a :class:`Shadow`."""
+    shadow = effects.find("a:outerShdw", _NS) if effects is not None else None
+    if shadow is None:
+        return None
+    color = rgba(shadow, colors)
+    if color is None:
+        return None
+    return Shadow(
+        color=color,
+        blur_emu=int(shadow.get("blurRad", "0") or "0"),
+        distance_emu=int(shadow.get("dist", "0") or "0"),
+        direction_deg=int(shadow.get("dir", "0") or "0") / 60_000,
+    )
+
+
+_FILL_CHOICES = ("noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill")
+
+
 def read_text_run(
     element: Element,
     colors: ThemeColors,
@@ -98,8 +135,21 @@ def read_text_run(
     raw_size = attribute("sz", "1200")
     size_pt = int(raw_size) / 100 if raw_size is not None else 12.0
 
-    solid_fill = child("a:solidFill")
+    # The fill is one choice (no fill, solid or gradient), so it comes from the run's own
+    # properties when they make a choice and from the inherited ones only when they do not.
+    fill_owner = next(
+        (
+            candidate
+            for candidate in (slide_rpr, fallback_rpr)
+            if candidate is not None
+            and any(candidate.find(f"a:{tag}", _NS) is not None for tag in _FILL_CHOICES)
+        ),
+        None,
+    )
+    solid_fill = fill_owner.find("a:solidFill", _NS) if fill_owner is not None else None
     color = Rgba(r=0, g=0, b=0)
+    if fill_owner is not None and fill_owner.find("a:noFill", _NS) is not None:
+        color = Rgba(r=0, g=0, b=0, a=0.0)
     if solid_fill is not None:
         scheme = solid_fill.find("a:schemeClr", _NS)
         resolved = (
@@ -110,6 +160,13 @@ def read_text_run(
             color = Rgba(r=red, g=green, b=blue, a=alpha)
         else:
             color = rgba(solid_fill, colors) or color
+
+    gradient_fill = fill_owner.find("a:gradFill", _NS) if fill_owner is not None else None
+    gradient = gradient_fill_for(gradient_fill, colors) if gradient_fill is not None else None
+    if gradient is not None:
+        color = gradient.stops[0].color
+    outline = _outline(child("a:ln"), colors)
+    shadow = _text_shadow(child("a:effectLst"), colors)
 
     hyperlink_source = slide_rpr if slide_rpr is not None else properties
     return TextRun(
@@ -124,6 +181,9 @@ def read_text_run(
         letter_spacing_pt=int(attribute("spc", "0") or "0") / 100,
         color=color,
         hyperlink=hyperlink_for(hyperlink_source),
+        gradient=gradient,
+        outline=outline,
+        shadow=shadow,
     )
 
 

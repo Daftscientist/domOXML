@@ -689,6 +689,87 @@ async def test_repeating_stripes_become_one_native_gradient_that_survives_both_w
     assert "linear-gradient(90deg" in html and "<img" not in html
 
 
+def _run_of(ir: SlideIR, text: str) -> TextRun:
+    return next(
+        run
+        for shape in ir.shapes
+        if shape.text is not None
+        for paragraph in shape.text.paragraphs
+        for run in paragraph.runs
+        if text in run.text
+    )
+
+
+async def test_text_gradient_outline_and_shadow_are_native_run_properties_both_ways() -> None:
+    # PowerPoint paints a run's gradient fill, outline and drop shadow itself, so CSS gradient text,
+    # -webkit-text-stroke and text-shadow need no raster (and must not be silently dropped).
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;font-size:60px;font-weight:800;"
+        "background:linear-gradient(90deg,#cc2200,#0088ff);-webkit-background-clip:text;"
+        "color:transparent'>Grad</div>"
+        "<div style='position:absolute;left:100px;top:250px;font-size:60px;font-weight:800;"
+        "color:transparent;-webkit-text-stroke:2px #cc2200'>Line</div>"
+        "<div style='position:absolute;left:100px;top:400px;font-size:60px;font-weight:800;"
+        "color:#cc2200;text-shadow:4px 4px 6px rgba(0,0,0,.4)'>Shade</div>"
+    )
+
+    def check(ir: SlideIR) -> None:
+        box = next(
+            s
+            for s in ir.shapes
+            if s.text is not None and "Grad" in s.text.paragraphs[0].runs[0].text
+        )
+        assert box.fill is None, "background-clip:text paints the glyphs, not the box"
+        gradient = _run_of(ir, "Grad")
+        assert gradient.gradient is not None and len(gradient.gradient.stops) == 2
+        assert gradient.color.hex == "CC2200" and gradient.color.a == 1.0, (
+            "first stop is the fallback"
+        )
+        outline = _run_of(ir, "Line").outline
+        assert outline is not None and abs(outline.width_pt - 1.5) < 0.01
+        assert outline.color.hex == "CC2200"
+        shadow = _run_of(ir, "Shade").shadow
+        assert shadow is not None and abs(shadow.blur_emu - px_to_emu(6)) <= 1
+        assert abs(shadow.distance_emu - px_to_emu(5.657)) <= px_to_emu(0.1)
+        assert abs(shadow.direction_deg - 45) < 0.5
+
+    check(ir)
+
+    # PPTX -> IR: the same properties come back out of the file.
+    check(read_pptx(build_pptx([ir], faces=[]))[0])
+
+    # IR -> HTML is real CSS, and rendering it again gives the same runs.
+    serialized = inline_assets(serialize_canvas([ir]))
+    html = serialized.slides[0].html
+    assert "background-clip:text" in html and "-webkit-text-stroke:" in html
+    assert "text-shadow:" in html
+    check((await _render_and_extract_result(html, css=serialized.css)).slide)
+
+
+async def test_text_clipped_background_that_a_run_cannot_carry_stays_visible() -> None:
+    # A conic gradient clipped to text cannot be a run fill. Dropping the box fill anyway would
+    # leave transparent text on nothing, so it must keep its raster instead of disappearing.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;font-size:80px;font-weight:800;"
+        "background:conic-gradient(red,blue,red);-webkit-background-clip:text;"
+        "color:transparent'>Conic</div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_text_fill_colour_overrides_color_for_the_glyph_interior() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;font-size:80px;font-weight:800;"
+        "color:#cc2200;-webkit-text-fill-color:transparent;-webkit-text-stroke:2px #0000ff'>"
+        "Hollow</div>"
+    )
+
+    run = _run_of(ir, "Hollow")
+    assert run.color.a == 0.0, "Chromium paints no interior, so neither may the PPTX"
+    assert run.outline is not None and run.outline.color.hex == "0000FF"
+
+
 async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:
     result = await _render_and_extract_result(
         '<div style="position:relative;width:1280px;height:720px;background:#f7f8fb">'

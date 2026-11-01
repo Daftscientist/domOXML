@@ -675,6 +675,27 @@ def _run_html(run: TextRun) -> str:
         styles.append("font-variant-caps:small-caps")
     if run.letter_spacing_pt:
         styles.append(f"letter-spacing:{_number(run.letter_spacing_pt)}pt")
+    if run.gradient is not None:
+        # Gradient text is a gradient background clipped to the glyphs, with the fill made clear.
+        styles = [s for s in styles if not s.startswith("color:")]
+        styles += [
+            f"background-image:{_gradient(run.gradient, opacity=1.0)}",
+            "-webkit-background-clip:text",
+            "background-clip:text",
+            "color:transparent",
+        ]
+    if run.outline is not None:
+        styles.append(
+            f"-webkit-text-stroke:{_number(run.outline.width_pt)}pt {_rgba(run.outline.color)}"
+        )
+    if run.shadow is not None:
+        radians = math.radians(run.shadow.direction_deg)
+        offset_x = emu_to_px(round(math.cos(radians) * run.shadow.distance_emu))
+        offset_y = emu_to_px(round(math.sin(radians) * run.shadow.distance_emu))
+        styles.append(
+            f"text-shadow:{_number(offset_x)}px {_number(offset_y)}px "
+            f"{_number(emu_to_px(run.shadow.blur_emu))}px {_rgba(run.shadow.color)}"
+        )
     span = f'<span style="{escape(";".join(styles), quote=True)}">{escape(run.text)}</span>'
     return _wrap_hyperlink(span, run)
 

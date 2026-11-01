@@ -59,6 +59,8 @@ _SNAPSHOT_JS = """
     fill: cs.fill, stroke: cs.stroke, strokeWidth: cs.strokeWidth,
     strokeDasharray: cs.strokeDasharray, strokeLinecap: cs.strokeLinecap,
     strokeLinejoin: cs.strokeLinejoin,
+    textShadow: cs.textShadow, webkitTextStrokeWidth: cs.webkitTextStrokeWidth,
+    webkitTextStrokeColor: cs.webkitTextStrokeColor, webkitTextFillColor: cs.webkitTextFillColor,
   });
   // The nearest enclosing <a href> for the run, captured as a synthetic style key so the
   // extractor can recover a:hlinkClick without a separate channel. textContent (not innerText)

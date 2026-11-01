@@ -73,6 +73,7 @@ from domoxml.core.ir.model import (
     SourceProvenance,
     SrcRect,
     TextBody,
+    TextOutline,
     TextParagraph,
     TextRun,
     Transform,
@@ -184,10 +185,35 @@ def _hyperlink(href: str) -> Hyperlink | None:
     return Hyperlink(url=href)
 
 
+def _text_effects(
+    styles: dict[str, str],
+) -> tuple[GradientFill | None, TextOutline | None, Shadow | None, Rgba | None]:
+    """The run-level effects CSS paints on text and PowerPoint can too.
+
+    ``background-clip:text`` with a gradient is a gradient text fill (returned with its first stop,
+    which is the colour a renderer that ignores gradient text should show), ``-webkit-text-stroke``
+    is an outline and ``text-shadow`` an outer shadow. PowerPoint takes one shadow per run.
+    """
+    gradient: GradientFill | None = None
+    first_stop: Rgba | None = None
+    if "text" in (styles.get("backgroundClip") or ""):
+        gradient = parse_gradient(styles.get("backgroundImage"))
+        if gradient is not None:
+            first_stop = gradient.stops[0].color
+    outline: TextOutline | None = None
+    stroke_px = parse_length_px(styles.get("webkitTextStrokeWidth"))
+    stroke_color = parse_color(styles.get("webkitTextStrokeColor"))
+    if stroke_px > 0 and stroke_color is not None and stroke_color.a > 0:
+        outline = TextOutline(width_pt=px_to_pt(stroke_px), color=stroke_color)
+    shadow = next((s for s in parse_shadows(styles.get("textShadow")) if not s.inset), None)
+    return gradient, outline, shadow, first_stop
+
+
 def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
     if not text:
         return None
     underline, strike = parse_decoration(styles.get("textDecorationLine"))
+    gradient, outline, shadow, first_stop = _text_effects(styles)
     return TextRun(
         text=text,
         font_family=(styles.get("fontFamily") or "sans-serif").split(",")[0].strip().strip("'\""),
@@ -198,8 +224,14 @@ def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
         strike=strike,
         caps=parse_caps(styles.get("textTransform"), styles.get("fontVariantCaps")),
         letter_spacing_pt=parse_letter_spacing_pt(styles.get("letterSpacing")),
-        color=parse_color(styles.get("color")) or _DEFAULT_TEXT_COLOR,
+        color=first_stop
+        or parse_color(styles.get("webkitTextFillColor"))
+        or parse_color(styles.get("color"))
+        or _DEFAULT_TEXT_COLOR,
         hyperlink=_hyperlink(styles.get("domoxmlHref", "")),
+        gradient=gradient,
+        outline=outline,
+        shadow=shadow,
     )
 
 
@@ -856,6 +888,19 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
     """Resolve a node's fill. Returns ``(fill, raster_reason)``; a non-``None`` reason means
     the fill can't be expressed natively and the element must rasterise."""
     styles = node.styles
+
+    # `background-clip:text` paints the background only through the glyphs. It is a property of the
+    # text (see `_text_effects`), not a box fill, so the box itself has none.
+    # It only becomes a run fill when the gradient is one a run can carry; anything else (conic,
+    # layered) keeps the existing fill path so the text is rasterised rather than lost.
+    layers = [layer.strip() for layer in (styles.get("backgroundClip") or "").split(",")]
+    if (
+        node.tag != "path"
+        and layers
+        and all(layer.endswith("text") for layer in layers)
+        and parse_gradient(styles.get("backgroundImage")) is not None
+    ):
+        return None, None
 
     if node.tag == "path":
         svg_fill = styles.get("fill", "none").strip().lower()

@@ -746,6 +746,30 @@ async def test_text_gradient_outline_and_shadow_are_native_run_properties_both_w
     check((await _render_and_extract_result(html, css=serialized.css)).slide)
 
 
+async def test_text_clipped_background_that_a_run_cannot_carry_stays_visible() -> None:
+    # A conic gradient clipped to text cannot be a run fill. Dropping the box fill anyway would
+    # leave transparent text on nothing, so it must keep its raster instead of disappearing.
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;font-size:80px;font-weight:800;"
+        "background:conic-gradient(red,blue,red);-webkit-background-clip:text;"
+        "color:transparent'>Conic</div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_text_fill_colour_overrides_color_for_the_glyph_interior() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;font-size:80px;font-weight:800;"
+        "color:#cc2200;-webkit-text-fill-color:transparent;-webkit-text-stroke:2px #0000ff'>"
+        "Hollow</div>"
+    )
+
+    run = _run_of(ir, "Hollow")
+    assert run.color.a == 0.0, "Chromium paints no interior, so neither may the PPTX"
+    assert run.outline is not None and run.outline.color.hex == "0000FF"
+
+
 async def test_isolated_effect_fallback_excludes_ancestor_backdrop() -> None:
     result = await _render_and_extract_result(
         '<div style="position:relative;width:1280px;height:720px;background:#f7f8fb">'

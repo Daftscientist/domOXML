@@ -224,7 +224,10 @@ def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
         strike=strike,
         caps=parse_caps(styles.get("textTransform"), styles.get("fontVariantCaps")),
         letter_spacing_pt=parse_letter_spacing_pt(styles.get("letterSpacing")),
-        color=first_stop or parse_color(styles.get("color")) or _DEFAULT_TEXT_COLOR,
+        color=first_stop
+        or parse_color(styles.get("webkitTextFillColor"))
+        or parse_color(styles.get("color"))
+        or _DEFAULT_TEXT_COLOR,
         hyperlink=_hyperlink(styles.get("domoxmlHref", "")),
         gradient=gradient,
         outline=outline,
@@ -888,8 +891,15 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
 
     # `background-clip:text` paints the background only through the glyphs. It is a property of the
     # text (see `_text_effects`), not a box fill, so the box itself has none.
+    # It only becomes a run fill when the gradient is one a run can carry; anything else (conic,
+    # layered) keeps the existing fill path so the text is rasterised rather than lost.
     layers = [layer.strip() for layer in (styles.get("backgroundClip") or "").split(",")]
-    if node.tag != "path" and layers and all(layer.endswith("text") for layer in layers):
+    if (
+        node.tag != "path"
+        and layers
+        and all(layer.endswith("text") for layer in layers)
+        and parse_gradient(styles.get("backgroundImage")) is not None
+    ):
         return None, None
 
     if node.tag == "path":

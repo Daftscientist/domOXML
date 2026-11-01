@@ -430,7 +430,7 @@ def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:
         else ""
     )
     fill = (
-        _gradient_fill(run.gradient, opacity=run.color.a)
+        _gradient_fill(run.gradient, opacity=1.0)  # each stop already carries its own alpha
         if run.gradient is not None
         else _solid_fill(run.color)
     )

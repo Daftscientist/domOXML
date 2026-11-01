@@ -97,6 +97,9 @@ def _text_shadow(effects: Element | None, colors: ThemeColors) -> Shadow | None:
     )
 
 
+_FILL_CHOICES = ("noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill")
+
+
 def read_text_run(
     element: Element,
     colors: ThemeColors,
@@ -132,8 +135,21 @@ def read_text_run(
     raw_size = attribute("sz", "1200")
     size_pt = int(raw_size) / 100 if raw_size is not None else 12.0
 
-    solid_fill = child("a:solidFill")
+    # The fill is one choice (no fill, solid or gradient), so it comes from the run's own
+    # properties when they make a choice and from the inherited ones only when they do not.
+    fill_owner = next(
+        (
+            candidate
+            for candidate in (slide_rpr, fallback_rpr)
+            if candidate is not None
+            and any(candidate.find(f"a:{tag}", _NS) is not None for tag in _FILL_CHOICES)
+        ),
+        None,
+    )
+    solid_fill = fill_owner.find("a:solidFill", _NS) if fill_owner is not None else None
     color = Rgba(r=0, g=0, b=0)
+    if fill_owner is not None and fill_owner.find("a:noFill", _NS) is not None:
+        color = Rgba(r=0, g=0, b=0, a=0.0)
     if solid_fill is not None:
         scheme = solid_fill.find("a:schemeClr", _NS)
         resolved = (
@@ -145,7 +161,7 @@ def read_text_run(
         else:
             color = rgba(solid_fill, colors) or color
 
-    gradient_fill = child("a:gradFill")
+    gradient_fill = fill_owner.find("a:gradFill", _NS) if fill_owner is not None else None
     gradient = gradient_fill_for(gradient_fill, colors) if gradient_fill is not None else None
     if gradient is not None:
         color = gradient.stops[0].color

@@ -693,26 +693,33 @@ def probe_web_viewer() -> Path:
     we = "http://schemas.microsoft.com/office/webextensions/webextension/2010/11"
 
     def build(_: PresentationType, slide: Slide) -> None:
-        snapshot = _part(
-            slide,
-            "/ppt/media/snap.png",
+        from pptx.opc.package import Part
+        from pptx.opc.packuri import PackURI
+
+        package = slide.part.package
+        snapshot = Part(
+            PackURI("/ppt/media/snap.png"),
             "image/png",
+            package,
             _png(Image.new("RGB", (400, 220), "tan")),
-            f"{_REL}/image",
         )
-        extension = (
-            f'<we:webextension xmlns:we="{we}" xmlns:r="{_REL}" id="{{6A1A2F8C-0C5E-4E7B-9E36-1B6C1D8C2A10}}">'
+        extension = Part(
+            PackURI("/ppt/webextensions/webextension1.xml"),
+            "application/vnd.ms-office.webextension+xml",
+            package,
+            b"",
+        )
+        embed = extension.relate_to(snapshot, f"{_REL}/image")
+        extension._blob = (
+            f'<we:webextension xmlns:we="{we}" xmlns:r="{_REL}" '
+            'id="{6A1A2F8C-0C5E-4E7B-9E36-1B6C1D8C2A10}">'
             '<we:reference id="WA104295837" version="1.0.0.0" store="en-US" storeType="OMEX"/>'
             '<we:alternateReferences/><we:properties><we:property name="url" '
             'value="&quot;https://example.com&quot;"/></we:properties><we:bindings/>'
-            f'<we:snapshot r:embed="{snapshot}"/></we:webextension>'
+            f'<we:snapshot r:embed="{embed}"/></we:webextension>'
         ).encode()
-        rid = _part(
-            slide,
-            "/ppt/webextensions/webextension1.xml",
-            "application/vnd.ms-office.webextension+xml",
-            extension,
-            "http://schemas.microsoft.com/office/2011/relationships/webextension",
+        rid = slide.part.relate_to(
+            extension, "http://schemas.microsoft.com/office/2011/relationships/webextension"
         )
         slide.shapes._spTree.append(
             etree.fromstring(

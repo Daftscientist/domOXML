@@ -46,7 +46,7 @@ converts it with the real Office engine and deletes it. Two things to know:
 | `a:blip` + `asvg:svgBlip` extension (PNG fallback) | **draws the SVG as vector**: gradients, `stroke-dasharray`, paths all exact | uses the PNG fallback | canvas/SVG interim, vector embeds |
 | `p:pic` with `a:videoFile r:link` to an external URL (online video) | accepted; shows the poster | poster | `<iframe>` to YouTube/Vimeo |
 | 3-D model part (`am3d:model3d`, GLB) with PNG fallback | accepted; server render shows the raster | fallback | 3-D content |
-| Web extension frame (`we:webextensionref`) | accepted; server render shows an add-in placeholder, not the snapshot | ignored | `<iframe>` to a web page (live only in desktop PowerPoint) |
+| Web extension frame (`we:webextensionref`) | accepted; renders its snapshot image (the add-in itself only runs in desktop PowerPoint) | ignored | `<iframe>` to a web page (live only in desktop PowerPoint) |
 
 ## What is not possible
 

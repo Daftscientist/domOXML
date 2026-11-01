@@ -810,7 +810,7 @@ def test_unsupported_css_filter_rasterises_and_warns() -> None:
         width=10,
         height=10,
         index=0,
-        styles={"filter": "brightness(0.8)", "backgroundColor": "rgb(1,2,3)"},
+        styles={"filter": "url(#unsupported)", "backgroundColor": "rgb(1,2,3)"},
     )
     result = extract_slide(_captured_slide(node))
     assert isinstance(result.slide.shapes[0].fill, PictureFill)
@@ -828,7 +828,7 @@ def test_empty_raster_region_is_recorded_as_failed_not_layered() -> None:
         width=10,
         height=10,
         index=0,
-        styles={"filter": "brightness(0.8)", "backgroundColor": "rgb(1,2,3)"},
+        styles={"filter": "url(#unsupported)", "backgroundColor": "rgb(1,2,3)"},
     )
 
     result = extract_slide(_slide(node))
@@ -850,7 +850,7 @@ def test_raster_without_isolated_capture_fails_visibly_instead_of_cropping_the_s
         width=10,
         height=10,
         index=0,
-        styles={"filter": "brightness(0.8)", "backgroundColor": "rgb(1,2,3)"},
+        styles={"filter": "url(#unsupported)", "backgroundColor": "rgb(1,2,3)"},
     )
 
     result = extract_slide(_slide(node))
@@ -865,7 +865,7 @@ def test_planner_requests_exactly_the_nodes_the_extractor_rasterises() -> None:
         tag="div", x=0, y=0, width=5, height=5, index=0, styles={"backgroundColor": "rgb(1,2,3)"}
     )
     filtered = RenderedNode(
-        tag="div", x=5, y=5, width=5, height=5, index=1, styles={"filter": "brightness(0.8)"}
+        tag="div", x=5, y=5, width=5, height=5, index=1, styles={"filter": "url(#unsupported)"}
     )
 
     assert plan_isolated_rasters(_slide(plain, filtered)) == {1}
@@ -1330,7 +1330,7 @@ def test_unsupported_css_filter_uses_isolated_raster_region_when_available() -> 
         width=10,
         height=10,
         index=0,
-        styles={"filter": "brightness(0.8)", "backgroundColor": "rgb(1,2,3)"},
+        styles={"filter": "url(#unsupported)", "backgroundColor": "rgb(1,2,3)"},
     )
     # RenderedRaster coords are CSS px; slide scale only affects cropping,
     # extract._raster_shape converts CSS px via px_to_emu without applying rendered.scale.

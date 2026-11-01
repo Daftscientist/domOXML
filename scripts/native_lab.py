@@ -348,6 +348,38 @@ def probe_gradients() -> Path:
     return sheet("gradients", render(_deck("lab_gradients", build), graph=_GRAPH))
 
 
+def probe_radial() -> Path:
+    """How a path gradient fills a non-square shape (CSS elliptical and off-centre radial)."""
+    cases = [
+        ("path circle, centred", 50, 50),
+        ("path circle, at 30% 40%", 30, 40),
+        ("path circle, at 80% 20%", 80, 20),
+    ]
+
+    def build(_: PresentationType, slide: Slide) -> None:
+        for index, (label, cx, cy) in enumerate(cases):
+            x, y = 0.4 + (index % 2) * 6.4, 0.4 + (index // 2) * 3.2
+            shape = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(3.75), Inches(2.3)
+            )
+            properties = shape._element.find(_q(P, "spPr"))
+            for old in properties.findall(_q(A, "solidFill")):
+                properties.remove(old)
+            properties.insert(
+                2,
+                _xml(
+                    '<a:gradFill rotWithShape="1"><a:gsLst>'
+                    '<a:gs pos="0"><a:srgbClr val="FF8800"/></a:gs>'
+                    '<a:gs pos="100000"><a:srgbClr val="330066"/></a:gs></a:gsLst>'
+                    f'<a:path path="circle"><a:fillToRect l="{cx * 1000}" t="{cy * 1000}" '
+                    f'r="{(100 - cx) * 1000}" b="{(100 - cy) * 1000}"/></a:path></a:gradFill>'
+                ),
+            )
+            _caption(slide, label, x, y + 2.4)
+
+    return sheet("radial", render(_deck("lab_radial", build), graph=_GRAPH))
+
+
 def probe_text_fill() -> Path:
     """Run-level fills, outlines and shadows (gradient text, text stroke, text-shadow)."""
     grad = (
@@ -515,6 +547,7 @@ PROBES: dict[str, Callable[[], Path]] = {
     "colour": probe_colour,
     "scene3d": probe_scene3d,
     "gradients": probe_gradients,
+    "radial": probe_radial,
     "text-fill": probe_text_fill,
     "blur-edges": probe_blur_edges,
     "blur-scale": probe_blur_scale,

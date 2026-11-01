@@ -65,47 +65,37 @@
   "conic-gradient": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "gradient has no native mapping (conic or layered)"
-    ],
-    "similarity": 0.987
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.989
   },
   "filter-brightness": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "CSS filter has no native mapping"
-    ],
-    "similarity": 0.985
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.995
   },
   "filter-drop-shadow": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "CSS filter has no native mapping"
-    ],
-    "similarity": 0.878
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.96
   },
   "filter-grayscale": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "CSS filter has no native mapping"
-    ],
-    "similarity": 0.984
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.994
   },
   "filter-hue-rotate": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "CSS filter has no native mapping"
-    ],
-    "similarity": 0.981
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.994
   },
   "flip-with-text": {
     "dropped": false,
@@ -119,28 +109,22 @@
   "layered-backgrounds": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "background-blend-mode has no native fill-overlay mapping"
-    ],
-    "similarity": 0.985
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.989
   },
   "mask-linear-fade": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "CSS mask has no native mapping"
-    ],
+    "non_native": 0,
+    "reasons": [],
     "similarity": 0.99
   },
   "mask-radial": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "CSS mask has no native mapping"
-    ],
+    "non_native": 0,
+    "reasons": [],
     "similarity": 0.992
   },
   "mix-blend-multiply": {
@@ -164,11 +148,9 @@
   "radial-gradient-ellipse": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "gradient has no native mapping (conic or layered)"
-    ],
-    "similarity": 0.981
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.982
   },
   "repeating-gradient": {
     "dropped": false,

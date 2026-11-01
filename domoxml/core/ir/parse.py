@@ -302,6 +302,9 @@ def _split_top_level(value: str) -> list[str]:
     return parts
 
 
+split_top_level = _split_top_level
+
+
 def _parse_shadow_layer(layer: str) -> Shadow | None:
     rgba = parse_color(layer) or Rgba(r=0, g=0, b=0, a=0.5)
     inset = "inset" in layer.lower()

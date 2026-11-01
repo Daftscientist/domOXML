@@ -2312,3 +2312,54 @@ async def test_transition_root_background_does_not_emit_body_cover_shape() -> No
     assert result.slide.background is not None
     assert len(result.slide.shapes) == 1
     assert all(item.element != "<body>" for item in result.coverage)
+
+
+async def test_colour_filter_on_a_leaf_is_folded_into_its_fill_without_a_raster() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:200px;height:100px;"
+        "background:#ff0000;filter:grayscale(1)'></div>"
+    )
+
+    shape = next(s for s in ir.shapes if isinstance(s.fill, SolidFill))
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert shape.fill.color.r == shape.fill.color.g == shape.fill.color.b  # type: ignore[union-attr]
+
+
+async def test_colour_filter_on_a_parent_keeps_its_raster() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:200px;height:100px;"
+        "filter:sepia(1)'><div style='width:50px;height:50px;background:red'></div></div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_conic_and_layered_backgrounds_become_editable_shapes() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:200px;height:200px;"
+        "background:conic-gradient(red,blue,red)'></div>"
+        "<div style='position:absolute;left:300px;top:50px;width:200px;height:200px;"
+        "background:linear-gradient(90deg,rgba(255,0,0,.5),transparent),"
+        "linear-gradient(0deg,blue,green)'></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert _layer_count(ir) >= 3
+
+
+async def test_off_centre_elliptical_radial_gradient_becomes_banded_shapes() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:360px;height:220px;"
+        "background:radial-gradient(ellipse at 30% 40%,#f80,#306)'></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert _layer_count(ir) >= 24
+
+
+def _layer_count(ir: SlideIR) -> int:
+    return sum(
+        1
+        for s in ir.shapes
+        if s.provenance is not None and (s.provenance.role or "").startswith("layer-")
+    )

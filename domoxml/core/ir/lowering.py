@@ -218,7 +218,7 @@ def lower_mask(fill: Fill | None, node: RenderedNode) -> tuple[Fill | None, str 
     value = styles.get("maskImage", "none")
     if value in ("", "none"):
         return fill, None
-    mask = parse_gradient(value) if is_leaf(node) and _fill_only(node) else None
+    mask = parse_gradient(value) if is_leaf(node) and fill_only(node) else None
     if mask is None or any(
         styles.get(key, "") not in allowed for key, allowed in _MASK_DEFAULTS.items()
     ):
@@ -251,7 +251,7 @@ def lower_mask(fill: Fill | None, node: RenderedNode) -> tuple[Fill | None, str 
     return fill, "CSS mask has no native mapping for this fill"
 
 
-def _fill_only(node: RenderedNode) -> bool:
+def fill_only(node: RenderedNode) -> bool:
     """Whether the fill is all the node paints; a mask also fades its text, border and shadow."""
     styles = node.styles
     borders = any(

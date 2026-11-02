@@ -445,8 +445,16 @@ def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:
     return f"<a:r>{rpr}<a:t>{escape(run.text)}</a:t></a:r>"
 
 
-def _paragraph(paragraph: TextParagraph, hyperlink_rid: HyperlinkRid) -> str:
-    align = _ALIGN_TO_OOXML.get(paragraph.align, "l")
+_MIRRORED_ALIGN = {"left": "right", "right": "left"}
+
+
+def _paragraph(
+    paragraph: TextParagraph, hyperlink_rid: HyperlinkRid, *, mirrored: bool = False
+) -> str:
+    # A mirrored text body turns the glyphs but not where PowerPoint lays the line out, so a line
+    # that sits at the left edge of a mirrored element has to be set at the right to land there.
+    placed = _MIRRORED_ALIGN.get(paragraph.align, paragraph.align) if mirrored else paragraph.align
+    align = _ALIGN_TO_OOXML.get(placed, "l")
     runs = "".join(_run(run, hyperlink_rid) for run in paragraph.runs)
 
     # Build a:pPr attributes.  Mandatory: algn.
@@ -522,8 +530,18 @@ def _text_body(body: TextBody | None, hyperlink_rid: HyperlinkRid) -> str:
         autofit_el = "<a:normAutofit/>"
     else:
         autofit_el = "<a:noAutofit/>"
+    if body.mirror_x:
+        # A 180 degree turn about the vertical axis mirrors the text alone (measured in real
+        # PowerPoint), which is what a shape flip does not do.
+        autofit_el += (
+            '<a:scene3d><a:camera prst="orthographicFront"><a:rot lat="0" lon="10800000" rev="0"/>'
+            '</a:camera><a:lightRig rig="threePt" dir="t"/></a:scene3d>'
+        )
 
-    paragraphs = "".join(_paragraph(paragraph, hyperlink_rid) for paragraph in body.paragraphs)
+    paragraphs = "".join(
+        _paragraph(paragraph, hyperlink_rid, mirrored=body.mirror_x)
+        for paragraph in body.paragraphs
+    )
     return (
         f'<p:txBody><a:bodyPr wrap="square" anchor="{anchor}" lIns="{left}" rIns="{right}"'
         f' tIns="{top}" bIns="{bottom}"{col_attrs}>'

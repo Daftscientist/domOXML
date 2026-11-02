@@ -1299,10 +1299,16 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
         style = escape(combined_style, quote=True)
         metadata_attrs = _identity_attrs(node) + _effect_attrs(node) + _text_payload_attrs(node)
         reflection_attrs, reflection_layer = _blurred_reflection_layer(node, assets)
+        text_html = _text_html(node.text, warnings)
+        flipped = node.transform is not None and node.transform.flip_h
+        if text_html and flipped != (node.text is not None and node.text.mirror_x):
+            # CSS mirrors the element's text with the element; PowerPoint does not, unless the
+            # text body says so. Turn it back so the text reads as it does in the deck.
+            text_html = f'<div style="transform:scaleX(-1)">{text_html}</div>'
         inner = (
             f'<div class="domoxml-shape"{metadata_attrs} style="{style}"'
             f"{autofit_attr}{text_body_attr}{raster_attr}{reflection_attrs}>"
-            f"{_text_html(node.text, warnings)}{reflection_layer}</div>"
+            f"{text_html}{reflection_layer}</div>"
         )
         return inner
     if isinstance(node, GroupNode):

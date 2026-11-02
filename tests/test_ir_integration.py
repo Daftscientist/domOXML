@@ -28,6 +28,8 @@ from domoxml.core.ir.model import (
     GradientStop,
     GroupNode,
     Line,
+    LineTo,
+    MoveTo,
     PatternFill,
     PictureFill,
     Point,
@@ -230,9 +232,9 @@ async def test_text_inside_a_rotated_element_is_rotated_with_it() -> None:
     assert abs(label.transform.rotation_deg - 10.0) < 0.5
 
 
-async def test_child_clipped_by_an_ancestor_is_rasterised_without_the_clipped_part() -> None:
-    # Half the circle sits outside the card's overflow box. PowerPoint cannot clip one shape to
-    # another, so the circle is rasterised in isolation and must not paint past the card edge.
+async def test_child_clipped_by_an_ancestor_is_cropped_to_the_clip_edge() -> None:
+    # Half the box sits outside the card's overflow box. PowerPoint cannot clip one shape to
+    # another, so the child becomes a free-form path cut at the card edge: nothing paints past it.
     ir = await _render_and_extract(
         "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
         "overflow:hidden;background:#eeeeee'>"
@@ -240,19 +242,14 @@ async def test_child_clipped_by_an_ancestor_is_rasterised_without_the_clipped_pa
         "background:#cc2200'></div></div>"
     )
 
-    [layer] = [s for s in ir.shapes if isinstance(s.fill, PictureFill)]
-    assert isinstance(layer.fill, PictureFill)
-    with Image.open(BytesIO(layer.fill.data)) as image:
-        width = image.width
-        alpha = image.convert("RGBA").getchannel("A").tobytes()
-    scale = width / (layer.box.width / px_to_emu(1))
-
-    def alpha_at(x: float, y: float) -> int:
-        return alpha[int(y * scale) * width + int(x * scale)]
-
-    # The child spans x=300..500; the card ends at x=400, so everything right of it is clipped.
-    assert alpha_at(50, 20) == 255
-    assert alpha_at(150, 20) == 0
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    child = _solid_shape(ir, "CC2200")
+    assert child.custom_geom is not None
+    xs = [
+        command.to.x for command in child.custom_geom.path if isinstance(command, LineTo | MoveTo)
+    ]
+    # The child spans x=300..500 on the slide; the card ends at x=400, 100px into the child.
+    assert max(xs) <= px_to_emu(100) + 2
 
 
 async def test_children_inside_their_clipping_ancestor_stay_native() -> None:
@@ -2573,3 +2570,131 @@ async def test_svg_whose_effects_a_standalone_file_would_lose_keeps_its_raster(h
 
     pictures = [s.fill for s in result.slide.shapes if isinstance(s.fill, PictureFill)]
     assert pictures and all(p.svg_data is None for p in pictures)
+
+
+_CLIP_BOX = "position:absolute;left:100px;top:80px;width:360px;height:220px;background:#c20;"
+
+
+@pytest.mark.parametrize(
+    "clip",
+    [
+        "circle(50%)",
+        "circle(40% at 30% 40%)",
+        "ellipse(40% 30% at 50% 50%)",
+        "inset(10% 20% 10% 20% round 16px)",
+        "polygon(0 0,100% 20%,80% 100%,10% 80%)",
+    ],
+)
+async def test_clip_path_shapes_become_native_geometry_and_round_trip(clip: str) -> None:
+    ir = await _render_and_extract(f"<div style='{_CLIP_BOX}clip-path:{clip}'></div>")
+
+    shapes = [s for s in ir.shapes if isinstance(s.fill, SolidFill)]
+    assert len(shapes) == 1 and not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert shapes[0].custom_geom is not None
+
+    again = read_pptx(build_pptx([ir], faces=[]))[0]
+    assert any(s.custom_geom is not None for s in again.shapes)
+
+    html = inline_assets(serialize_canvas([ir])).slides[0].html
+    reloaded = await _render_and_extract(html)
+    assert not any(isinstance(s.fill, PictureFill) for s in reloaded.shapes)
+
+
+async def test_circle_clip_on_a_square_is_the_ellipse_preset() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:80px;width:200px;height:200px;"
+        "background:#c20;clip-path:circle(50%)'></div>"
+    )
+
+    [shape] = [s for s in ir.shapes if isinstance(s.fill, SolidFill)]
+    assert shape.geom == "ellipse" and shape.custom_geom is None
+
+
+@pytest.mark.parametrize(
+    "extra", ["border:4px solid #000;", "box-shadow:0 4px 8px #000;", "color:#fff;"]
+)
+async def test_clip_path_with_content_the_clip_would_hide_keeps_its_raster(extra: str) -> None:
+    text = "Hi" if "color" in extra else ""
+    ir = await _render_and_extract(
+        f"<div style='{_CLIP_BOX}{extra}clip-path:circle(40%)'>{text}</div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_flipped_text_is_mirrored_by_the_text_body_not_a_raster() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:80px;width:360px;height:120px;"
+        "background:#c20;color:#fff;font-size:40px;transform:scaleX(-1)'>Mirror</div>"
+    )
+
+    [shape] = [s for s in ir.shapes if s.text is not None]
+    assert shape.transform is not None and shape.transform.flip_h
+    assert shape.text is not None and shape.text.mirror_x
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+    # PPTX carries the mirror as a text-body 3-D turn, and reads it back.
+    data = build_pptx([ir], faces=[])
+    again = next(s for s in read_pptx(data)[0].shapes if s.text is not None)
+    assert again.text is not None and again.text.mirror_x
+
+    # HTML leaves the text mirrored with its element (no counter-flip), as authored.
+    html = inline_assets(serialize_canvas([ir])).slides[0].html
+    assert html.count("scaleX(-1)") == 1
+
+
+async def test_a_flipped_shape_with_readable_text_counter_mirrors_in_html() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:80px;width:360px;height:120px;"
+        "background:#c20;color:#fff;font-size:40px;transform:scaleX(-1)'>Mirror</div>"
+    )
+    [shape] = [s for s in ir.shapes if s.text is not None]
+    assert shape.text is not None
+    readable = shape.model_copy(update={"text": shape.text.model_copy(update={"mirror_x": False})})
+    html = inline_assets(serialize_canvas([ir.model_copy(update={"contents": (readable,)})]))
+
+    assert html.slides[0].html.count("scaleX(-1)") == 2
+
+
+_PLAIN_BOX = "position:absolute;left:100px;top:80px;width:360px;height:220px;background:#c20;"
+
+
+async def test_skewed_and_perspective_boxes_become_native_quads() -> None:
+    for transform in ("skewX(-15deg)", "perspective(600px) rotateY(35deg)"):
+        ir = await _render_and_extract(f"<div style='{_PLAIN_BOX}transform:{transform}'></div>")
+
+        [shape] = [s for s in ir.shapes if isinstance(s.fill, SolidFill)]
+        assert shape.custom_geom is not None and shape.transform is None
+        assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_skewed_box_with_content_keeps_its_raster() -> None:
+    ir = await _render_and_extract(
+        f"<div style='{_PLAIN_BOX}transform:skewX(-15deg);color:#fff'>Skew</div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_children_cut_by_an_overflow_hidden_ancestor_become_cropped_shapes() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:80px;width:360px;height:220px;"
+        "overflow:hidden;background:#eee;border-radius:24px'>"
+        "<div style='position:absolute;left:250px;top:40px;width:200px;height:100px;"
+        "background:#c20'></div></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+    cropped = [s for s in result.slide.shapes if s.custom_geom is not None]
+    assert len(cropped) == 1
+    assert all(item.representation.value == "native" for item in result.coverage)
+
+
+async def test_overflow_cropped_text_keeps_its_raster() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:80px;width:200px;height:100px;"
+        "overflow:hidden'><div style='position:absolute;left:150px;top:10px;font-size:30px;"
+        "white-space:nowrap'>Cut off text</div></div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)

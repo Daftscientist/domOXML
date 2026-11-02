@@ -187,6 +187,23 @@ def read_text_run(
     )
 
 
+_MIRRORED_ALIGN: dict[
+    Literal["left", "center", "right", "justify"], Literal["left", "center", "right", "justify"]
+] = {
+    "left": "right",
+    "right": "left",
+}
+
+
+def _text_is_mirrored(body: Element) -> bool:
+    """Whether ``bodyPr`` turns the text 180 degrees about the vertical axis (mirrored text)."""
+    rotation = body.find("a:bodyPr/a:scene3d/a:camera/a:rot", _NS)
+    if rotation is None:
+        return False
+    longitude = int(rotation.get("lon", "0")) % 21600000
+    return abs(longitude - 10800000) < 60000
+
+
 def read_text_body_properties(
     body: Element,
     ph_ctx: PlaceholderContext | None = None,
@@ -247,6 +264,7 @@ def read_text_body(
     if body is None:
         return None
     anchor, autofit, columns, column_gap_emu, margins = read_text_body_properties(body, ph_ctx)
+    mirrored = _text_is_mirrored(body)
     paragraphs: list[TextParagraph] = []
     for paragraph in body.findall("a:p", _NS):
         slide_properties = paragraph.find("a:pPr", _NS)
@@ -258,6 +276,8 @@ def read_text_body(
         alignment = _ALIGN_FROM_OOXML.get(
             properties.get("algn", "l") if properties is not None else "l", "left"
         )
+        if mirrored:
+            alignment = _MIRRORED_ALIGN.get(alignment, alignment)
         line_spacing: LineSpacing | None = None
         space_before_pt: float | None = None
         space_after_pt: float | None = None
@@ -333,4 +353,5 @@ def read_text_body(
         columns=columns,
         column_gap_emu=column_gap_emu,
         margins=margins,
+        mirror_x=mirrored,
     )

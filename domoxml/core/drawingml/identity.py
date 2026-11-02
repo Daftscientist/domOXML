@@ -20,6 +20,12 @@ def _attr(value: str) -> str:
 
 def node_identity_xml(node: CanvasNode) -> str:
     """Return a ``p:extLst`` carrying domOXML metadata, or an empty string."""
+    extension = node_identity_ext_xml(node)
+    return f"<p:extLst>{extension}</p:extLst>" if extension else ""
+
+
+def node_identity_ext_xml(node: CanvasNode) -> str:
+    """The bare ``p:ext`` carrying domOXML metadata, for a list that holds other extensions too."""
     attributes: list[str] = []
     if node.node_id is not None:
         attributes.append(f'id="{_attr(node.node_id)}"')
@@ -58,8 +64,4 @@ def node_identity_xml(node: CanvasNode) -> str:
     if not attributes:
         return ""
     joined = " ".join(attributes)
-    return (
-        f'<p:extLst><p:ext uri="{EXTENSION_URI}">'
-        f'<dx:node xmlns:dx="{NAMESPACE}" {joined}/>'
-        f"</p:ext></p:extLst>"
-    )
+    return f'<p:ext uri="{EXTENSION_URI}"><dx:node xmlns:dx="{NAMESPACE}" {joined}/></p:ext>'

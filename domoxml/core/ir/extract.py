@@ -1568,6 +1568,8 @@ def _media_node(node: RenderedNode, rendered: RenderedSlide) -> MediaNode | None
     video player stays a link PowerPoint plays itself. The poster is what the browser showed in
     isolation (the poster frame), or a plain generated one. Anything else keeps the raster.
     """
+    if node.styles.get("domoxmlClippedByAncestor"):
+        return None  # a clip would have to cut the clip's poster and its playing frame alike
     box = _box(node)
     source = node.src.strip()
     if node.tag == "iframe":
@@ -1616,9 +1618,15 @@ def _is_blank(png: bytes) -> bool:
 
 def _media_poster(node: RenderedNode, rendered: RenderedSlide) -> PictureFill:
     """What the browser drew for a media element, or a plain stand-in when it drew nothing."""
-    shape = _raster_shape(node, rendered)
-    if shape is not None and isinstance(shape.fill, PictureFill) and not _is_blank(shape.fill.data):
-        return shape.fill.model_copy(update={"raster_role": None})
+    inside = (
+        node.x >= 0
+        and node.y >= 0
+        and node.x + node.width <= rendered.width
+        and node.y + node.height <= rendered.height
+    )
+    crop = _isolated_node_crop(node, rendered) if inside else None
+    if crop is not None and crop is not _PLANNING_PNG and not _is_blank(crop):
+        return PictureFill(data=crop, ext="png")
     return default_poster(
         "audio" if node.tag == "audio" else "video", max(node.width, 16), max(node.height, 16)
     )

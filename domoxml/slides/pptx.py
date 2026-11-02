@@ -9,7 +9,7 @@ from xml.sax.saxutils import escape
 from defusedxml import ElementTree
 
 from domoxml.core.drawingml import can_emit_picture, line_xml, picture_xml, shape_xml, table_xml
-from domoxml.core.drawingml.identity import node_identity_xml
+from domoxml.core.drawingml.identity import node_identity_ext_xml, node_identity_xml
 from domoxml.core.fonts import FontFace, load_faces
 from domoxml.core.ir.group import group_pptx_write_error
 from domoxml.core.ir.model import (
@@ -57,6 +57,7 @@ _IMAGE_CT = {
     **MEDIA_CONTENT_TYPES,
 }
 _SVG_CT = "image/svg+xml"
+_PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _MEDIA_REL = "http://schemas.microsoft.com/office/2007/relationships/media"
 
 # (face, in-package part path, relationship id) for each embedded font.
@@ -308,6 +309,16 @@ def _slide(
         next_rid += 1
         return rid
 
+    def register_clip(data: bytes, ext: str) -> str:
+        """The part name of an embedded clip; identical clips share one part."""
+        key = (ext, data)
+        name = media_registry.get(key)
+        if name is None:
+            name = f"media{len(media_registry) + 1}.{ext}"
+            media_registry[key] = name
+            media_parts[f"ppt/media/{name}"] = data
+        return name
+
     # Background picture fill: needs its own media part + rel.
     bg_blip_rid: str | None = None
     if slide.background is not None and isinstance(slide.background.fill, PictureFill):
@@ -361,9 +372,7 @@ def _slide(
         next_rid += 1
         embed_rid: str | None = None
         if node.media_data is not None:
-            part = register_media(node.media_data, node.media_ext, "media")
-            part_name = next(name for rid, name in image_rels if rid == part)
-            image_rels[:] = [(rid, name) for rid, name in image_rels if rid != part]
+            part_name = register_clip(node.media_data, node.media_ext)
             extra_rels.append(
                 f'<Relationship Id="{link_rid}" Type="{kind_type}" Target="../media/{part_name}"/>'
             )
@@ -724,23 +733,37 @@ def _media_xml(
 ) -> str:
     """A video or audio clip: its poster picture carrying the media link PowerPoint plays."""
     tag = "videoFile" if node.kind == "video" else "audioFile"
-    embedded = (
-        '<p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}">'
-        '<p14:media xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" '
-        f'r:embed="{embed_rid}"/></p:ext></p:extLst>'
-        if embed_rid is not None
-        else ""
-    )
+    extensions = node_identity_ext_xml(node)
+    if embed_rid is not None:
+        extensions += (
+            '<p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}">'
+            '<p14:media xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" '
+            f'r:embed="{embed_rid}"/></p:ext>'
+        )
+    extension_list = f"<p:extLst>{extensions}</p:extLst>" if extensions else ""
     return (
         f'<p:pic><p:nvPicPr><p:cNvPr id="{shape_id}" name="{node.kind.title()} {shape_id}"/>'
         '<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>'
-        f'<p:nvPr><a:{tag} r:link="{link_rid}"/>{embedded}</p:nvPr></p:nvPicPr>'
+        f'<p:nvPr><a:{tag} r:link="{link_rid}"/>{_play_settings(node)}{extension_list}</p:nvPr>'
+        "</p:nvPicPr>"
         f'<p:blipFill><a:blip r:embed="{poster_rid}"/><a:stretch><a:fillRect/></a:stretch>'
         "</p:blipFill><p:spPr>"
         f'<a:xfrm><a:off x="{node.box.x}" y="{node.box.y}"/>'
         f'<a:ext cx="{node.box.width}" cy="{node.box.height}"/></a:xfrm>'
         '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>'
     )
+
+
+def _play_settings(node: MediaNode) -> str:
+    """The clip's recovered ``p:videoPr``/``p:audioPr``, if it is that element and well formed."""
+    if node.play_settings_xml is None:
+        return ""
+    try:
+        root = ElementTree.fromstring(node.play_settings_xml)
+    except ElementTree.ParseError:
+        return ""
+    expected = f"{{{_PML_NS}}}{'videoPr' if node.kind == 'video' else 'audioPr'}"
+    return node.play_settings_xml if root.tag == expected else ""
 
 
 def _paints_native_backdrop_blur(node: ShapeNode) -> bool:

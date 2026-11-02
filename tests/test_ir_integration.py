@@ -6,6 +6,7 @@ import base64
 import math
 from collections.abc import Callable
 from io import BytesIO
+from zipfile import ZipFile
 
 import pytest
 from PIL import Image
@@ -2912,3 +2913,56 @@ async def test_an_iframe_that_is_not_an_online_video_keeps_its_raster() -> None:
 
     assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
     assert not any(isinstance(node, MediaNode) for node in ir.contents)
+
+
+async def test_two_identical_clips_share_one_part_and_both_export() -> None:
+    clip = (
+        f"<video src='{_MP4}' style='position:absolute;left:{{x}}px;top:50px;width:200px;"
+        "height:120px'></video>"
+    )
+    ir = await _render_and_extract(clip.format(x=50) + clip.format(x=300))
+
+    data = build_pptx([ir], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        parts = [name for name in package.namelist() if name.startswith("ppt/media/media")]
+    assert len(parts) == 1
+    assert sum(isinstance(node, MediaNode) for node in read_pptx(data)[0].contents) == 2
+
+
+async def test_media_clipped_by_an_ancestor_or_off_the_slide_keeps_a_whole_poster() -> None:
+    clipped = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:150px;height:100px;"
+        "overflow:hidden'>"
+        f"<video src='{_MP4}' style='position:absolute;left:80px;top:10px;width:200px;"
+        "height:120px'></video></div>"
+    )
+    assert not any(isinstance(node, MediaNode) for node in clipped.contents)
+    assert any(isinstance(s.fill, PictureFill) for s in clipped.shapes)
+
+    off_slide = await _render_and_extract(
+        f"<video src='{_MP4}' style='position:absolute;left:-60px;top:50px;width:200px;"
+        "height:120px'></video>"
+    )
+    clip = _media(off_slide)
+    assert clip.poster_fill is not None
+    with Image.open(BytesIO(clip.poster_fill.data)) as poster:
+        assert abs(poster.width / poster.height - 200 / 120) < 0.02
+
+
+async def test_media_identity_and_play_settings_survive_the_pptx_round_trip() -> None:
+    ir = await _render_and_extract(
+        f"<video id='intro' src='{_MP4}' style='position:absolute;left:50px;top:50px;width:200px;"
+        "height:120px'></video>"
+    )
+    clip = _media(ir)
+    settings = (
+        '<p:videoPr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+        'autoplay="1"/>'
+    )
+    tagged = ir.model_copy(
+        update={"contents": (clip.model_copy(update={"play_settings_xml": settings}),)}
+    )
+
+    again = _media(read_pptx(build_pptx([tagged], faces=[]))[0])
+    assert again.play_settings_xml is not None and "autoplay" in again.play_settings_xml
+    assert again.node_id == clip.node_id and again.provenance is not None

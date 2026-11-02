@@ -51,6 +51,8 @@ _SNAPSHOT_JS = """
     clipPath: cs.clipPath, transform: cs.transform, transformOrigin: cs.transformOrigin,
     borderTopWidth: cs.borderTopWidth, borderTopStyle: cs.borderTopStyle,
     borderTopColor: cs.borderTopColor,
+    borderImageSource: cs.borderImageSource, borderImageSlice: cs.borderImageSlice,
+    borderImageWidth: cs.borderImageWidth, borderImageOutset: cs.borderImageOutset,
     borderRightWidth: cs.borderRightWidth, borderRightStyle: cs.borderRightStyle,
     borderRightColor: cs.borderRightColor,
     borderBottomWidth: cs.borderBottomWidth, borderBottomStyle: cs.borderBottomStyle,

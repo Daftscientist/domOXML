@@ -3702,3 +3702,29 @@ async def test_a_rounded_canvas_keeps_its_clip() -> None:
 
     assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
     assert not any(s.custom_geom is not None for s in ir.shapes)
+
+
+async def test_gradient_border_image_becomes_a_gradient_outline_and_round_trips() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:80px;width:300px;height:160px;"
+        "border:8px solid transparent;border-image:linear-gradient(90deg,#c20,#08f) 1'></div>"
+    )
+
+    outlined = [s for s in ir.shapes if s.line is not None and s.line.gradient is not None]
+    assert len(outlined) == 1 and len(outlined[0].line.gradient.stops) == 2  # type: ignore[union-attr]
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+    again = read_pptx(build_pptx([ir], faces=[]))[0]
+    assert any(s.line is not None and s.line.gradient is not None for s in again.shapes)
+
+
+async def test_border_image_with_rounded_corners_or_a_sliced_image_is_not_an_outline() -> None:
+    for style in (
+        "border:8px solid #444;border-radius:20px;border-image:linear-gradient(#c20,#08f) 1",
+        "border:8px solid #444;border-image:linear-gradient(#c20,#08f) 30",
+    ):
+        ir = await _render_and_extract(
+            f"<div style='position:absolute;left:100px;top:80px;width:300px;height:160px;{style}'>"
+            "</div>"
+        )
+        assert not any(s.line is not None and s.line.gradient is not None for s in ir.shapes)

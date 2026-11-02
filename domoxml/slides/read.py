@@ -1188,6 +1188,7 @@ def _slide(
             owns_slide_renderer_fallback = False
             fallback_representation: Literal["element_layer", "rasterized"] = "element_layer"
             fallback_box_override: Box | None = None
+            source_poster_fill: PictureFill | None = None
             fallback_mask: tuple[tuple[float, float], ...] | None = None
             reason = f"preserved unsupported reverse slide node: {kind}"
             if kind in {"nvGrpSpPr", "grpSpPr"}:
@@ -1201,6 +1202,22 @@ def _slide(
                 native = choice_children[0] if choice_children else None
                 fallback_children = tuple(fallback_branch) if fallback_branch is not None else ()
                 fallback_element = fallback_children[0] if fallback_children else None
+                if (
+                    native is not None
+                    and _local_name(native) == "graphicFrame"
+                    and fallback_element is not None
+                    and _local_name(fallback_element) == "pic"
+                ):
+                    # A frame this reader does not model (a 3-D model) that PowerPoint saved with
+                    # its own poster picture: the poster is the visual, the frame stays attached.
+                    poster = _picture_shape(fallback_element, package, slide_part)
+                    if poster is not None and isinstance(poster.fill, PictureFill):
+                        fallback_box_override = poster.box
+                        source_poster_fill = poster.fill
+                        reason = (
+                            "frame shown as the poster picture saved with it; the source frame "
+                            "stays attached for exact PPTX re-emission"
+                        )
                 if (
                     native is not None
                     and _local_name(native) == "sp"
@@ -1498,7 +1515,8 @@ def _slide(
                         if not has_preserved_effects:
                             continue
                         preserve_whole_node = False
-                reason = "preserved unsupported markup-compatibility visual"
+                if source_poster_fill is None:
+                    reason = "preserved unsupported markup-compatibility visual"
             if kind == "sp":
                 shape, shape_warns, shape_preserved = _shape(
                     element,
@@ -1687,9 +1705,19 @@ def _slide(
                     coverage.append(_native_reverse_coverage(slide_part, element))
                     continue
                 reason = frame.reason or "preserved unsupported graphicFrame"
+                # An embedded object (OLE) is saved with the picture PowerPoint shows for it.
+                preview = element.find(".//p:oleObj//p:blipFill", _NS)
+                if preview is not None:
+                    shown = _picture(preview, package, slide_part)
+                    if shown is not None:
+                        source_poster_fill = shown
+                        reason = (
+                            "embedded object shown as its preview picture; the object stays "
+                            "attached for exact PPTX re-emission"
+                        )
             elif kind == "oleObj":
                 reason = "p:oleObj (OLE object) has no HTML mapping; preserved as fragment"
-            else:
+            elif source_poster_fill is None:
                 reason = f"preserved unsupported reverse slide node: {kind}"
             if preserve_whole_node:
                 box = fallback_box_override or _positioned_box(element)
@@ -1699,7 +1727,8 @@ def _slide(
                     fallback = (
                         None
                         if use_slide_renderer_fallback
-                        else _fallback_picture(
+                        else source_poster_fill
+                        or _fallback_picture(
                             fallback_png,
                             box,
                             slide_width=width,

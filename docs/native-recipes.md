@@ -47,6 +47,8 @@ converts it with the real Office engine and deletes it. Two things to know:
 | `p:pic` with `a:videoFile r:link` to an external URL (online video) | accepted; shows the poster | poster | `<iframe>` to YouTube/Vimeo |
 | 3-D model part (`am3d:model3d`, GLB) with PNG fallback | accepted; server render shows the raster | fallback | 3-D content |
 | Web extension frame (`we:webextensionref`) | accepted; renders its snapshot image (the add-in itself only runs in desktop PowerPoint) | ignored | `<iframe>` to a web page (live only in desktop PowerPoint) |
+| SVG filters inside `svgBlip`: `feGaussianBlur`, `feTurbulence`, `mask` | **drawn** (blur, procedural noise, alpha mask) | wrong: 0.84 and 0.06 similarity vs Chrome | not shipped: LibreOffice would show junk, so filter SVGs keep their raster |
+| `feDropShadow` inside `svgBlip` | **not drawn at all** | n/a | avoid; use blur + offset + merge |
 
 ## What is not possible
 

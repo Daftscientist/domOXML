@@ -196,29 +196,23 @@
   "svg-dash-array": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "SVG custom geometry paint cannot map natively: SVG custom dash array has no native mapping"
-    ],
+    "non_native": 0,
+    "reasons": [],
     "similarity": 0.996
   },
   "svg-gradient-fill": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "SVG custom geometry paint cannot map natively: SVG fill paint has no native mapping"
-    ],
-    "similarity": 0.99
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.993
   },
   "svg-multi-path": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "SVG could not be converted to custom geometry; rasterised"
-    ],
-    "similarity": 0.994
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.997
   },
   "svg-turbulence": {
     "dropped": false,

@@ -1794,12 +1794,33 @@ def _svg_editable_shapes(
         return None
     if node.styles.get("mixBlendMode", "normal") not in ("normal", ""):
         return None
+    if _paints_beyond_its_content(node):
+        return None
     if _has_transformed_ancestor(node, rendered) or node.styles.get("domoxmlClippedByAncestor"):
         return None
     shapes = svg_to_shapes(source, box=_box(node), width_px=node.width, height_px=node.height)
     if shapes is None:
         return None
     return [fade_shape(s.model_copy(update={"opacity": faded}), faded) for s in shapes]
+
+
+def _paints_beyond_its_content(node: RenderedNode) -> bool:
+    """Whether the SVG box itself paints (background, border, shadow, reflection, effects)."""
+    styles = node.styles
+    background = parse_color(styles.get("backgroundColor"))
+    borders = any(
+        styles.get(f"border{side}Style", "none") not in ("none", "hidden")
+        and not styles.get(f"border{side}Width", "0px").startswith("0")
+        for side in ("Top", "Right", "Bottom", "Left")
+    )
+    return (
+        (background is not None and background.a > 0)
+        or styles.get("backgroundImage", "none") != "none"
+        or borders
+        or styles.get("boxShadow", "none") not in ("none", "")
+        or styles.get("webkitBoxReflect", "none") not in ("none", "")
+        or bool(styles.get("domoxmlEffects"))
+    )
 
 
 def _emit_svg_shapes(
@@ -2801,6 +2822,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     editable = _svg_editable_shapes(node, rendered, effective_opacity(node))
                     if editable is not None:
                         _emit_svg_shapes(editable, node, identities, contents, coverage, label)
+                        if svg.warning in warnings:
+                            warnings.remove(svg.warning)  # the SVG did not fall back to raster
                         continue
                     vector = _svg_vector(shape, node, rendered)
                     if vector is not None:
@@ -2917,6 +2940,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 editable = _svg_editable_shapes(node, rendered, effective_opacity(node))
                 if editable is not None:
                     _emit_svg_shapes(editable, node, identities, contents, coverage, label)
+                    if svg.warning in warnings:
+                        warnings.remove(svg.warning)  # the SVG did not fall back to raster
                     continue
                 vector = _svg_vector(shape, node, rendered)
                 if vector is not None:

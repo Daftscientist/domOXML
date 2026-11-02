@@ -3540,3 +3540,57 @@ async def test_control_edge_cases_follow_direction_zero_maxima_and_opacity() -> 
     assert bar.box.x > px_to_emu(150)  # right-to-left: the 50% bar sits on the right
     # An indeterminate bar and a rotated control keep their raster instead of an upright redraw.
     assert sum(isinstance(s.fill, PictureFill) for s in shapes) == 2
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "<rect x='-20' y='10' width='60' height='30' fill='#c20'/>",  # past the viewport
+        "<rect width='50%' height='50%' fill='#c20'/>",  # percentages need a viewport
+        "<path d='M10 50H90' stroke='#000' stroke-width='4' stroke-dasharray='8 4' "
+        "stroke-dashoffset='3'/>",
+        "<path d='M10 10L20' fill='#c20'/>",  # truncated path data
+    ],
+)
+async def test_svg_the_converter_cannot_reproduce_exactly_stays_a_vector_picture(
+    body: str,
+) -> None:
+    result = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}' viewBox='0 0 100 100'>{body}"
+        "<circle cx='80' cy='80' r='10' fill='#08f'/></svg>"
+    )
+
+    assert not any(s.custom_geom is not None for s in result.slide.shapes)
+    assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+
+
+async def test_a_rotated_group_turns_its_object_bounding_box_gradient_with_it() -> None:
+    result = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}' viewBox='0 0 100 100'><defs><linearGradient id='g'>"
+        "<stop offset='0' stop-color='#ff0000'/><stop offset='1' stop-color='#0000ff'/>"
+        "</linearGradient></defs><g transform='translate(50 10) rotate(90)'>"
+        "<rect width='60' height='30' fill='url(#g)'/></g></svg>"
+    )
+
+    gradient = next(s.fill for s in result.slide.shapes if isinstance(s.fill, GradientFill))
+    # Left to right in the rectangle's own frame becomes top to bottom after a quarter turn.
+    assert abs(gradient.angle_deg - 180.0) < 1.0
+
+
+async def test_skew_transform_and_svg_node_paint_are_handled() -> None:
+    skewed = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}' viewBox='0 0 100 100'>"
+        "<rect x='10' y='10' width='40' height='30' fill='#c20' transform='skewX(20)'/></svg>"
+    )
+    assert any(s.custom_geom is not None for s in skewed.slide.shapes)
+
+    painted = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}background:#eeeeee;border:2px solid #000' viewBox='0 0 100 100'>"
+        "<path d='M10 10H50V50H10Z' fill='#c20'/><path d='M55 55H95V95H55Z' fill='#08f'/></svg>"
+    )
+    # The box's own background and border cannot be dropped, so the vector picture keeps them.
+    assert not any(
+        s.custom_geom is not None and isinstance(s.fill, SolidFill) and s.fill.color.hex == "CC2200"
+        for s in painted.slide.shapes
+    )
+    assert not any("falling back to raster" in w.message for w in skewed.warnings)

@@ -103,7 +103,8 @@ class Affine:
 
 def _transform(text: str | None) -> Affine:
     result = Affine()
-    for name, body in re.findall(r"(\w+)\s*\(([^)]*)\)", text or ""):
+    for raw_name, body in re.findall(r"(\w+)\s*\(([^)]*)\)", text or ""):
+        name = raw_name.lower()
         v = [float(n) for n in _NUMBER.findall(body)]
         if name == "matrix" and len(v) == 6:
             step = Affine(*v)
@@ -139,7 +140,7 @@ def svg_to_shapes(
     try:
         reader = _Reader(root, box, width_px, height_px)
         shapes = reader.shapes()
-    except (_Unsupported, ValueError, ZeroDivisionError, OverflowError):
+    except (_Unsupported, ValueError, IndexError, ZeroDivisionError, OverflowError):
         return None
     return shapes or None
 
@@ -149,6 +150,7 @@ class _Reader:
         if _local(root) != "svg":
             raise _Unsupported("root")
         self.root, self.box = root, box
+        self.width_px, self.height_px = width_px, height_px
         self.gradients = {
             element.get("id", ""): element
             for element in root.iter()
@@ -210,18 +212,33 @@ class _Reader:
     def _shape(
         self, element: Element, name: str, matrix: Affine, opacity: float
     ) -> ShapeNode | None:
-        segments = [
-            (kind, [matrix.apply(p) for p in points]) for kind, points in _segments(element, name)
-        ]
-        if not segments:
+        local = _segments(element, name)
+        if not local:
             return None
+        own = [p for _kind, points in local for p in points]
+        local_bounds = (
+            min(p[0] for p in own),
+            min(p[1] for p in own),
+            max(p[0] for p in own),
+            max(p[1] for p in own),
+        )
+        segments = [(kind, [matrix.apply(p) for p in points]) for kind, points in local]
         every = [p for _kind, points in segments for p in points]
         left, top = min(p[0] for p in every), min(p[1] for p in every)
         right, bottom = max(p[0] for p in every), max(p[1] for p in every)
-        fill = self._fill(element, opacity, (left, top, right, bottom), matrix)
+        fill = self._fill(element, opacity, local_bounds, matrix)
         stroke = self._stroke(element, opacity, matrix)
         if fill is None and stroke is None:
             return None
+        # An SVG clips its artwork to its own viewport; shapes would draw past it.
+        reach = (stroke.width_emu / 9525 / 2) if stroke is not None else 0.0
+        if (
+            left - reach < -0.5
+            or top - reach < -0.5
+            or right + reach > self.width_px + 0.5
+            or bottom + reach > self.height_px + 0.5
+        ):
+            raise _Unsupported("outside the viewport")
         width_emu, height_emu = max(1, px_to_emu(right - left)), max(1, px_to_emu(bottom - top))
         origin_x, origin_y = self.box.x + px_to_emu(left), self.box.y + px_to_emu(top)
         path: list[PathCommand] = []
@@ -279,6 +296,8 @@ class _Reader:
             raise _Unsupported("stroke")
         width_px = width * scale
         dashes = [float(n) for n in _NUMBER.findall(_attr(element, "stroke-dasharray") or "")]
+        if dashes and _number(_attr(element, "stroke-dashoffset"), 0.0) != 0.0:
+            raise _Unsupported("dash offset")
         pattern = (
             tuple(length / width for length in dashes)
             if dashes and any(length > 0 for length in dashes)
@@ -326,8 +345,9 @@ class _Reader:
         x2, y2 = _unit(gradient.get("x2", "100%")), _unit(gradient.get("y2", "0%"))
         left, top, right, bottom = bounds
         if units == "objectBoundingBox":
-            start = (left + x1 * (right - left), top + y1 * (bottom - top))
-            end = (left + x2 * (right - left), top + y2 * (bottom - top))
+            # The axis is laid out on the element's own box and then carried by its transform.
+            start = matrix.apply((left + x1 * (right - left), top + y1 * (bottom - top)))
+            end = matrix.apply((left + x2 * (right - left), top + y2 * (bottom - top)))
         else:
             start, end = matrix.apply((x1, y1)), matrix.apply((x2, y2))
         dx, dy = end[0] - start[0], end[1] - start[1]
@@ -335,7 +355,7 @@ class _Reader:
         if length == 0:
             raise _Unsupported("degenerate gradient")
         # The shape's own extent along the gradient axis fixes where its first and last colour fall.
-        corners = [(x, y) for x in (left, right) for y in (top, bottom)]
+        corners = [matrix.apply((x, y)) for x in (left, right) for y in (top, bottom)]
         along = [
             ((x - start[0]) * dx + (y - start[1]) * dy) / (length * length) for x, y in corners
         ]
@@ -376,18 +396,26 @@ class _Reader:
 # --------------------------------------------------------------------------- geometry
 
 
+def _length(value: str | None, default: float) -> float:
+    """A geometry length in user units; percentages and font-relative units have no fixed value."""
+    text = (value or "").strip()
+    if text.endswith(("%", "em", "ex", "rem")):
+        raise _Unsupported("relative length")
+    return _number(text, default)
+
+
 def _segments(element: Element, name: str) -> list[Segment]:
     """The element's outline in user units as ``M``/``L``/``C``/``Z`` segments."""
     if name == "path":
         return _path_segments(element.get("d", ""))
     if name == "rect":
-        x, y = _number(element.get("x"), 0.0), _number(element.get("y"), 0.0)
-        w, h = _number(element.get("width"), 0.0), _number(element.get("height"), 0.0)
+        x, y = _length(element.get("x"), 0.0), _length(element.get("y"), 0.0)
+        w, h = _length(element.get("width"), 0.0), _length(element.get("height"), 0.0)
         if w <= 0 or h <= 0:
             return []
         rx, ry = element.get("rx"), element.get("ry")
-        radius_x = _number(rx, _number(ry, 0.0))
-        radius_y = _number(ry, _number(rx, 0.0))
+        radius_x = _length(rx, _length(ry, 0.0))
+        radius_y = _length(ry, _length(rx, 0.0))
         radius_x, radius_y = min(radius_x, w / 2), min(radius_y, h / 2)
         if radius_x <= 0 or radius_y <= 0:
             return [
@@ -399,13 +427,13 @@ def _segments(element: Element, name: str) -> list[Segment]:
             ]
         return _rounded(x, y, w, h, radius_x, radius_y)
     if name in ("circle", "ellipse"):
-        cx, cy = _number(element.get("cx"), 0.0), _number(element.get("cy"), 0.0)
-        rx = _number(element.get("r" if name == "circle" else "rx"), 0.0)
-        ry = rx if name == "circle" else _number(element.get("ry"), 0.0)
+        cx, cy = _length(element.get("cx"), 0.0), _length(element.get("cy"), 0.0)
+        rx = _length(element.get("r" if name == "circle" else "rx"), 0.0)
+        ry = rx if name == "circle" else _length(element.get("ry"), 0.0)
         return _ellipse(cx, cy, rx, ry) if rx > 0 and ry > 0 else []
     if name == "line":
-        a = (_number(element.get("x1"), 0.0), _number(element.get("y1"), 0.0))
-        b = (_number(element.get("x2"), 0.0), _number(element.get("y2"), 0.0))
+        a = (_length(element.get("x1"), 0.0), _length(element.get("y1"), 0.0))
+        b = (_length(element.get("x2"), 0.0), _length(element.get("y2"), 0.0))
         return [("M", [a]), ("L", [b])]
     points = [float(n) for n in _NUMBER.findall(element.get("points", ""))]
     pairs = list(zip(points[0::2], points[1::2], strict=False))

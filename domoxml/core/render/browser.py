@@ -302,6 +302,17 @@ _SNAPSHOT_JS = """
         if (value) clones[i].setAttribute(property, value);
       }
     });
+    // Paint a stylesheet hid or moved cannot be carried to a standalone file: leave it raster.
+    const GRAPHIC = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon',
+      'g', 'text', 'tspan', 'image', 'use']);
+    const drifted = originals.slice(1).some((original) => {
+      if (!GRAPHIC.has(original.tagName.toLowerCase())) return false;
+      if (original.closest('defs, mask, clipPath, pattern, symbol, marker')) return false;
+      const cs = getComputedStyle(original);
+      const moved = cs.transform !== 'none' && !original.hasAttribute('transform');
+      return cs.display === 'none' || moved;
+    });
+    if (drifted) return null;
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     clone.setAttribute('width', String(rect.width));
     clone.setAttribute('height', String(rect.height));
@@ -452,7 +463,10 @@ _SNAPSHOT_JS = """
     }
     if (el.id) styles.domoxmlElementId = el.id;
     if (tag === 'svg' && !(el.parentElement && el.parentElement.closest('svg'))) {
-      try { styles.domoxmlSvgSource = serializeSvg(el, r); } catch (e) { /* not embeddable */ }
+      try {
+        const source = serializeSvg(el, r);
+        if (source) styles.domoxmlSvgSource = source;
+      } catch (e) { /* not embeddable */ }
     }
     if (tag === 'canvas' && window.__domoxmlCanvas) {
       const recorded = window.__domoxmlCanvas(el);

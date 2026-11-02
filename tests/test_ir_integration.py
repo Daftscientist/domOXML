@@ -2550,3 +2550,26 @@ async def test_svg_a_renderer_would_draw_wrongly_keeps_its_raster(extra: str) ->
 
     pictures = [s.fill for s in result.slide.shapes if isinstance(s.fill, PictureFill)]
     assert pictures and all(p.svg_data is None for p in pictures)
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        "<svg style='{box}filter:blur(3px)' viewBox='0 0 100 100'>{two}</svg>",
+        "<div style='transform:rotate(15deg);position:absolute;left:0;top:0'>"
+        "<svg style='{box}' viewBox='0 0 100 100'>{two}</svg></div>",
+        "<svg style='{box}' viewBox='0 0 100 100'>"
+        "<path d='M10 10H50V50H10Z' fill='url(https://example.com/p.svg#p)'/>"
+        "<path d='M60 60H90V90H60Z' fill='#08f'/></svg>",
+        "<style>.h{{display:none}}</style><svg style='{box}' viewBox='0 0 100 100'>{two}"
+        "<path class='h' d='M0 0H9V9H0Z' fill='red'/></svg>",
+    ],
+)
+async def test_svg_whose_effects_a_standalone_file_would_lose_keeps_its_raster(html: str) -> None:
+    two = "<path d='M10 10H50V50H10Z' fill='#c20'/><path d='M55 55H95V95H55Z' fill='#08f'/>"
+    result = await _render_and_extract_result(
+        html.format(box=_SVG_BOX.replace("left:50px;top:50px", "left:150px;top:150px"), two=two)
+    )
+
+    pictures = [s.fill for s in result.slide.shapes if isinstance(s.fill, PictureFill)]
+    assert pictures and all(p.svg_data is None for p in pictures)

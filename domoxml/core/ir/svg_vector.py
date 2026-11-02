@@ -14,11 +14,15 @@ from domoxml.core.render.browser import RenderedNode, RenderedRaster
 
 # Resources the standalone picture could not load: PowerPoint never fetches them.
 _FILTER = re.compile(r"<filter\b|\bfilter\s*[:=]", re.IGNORECASE)
-_EXTERNAL = re.compile(r"<foreignObject\b|(?:xlink:)?href=\"(?!data:|#)", re.IGNORECASE)
+# The quote is possessive: backing off it would let `url("#g")` match as an external reference.
+_EXTERNAL = re.compile(
+    r"<foreignObject\b|(?:xlink:)?href=\"(?!data:|#)|url\(\s*(?:&quot;|['\"])?+(?!#|data:)",
+    re.IGNORECASE,
+)
 
 
 def portable_svg(source: str) -> str | None:
-    """``source`` if PowerPoint and LibreOffice both draw it as the browser does, else ``None``.
+    """``source`` if PowerPoint and LibreOffice both draw it like the browser, else ``None``.
 
     Real PowerPoint draws ``feGaussianBlur``, ``feTurbulence`` and masks inside ``svgBlip``
     (measured), but LibreOffice prefers the SVG over the PNG fallback and draws those filters
@@ -31,19 +35,29 @@ def portable_svg(source: str) -> str | None:
 
 
 def vector_picture(
-    shape: ShapeNode, node: RenderedNode, region: RenderedRaster | None
+    shape: ShapeNode,
+    node: RenderedNode,
+    region: RenderedRaster | None,
+    *,
+    transformed_ancestor: bool = False,
 ) -> ShapeNode | None:
     """``shape`` (the isolated raster) with the node's own SVG attached as its vector form.
 
     The SVG is positioned inside the raster's region, so effect overflow (a blur, a shadow) lands
-    where the pixels are. A transformed ``<svg>`` keeps its raster: the isolated pixels are in the
-    transformed frame and the source SVG is not.
+    where the pixels are. An SVG that is transformed (itself or through an ancestor), or has a
+    root filter, mask, clip or blend, keeps its raster: the isolated pixels carry that and the
+    standalone source does not.
     """
     source = node.styles.get("domoxmlSvgSource")
     if (
         source is None
         or not isinstance(shape.fill, PictureFill)
-        or node.styles.get("transform", "none") not in ("none", "")
+        or any(
+            node.styles.get(key, "none") not in ("none", "")
+            for key in ("transform", "filter", "maskImage", "clipPath")
+        )
+        or node.styles.get("mixBlendMode", "normal") not in ("normal", "")
+        or transformed_ancestor
     ):
         return None
     portable = portable_svg(source)

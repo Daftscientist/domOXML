@@ -1377,9 +1377,21 @@ def _svg_vector(
     shape: ShapeNode | None, node: RenderedNode, rendered: RenderedSlide
 ) -> ShapeNode | None:
     """``shape`` as a vector picture when ``node`` is an SVG PowerPoint can draw itself."""
-    if shape is None or _RASTER_REQUESTS.get() is not None:
-        return vector_picture(shape, node, None) if shape is not None else None
-    return vector_picture(shape, node, rendered.rasters.get(node.index))
+    if shape is None:
+        return None
+    by_index = {candidate.index: candidate for candidate in rendered.nodes}
+    ancestor = by_index.get(node.parent)
+    transformed = False
+    while ancestor is not None and not transformed:
+        transformed = ancestor.styles.get("transform", "none") not in ("none", "")
+        ancestor = by_index.get(ancestor.parent)
+    planning = _RASTER_REQUESTS.get() is not None
+    return vector_picture(
+        shape,
+        node,
+        None if planning else rendered.rasters.get(node.index),
+        transformed_ancestor=transformed,
+    )
 
 
 def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:

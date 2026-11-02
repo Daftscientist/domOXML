@@ -31,6 +31,7 @@ _NS = {
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
     "asvg": "http://schemas.microsoft.com/office/drawing/2016/SVG/main",
     "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
+    "p14": "http://schemas.microsoft.com/office/powerpoint/2010/main",
     "dx": "urn:domoxml:canvas-ir:1",
 }
 

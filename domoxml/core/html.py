@@ -64,6 +64,7 @@ from domoxml.core.ir.parse import autonum_to_css_list_style, bu_char_to_css_list
 from domoxml.core.ir.pattern import pattern_to_css
 from domoxml.core.ir.table_payload import encode_table_geometry
 from domoxml.core.ir.text_payload import encode_text_body
+from domoxml.core.media import online_video_url
 from domoxml.core.opc import encode_payload
 from domoxml.core.svg_path import commands_to_svg_d
 from domoxml.core.svg_stroke import svg_dash_lengths
@@ -1505,6 +1506,12 @@ def _media_html(
                 message=f"{node.kind} play settings (p:{node.kind}Pr) preserved out-of-band; "
                 "not represented in HTML/CSS"
             )
+        )
+    if node.media_url is not None and online_video_url(node.media_url) is not None:
+        # An online player is a page, not a file: it comes back as the embed it started as.
+        return (
+            f'<iframe{_identity_attrs(node)} style="{escape(pos, quote=True)};border:0"'
+            f"{src_attr} allowfullscreen></iframe>"
         )
     if node.kind == "audio":
         return (

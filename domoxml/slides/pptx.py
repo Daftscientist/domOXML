@@ -9,7 +9,7 @@ from xml.sax.saxutils import escape
 from defusedxml import ElementTree
 
 from domoxml.core.drawingml import can_emit_picture, line_xml, picture_xml, shape_xml, table_xml
-from domoxml.core.drawingml.identity import node_identity_xml
+from domoxml.core.drawingml.identity import node_identity_ext_xml, node_identity_xml
 from domoxml.core.fonts import FontFace, load_faces
 from domoxml.core.ir.group import group_pptx_write_error
 from domoxml.core.ir.model import (
@@ -19,6 +19,7 @@ from domoxml.core.ir.model import (
     FillOverlay,
     GroupNode,
     Hyperlink,
+    MediaNode,
     PatternFill,
     PictureFill,
     PreservationPart,
@@ -29,12 +30,14 @@ from domoxml.core.ir.model import (
     TableNode,
     TextBody,
 )
+from domoxml.core.media import MEDIA_CONTENT_TYPES, default_poster
 from domoxml.core.opc import (
     relationship_part_name,
     relationships_xml,
     rewrite_root_xml,
     write_package,
 )
+from domoxml.core.units import emu_to_px
 from domoxml.slides import _templates as t
 from domoxml.slides.background import background_xml
 from domoxml.slides.transition import transition_xml
@@ -47,8 +50,15 @@ _FONT_CT = "application/x-fontdata"
 _REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 _CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
-_IMAGE_CT = {"png": "image/png", "jpeg": "image/jpeg", "gif": "image/gif"}
+_IMAGE_CT = {
+    "png": "image/png",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    **MEDIA_CONTENT_TYPES,
+}
 _SVG_CT = "image/svg+xml"
+_PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+_MEDIA_REL = "http://schemas.microsoft.com/office/2007/relationships/media"
 
 # (face, in-package part path, relationship id) for each embedded font.
 type FontRel = tuple[FontFace, str, str]
@@ -185,6 +195,7 @@ def _slide_rels(
     image_rels: list[tuple[str, str]],
     hyperlink_rels: list[tuple[str, Hyperlink]],
     preserved_rels: list[tuple[str, PreservationRelationship]],
+    extra_rels: list[str] | None = None,
 ) -> str:
     """Slide relationships: the layout (rId1), one rel per embedded picture, one per hyperlink."""
     images = "".join(
@@ -211,7 +222,7 @@ def _slide_rels(
         f'{t.XML_DECL}<Relationships xmlns="{_PKG_REL_NS}">'
         f'<Relationship Id="rId1" Type="{_REL_TYPE}/slideLayout" '
         'Target="../slideLayouts/slideLayout1.xml"/>'
-        f"{images}{links}{retained}</Relationships>"
+        f"{images}{links}{retained}{''.join(extra_rels or [])}</Relationships>"
     )
 
 
@@ -281,12 +292,12 @@ def _slide(
     media_rids: dict[str, str] = {}
     slide_part = f"ppt/slides/slide{slide_number}.xml"
 
-    def register_media(data: bytes, ext: str) -> str:
+    def register_media(data: bytes, ext: str, prefix: str = "image") -> str:
         nonlocal next_rid
         key = (ext, data)
         name = media_registry.get(key)
         if name is None:
-            name = f"image{len(media_registry) + 1}.{ext}"
+            name = f"{prefix}{len(media_registry) + 1}.{ext}"
             media_registry[key] = name
             media_parts[f"ppt/media/{name}"] = data
         existing_rid = media_rids.get(name)
@@ -298,13 +309,15 @@ def _slide(
         next_rid += 1
         return rid
 
-    # Warn on node types still without a writer. Supported nodes retain their canonical order.
-    for node in slide.contents:
-        if not isinstance(node, ShapeNode | GroupNode | Connector | TableNode | PreservedNode):
-            warnings.warn(
-                f"{type(node).__name__} has no PresentationML writer yet; node dropped",
-                stacklevel=2,
-            )
+    def register_clip(data: bytes, ext: str) -> str:
+        """The part name of an embedded clip; identical clips share one part."""
+        key = (ext, data)
+        name = media_registry.get(key)
+        if name is None:
+            name = f"media{len(media_registry) + 1}.{ext}"
+            media_registry[key] = name
+            media_parts[f"ppt/media/{name}"] = data
+        return name
 
     # Background picture fill: needs its own media part + rel.
     bg_blip_rid: str | None = None
@@ -344,6 +357,39 @@ def _slide(
             and _uses_pptx_source_fallback(node, is_only_visual=len(slide.contents) == 1)
         ):
             fallback_rids[position] = register_media(node.fallback.data, node.fallback.ext)
+
+    media_links: dict[int, tuple[str, str | None, str]] = {}
+    extra_rels: list[str] = []
+    for position, node in enumerate(slide.contents):
+        if not isinstance(node, MediaNode):
+            continue
+        poster = node.poster_fill or default_poster(
+            node.kind, emu_to_px(node.box.width), emu_to_px(node.box.height)
+        )
+        poster_rid = register_media(poster.data, poster.ext)
+        kind_type = f"{_REL_TYPE}/{node.kind}"
+        link_rid = f"rId{next_rid}"
+        next_rid += 1
+        embed_rid: str | None = None
+        if node.media_data is not None:
+            part_name = register_clip(node.media_data, node.media_ext)
+            extra_rels.append(
+                f'<Relationship Id="{link_rid}" Type="{kind_type}" Target="../media/{part_name}"/>'
+            )
+            embed_rid = f"rId{next_rid}"
+            next_rid += 1
+            extra_rels.append(
+                f'<Relationship Id="{embed_rid}" Type="{_MEDIA_REL}" '
+                f'Target="../media/{part_name}"/>'
+            )
+        elif node.media_url is not None:
+            extra_rels.append(
+                f'<Relationship Id="{link_rid}" Type="{kind_type}" '
+                f'Target="{_attr(node.media_url)}" TargetMode="External"/>'
+            )
+        else:
+            continue
+        media_links[position] = (link_rid, embed_rid, poster_rid)
 
     for group in (node for node in slide.contents if isinstance(node, GroupNode)):
         for shape in iter_shapes((group,)):
@@ -607,7 +653,10 @@ def _slide(
             content_parts.append(_connector_xml(node, shape_id=shape_id))
         elif isinstance(node, TableNode):
             content_parts.append(table_xml(node, shape_id=shape_id))
-        elif isinstance(node, PreservedNode):
+        elif isinstance(node, MediaNode):
+            if position in media_links:
+                content_parts.append(_media_xml(node, shape_id, *media_links[position]))
+        else:
             native_xml = rewrite_root_xml(
                 node,
                 shape_id=shape_id,
@@ -671,12 +720,50 @@ def _slide(
     )
     return (
         slide_xml,
-        _slide_rels(slide_part, image_rels, hyperlink_rels, preserved_rels),
+        _slide_rels(slide_part, image_rels, hyperlink_rels, preserved_rels, extra_rels),
         media_parts,
         has_svg,
         preserved_parts,
         preserved_theme,
     )
+
+
+def _media_xml(
+    node: MediaNode, shape_id: int, link_rid: str, embed_rid: str | None, poster_rid: str
+) -> str:
+    """A video or audio clip: its poster picture carrying the media link PowerPoint plays."""
+    tag = "videoFile" if node.kind == "video" else "audioFile"
+    extensions = node_identity_ext_xml(node)
+    if embed_rid is not None:
+        extensions += (
+            '<p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}">'
+            '<p14:media xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" '
+            f'r:embed="{embed_rid}"/></p:ext>'
+        )
+    extension_list = f"<p:extLst>{extensions}</p:extLst>" if extensions else ""
+    return (
+        f'<p:pic><p:nvPicPr><p:cNvPr id="{shape_id}" name="{node.kind.title()} {shape_id}"/>'
+        '<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>'
+        f'<p:nvPr><a:{tag} r:link="{link_rid}"/>{_play_settings(node)}{extension_list}</p:nvPr>'
+        "</p:nvPicPr>"
+        f'<p:blipFill><a:blip r:embed="{poster_rid}"/><a:stretch><a:fillRect/></a:stretch>'
+        "</p:blipFill><p:spPr>"
+        f'<a:xfrm><a:off x="{node.box.x}" y="{node.box.y}"/>'
+        f'<a:ext cx="{node.box.width}" cy="{node.box.height}"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>'
+    )
+
+
+def _play_settings(node: MediaNode) -> str:
+    """The clip's recovered ``p:videoPr``/``p:audioPr``, if it is that element and well formed."""
+    if node.play_settings_xml is None:
+        return ""
+    try:
+        root = ElementTree.fromstring(node.play_settings_xml)
+    except ElementTree.ParseError:
+        return ""
+    expected = f"{{{_PML_NS}}}{'videoPr' if node.kind == 'video' else 'audioPr'}"
+    return node.play_settings_xml if root.tag == expected else ""
 
 
 def _paints_native_backdrop_blur(node: ShapeNode) -> bool:

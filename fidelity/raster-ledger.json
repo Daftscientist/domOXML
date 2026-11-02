@@ -108,6 +108,22 @@
     "reasons": [],
     "similarity": 0.978
   },
+  "iframe-page": {
+    "dropped": false,
+    "inherent": true,
+    "non_native": 1,
+    "reasons": [
+      "<iframe> has no native OOXML mapping"
+    ],
+    "similarity": 0.988
+  },
+  "iframe-youtube": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 1.0
+  },
   "layered-backgrounds": {
     "dropped": false,
     "inherent": false,
@@ -223,5 +239,12 @@
     "non_native": 0,
     "reasons": [],
     "similarity": 0.927
+  },
+  "video": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 1.0
   }
 }

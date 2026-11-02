@@ -6,6 +6,7 @@ import base64
 import math
 from collections.abc import Callable
 from io import BytesIO
+from zipfile import ZipFile
 
 import pytest
 from PIL import Image
@@ -29,6 +30,7 @@ from domoxml.core.ir.model import (
     GroupNode,
     Line,
     LineTo,
+    MediaNode,
     MoveTo,
     PatternFill,
     PictureFill,
@@ -2849,3 +2851,118 @@ async def test_a_css_filter_overriding_the_svg_filter_attribute_is_not_replaced_
     )
 
     assert not any(isinstance(e, Blur) for s in result.slide.shapes for e in s.effects)
+
+
+_MP4 = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDE="
+_MP3 = "data:audio/mpeg;base64,SUQzBAAAAAAA"
+_YOUTUBE = "https://www.youtube.com/embed/dQw4w9WgXcQ?feature=oembed"
+
+
+def _media(ir: SlideIR) -> MediaNode:
+    return next(node for node in ir.contents if isinstance(node, MediaNode))
+
+
+async def test_video_audio_and_online_players_become_native_media_clips() -> None:
+    result = await _render_and_extract_result(
+        f"<video src='{_MP4}' style='position:absolute;left:50px;top:50px;width:320px;"
+        "height:180px'></video>"
+        f"<audio controls src='{_MP3}' style='position:absolute;left:400px;top:50px'></audio>"
+        f"<iframe src='{_YOUTUBE}' style='position:absolute;left:50px;top:300px;width:320px;"
+        "height:180px;border:0'></iframe>"
+    )
+
+    clips = [node for node in result.slide.contents if isinstance(node, MediaNode)]
+    assert {(clip.kind, clip.media_data is not None, clip.media_url) for clip in clips} >= {
+        ("video", True, None),
+        ("video", False, _YOUTUBE),
+    }
+    assert all(item.representation.value == "native" for item in result.coverage)
+    assert not any(
+        isinstance(s.fill, PictureFill) and s.fill.raster_role for s in result.slide.shapes
+    )
+
+
+async def test_media_clips_round_trip_through_pptx_and_html() -> None:
+    ir = await _render_and_extract(
+        f"<video src='{_MP4}' style='position:absolute;left:50px;top:50px;width:320px;"
+        "height:180px'></video>"
+        f"<iframe src='{_YOUTUBE}' style='position:absolute;left:50px;top:300px;width:320px;"
+        "height:180px;border:0'></iframe>"
+    )
+
+    data = build_pptx([ir], faces=[])
+    again = read_pptx(data)[0]
+    clips = [node for node in again.contents if isinstance(node, MediaNode)]
+    assert len(clips) == 2
+    embedded = next(clip for clip in clips if clip.media_data is not None)
+    assert embedded.media_data == _media(ir).media_data or embedded.media_ext == "mp4"
+    online = next(clip for clip in clips if clip.media_url is not None)
+    assert online.media_url == _YOUTUBE
+
+    html = inline_assets(serialize_canvas([again])).slides[0].html
+    assert "<iframe" in html and "youtube.com/embed" in html and "<video" in html
+    reloaded = await _render_and_extract(html)
+    assert sum(isinstance(node, MediaNode) for node in reloaded.contents) >= 1
+
+
+async def test_an_iframe_that_is_not_an_online_video_keeps_its_raster() -> None:
+    ir = await _render_and_extract(
+        "<iframe srcdoc='<h1>hi</h1>' style='position:absolute;left:50px;top:50px;width:320px;"
+        "height:180px'></iframe>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert not any(isinstance(node, MediaNode) for node in ir.contents)
+
+
+async def test_two_identical_clips_share_one_part_and_both_export() -> None:
+    clip = (
+        f"<video src='{_MP4}' style='position:absolute;left:{{x}}px;top:50px;width:200px;"
+        "height:120px'></video>"
+    )
+    ir = await _render_and_extract(clip.format(x=50) + clip.format(x=300))
+
+    data = build_pptx([ir], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        parts = [name for name in package.namelist() if name.startswith("ppt/media/media")]
+    assert len(parts) == 1
+    assert sum(isinstance(node, MediaNode) for node in read_pptx(data)[0].contents) == 2
+
+
+async def test_media_clipped_by_an_ancestor_or_off_the_slide_keeps_a_whole_poster() -> None:
+    clipped = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:150px;height:100px;"
+        "overflow:hidden'>"
+        f"<video src='{_MP4}' style='position:absolute;left:80px;top:10px;width:200px;"
+        "height:120px'></video></div>"
+    )
+    assert not any(isinstance(node, MediaNode) for node in clipped.contents)
+    assert any(isinstance(s.fill, PictureFill) for s in clipped.shapes)
+
+    off_slide = await _render_and_extract(
+        f"<video src='{_MP4}' style='position:absolute;left:-60px;top:50px;width:200px;"
+        "height:120px'></video>"
+    )
+    clip = _media(off_slide)
+    assert clip.poster_fill is not None
+    with Image.open(BytesIO(clip.poster_fill.data)) as poster:
+        assert abs(poster.width / poster.height - 200 / 120) < 0.02
+
+
+async def test_media_identity_and_play_settings_survive_the_pptx_round_trip() -> None:
+    ir = await _render_and_extract(
+        f"<video id='intro' src='{_MP4}' style='position:absolute;left:50px;top:50px;width:200px;"
+        "height:120px'></video>"
+    )
+    clip = _media(ir)
+    settings = (
+        '<p:videoPr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+        'autoplay="1"/>'
+    )
+    tagged = ir.model_copy(
+        update={"contents": (clip.model_copy(update={"play_settings_xml": settings}),)}
+    )
+
+    again = _media(read_pptx(build_pptx([tagged], faces=[]))[0])
+    assert again.play_settings_xml is not None and "autoplay" in again.play_settings_xml
+    assert again.node_id == clip.node_id and again.provenance is not None

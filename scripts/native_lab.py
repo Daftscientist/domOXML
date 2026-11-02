@@ -587,6 +587,72 @@ def probe_svg_blip() -> Path:
     return sheet("svg-blip", render(_deck("lab_svg_blip", build), graph=_GRAPH))
 
 
+def probe_svg_filters() -> Path:
+    """Which SVG filters real PowerPoint draws inside ``asvg:svgBlip`` (green) vs falls back (red)."""
+    wrap = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="110" viewBox="0 0 200 110">'
+        "{defs}{body}</svg>"
+    )
+    cases = [
+        (
+            "feGaussianBlur",
+            wrap.format(
+                defs='<defs><filter id="f"><feGaussianBlur stdDeviation="6"/></filter></defs>',
+                body='<rect width="200" height="110" fill="#fff"/>'
+                '<rect x="40" y="25" width="120" height="60" fill="#080" filter="url(#f)"/>',
+            ),
+        ),
+        (
+            "feTurbulence",
+            wrap.format(
+                defs='<defs><filter id="f"><feTurbulence baseFrequency=".05"/></filter></defs>',
+                body='<rect width="200" height="110" fill="#080" filter="url(#f)"/>',
+            ),
+        ),
+        (
+            "feDropShadow",
+            wrap.format(
+                defs='<defs><filter id="f"><feDropShadow dx="6" dy="6" stdDeviation="3"/></filter></defs>',
+                body='<rect width="200" height="110" fill="#fff"/>'
+                '<rect x="30" y="20" width="100" height="50" fill="#080" filter="url(#f)"/>',
+            ),
+        ),
+        (
+            "mask + opacity",
+            wrap.format(
+                defs='<defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/>'
+                '<stop offset="1" stop-color="#000"/></linearGradient>'
+                '<mask id="m"><rect width="200" height="110" fill="url(#g)"/></mask></defs>',
+                body='<rect width="200" height="110" fill="#080" mask="url(#m)"/>',
+            ),
+        ),
+    ]
+
+    def build(_: PresentationType, slide: Slide) -> None:
+        for index, (label, svg) in enumerate(cases):
+            x, y = 0.4 + (index % 2) * 6.4, 0.4 + (index // 2) * 3.4
+            picture = slide.shapes.add_picture(
+                BytesIO(_png(Image.new("RGB", (200, 110), (200, 30, 30)))),
+                Inches(x),
+                Inches(y),
+                Inches(3.6),
+                Inches(1.98),
+            )
+            rid = _part(
+                slide, f"/ppt/media/f{index}.svg", "image/svg+xml", svg.encode(), f"{_REL}/image"
+            )
+            picture._element.find(".//" + _q(A, "blip")).append(
+                etree.fromstring(
+                    f'<a:extLst xmlns:a="{A}"><a:ext uri="{{96DAC541-7B7A-43D3-8B79-37D633B846F1}}">'
+                    '<asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main"'
+                    f' xmlns:r="{_REL}" r:embed="{rid}"/></a:ext></a:extLst>'
+                )
+            )
+            _caption(slide, f"{label}: green = SVG drawn, red = PNG fallback", x, y + 2.05, 5)
+
+    return sheet("svg-filters", render(_deck("lab_svg_filters", build), graph=_GRAPH))
+
+
 def probe_online_video() -> Path:
     """Does Office accept an online-video picture (poster + external video link)?"""
 
@@ -745,6 +811,7 @@ PROBES: dict[str, Callable[[], Path]] = {
     "blur-edges": probe_blur_edges,
     "blur-scale": probe_blur_scale,
     "svg-blip": probe_svg_blip,
+    "svg-filters": probe_svg_filters,
     "online-video": probe_online_video,
     "model3d": probe_model3d,
     "web-viewer": probe_web_viewer,

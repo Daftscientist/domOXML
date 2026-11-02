@@ -285,6 +285,41 @@ _SNAPSHOT_JS = """
     }
     return found;
   };
+  const SVG_PAINT = ['fill', 'fill-opacity', 'fill-rule', 'stroke', 'stroke-width',
+    'stroke-opacity', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit',
+    'stroke-dasharray', 'stroke-dashoffset', 'opacity', 'stop-color', 'stop-opacity',
+    'clip-rule', 'visibility', 'font-family', 'font-size',
+    'font-weight', 'font-style', 'text-anchor', 'dominant-baseline', 'letter-spacing'];
+  // A standalone copy of an <svg>: sheet-driven paint is inlined, so it renders outside the page.
+  const serializeSvg = (el, rect) => {
+    const clone = el.cloneNode(true);
+    const originals = [el, ...el.querySelectorAll('*')];
+    const clones = [clone, ...clone.querySelectorAll('*')];
+    originals.forEach((original, i) => {
+      const cs = getComputedStyle(original);
+      for (const property of SVG_PAINT) {
+        const value = cs.getPropertyValue(property);
+        if (value) clones[i].setAttribute(property, value);
+      }
+    });
+    // Paint a stylesheet hid or moved cannot be carried to a standalone file: leave it raster.
+    const GRAPHIC = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon',
+      'g', 'text', 'tspan', 'image', 'use']);
+    const drifted = originals.slice(1).some((original) => {
+      if (!GRAPHIC.has(original.tagName.toLowerCase())) return false;
+      if (original.closest('defs, mask, clipPath, pattern, symbol, marker')) return false;
+      const cs = getComputedStyle(original);
+      const moved = cs.transform !== 'none' && !original.hasAttribute('transform');
+      return cs.display === 'none' || moved;
+    });
+    if (drifted) return null;
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('width', String(rect.width));
+    clone.setAttribute('height', String(rect.height));
+    clone.removeAttribute('style');
+    clone.removeAttribute('class');
+    return new XMLSerializer().serializeToString(clone);
+  };
   // The linear part of every ancestor transform composed together. Shapes on a slide are all
   // positioned absolutely, so a descendant must carry the rotation/flip it is drawn with even
   // though its own computed transform is `none`.
@@ -427,6 +462,12 @@ _SNAPSHOT_JS = """
       if (value) styles[key] = value;
     }
     if (el.id) styles.domoxmlElementId = el.id;
+    if (tag === 'svg' && !(el.parentElement && el.parentElement.closest('svg'))) {
+      try {
+        const source = serializeSvg(el, r);
+        if (source) styles.domoxmlSvgSource = source;
+      } catch (e) { /* not embeddable */ }
+    }
     if (tag === 'canvas' && window.__domoxmlCanvas) {
       const recorded = window.__domoxmlCanvas(el);
       if (recorded.svg) {

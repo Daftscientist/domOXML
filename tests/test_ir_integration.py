@@ -2506,3 +2506,70 @@ async def test_resizing_a_canvas_forgets_the_open_path() -> None:
         s.fill for s in result.shapes if isinstance(s.fill, PictureFill) and s.fill.svg_data
     )
     assert picture.svg_data is not None and picture.svg_data.count(b"<path") == 1
+
+
+_SVG_BOX = "position:absolute;left:50px;top:50px;width:200px;height:200px;"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "<path d='M10 10H50V50H10Z' fill='#c20'/><path d='M55 55H95V95H55Z' fill='#08f'/>",
+        "<defs><linearGradient id='g'><stop offset='0' stop-color='#c20'/>"
+        "<stop offset='1' stop-color='#08f'/></linearGradient></defs>"
+        "<path d='M10 10H90V90H10Z' fill='url(#g)'/>",
+        "<path d='M10 50H90' stroke='#c20' stroke-width='6' stroke-dasharray='10 4 2 4'/>",
+    ],
+)
+async def test_svg_without_a_native_shape_form_leaves_as_a_vector_picture(body: str) -> None:
+    result = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}' viewBox='0 0 100 100'>{body}</svg>"
+    )
+
+    picture = next(s.fill for s in result.slide.shapes if isinstance(s.fill, PictureFill))
+    assert picture.svg_data is not None and b"<svg" in picture.svg_data
+    assert all(item.representation.value == "native" for item in result.coverage)
+
+    again = read_pptx(build_pptx([result.slide], faces=[]))[0]
+    assert any(isinstance(s.fill, PictureFill) and s.fill.svg_data for s in again.shapes)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "<defs><filter id='f'><feGaussianBlur stdDeviation='3'/></filter></defs>"
+        "<path d='M10 10H90V90H10Z' fill='#c20' filter='url(#f)'/>",
+        "<image href='https://example.com/a.png' width='50' height='50'/>"
+        "<path d='M10 10H50V50H10Z' fill='#c20'/><path d='M60 60H90V90H60Z' fill='#08f'/>",
+    ],
+)
+async def test_svg_a_renderer_would_draw_wrongly_keeps_its_raster(extra: str) -> None:
+    result = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}' viewBox='0 0 100 100'>{extra}</svg>"
+    )
+
+    pictures = [s.fill for s in result.slide.shapes if isinstance(s.fill, PictureFill)]
+    assert pictures and all(p.svg_data is None for p in pictures)
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        "<svg style='{box}filter:blur(3px)' viewBox='0 0 100 100'>{two}</svg>",
+        "<div style='transform:rotate(15deg);position:absolute;left:0;top:0'>"
+        "<svg style='{box}' viewBox='0 0 100 100'>{two}</svg></div>",
+        "<svg style='{box}' viewBox='0 0 100 100'>"
+        "<path d='M10 10H50V50H10Z' fill='url(https://example.com/p.svg#p)'/>"
+        "<path d='M60 60H90V90H60Z' fill='#08f'/></svg>",
+        "<style>.h{{display:none}}</style><svg style='{box}' viewBox='0 0 100 100'>{two}"
+        "<path class='h' d='M0 0H9V9H0Z' fill='red'/></svg>",
+    ],
+)
+async def test_svg_whose_effects_a_standalone_file_would_lose_keeps_its_raster(html: str) -> None:
+    two = "<path d='M10 10H50V50H10Z' fill='#c20'/><path d='M55 55H95V95H55Z' fill='#08f'/>"
+    result = await _render_and_extract_result(
+        html.format(box=_SVG_BOX.replace("left:50px;top:50px", "left:150px;top:150px"), two=two)
+    )
+
+    pictures = [s.fill for s in result.slide.shapes if isinstance(s.fill, PictureFill)]
+    assert pictures and all(p.svg_data is None for p in pictures)

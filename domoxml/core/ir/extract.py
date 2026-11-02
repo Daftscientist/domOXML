@@ -134,6 +134,7 @@ from domoxml.core.ir.parse import (
 from domoxml.core.ir.pattern import match_pattern_fill
 from domoxml.core.ir.slide_properties_extract import extract_slide_properties
 from domoxml.core.ir.svg_extract import extract_custom_geometry
+from domoxml.core.ir.svg_vector import vector_picture
 from domoxml.core.ir.table_extract import extract_table
 from domoxml.core.ir.table_payload import apply_table_geometry, decode_table_geometry
 from domoxml.core.ir.text_payload import decode_text_body
@@ -1372,6 +1373,27 @@ def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> tuple[ShapeN
     return native, True
 
 
+def _svg_vector(
+    shape: ShapeNode | None, node: RenderedNode, rendered: RenderedSlide
+) -> ShapeNode | None:
+    """``shape`` as a vector picture when ``node`` is an SVG PowerPoint can draw itself."""
+    if shape is None:
+        return None
+    by_index = {candidate.index: candidate for candidate in rendered.nodes}
+    ancestor = by_index.get(node.parent)
+    transformed = False
+    while ancestor is not None and not transformed:
+        transformed = ancestor.styles.get("transform", "none") not in ("none", "")
+        ancestor = by_index.get(ancestor.parent)
+    planning = _RASTER_REQUESTS.get() is not None
+    return vector_picture(
+        shape,
+        node,
+        None if planning else rendered.rasters.get(node.index),
+        transformed_ancestor=transformed,
+    )
+
+
 def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
     """The element-layer picture for ``node``, built only from pixels captured in isolation.
 
@@ -2244,6 +2266,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     shape = _raster_shape(node, rendered)
                     consumed |= _subtree(node.index, children)
                     raster_reason = f"SVG custom geometry paint cannot map natively: {paint_reason}"
+                    vector = _svg_vector(shape, node, rendered)
+                    if vector is not None:
+                        contents.append(identities.apply(vector, node))
+                        coverage.append(_native_coverage(label))
+                        continue
                     if shape is None:
                         coverage.append(_failed_coverage(label, raster_reason))
                         warnings.append(
@@ -2351,6 +2378,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 shape = _raster_shape(node, rendered)
                 consumed |= _subtree(node.index, children)
                 raster_reason = "SVG could not be converted to custom geometry; rasterised"
+                vector = _svg_vector(shape, node, rendered)
+                if vector is not None:
+                    contents.append(identities.apply(vector, node))
+                    coverage.append(_native_coverage(label))
+                    continue
                 if shape is None:
                     warnings.append(
                         ConversionWarning(

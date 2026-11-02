@@ -517,6 +517,9 @@ _SNAPSHOT_JS = """
       if (value) styles[key] = value;
     }
     if (el.id) styles.domoxmlElementId = el.id;
+    if (tag === 'svg' && el.getAttribute('preserveAspectRatio')) {
+      styles.domoxmlSvgAspect = el.getAttribute('preserveAspectRatio');
+    }
     if (tag === 'svg' && !(el.parentElement && el.parentElement.closest('svg'))) {
       try {
         const source = serializeSvg(el, r);

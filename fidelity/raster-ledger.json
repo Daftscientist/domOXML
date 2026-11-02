@@ -2,19 +2,15 @@
   "backdrop-saturate": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "backdrop-filter blur baked as a layer beneath the native glass"
-    ],
+    "non_native": 0,
+    "reasons": [],
     "similarity": 0.995
   },
   "box-reflect": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "CSS box reflection has no native mapping"
-    ],
+    "non_native": 0,
+    "reasons": [],
     "similarity": 0.979
   },
   "canvas": {
@@ -173,10 +169,8 @@
   "svg-blur-filter": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "SVG custom geometry paint cannot map natively: SVG CSS filter has no native custom-geometry mapping"
-    ],
+    "non_native": 0,
+    "reasons": [],
     "similarity": 0.993
   },
   "svg-dash-array": {

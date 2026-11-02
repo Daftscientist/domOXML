@@ -40,7 +40,7 @@ from domoxml.core.ir.effect_calibration import (
     CUSTOM_SHADOW_BLUR_TO_DML,
 )
 from domoxml.core.ir.effect_payload import decode_effect_payload, decode_effects
-from domoxml.core.ir.filters import apply_to_image
+from domoxml.core.ir.filters import COLOR_FUNCTIONS, FilterFunction, apply_to_image, parse_filters
 from domoxml.core.ir.geometry_payload import decode_custom_geometry
 from domoxml.core.ir.group_payload import GroupMemberPayload, GroupPayload, decode_group_payload
 from domoxml.core.ir.layers import (
@@ -132,6 +132,7 @@ from domoxml.core.ir.parse import (
     parse_shadow,
     parse_shadows,
     parse_soft_edge_mask,
+    parse_svg_blur_sigma,
     parse_svg_fill_overlay_filter,
     parse_svg_soft_edge_filter,
 )
@@ -1437,7 +1438,59 @@ def plan_backdrop_layers(rendered: RenderedSlide) -> frozenset[int]:
     return _dry_run(rendered)[1]
 
 
-_BACKDROP_BLUR_RE = re.compile(r"^\s*blur\(\s*([\d.]+)px\s*\)\s*$", re.IGNORECASE)
+def _svg_blur(node: RenderedNode, source: str | None, effective_filter: str) -> Blur | None:
+    """A native blur for an SVG ``feGaussianBlur`` filter, scaled from user units to px.
+
+    The captured filter only counts when it is the filter the browser actually applies: a CSS
+    ``filter`` can override the ``filter`` attribute that named it.
+    """
+    sigma = parse_svg_blur_sigma(source)
+    view_box = node.src.split()
+    identifier = re.search(r'<filter\b[^>]*\bid="([^"]+)"', source or "")
+    if (
+        sigma is None
+        or len(view_box) != 4
+        or identifier is None
+        or f"#{identifier.group(1)}" not in effective_filter
+    ):
+        return None
+    try:
+        scale_x, scale_y = node.width / float(view_box[2]), node.height / float(view_box[3])
+    except (ValueError, ZeroDivisionError):
+        return None
+    # An SVG scales uniformly by the smaller factor (``xMidYMid meet``), so one radius is exact.
+    radius = sigma * min(scale_x, scale_y)
+    return Blur(radius_emu=px_to_emu(radius)) if math.isfinite(radius) else None
+
+
+def _backdrop_order_note(node: RenderedNode) -> str:
+    """A coverage note when colour maths follows the blur in CSS but runs before it natively.
+
+    Both are linear per pixel, so only channels that clamp differ (a saturated edge, a doubled
+    brightness at a black/white boundary); the browser's own blurred pixels remain the fallback.
+    """
+    functions = parse_filters(node.styles.get("backdropFilter", "")) or ()
+    names = [function.name for function in functions]
+    if "blur" in names and any(name != "blur" for name in names[names.index("blur") + 1 :]):
+        return "; colour functions follow the blur in CSS and are applied before it here"
+    return ""
+
+
+def _backdrop_filter_parts(value: str) -> tuple[float | None, tuple[FilterFunction, ...]]:
+    """``(blur px, colour functions)`` of a ``backdrop-filter`` that is one blur plus colour maths.
+
+    Anything else (two blurs, a drop shadow, an unknown function) gives ``(None, ())`` and stays a
+    baked picture.
+    """
+    functions = parse_filters(value)
+    if not functions:
+        return None, ()
+    blurs = [function for function in functions if function.name == "blur"]
+    others = tuple(function for function in functions if function.name != "blur")
+    if len(blurs) != 1 or any(function.name not in COLOR_FUNCTIONS for function in others):
+        return None, ()
+    match = re.fullmatch(r"\s*([\d.]+)px\s*", blurs[0].argument)
+    return (float(match.group(1)), others) if match else (None, ())
 
 
 def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> tuple[ShapeNode, bool] | None:
@@ -1464,13 +1517,18 @@ def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> tuple[ShapeN
         width=px_to_emu(blurred.width),
         height=px_to_emu(blurred.height),
     )
-    match = _BACKDROP_BLUR_RE.match(node.styles.get("backdropFilter", ""))
+    blur_px, colours = _backdrop_filter_parts(node.styles.get("backdropFilter", ""))
     # The native layer is a rounded rectangle blurred at full strength. A clip-path or an element
     # opacity changes what the browser composites, which only the baked pixels reproduce exactly.
     exact_in_native = (
         node.styles.get("clipPath", "none") in ("none", "") and _opacity(node.styles) == 1.0
     )
-    if backdrop.sharp is None or match is None or not exact_in_native:
+    sharp = backdrop.sharp
+    if sharp is not None and colours:
+        # PowerPoint blurs the picture itself, so the colour maths is applied to the sharp
+        # backdrop first. Both are linear per pixel, so the order does not matter.
+        sharp = apply_to_image(sharp, colours)
+    if sharp is None or blur_px is None or not exact_in_native:
         baked = PictureFill(data=blurred.png, ext="png", raster_role="backdrop-layer")
         return ShapeNode(box=baked_box, fill=baked), False
     box = _box(node)
@@ -1484,10 +1542,10 @@ def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> tuple[ShapeN
         geom=_geometry(box, corner),
         corner_radius_emu=corner,
         transform=_parse_transform(node.styles),
-        fill=PictureFill(data=backdrop.sharp, ext="png", raster_role="backdrop-layer"),
+        fill=PictureFill(data=sharp, ext="png", raster_role="backdrop-layer"),
         effects=(
             Blur(
-                radius_emu=px_to_emu(float(match.group(1)) * DRAWINGML_BLUR_RADIUS_PER_CSS_SIGMA),
+                radius_emu=px_to_emu(blur_px * DRAWINGML_BLUR_RADIUS_PER_CSS_SIGMA),
                 grow=False,
             ),
         ),
@@ -2301,6 +2359,8 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     parse_drop_shadow_filter(filter_value) if encoded_effects is None else None
                 )
                 blur = parse_blur_filter(filter_value) if encoded_effects is None else None
+                if blur is None and encoded_effects is None:
+                    blur = _svg_blur(node, filter_styles.get("domoxmlSvgFilter"), filter_value)
                 svg_soft_edge = (
                     parse_svg_soft_edge_filter(filter_styles.get("domoxmlSvgFilter"))
                     if encoded_effects is None
@@ -2614,6 +2674,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             reason=(
                                 "backdrop blur is a native a:blur on the sharp backdrop picture, "
                                 "with the browser's blurred pixels as the owned fallback"
+                                + _backdrop_order_note(node)
                             ),
                         )
                     )

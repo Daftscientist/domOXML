@@ -459,14 +459,15 @@ async def test_backdrop_blur_round_trips_through_pptx_and_html() -> None:
     assert structure(current.slide) == structure(first.slide)
 
 
-async def test_backdrop_filter_with_other_functions_keeps_only_the_baked_layer() -> None:
-    # A native blur can only carry a plain blur(Npx); anything else (saturate, brightness) would
-    # be lost, so the browser's exact pixels stay as one picture.
+async def test_backdrop_filter_with_a_drop_shadow_keeps_only_the_baked_layer() -> None:
+    # A native blur plus colour maths (saturate, brightness) is carried natively; anything that is
+    # not (a second blur, a drop shadow) would be lost, so the browser's pixels stay one picture.
     ir = await _render_and_extract(
         "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
         "background:#cc2200'></div>"
         "<div style='position:absolute;left:150px;top:120px;width:300px;height:80px;"
-        "background:rgba(255,255,255,.4);backdrop-filter:blur(6px) saturate(180%)'></div>"
+        "background:rgba(255,255,255,.4);backdrop-filter:blur(6px) drop-shadow(2px 2px 2px #000)'>"
+        "</div>"
     )
 
     [layer] = [
@@ -2534,7 +2535,7 @@ async def test_svg_without_a_native_shape_form_leaves_as_a_vector_picture(body: 
 @pytest.mark.parametrize(
     "extra",
     [
-        "<defs><filter id='f'><feGaussianBlur stdDeviation='3'/></filter></defs>"
+        "<defs><filter id='f'><feTurbulence baseFrequency='.05'/></filter></defs>"
         "<path d='M10 10H90V90H10Z' fill='#c20' filter='url(#f)'/>",
         "<image href='https://example.com/a.png' width='50' height='50'/>"
         "<path d='M10 10H50V50H10Z' fill='#c20'/><path d='M60 60H90V90H60Z' fill='#08f'/>",
@@ -2747,3 +2748,104 @@ async def test_a_clip_path_shape_cut_by_an_overflow_ancestor_keeps_its_raster() 
     )
 
     assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_box_reflect_with_implicit_stops_becomes_a_native_reflection() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:80px;width:360px;height:120px;"
+        "background:#c20;-webkit-box-reflect:below 6px "
+        "linear-gradient(transparent,rgba(0,0,0,.4))'></div>"
+    )
+
+    shape = next(s for s in result.slide.shapes if isinstance(s.fill, SolidFill))
+    assert any(effect.kind == "reflection" for effect in shape.effects)
+    assert all(item.representation.value != "element_layer" for item in result.coverage)
+
+
+async def test_backdrop_saturate_recolours_the_sharp_backdrop_under_a_native_blur() -> None:
+    plain = await _render_and_extract(_GLASS.format(filter="blur(6px)"))
+    saturated = await _render_and_extract(_GLASS.format(filter="blur(6px) saturate(180%)"))
+
+    def backdrop(ir: SlideIR) -> PictureFill:
+        return next(
+            s.fill
+            for s in ir.shapes
+            if isinstance(s.fill, PictureFill) and s.fill.raster_role == "backdrop-layer"
+        )
+
+    layer = next(
+        s
+        for s in saturated.shapes
+        if isinstance(s.fill, PictureFill) and s.fill.raster_role == "backdrop-layer"
+    )
+    assert any(isinstance(effect, Blur) for effect in layer.effects)
+    assert backdrop(saturated).data != backdrop(plain).data
+
+
+_GLASS = (
+    "<div style='position:absolute;left:0;top:0;width:1280px;height:720px;"
+    "background:linear-gradient(135deg,#f80,#306 60%,#08f)'></div>"
+    "<div style='position:absolute;left:140px;top:120px;width:380px;height:260px;"
+    "background:rgba(255,255,255,.25);backdrop-filter:{filter}'></div>"
+)
+
+
+async def test_svg_gaussian_blur_filter_becomes_a_native_blur_scaled_to_the_box() -> None:
+    result = await _render_and_extract_result(
+        "<svg style='position:absolute;left:100px;top:100px;width:360px;height:220px' "
+        "viewBox='0 0 100 100'><defs><filter id='f'><feGaussianBlur stdDeviation='3'/></filter>"
+        "</defs><path d='M10 10H90V90H10Z' fill='#c20' filter='url(#f)'/></svg>"
+    )
+
+    shape = next(s for s in result.slide.shapes if s.custom_geom is not None)
+    [blur] = [effect for effect in shape.effects if isinstance(effect, Blur)]
+    # 3 user units at the SVG's uniform scale (the smaller of 3.6 and 2.2 px per unit).
+    assert abs(blur.radius_emu - px_to_emu(3 * 2.2)) < px_to_emu(0.2)
+
+
+async def test_svg_geometry_keeps_its_aspect_ratio_inside_a_wider_box() -> None:
+    ir = await _render_and_extract(
+        "<svg style='position:absolute;left:100px;top:100px;width:360px;height:220px' "
+        "viewBox='0 0 100 100'><path d='M0 0H100V100H0Z' fill='#c20'/></svg>"
+    )
+
+    shape = next(s for s in ir.shapes if s.custom_geom is not None)
+    assert shape.custom_geom is not None
+    xs = [c.to.x for c in shape.custom_geom.path if isinstance(c, LineTo | MoveTo)]
+    ys = [c.to.y for c in shape.custom_geom.path if isinstance(c, LineTo | MoveTo)]
+    # The browser draws a 220px square centred in the 360px width, not a stretched rectangle.
+    tolerance = px_to_emu(1)
+    assert abs(max(xs) - min(xs) - px_to_emu(220)) < tolerance
+    assert abs(min(xs) - px_to_emu(70)) < tolerance
+    assert abs(max(ys) - min(ys) - px_to_emu(220)) < tolerance
+
+
+@pytest.mark.parametrize(
+    "filter_markup",
+    [
+        "<filter id='f' primitiveUnits='objectBoundingBox'><feGaussianBlur stdDeviation='.05'/>"
+        "</filter>",
+        "<filter id='f'><feGaussianBlur stdDeviation='1e309'/></filter>",
+    ],
+)
+async def test_svg_blur_that_is_not_a_plain_user_unit_length_keeps_its_raster(
+    filter_markup: str,
+) -> None:
+    result = await _render_and_extract_result(
+        "<svg style='position:absolute;left:100px;top:100px;width:220px;height:220px' "
+        f"viewBox='0 0 100 100'><defs>{filter_markup}</defs>"
+        "<path d='M10 10H90V90H10Z' fill='#c20' filter='url(#f)'/></svg>"
+    )
+
+    assert not any(isinstance(e, Blur) for s in result.slide.shapes for e in s.effects)
+
+
+async def test_a_css_filter_overriding_the_svg_filter_attribute_is_not_replaced_by_a_blur() -> None:
+    result = await _render_and_extract_result(
+        "<svg style='position:absolute;left:100px;top:100px;width:220px;height:220px' "
+        "viewBox='0 0 100 100'><defs><filter id='f'><feGaussianBlur stdDeviation='3'/></filter>"
+        "</defs><path d='M10 10H90V90H10Z' fill='#c20' filter='url(#f)' "
+        "style='filter:brightness(2)'/></svg>"
+    )
+
+    assert not any(isinstance(e, Blur) for s in result.slide.shapes for e in s.effects)

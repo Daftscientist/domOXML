@@ -434,10 +434,21 @@ _SNAPSHOT_JS = """
         const rect = { left: cx - region.half.x, top: cy - region.half.y,
           right: cx + region.half.x, bottom: cy + region.half.y, radius: region.radius };
         if (!window) { window = rect; continue; }
-        if (window.radius > 0 && rect.radius > 0) windowExact = false;
-        window = { left: Math.max(window.left, rect.left), top: Math.max(window.top, rect.top),
-          right: Math.min(window.right, rect.right), bottom: Math.min(window.bottom, rect.bottom),
-          radius: Math.max(window.radius, rect.radius) };
+        const merged = {
+          left: Math.max(window.left, rect.left), top: Math.max(window.top, rect.top),
+          right: Math.min(window.right, rect.right),
+          bottom: Math.min(window.bottom, rect.bottom),
+          radius: Math.max(window.radius, rect.radius),
+        };
+        // A rounded clip survives an intersection only when it is the whole result: otherwise a
+        // new straight edge cuts through its corners and the result is not one rounded box.
+        const same = (a, b) => Math.abs(a.left - b.left) + Math.abs(a.top - b.top)
+          + Math.abs(a.right - b.right) + Math.abs(a.bottom - b.bottom) < 0.01;
+        if ((window.radius > 0 && !same(merged, window))
+            || (rect.radius > 0 && !same(merged, rect))) {
+          windowExact = false;
+        }
+        window = merged;
       }
       if (styles.domoxmlClippedByAncestor && window && windowExact) {
         const parts = [window.left, window.top, window.right - window.left,

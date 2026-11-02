@@ -265,6 +265,8 @@ def read_text_body(
         return None
     anchor, autofit, columns, column_gap_emu, margins = read_text_body_properties(body, ph_ctx)
     mirrored = _text_is_mirrored(body)
+    if mirrored:
+        margins = (margins[2], margins[1], margins[0], margins[3])
     paragraphs: list[TextParagraph] = []
     for paragraph in body.findall("a:p", _NS):
         slide_properties = paragraph.find("a:pPr", _NS)

@@ -523,6 +523,8 @@ def _text_body(body: TextBody | None, hyperlink_rid: HyperlinkRid) -> str:
             col_attrs += f' spcCol="{body.column_gap_emu}"'
 
     left, top, right, bottom = body.margins
+    if body.mirror_x:
+        left, right = right, left  # the mirror turns the insets with the text
 
     if body.autofit == "shape":
         autofit_el = "<a:spAutoFit/>"

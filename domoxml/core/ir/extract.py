@@ -825,7 +825,11 @@ def _cropped_geometry(
     a free-form path in the box's own coordinate space keeps any fill or picture mapped as it was.
     Text, borders and shadows cannot be cropped that way, so those keep the raster.
     """
-    if existing is not None or node.styles.get("transform", "none") not in ("none", ""):
+    if (
+        existing is not None
+        or node.styles.get("transform", "none") not in ("none", "")
+        or node.styles.get("clipPath", "none") not in ("none", "")
+    ):
         return None, "clipped by an ancestor's overflow has no native mapping"
     if not fill_only(node) or node.text_runs:
         return None, "clipped by an ancestor's overflow has no native mapping"
@@ -856,7 +860,7 @@ def _mirrored(text: TextBody | None, node: RenderedNode) -> TextBody | None:
 
 
 def _quad_geometry(
-    node: RenderedNode, fill: Fill | None
+    node: RenderedNode, fill: Fill | None, existing: CustomGeometry | None
 ) -> tuple[CustomGeometry | None, str | None]:
     """The transformed corners of a skewed or perspective-projected box as a native quadrilateral.
 
@@ -868,6 +872,9 @@ def _quad_geometry(
         return None, "skew/perspective/shear transform has no native mapping"
     if not (is_leaf(node) and fill_only(node)) or isinstance(fill, GradientFill | PictureFill):
         return None, "skew/perspective of an element with content or a warped fill is raster"
+    rounded = parse_radius_px(node.styles.get("borderRadius"), shorter_side_px=1.0) > 0
+    if existing is not None or rounded or node.styles.get("clipPath", "none") not in ("none", ""):
+        return None, "skew/perspective of a clipped or rounded box is raster"
     values = [float(value) for value in raw.split(",")]
     box = _box(node)
     points = [
@@ -2549,7 +2556,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             polygon_matched = clip_geometry is None and reason is None
 
         if reason is None and _has_complex_transform(node.styles.get("transform")):
-            clip_geometry, reason = _quad_geometry(node, fill)
+            clip_geometry, reason = _quad_geometry(node, fill, clip_geometry)
         if reason is None and ancestor_clip is not None:
             clip_geometry, reason = _cropped_geometry(node, ancestor_clip, clip_geometry)
             polygon_matched = polygon_matched and clip_geometry is None
@@ -2921,7 +2928,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         portable_fallback=portable_fallback,
                         corner_radius_emu=corner,
                         opacity=_opacity(node.styles),
-                        text=_mirrored(text, node),
+                        text=text if encoded_text is not None else _mirrored(text, node),
                         transform=None
                         if _has_complex_transform(node.styles.get("transform"))
                         else _parse_transform(node.styles),

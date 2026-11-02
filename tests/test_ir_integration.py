@@ -2698,3 +2698,52 @@ async def test_overflow_cropped_text_keeps_its_raster() -> None:
     )
 
     assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_clipped_gradient_survives_the_html_round_trip() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:80px;width:360px;height:220px;"
+        "background:linear-gradient(90deg,#c20,#08f);clip-path:inset(10% 20% 10% 20%)'></div>"
+    )
+    [shape] = [s for s in ir.shapes if s.custom_geom is not None]
+    assert isinstance(shape.fill, GradientFill)
+
+    html = inline_assets(serialize_canvas([ir])).slides[0].html
+    assert "clip-path:polygon(" in html and "linear-gradient" in html
+    reloaded = await _render_and_extract(html)
+    again = [s for s in reloaded.shapes if s.custom_geom is not None]
+    assert len(again) == 1 and isinstance(again[0].fill, GradientFill)
+
+
+async def test_skew_of_a_rounded_or_clipped_box_keeps_its_raster() -> None:
+    for extra in ("border-radius:24px;", "clip-path:circle(40%);"):
+        ir = await _render_and_extract(
+            f"<div style='{_PLAIN_BOX}{extra}transform:skewX(-15deg)'></div>"
+        )
+
+        assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+
+async def test_readable_text_in_a_flipped_shape_survives_html_and_back() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:80px;width:360px;height:120px;"
+        "background:#c20;color:#fff;font-size:40px;transform:scaleX(-1)'>Mirror</div>"
+    )
+    [shape] = [s for s in ir.shapes if s.text is not None]
+    assert shape.text is not None
+    readable = shape.model_copy(update={"text": shape.text.model_copy(update={"mirror_x": False})})
+    html = inline_assets(serialize_canvas([ir.model_copy(update={"contents": (readable,)})]))
+    reloaded = await _render_and_extract(html.slides[0].html)
+
+    [again] = [s for s in reloaded.shapes if s.text is not None]
+    assert again.text is not None and not again.text.mirror_x
+
+
+async def test_a_clip_path_shape_cut_by_an_overflow_ancestor_keeps_its_raster() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:200px;"
+        "overflow:hidden'><div style='position:absolute;left:100px;top:50px;width:200px;"
+        "height:200px;background:#c20;clip-path:circle(50%)'></div></div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)

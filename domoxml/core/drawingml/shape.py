@@ -424,6 +424,8 @@ def _text_shadow_xml(shadow: Shadow) -> str:
 def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:
     rid = hyperlink_rid(run.hyperlink) if run.hyperlink is not None else None
     decorations = _underline_attr(run.underline)
+    if run.baseline:
+        decorations += f' baseline="{run.baseline}"'
     if run.strike:
         decorations += ' strike="sngStrike"'
     if run.caps is not None:
@@ -444,13 +446,15 @@ def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:
         else _solid_fill(run.color)
     )
     shadow = f"<a:effectLst>{_text_shadow_xml(run.shadow)}</a:effectLst>" if run.shadow else ""
+    # A lifted run is drawn at two thirds of its stored size, so store it larger to land on size_pt.
+    size = round(run.size_pt * 100 * (1.5 if run.baseline else 1.0))
     underline_fill = (
         f"<a:uFill>{_solid_fill(run.underline_color)}</a:uFill>"
         if run.underline_color is not None and run.underline is not False
         else ""
     )
     rpr = (
-        f'<a:rPr lang="en-US" sz="{round(run.size_pt * 100)}"{bold} '
+        f'<a:rPr lang="en-US" sz="{size}"{bold} '
         f'i="{1 if run.italic else 0}"{decorations} dirty="0">'
         f"{outline}{fill}{shadow}{underline_fill}"
         f"{_hyperlink_xml(run.hyperlink, rid)}"

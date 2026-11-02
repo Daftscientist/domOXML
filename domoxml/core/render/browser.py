@@ -31,7 +31,7 @@ _SNAPSHOT_JS = """
     fontSize: cs.fontSize, fontFamily: cs.fontFamily,
     fontWeight: cs.fontWeight, fontStyle: cs.fontStyle,
     textDecorationLine: cs.textDecorationLine, textDecorationStyle: cs.textDecorationStyle,
-    textDecorationColor: cs.textDecorationColor,
+    textDecorationColor: cs.textDecorationColor, verticalAlign: cs.verticalAlign,
     textTransform: cs.textTransform,
     fontVariantCaps: cs.fontVariantCaps, letterSpacing: cs.letterSpacing,
     textAlign: cs.textAlign, lineHeight: cs.lineHeight,
@@ -639,7 +639,56 @@ _SNAPSHOT_JS = """
       if (found.length) host.setAttribute('data-domoxml-pseudo-host', '1');
     }
   };
+  // Text that follows a block child of the same parent sits in its own anonymous block box, below
+  // that child. The snapshot reads a parent's text as one body at its top, so that text would be
+  // merged into the first line. Wrapping it in a real block reproduces the anonymous box exactly.
+  const wrapAnonymousBlocks = () => {
+    const SKIP = new Set(['SVG', 'BUTTON', 'SELECT', 'TEXTAREA', 'OPTION', 'TABLE', 'TBODY',
+      'THEAD', 'TFOOT', 'TR', 'RUBY', 'HEAD', 'STYLE', 'SCRIPT']);
+    const outOfFlow = (node) => {
+      if (node.nodeType !== 1) return false;
+      const cs = getComputedStyle(node);
+      return cs.position === 'absolute' || cs.position === 'fixed' || cs.float !== 'none';
+    };
+    const inFlowBlock = (node) => {
+      if (node.nodeType !== 1 || outOfFlow(node)) return false;
+      const cs = getComputedStyle(node);
+      const display = cs.display;
+      return display !== 'none' && display !== 'contents' && !display.startsWith('inline');
+    };
+    const hasText = (nodes) => nodes.some((node) => (node.textContent || '').trim() !== '');
+    for (const host of Array.from(document.body.querySelectorAll('*'))) {
+      if (SKIP.has(host.tagName.toUpperCase()) || host.closest('svg')) continue;
+      const display = getComputedStyle(host).display;
+      if (display.startsWith('inline') && display !== 'inline-block') continue;
+      const children = Array.from(host.childNodes);
+      if (!children.some(inFlowBlock)) continue;
+      const groups = [];
+      let current = [];
+      let seenBlock = false;
+      for (const node of children) {
+        if (inFlowBlock(node)) {
+          if (current.length) groups.push({ nodes: current, after: seenBlock });
+          current = [];
+          seenBlock = true;
+        } else if (!outOfFlow(node)) {
+          current.push(node);  // out-of-flow boxes stay where they are
+        }
+      }
+      if (current.length) groups.push({ nodes: current, after: seenBlock });
+      for (const group of groups) {
+        // The leading group is the parent's own first line; only later groups are anonymous.
+        if (!group.after || !hasText(group.nodes)) continue;
+        const wrapper = document.createElement('span');
+        wrapper.setAttribute('data-domoxml-anon', 'true');
+        wrapper.style.display = 'block';
+        group.nodes[0].parentNode.insertBefore(wrapper, group.nodes[0]);
+        for (const node of group.nodes) wrapper.appendChild(node);
+      }
+    }
+  };
   materializePseudos();
+  wrapAnonymousBlocks();
   walk(document.body, -1, null);
   return out;
 }

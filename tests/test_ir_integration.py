@@ -3311,3 +3311,92 @@ def test_custom_outline_in_a_small_coordinate_space_is_scaled_to_its_box_in_html
 
     # 100 path units across a 200px box: the curve's far corner is at 200px, not at ~0.
     assert "path(&#x27;M 0 0 C 100 0 200 50 200 100 Z&#x27;)" in html.slides[0].html
+
+
+async def test_text_after_a_block_child_gets_its_own_box_below_it() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:360px;font-size:24px;"
+        "background:#eeeeee'>Before<div style='height:60px;background:#cc2200'></div>After"
+        "<div style='height:30px;background:#0044cc'></div>Last</div>"
+    )
+
+    def text_box(word: str) -> int:
+        shape = next(
+            s for s in ir.shapes if s.text and s.text.paragraphs[0].runs[0].text.strip() == word
+        )
+        return shape.box.y
+
+    red, blue = _solid_shape(ir, "CC2200"), _solid_shape(ir, "0044CC")
+    assert text_box("Before") < red.box.y < text_box("After") < blue.box.y < text_box("Last")
+    # The leading text stays the parent's own line (bullets and anchors depend on that).
+    parent = next(s for s in ir.shapes if s.text and s.text.paragraphs[0].runs[0].text == "Before")
+    assert parent.fill is not None
+
+
+async def test_details_and_nested_lists_keep_their_text_in_order() -> None:
+    ir = await _render_and_extract(
+        "<details open style='position:absolute;left:100px;top:100px;width:300px;font-size:24px'>"
+        "<summary>Title</summary>Body text</details>"
+    )
+
+    boxes = sorted(
+        (s.box.y, s.text.paragraphs[0].runs[0].text.strip()) for s in ir.shapes if s.text
+    )
+    assert [text for _, text in boxes] == ["Title", "Body text"]
+    assert boxes[0][0] < boxes[1][0]
+
+
+async def test_a_text_only_parent_is_left_exactly_as_it_was() -> None:
+    ir = await _render_and_extract(
+        "<p style='position:absolute;left:100px;top:100px;width:300px;font-size:24px'>"
+        "one <b>two</b> three</p>"
+    )
+
+    [shape] = [s for s in ir.shapes if s.text]
+    assert shape.text is not None
+    assert [r.text for r in shape.text.paragraphs[0].runs] == ["one ", "two", " three"]
+
+
+async def test_superscript_and_subscript_keep_size_and_lift_in_both_directions() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;font-size:40px'>"
+        "H<sub>2</sub>O x<sup>2</sup></div>"
+    )
+    runs = [r for s in ir.shapes if s.text for p in s.text.paragraphs for r in p.runs]
+    sub = next(r for r in runs if r.text == "2" and r.baseline < 0)
+    sup = next(r for r in runs if r.text == "2" and r.baseline > 0)
+    assert sub.baseline == -25_000 and sup.baseline == 30_000
+    # Chrome draws these at 5/6 of the parent (30pt of 40px = 30pt -> 25pt).
+    assert abs(sup.size_pt - 40 * 0.75 / 1.2) < 0.5
+
+    data = build_pptx([ir], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        xml = package.read("ppt/slides/slide1.xml").decode()
+    assert 'baseline="30000"' in xml and 'baseline="-25000"' in xml
+    # PowerPoint draws a lifted run at two thirds of the stored size, so 25pt is stored as 37.5pt.
+    assert 'sz="3750"' in xml
+
+    again = [
+        r for s in read_pptx(data)[0].shapes if s.text for p in s.text.paragraphs for r in p.runs
+    ]
+    lifted = [r for r in again if r.baseline]
+    assert {r.baseline for r in lifted} == {30_000, -25_000}
+    assert all(abs(r.size_pt - sup.size_pt) < 0.1 for r in lifted)
+    html = serialize_canvas([read_pptx(data)[0]]).slides[0].html
+    assert "vertical-align:super" in html and "vertical-align:sub" in html
+
+
+async def test_an_absolutely_positioned_child_is_not_pulled_into_an_anonymous_block() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:400px;height:300px;"
+        "display:flex;align-items:center;justify-content:center'>"
+        "<div style='width:100px;height:100px;background:#cc2200'></div>"
+        "<h2 style='position:absolute;margin:0;font-size:40px'>Glow</h2></div>"
+    )
+
+    glow = next(s for s in ir.shapes if s.text and s.text.paragraphs[0].runs[0].text == "Glow")
+    red = _solid_shape(ir, "CC2200")
+    # Centred over the box, not dropped below it as an anonymous block would.
+    assert abs((glow.box.y + glow.box.height / 2) - (red.box.y + red.box.height / 2)) < px_to_emu(
+        20
+    )

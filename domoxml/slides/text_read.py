@@ -175,10 +175,12 @@ def read_text_run(
     shadow = _text_shadow(child("a:effectLst"), colors)
 
     hyperlink_source = slide_rpr if slide_rpr is not None else properties
+    lift = int(attribute("baseline", "0") or "0")
     return TextRun(
         text=text,
         font_family=family or "sans-serif",
-        size_pt=size_pt,
+        size_pt=size_pt * (2 / 3 if lift else 1.0),
+        baseline=lift,
         bold=attribute("b") == "1",
         italic=attribute("i") == "1",
         underline=_underline(attribute("u")),

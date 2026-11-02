@@ -770,6 +770,16 @@ _UNDERLINE_STYLES = {
 }
 
 
+def _vertical_align(run: TextRun) -> str:
+    """CSS ``vertical-align`` for a lifted run: the keywords for the standard lifts."""
+    if run.baseline == 30_000:
+        return "super"
+    if run.baseline == -25_000:
+        return "sub"
+    stored_pt = run.size_pt * 1.5  # PowerPoint stores a lifted run at 1.5x the size it draws
+    return f"{_number(run.baseline / 100_000 * stored_pt)}pt"
+
+
 def _decoration_css(run: TextRun) -> str | None:
     """``text-decoration-line`` for the run (underline and/or line-through), or ``None``."""
     lines: list[str] = []
@@ -788,6 +798,8 @@ def _run_html(run: TextRun) -> str:
         f"font-style:{'italic' if run.italic else 'normal'}",
         f"color:{_rgba(run.color)}",
     ]
+    if run.baseline:
+        styles.append(f"vertical-align:{_vertical_align(run)}")
     decoration = _decoration_css(run)
     if decoration is not None:
         styles.append(f"text-decoration-line:{decoration}")

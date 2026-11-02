@@ -187,3 +187,65 @@ def test_pptx_charts_reach_html_as_vector_with_their_source_attached() -> None:
     svgs = [asset for asset in html.assets if asset.path.endswith(".svg")]
     assert len(svgs) == 3 and all(b"<svg" in asset.data for asset in svgs)
     assert html.slides[0].html.count("data-domoxml-preserved-payload") == 3
+
+
+def test_tiny_values_and_flat_data_still_get_a_distinct_axis() -> None:
+    tiny = _svg(
+        '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+        + _series(0, [1e-12, 2e-12])
+        + "</c:barChart>"
+    )
+    flat = _svg(
+        '<c:lineChart><c:grouping val="standard"/>' + _series(0, [5, 5, 5]) + "</c:lineChart>"
+    )
+
+    assert "<rect" in tiny and "<path" in flat
+
+
+def test_stacked_lines_axis_covers_the_running_total() -> None:
+    svg = _svg(
+        '<c:lineChart><c:grouping val="stacked"/>'
+        + _series(0, [10, 10])
+        + _series(1, [10, 10])
+        + "</c:lineChart>"
+    )
+
+    assert ">20<" in svg and 'y="-' not in svg
+
+
+def test_horizontal_stacks_extend_negatives_leftwards_from_zero() -> None:
+    svg = _svg(
+        '<c:barChart><c:barDir val="bar"/><c:grouping val="stacked"/>'
+        + _series(0, [10])
+        + _series(1, [-5])
+        + "</c:barChart>"
+    )
+    rects = [part for part in svg.split("<rect")[1:] if 'fill="#ED7D31"' in part]
+    x_positive = float(svg.split('<rect x="')[1].split('"')[0])
+
+    assert rects and float(rects[0].split('x="')[1].split('"')[0]) < x_positive
+
+
+def test_every_doughnut_series_is_a_ring_and_colours_are_validated() -> None:
+    two_rings = _svg(
+        "<c:doughnutChart>" + _series(0, [1, 2]) + _series(1, [3, 1]) + "</c:doughnutChart>"
+    )
+    assert two_rings.count("<path") == 4
+
+    hostile = _svg(
+        '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+        '<c:ser><c:idx val="0"/><c:spPr><a:solidFill><a:srgbClr val="F00&quot; onload=&quot;x"/>'
+        "</a:solidFill></c:spPr><c:val><c:numLit>"
+        '<c:pt idx="0"><c:v>1</c:v></c:pt></c:numLit></c:val></c:ser></c:barChart>'
+    )
+    assert "onload" not in hostile and "#4472C4" in hostile
+
+
+def test_entities_in_chart_xml_decline_instead_of_raising() -> None:
+    bomb = (
+        b'<?xml version="1.0"?><!DOCTYPE c [<!ENTITY a "x">]>'
+        b'<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">&a;'
+        b"</c:chartSpace>"
+    )
+
+    assert chart_to_svg(bomb, width_px=480, height_px=300) is None

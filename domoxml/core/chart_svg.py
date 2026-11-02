@@ -1,11 +1,11 @@
 """Draw a DrawingML chart part as a vector SVG, so a PPTX chart reaches HTML without pixels.
 
 The chart part (``c:chartSpace``) is a semantic description: chart types, series, categories,
-values, colours and axes. This reads the common subset (bar and column, line, area, pie, doughnut,
-scatter and radar, with clustered, stacked and percent grouping) and lays it out itself. It is an
-approximation of PowerPoint's own layout, never a copy of its pixels, and says so by returning
-``None`` for anything it does not model (stock, surface, bubble, extended charts), which then stay
-a preserved source object.
+values, colours and axes. This reads the common subset (bar and column, line, area, pie,
+doughnut, scatter, bubble, radar and stock, with clustered, stacked and percent grouping) and
+lays it out itself. It is an approximation of PowerPoint's own layout, never a copy of its
+pixels, and says so by returning ``None`` for anything it does not model (surface and extended
+charts), which then stay a preserved source object.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from xml.etree.ElementTree import Element
 from xml.sax.saxutils import escape
 
-from defusedxml import ElementTree
+from defusedxml import DefusedXmlException, ElementTree
 
 _C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -94,13 +94,13 @@ def chart_to_svg(
     """The chart as a standalone SVG of the given size, or ``None`` if it is not modelled."""
     try:
         root = ElementTree.fromstring(chart_xml)
-    except ElementTree.ParseError:
+    except (ElementTree.ParseError, DefusedXmlException):
         return None
     chart = root.find("c:chart", _NS)
     plot = chart.find("c:plotArea", _NS) if chart is not None else None
     if chart is None or plot is None or width_px < 40 or height_px < 40:
         return None
-    palette = {**_DEFAULT_SCHEME, **{k: v for k, v in (theme or {}).items() if v}}
+    palette = {**_DEFAULT_SCHEME, **{k: v for k, v in (theme or {}).items() if _hex(v)}}
     groups: list[Group] = []
     index = 0
     for element in plot:
@@ -208,9 +208,17 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
     )
 
 
+_HEX = re.compile(r"^[0-9A-Fa-f]{6}$")
+
+
+def _hex(value: str | None) -> str | None:
+    """``value`` if it is a six-digit hex colour, else ``None``: it goes into SVG attributes."""
+    return value if value is not None and _HEX.match(value) else None
+
+
 def _accent(palette: Mapping[str, str], index: int) -> str:
     """The deck theme's ``accent1``..``accent6`` cycle, as PowerPoint colours unstyled series."""
-    return palette.get(f"accent{index % 6 + 1}") or _ACCENTS[index % len(_ACCENTS)]
+    return _hex(palette.get(f"accent{index % 6 + 1}")) or _ACCENTS[index % len(_ACCENTS)]
 
 
 def _val(element: Element | None, default: str) -> str:
@@ -266,11 +274,11 @@ def _series_color(ser: Element, palette: Mapping[str, str]) -> str | None:
         if fill is None:
             continue
         rgb = fill.find("a:srgbClr", _NS)
-        if rgb is not None and rgb.get("val"):
+        if rgb is not None and _hex(rgb.get("val")):
             return rgb.get("val", "")
         scheme = fill.find("a:schemeClr", _NS)
         if scheme is not None and scheme.get("val") in palette:
-            return palette[scheme.get("val", "")]
+            return _hex(palette[scheme.get("val", "")])
     return None
 
 
@@ -343,14 +351,17 @@ def _nice_ticks(low: float, high: float, target: int = 5) -> list[float]:
     raw = span / target
     magnitude = 10 ** math.floor(math.log10(raw))
     step = next(m * magnitude for m in (1, 2, 2.5, 5, 10) if m * magnitude >= raw)
+    digits = max(0, 3 - math.floor(math.log10(step)))
     start = math.floor(low / step) * step
     ticks: list[float] = []
-    value = start
-    while value <= high + step * 1e-9 and len(ticks) < 60:
-        ticks.append(round(value, 10))
-        value += step
+    index = 0
+    while start + index * step <= high + step * 1e-9 and len(ticks) < 60:
+        ticks.append(round(start + index * step, digits))
+        index += 1
     if ticks[-1] < high:
-        ticks.append(round(ticks[-1] + step, 10))
+        ticks.append(round(start + index * step, digits))
+    if len(ticks) < 2 or ticks[-1] <= ticks[0]:
+        return [low, low + 1.0]
     return ticks
 
 
@@ -506,7 +517,10 @@ class _Canvas:
     def _extent(self, groups: list[Group]) -> tuple[float, float]:
         low = high = 0.0
         for group in groups:
-            if group.kind in ("bar", "area") and group.grouping in ("stacked", "percentStacked"):
+            if group.kind in ("bar", "area", "line") and group.grouping in (
+                "stacked",
+                "percentStacked",
+            ):
                 if group.grouping == "percentStacked":
                     low, high = min(low, 0.0), max(high, 1.0)
                     continue
@@ -721,7 +735,8 @@ class _Canvas:
                 f'text-anchor="middle" font-size="11" fill="{_TEXT}">'
                 f"{escape(format_number(tick, code))}</text>"
             )
-        running = [0.0] * count
+        running_positive = [0.0] * count
+        running_negative = [0.0] * count
         for s_index, series in enumerate(group.series):
             for i in range(count):
                 value = _at(series.values, i)
@@ -729,6 +744,7 @@ class _Canvas:
                     continue
                 total = sum(abs(_at(s.values, i) or 0.0) for s in group.series) or 1.0
                 amount = value / total if percent else value
+                running = running_positive if amount >= 0 else running_negative
                 start = running[i] if stacked else 0.0
                 end = start + amount
                 if stacked:
@@ -821,39 +837,48 @@ class _Canvas:
     # circular ----------------------------------------------------------------------------
 
     def pie(self, group: Group) -> str:
-        series = group.series[0]
-        values = [max(0.0, v or 0.0) for v in series.values]
-        total = sum(values)
+        first = group.series[0]
         names = [
             (
-                series.categories[i] if i < len(series.categories) else str(i + 1),
-                series.point_colors.get(i, self.accents[i % len(self.accents)]),
+                first.categories[i] if i < len(first.categories) else str(i + 1),
+                first.point_colors.get(i, self.accents[i % len(self.accents)]),
             )
-            for i in range(len(values))
+            for i in range(len(first.values))
         ]
         x0, y0, pw, ph = self._frame(names)
-        if total <= 0:
-            return self._wrap()
         radius = max(10.0, min(pw, ph) / 2 - 6)
         cx, cy = x0 + pw / 2, y0 + ph / 2
-        inner = radius * group.hole if group.kind == "doughnut" else 0.0
+        rings = group.series if group.kind == "doughnut" else group.series[:1]
+        hole = radius * group.hole if group.kind == "doughnut" else 0.0
+        band = (radius - hole) / len(rings)
+        # The first series is the innermost ring, as in PowerPoint.
+        for ring, series in enumerate(rings):
+            inner = hole + band * ring
+            outer = hole + band * (ring + 1) if group.kind == "doughnut" else radius
+            self._ring(series, cx, cy, outer, inner if group.kind == "doughnut" else 0.0)
+        return self._wrap()
+
+    def _ring(self, series: Series, cx: float, cy: float, outer: float, inner: float) -> None:
+        values = [max(0.0, v or 0.0) for v in series.values]
+        total = sum(values)
+        if total <= 0:
+            return
         angle = -math.pi / 2
         for i, value in enumerate(values):
             sweep = value / total * 2 * math.pi
             if sweep <= 0:
                 continue
-            color = names[i][1]
-            self.parts.append(_slice(cx, cy, radius, inner, angle, angle + sweep, color))
+            color = series.point_colors.get(i, self.accents[i % len(self.accents)])
+            self.parts.append(_slice(cx, cy, outer, inner, angle, angle + sweep, color))
             if series.show_values:
                 mid = angle + sweep / 2
-                r = (radius + inner) / 2 if inner else radius * 0.65
+                r = (outer + inner) / 2 if inner else outer * 0.65
                 self.parts.append(
                     f'<text x="{cx + r * math.cos(mid):.1f}" y="{cy + r * math.sin(mid) + 4:.1f}" '
                     f'text-anchor="middle" font-size="11" fill="#FFFFFF">'
                     f"{escape(format_number(value, series.format_code))}</text>"
                 )
             angle += sweep
-        return self._wrap()
 
     def radar(self, group: Group) -> str:
         names = [(s.name, s.color) for s in group.series]

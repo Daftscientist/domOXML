@@ -24,12 +24,15 @@ def chart_picture(
     part = next((p for p in payload.parts if _CHART_PART.search(p.name)), None)
     if part is None:
         return None
-    svg = chart_to_svg(
-        part.data,
-        width_px=emu_to_px(box.width),
-        height_px=emu_to_px(box.height),
-        theme=theme,
-    )
+    try:
+        svg = chart_to_svg(
+            part.data,
+            width_px=emu_to_px(box.width),
+            height_px=emu_to_px(box.height),
+            theme=theme,
+        )
+    except (ArithmeticError, ValueError, IndexError, KeyError):
+        return None  # a chart the renderer cannot lay out stays a preserved source object
     if svg is None:
         return None
     return PictureFill(data=_BLANK_PNG, ext="png", svg_data=svg.encode())

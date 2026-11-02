@@ -1816,10 +1816,20 @@ def _paints_beyond_its_content(node: RenderedNode) -> bool:
         and not styles.get(f"border{side}Width", "0px").startswith("0")
         for side in ("Top", "Right", "Bottom", "Left")
     )
+    rounded = any(
+        parse_radius_px(styles.get(key), shorter_side_px=1.0) > 0
+        for key in (
+            "borderTopLeftRadius",
+            "borderTopRightRadius",
+            "borderBottomRightRadius",
+            "borderBottomLeftRadius",
+        )
+    )
     return (
         (background is not None and background.a > 0)
         or styles.get("backgroundImage", "none") != "none"
         or borders
+        or rounded
         or styles.get("boxShadow", "none") not in ("none", "")
         or styles.get("webkitBoxReflect", "none") not in ("none", "")
         or bool(styles.get("domoxmlEffects"))

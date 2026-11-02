@@ -3609,3 +3609,37 @@ async def test_canvas_drawing_with_a_shadow_becomes_a_shape_with_a_native_shadow
     assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
     again = read_pptx(build_pptx([result.slide], faces=[]))[0]
     assert any(isinstance(e, Shadow) for s in again.shapes for e in s.effects)
+
+
+async def test_canvas_shadow_scales_with_the_display_size_and_respects_the_edge() -> None:
+    from domoxml.core.ir.model import Shadow
+
+    scaled = await _render_and_extract_result(
+        "<canvas id='c' width='300' height='200' style='position:absolute;left:50px;top:50px;"
+        "width:150px;height:100px'></canvas><script>"
+        "const x=document.getElementById('c').getContext('2d');x.shadowBlur=20;"
+        "x.shadowColor='#000';x.shadowOffsetX=20;x.fillStyle='#f80';x.fillRect(40,40,100,80)"
+        "</script>"
+    )
+    [shape] = [s for s in scaled.slide.shapes if s.custom_geom is not None]
+    [shadow] = [e for e in shape.effects if isinstance(e, Shadow)]
+    assert shadow.blur_emu == px_to_emu(10) and shadow.distance_emu == px_to_emu(10)
+
+    clipped = await _render_and_extract_result(
+        "<canvas id='c' width='100' height='100' style='position:absolute;left:50px;top:50px'>"
+        "</canvas><script>const x=document.getElementById('c').getContext('2d');"
+        "x.shadowBlur=8;x.shadowColor='#000';x.shadowOffsetX=10;x.fillStyle='#f80';"
+        "x.fillRect(70,20,30,30)</script>"
+    )
+    assert any(isinstance(s.fill, PictureFill) for s in clipped.slide.shapes)
+
+
+async def test_a_rounded_canvas_keeps_its_clip() -> None:
+    ir = await _render_and_extract(
+        "<canvas id='c' width='100' height='100' style='position:absolute;left:50px;top:50px;"
+        "border-radius:50%'></canvas><script>const x=document.getElementById('c').getContext('2d');"
+        "x.fillStyle='#f80';x.fillRect(0,0,100,100)</script>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+    assert not any(s.custom_geom is not None for s in ir.shapes)

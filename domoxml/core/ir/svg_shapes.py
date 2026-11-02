@@ -194,7 +194,10 @@ class _Reader:
                 if shadow is not None:
                     raise _Unsupported("nested shadows")
                 yield from self._walk(
-                    child, matrix.then(_transform(child.get("transform"))), opacity, _shadow(marker)
+                    child,
+                    matrix.then(_transform(child.get("transform"))),
+                    opacity,
+                    _shadow(marker, self.base),
                 )
                 continue
             if _attr(child, "filter") not in (None, "none") or _attr(child, "mask") not in (
@@ -214,14 +217,19 @@ class _Reader:
             if name == "g":
                 yield from self._walk(child, here, faded, shadow)
             elif name in ("path", "rect", "circle", "ellipse", "line", "polyline", "polygon"):
-                shape = self._shape(child, name, here, faded)
+                shape = self._shape(child, name, here, faded, shadow)
                 if shape is not None:
                     yield shape.model_copy(update={"effects": (shadow,)}) if shadow else shape
             else:
                 raise _Unsupported(name)
 
     def _shape(
-        self, element: Element, name: str, matrix: Affine, opacity: float
+        self,
+        element: Element,
+        name: str,
+        matrix: Affine,
+        opacity: float,
+        shadow: Shadow | None = None,
     ) -> ShapeNode | None:
         local = _segments(element, name)
         if not local:
@@ -250,6 +258,19 @@ class _Reader:
             or bottom + reach > self.height_px + 0.5
         ):
             raise _Unsupported("outside the viewport")
+        if shadow is not None:
+            # The browser clips a shadow at the canvas edge; a native one is not clipped.
+            spread = shadow.blur_emu / 9525
+            angle = math.radians(shadow.direction_deg)
+            shift_x = shadow.distance_emu / 9525 * math.cos(angle)
+            shift_y = shadow.distance_emu / 9525 * math.sin(angle)
+            if (
+                left + shift_x - spread < -0.5
+                or top + shift_y - spread < -0.5
+                or right + shift_x + spread > self.width_px + 0.5
+                or bottom + shift_y + spread > self.height_px + 0.5
+            ):
+                raise _Unsupported("shadow past the viewport")
         width_emu, height_emu = max(1, px_to_emu(right - left)), max(1, px_to_emu(bottom - top))
         origin_x, origin_y = self.box.x + px_to_emu(left), self.box.y + px_to_emu(top)
         path: list[PathCommand] = []
@@ -638,17 +659,22 @@ def _arc(
 # --------------------------------------------------------------------------- helpers
 
 
-def _shadow(marker: str) -> Shadow:
+def _shadow(marker: str, base: Affine) -> Shadow:
     """The shadow a canvas recording attached to a group: ``dx dy blur colour alpha``."""
     parts = marker.split()
     dx, dy, blur, alpha = float(parts[0]), float(parts[1]), float(parts[2]), float(parts[4])
     colour = _colour(parts[3])
     if colour is None:
         raise _Unsupported("shadow colour")
+    # Canvas shadow numbers are bitmap pixels, so they scale with the bitmap's display size; one
+    # blur radius can only stand for an even scale.
+    scale = base.scale()
+    if scale < 0:
+        raise _Unsupported("shadow under uneven scale")
     return Shadow(
         color=_with_alpha(colour, alpha),
-        blur_emu=px_to_emu(blur),
-        distance_emu=px_to_emu(math.hypot(dx, dy)),
+        blur_emu=px_to_emu(blur * scale),
+        distance_emu=px_to_emu(math.hypot(dx, dy) * scale),
         direction_deg=math.degrees(math.atan2(dy, dx)) % 360.0,
     )
 

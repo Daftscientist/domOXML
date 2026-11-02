@@ -3085,3 +3085,229 @@ async def test_counters_and_images_in_generated_content_are_left_alone() -> None
         run.text for s in ir.shapes if s.text for p in s.text.paragraphs for run in p.runs
     )
     assert "One" in texts and "Two" in texts
+
+
+_PNG = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+async def test_ancestor_opacity_reaches_children_text_borders_and_pictures() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:400px;height:300px;opacity:.5;"
+        "background:#eeeeee'><div style='width:100px;height:60px;background:#cc2200;"
+        "border:4px solid #000000'></div><p style='margin:0;color:#0000ff;font-size:30px'>Faded</p>"
+        f"<img alt='' src='{_PNG}' "
+        "style='width:50px;height:50px'></div>"
+    )
+
+    red = _solid_shape(ir, "CC2200")
+    assert red.opacity == 0.5
+    assert red.line is not None and red.line.color.a == 0.5
+    text = next(s for s in ir.shapes if s.text and "Faded" in s.text.paragraphs[0].runs[0].text)
+    assert text.text is not None and text.text.paragraphs[0].runs[0].color.a == 0.5
+    picture = next(s for s in ir.shapes if isinstance(s.fill, PictureFill))
+    assert picture.opacity == 0.5
+
+    data = build_pptx([ir], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        assert 'alphaModFix amt="50000"' in package.read("ppt/slides/slide1.xml").decode()
+    again = [s for s in read_pptx(data)[0].shapes if isinstance(s.fill, PictureFill)]
+    assert again and again[0].opacity == 0.5
+    assert "opacity:0.5" in serialize_canvas([read_pptx(data)[0]]).slides[0].html
+
+
+async def test_nested_opacities_multiply() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:300px;height:200px;opacity:.5'>"
+        "<div style='opacity:.5;width:100px;height:100px;background:#cc2200'></div></div>"
+    )
+
+    assert _solid_shape(ir, "CC2200").opacity == 0.25
+
+
+@pytest.mark.parametrize(
+    ("style", "token", "css"),
+    [("wavy", "wavy", "wavy"), ("dotted", "dotted", "dotted"), ("double", "dbl", "double")],
+)
+async def test_underline_style_survives_both_directions(style: str, token: str, css: str) -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;font-size:40px;"
+        f"text-decoration:underline {style}'>Styled</div>"
+    )
+    run = next(r for s in ir.shapes if s.text for p in s.text.paragraphs for r in p.runs)
+    assert run.underline == token
+
+    data = build_pptx([ir], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        assert f'u="{token}"' in package.read("ppt/slides/slide1.xml").decode()
+    again = read_pptx(data)[0]
+    assert (
+        next(r for s in again.shapes if s.text for p in s.text.paragraphs for r in p.runs).underline
+        == token
+    )
+    assert f"text-decoration-style:{css}" in serialize_canvas([again]).slides[0].html
+
+
+@pytest.mark.parametrize(
+    "radius", ["50% / 30%", "40px 0 40px 0", "60px 20px / 30px 10px", "10px 80px 10px 80px"]
+)
+async def test_corners_that_are_not_one_circle_become_a_free_form_outline(radius: str) -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:80px;width:360px;height:220px;"
+        f"background:linear-gradient(90deg,#c20,#08f);border-radius:{radius}'></div>"
+    )
+
+    [shape] = [s for s in ir.shapes if s.custom_geom is not None]
+    assert isinstance(shape.fill, GradientFill) and shape.corner_radius_emu == 0
+    assert not any(isinstance(s.fill, PictureFill) for s in ir.shapes)
+
+    again = read_pptx(build_pptx([ir], faces=[]))[0]
+    assert any(s.custom_geom is not None for s in again.shapes)
+
+    html = inline_assets(serialize_canvas([ir])).slides[0].html
+    assert "clip-path:path(" in html and "linear-gradient" in html
+    reloaded = await _render_and_extract(html)
+    assert any(
+        s.custom_geom is not None and isinstance(s.fill, GradientFill) for s in reloaded.shapes
+    )
+
+
+async def test_equal_circular_corners_stay_a_preset_round_rect() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:80px;width:360px;height:220px;"
+        "background:#c20;border-radius:24px'></div>"
+    )
+
+    [shape] = [s for s in ir.shapes if isinstance(s.fill, SolidFill)]
+    assert shape.geom == "roundRect" and shape.custom_geom is None
+
+
+async def test_outline_is_a_ring_just_outside_the_box_and_round_trips() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
+        "background:#eeeeee;border-radius:20px;outline:6px solid #cc2200;outline-offset:4px'>"
+        "</div>"
+    )
+
+    ring = next(s for s in ir.shapes if s.line is not None and s.fill is None)
+    assert ring.line is not None and ring.line.color.hex == "CC2200"
+    # The ring is inflated by offset (4px) plus half the 6px width, so it sits outside the box.
+    assert ring.box.x == px_to_emu(100) - px_to_emu(7)
+    assert ring.box.width == px_to_emu(200) + 2 * px_to_emu(7)
+    assert ring.geom == "roundRect" and ring.corner_radius_emu > px_to_emu(20)
+    assert ring.provenance is not None and ring.provenance.role == "outline"
+
+    again = read_pptx(build_pptx([ir], faces=[]))[0]
+    assert any(s.line is not None and s.fill is None for s in again.shapes)
+
+
+async def test_no_outline_adds_no_ring() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
+        "background:#eeeeee'></div>"
+    )
+
+    assert not any(s.line is not None and s.fill is None for s in ir.shapes)
+
+
+async def test_underline_colour_that_differs_from_the_text_travels_both_ways() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;font-size:40px;color:#000000;"
+        "text-decoration:underline wavy #cc2200'>Coloured</div>"
+        "<div style='position:absolute;left:50px;top:200px;font-size:40px;color:#000000;"
+        "text-decoration:underline'>Plain</div>"
+    )
+    coloured, plain = (
+        next(r for p in s.text.paragraphs for r in p.runs)
+        for s in ir.shapes
+        if s.text and s.text.paragraphs
+    )
+    assert coloured.underline_color is not None and coloured.underline_color.hex == "CC2200"
+    assert plain.underline_color is None
+
+    data = build_pptx([ir], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        assert "<a:uFill>" in package.read("ppt/slides/slide1.xml").decode()
+    again = [
+        r for s in read_pptx(data)[0].shapes if s.text for p in s.text.paragraphs for r in p.runs
+    ]
+    assert again[0].underline_color is not None and again[0].underline_color.hex == "CC2200"
+    assert (
+        "text-decoration-color:rgba(204,34,0"
+        in serialize_canvas([read_pptx(data)[0]]).slides[0].html
+    )
+
+
+async def test_faded_picture_with_text_fades_only_its_own_layer_in_html() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:300px;height:200px;opacity:.5;"
+        f"background:url({_PNG}) center/cover;color:#000000;font-size:30px'>Caption</div>"
+    )
+
+    html = serialize_canvas([ir]).slides[0].html
+    assert html.count("opacity:0.5") == 1  # the fill layer; the element itself is not faded
+    assert 'data-domoxml-fill-layer="true"' in html and "isolation:isolate" in html
+    caption = next(s for s in ir.shapes if s.text)
+    assert caption.text is not None and caption.text.paragraphs[0].runs[0].color.a == 0.5
+
+
+async def test_faded_per_side_borders_are_faded_with_the_element() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:300px;height:200px;opacity:.5;"
+        "background:#eeeeee;border-left:8px solid #cc2200;border-top:2px solid #0044cc'></div>"
+    )
+
+    drawn = [s for s in ir.shapes if s.fill is not None]
+    assert len(drawn) >= 3 and all(s.opacity == 0.5 for s in drawn)
+
+
+async def test_outline_follows_the_css_box_not_the_text_slack_box() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;font-size:24px;"
+        "outline:4px solid #cc2200'>Text only</div>"
+    )
+
+    ring = next(s for s in ir.shapes if s.line is not None and s.fill is None)
+    assert ring.box.x == px_to_emu(100) - px_to_emu(2)
+    assert ring.box.width == px_to_emu(200) + 2 * px_to_emu(2)
+
+
+def test_custom_outline_in_a_small_coordinate_space_is_scaled_to_its_box_in_html() -> None:
+    from domoxml.core.ir.model import (
+        Box,
+        ClosePath,
+        CubicTo,
+        CustomGeometry,
+        MoveTo,
+        Point,
+        ShapeNode,
+        SlideIR,
+    )
+
+    square = Point(x=0, y=0)
+    geometry = CustomGeometry(
+        width_emu=100,
+        height_emu=100,
+        path=(
+            MoveTo(to=square),
+            CubicTo(c1=Point(x=50, y=0), c2=Point(x=100, y=50), to=Point(x=100, y=100)),
+            ClosePath(),
+        ),
+    )
+    node = ShapeNode(
+        box=Box(x=0, y=0, width=px_to_emu(200), height=px_to_emu(100)),
+        custom_geom=geometry,
+        fill=GradientFill(
+            stops=(
+                GradientStop(pos=0.0, color=Rgba(r=200, g=0, b=0)),
+                GradientStop(pos=1.0, color=Rgba(r=0, g=0, b=200)),
+            ),
+            angle_deg=90,
+        ),
+    )
+    html = serialize_canvas([SlideIR(width=px_to_emu(400), height=px_to_emu(300), shapes=(node,))])
+
+    # 100 path units across a 200px box: the curve's far corner is at 200px, not at ~0.
+    assert "path(&#x27;M 0 0 C 100 0 200 50 200 100 Z&#x27;)" in html.slides[0].html

@@ -124,6 +124,32 @@ def _paints_a_box(node: RenderedNode) -> bool:
     return not transparent or borders or not node.text
 
 
+# --------------------------------------------------------------------------- opacity
+
+
+def fade_shape(shape: ShapeNode, factor: float) -> ShapeNode:
+    """``shape`` with its outline, effects and text faded by ``factor``.
+
+    The fill is left to ``ShapeNode.opacity``, which the writers apply to solid and gradient fills
+    and to pictures alike. CSS ``opacity`` fades everything the element paints, so the rest
+    has to follow.
+    """
+    if factor >= 1.0:
+        return shape
+    functions = (FilterFunction("opacity", max(0.0, factor)),)
+
+    def tone(color: Rgba) -> Rgba:
+        return apply_to_color(color, functions)
+
+    return shape.model_copy(
+        update={
+            "line": _recolor_line(shape.line, tone),
+            "effects": tuple(_recolor_effect(effect, tone) for effect in shape.effects),
+            "text": _recolor_text(shape.text, tone),
+        }
+    )
+
+
 # --------------------------------------------------------------------------- recolouring
 
 

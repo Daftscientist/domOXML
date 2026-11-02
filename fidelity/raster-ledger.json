@@ -94,7 +94,7 @@
     "inherent": false,
     "non_native": 0,
     "reasons": [],
-    "similarity": 0.769
+    "similarity": 0.995
   },
   "filter-brightness": {
     "dropped": false,
@@ -182,14 +182,14 @@
     "inherent": false,
     "non_native": 0,
     "reasons": [],
-    "similarity": 0.733
+    "similarity": 0.984
   },
   "outline": {
     "dropped": false,
     "inherent": false,
     "non_native": 0,
     "reasons": [],
-    "similarity": 0.827
+    "similarity": 0.987
   },
   "perspective-rotate-y": {
     "dropped": false,

@@ -49,15 +49,19 @@ from domoxml.core.ir.layers import (
     Wedge,
     clip_polygon,
     conic_wedges,
+    corner_radii,
+    is_plain_round_rect,
     parse_clip_shape,
     parse_conic,
     parse_radial,
     radial_bands,
     rounded_box,
+    rounded_path,
     stacked_gradients,
 )
 from domoxml.core.ir.lowering import (
     colour_functions,
+    fade_shape,
     fill_only,
     filter_functions,
     is_leaf,
@@ -74,6 +78,7 @@ from domoxml.core.ir.model import (
     CharBullet,
     ClosePath,
     Connector,
+    CubicTo,
     CustomGeometry,
     Fill,
     FillOverlay,
@@ -88,6 +93,7 @@ from domoxml.core.ir.model import (
     MediaNode,
     MoveTo,
     Node,
+    PathCommand,
     PatternFill,
     PictureFill,
     Point,
@@ -155,6 +161,7 @@ from domoxml.core.render.browser import (
     is_complex_transform,
     parse_native_transform,
 )
+from domoxml.core.svg_path import parse_svg_path, scale_path_to_emu
 from domoxml.core.svg_stroke import parse_svg_dasharray
 from domoxml.core.units import (
     DRAWINGML_BLUR_RADIUS_PER_CSS_SIGMA,
@@ -243,11 +250,32 @@ def _text_effects(
     return gradient, outline, shadow, first_stop
 
 
+_UNDERLINE_TOKENS: dict[str, str] = {
+    "wavy": "wavy",
+    "dotted": "dotted",
+    "dashed": "dash",
+    "double": "dbl",
+}
+
+
+def _underline_colour(styles: dict[str, str]) -> Rgba | None:
+    """The underline colour when it is not simply the text colour (``currentcolor`` is)."""
+    drawn = parse_color(styles.get("textDecorationColor"))
+    text = parse_color(styles.get("color"))
+    if drawn is None or drawn.a == 0 or (text is not None and drawn == text):
+        return None
+    return drawn
+
+
 def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
     if not text:
         return None
     underline, strike = parse_decoration(styles.get("textDecorationLine"))
+    if underline is True:
+        # ``text-decoration-style`` picks the DrawingML underline token (``solid`` is plain).
+        underline = _UNDERLINE_TOKENS.get(styles.get("textDecorationStyle", "solid"), True)
     gradient, outline, shadow, first_stop = _text_effects(styles)
+    underline_color = _underline_colour(styles) if underline is not False else None
     return TextRun(
         text=text,
         font_family=(styles.get("fontFamily") or "sans-serif").split(",")[0].strip().strip("'\""),
@@ -255,6 +283,7 @@ def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
         bold=is_bold(styles.get("fontWeight")),
         italic=styles.get("fontStyle", "normal") == "italic",
         underline=underline,
+        underline_color=underline_color,
         strike=strike,
         caps=parse_caps(styles.get("textTransform"), styles.get("fontVariantCaps")),
         letter_spacing_pt=parse_letter_spacing_pt(styles.get("letterSpacing")),
@@ -660,6 +689,7 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     if (
         clip not in ("none", "")
         and "polygon(" not in clip
+        and not clip.lstrip().startswith("path(")
         and parse_clip_shape(clip, width_px=node.width, height_px=node.height) is None
     ):
         # polygon(), circle(), ellipse() and inset() can become native geometry; the choice
@@ -867,6 +897,65 @@ def _mirrored(text: TextBody | None, node: RenderedNode) -> TextBody | None:
     return text.model_copy(update={"mirror_x": True}) if flip_h else text
 
 
+def _elliptical_geometry(node: RenderedNode, box: Box) -> CustomGeometry | None:
+    """An outline for a box whose corners are not one shared circle, or ``None`` if one will do.
+
+    CSS allows each corner its own horizontal and vertical radius (``border-radius: 50% / 30%``,
+    ``40px 0``); a preset ``roundRect`` has only one circular radius for all four.
+    """
+    radii = corner_radii(node.styles, width_px=node.width, height_px=node.height)
+    if radii is None or is_plain_round_rect(radii) or not any(r > 0 for c in radii for r in c):
+        return None
+    scale_x = box.width / max(node.width, 1e-6)
+    scale_y = box.height / max(node.height, 1e-6)
+    path: list[PathCommand] = []
+    for kind, points in rounded_path(node.width, node.height, radii):
+        emu = [Point(x=round(x * scale_x), y=round(y * scale_y)) for x, y in points]
+        if kind == "M":
+            path.append(MoveTo(to=emu[0]))
+        elif kind == "L":
+            path.append(LineTo(to=emu[0]))
+        else:
+            path.append(CubicTo(c1=emu[0], c2=emu[1], to=emu[2]))
+    path.append(ClosePath())
+    return CustomGeometry(width_emu=box.width, height_emu=box.height, path=tuple(path))
+
+
+def _outline_shape(
+    node: RenderedNode,
+    box: Box,
+    geom: Geometry,
+    corner: int,
+    custom: CustomGeometry | None,
+) -> ShapeNode | None:
+    """The CSS ``outline`` as an unfilled ring just outside the box, or ``None``.
+
+    An outline sits outside the border box (pushed further out by ``outline-offset``) and follows
+    its rounding; a line is centred on its path, so the ring is inflated by the offset plus half
+    the width. Outlines on custom outlines are not drawn.
+    """
+    if custom is not None or geom not in ("rect", "roundRect"):
+        return None
+    line, _warning = parse_border_side(
+        node.styles.get("outlineWidth"),
+        node.styles.get("outlineStyle") if node.styles.get("outlineStyle") != "auto" else "solid",
+        node.styles.get("outlineColor"),
+    )
+    if line is None:
+        return None
+    reach = px_to_emu(parse_length_px(node.styles.get("outlineOffset"))) + line.width_emu // 2
+    ring = Box(
+        x=box.x - reach, y=box.y - reach, width=box.width + 2 * reach, height=box.height + 2 * reach
+    )
+    rounded = geom == "roundRect"
+    return ShapeNode(
+        box=ring,
+        geom="roundRect" if rounded else "rect",
+        line=line,
+        corner_radius_emu=corner + reach if rounded else 0,
+    )
+
+
 def _quad_geometry(
     node: RenderedNode, fill: Fill | None, existing: CustomGeometry | None
 ) -> tuple[CustomGeometry | None, str | None]:
@@ -893,6 +982,25 @@ def _quad_geometry(
     return CustomGeometry(width_emu=box.width, height_emu=box.height, path=path), None
 
 
+def _path_clip_geometry(clip: str, node: RenderedNode) -> CustomGeometry | None:
+    """A CSS ``clip-path: path('...')`` (px of the element's box) as native custom geometry."""
+    match = re.match(r"\s*path\(\s*(?:evenodd\s*,\s*|nonzero\s*,\s*)?(['\"])(.*)\1\s*\)\s*$", clip)
+    if match is None:
+        return None
+    parsed = parse_svg_path(match.group(2))
+    if parsed.bail_reason is not None or not parsed.commands:
+        return None
+    box = _box(node)
+    path = scale_path_to_emu(
+        parsed.commands,
+        vb_w=node.width,
+        vb_h=node.height,
+        box_emu_w=box.width,
+        box_emu_h=box.height,
+    )
+    return CustomGeometry(width_emu=box.width, height_emu=box.height, path=tuple(path))
+
+
 def _clip_geometry(node: RenderedNode) -> tuple[Geometry, CustomGeometry | None, str | None]:
     """``(preset, custom geometry, raster reason)`` for an element with a ``clip-path`` shape.
 
@@ -904,6 +1012,10 @@ def _clip_geometry(node: RenderedNode) -> tuple[Geometry, CustomGeometry | None,
     """
     clip = node.styles.get("clipPath", "none")
     width, height = node.width, node.height
+    if clip.lstrip().startswith("path(") and is_leaf(node) and fill_only(node):
+        drawn = _path_clip_geometry(clip, node)
+        if drawn is not None:
+            return "rect", drawn, None
     polygon = (
         parse_polygon(clip, width_px=width, height_px=height)
         if "polygon(" in clip
@@ -2210,6 +2322,23 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
     children aren't drawn twice over the baked-in pixels.
     """
     rendered = mark_leaves(rendered)
+    by_index = {candidate.index: candidate for candidate in rendered.nodes}
+
+    def effective_opacity(node: RenderedNode) -> float:
+        """The opacity an element is painted at: its own times every ancestor's.
+
+        Native shapes are separate objects, so an ancestor's ``opacity`` has to reach each of
+        them. Where siblings overlap, CSS fades the group as one layer and this fades each part,
+        which differs only inside the overlap.
+        """
+        total, current = 1.0, node
+        while True:
+            total *= _opacity(current.styles)
+            parent = by_index.get(current.parent)
+            if parent is None:
+                return total
+            current = parent
+
     children = _children(rendered.nodes)
     consumed: set[int] = set()
     contents: list[Node] = []
@@ -2803,6 +2932,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 )
             )
             geom = _geometry(box, corner)
+            elliptical = _elliptical_geometry(node, box)
+            if elliptical is not None and clip_geometry is None:
+                # Corners that differ, or are not circles, are a free-form outline.
+                clip_geometry, geom, corner = elliptical, "rect", 0
 
         if present_sides:
             uniform = len(present_sides) == 4 and all(s == present_sides[0] for s in present_sides)
@@ -3058,33 +3191,43 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                 )
         # Emit per-side border rects before the main shape so they appear behind its fill.
-        contents.extend(side_rect_shapes)
+        faded = effective_opacity(node)
+        contents.extend(
+            shape.model_copy(update={"opacity": faded}) if faded < 1.0 else shape
+            for shape in side_rect_shapes
+        )
+        outline = _outline_shape(node, _box(node), geom, corner, clip_geometry)
         contents.append(
             identities.apply(
-                recolor_shape(
-                    ShapeNode(
-                        box=box,
-                        geom=geom,
-                        custom_geom=clip_geometry,
-                        fill=fill,
-                        line=line,
-                        effects=effects,
-                        effect_container=effect_container,
-                        effect_source_ref=effect_source_ref,
-                        native_effect_projection=native_effect_projection,
-                        portable_fallback=portable_fallback,
-                        corner_radius_emu=corner,
-                        opacity=_opacity(node.styles),
-                        text=text if encoded_text is not None else _mirrored(text, node),
-                        transform=None
-                        if _has_complex_transform(node.styles.get("transform"))
-                        else _parse_transform(node.styles),
+                fade_shape(
+                    recolor_shape(
+                        ShapeNode(
+                            box=box,
+                            geom=geom,
+                            custom_geom=clip_geometry,
+                            fill=fill,
+                            line=line,
+                            effects=effects,
+                            effect_container=effect_container,
+                            effect_source_ref=effect_source_ref,
+                            native_effect_projection=native_effect_projection,
+                            portable_fallback=portable_fallback,
+                            corner_radius_emu=corner,
+                            opacity=faded,
+                            text=text if encoded_text is not None else _mirrored(text, node),
+                            transform=None
+                            if _has_complex_transform(node.styles.get("transform"))
+                            else _parse_transform(node.styles),
+                        ),
+                        colour_functions(node),
                     ),
-                    colour_functions(node),
+                    faded,
                 ),
                 node,
             )
         )
+        if outline is not None:
+            contents.append(identities.apply(fade_shape(outline, faded), node, role="outline"))
         if node.styles.get("domoxmlConsolidatedText") == "true" or encoded_text is not None:
             consumed |= _subtree(node.index, children) - {node.index}
         if side_rect_shapes and not approximation_reasons:

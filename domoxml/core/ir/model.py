@@ -421,6 +421,8 @@ class TextRun(BaseModel):
     bold_inherited: bool = False
     italic: bool = False
     underline: bool | str = False
+    # The underline's own colour (``a:uFill``, CSS ``text-decoration-color``) when it differs.
+    underline_color: Rgba | None = None
     strike: bool = False
     caps: Literal["all", "small"] | None = None
     letter_spacing_pt: float = 0.0

@@ -30,6 +30,7 @@ from domoxml.core.ir.model import (
     ClosePath,
     ColorSpec,
     Connector,
+    CubicTo,
     CustomGeometry,
     Fill,
     FillOverlay,
@@ -228,18 +229,79 @@ def _clip_path_css(geom: str) -> str | None:
     return f"clip-path:polygon({points})"
 
 
-def _polygon_points(geometry: CustomGeometry) -> str | None:
+def _scaled_px(geometry: CustomGeometry, box: Box) -> tuple[float, float]:
+    """px per path unit along x and y: a path's own coordinate space need not be the box's."""
+    return (
+        emu_to_px(box.width) / geometry.width_emu if geometry.width_emu else 0.0,
+        emu_to_px(box.height) / geometry.height_emu if geometry.height_emu else 0.0,
+    )
+
+
+def _polygon_points(geometry: CustomGeometry, box: Box) -> str | None:
     """``geometry`` as CSS ``polygon()`` points in px, or ``None`` if it has curves or holes."""
+    scale_x, scale_y = _scaled_px(geometry, box)
     points: list[str] = []
     last = len(geometry.path) - 1
     for index, command in enumerate(geometry.path):
         if (index == 0 and isinstance(command, MoveTo)) or isinstance(command, LineTo):
             points.append(
-                f"{_number(emu_to_px(command.to.x))}px {_number(emu_to_px(command.to.y))}px"
+                f"{_number(command.to.x * scale_x)}px {_number(command.to.y * scale_y)}px"
             )
         elif not (isinstance(command, ClosePath) and index == last):
             return None
     return ", ".join(points) if len(points) >= 3 else None
+
+
+def _path_px(geometry: CustomGeometry, box: Box) -> str | None:
+    """``geometry`` as a CSS ``path()`` string in px of the element's own box, or ``None``."""
+    scale_x, scale_y = _scaled_px(geometry, box)
+    parts: list[str] = []
+
+    def px(point: Point) -> str:
+        return f"{_number(point.x * scale_x)} {_number(point.y * scale_y)}"
+
+    for command in geometry.path:
+        if isinstance(command, MoveTo):
+            parts.append(f"M {px(command.to)}")
+        elif isinstance(command, LineTo):
+            parts.append(f"L {px(command.to)}")
+        elif isinstance(command, CubicTo):
+            parts.append(f"C {px(command.c1)} {px(command.c2)} {px(command.to)}")
+        elif isinstance(command, ClosePath):
+            parts.append("Z")
+        else:
+            return None
+    return f"path('{' '.join(parts)}')" if parts else None
+
+
+def _fill_layer_needed(node: ShapeNode) -> bool:
+    """Whether a faded picture or pattern shares its shape with text, an outline or effects."""
+    return bool(node.text or node.line is not None or node.effects)
+
+
+def _faded_fill_layer(style: str, opacity: float) -> tuple[str, str]:
+    """Move a shape's background onto its own faded layer, behind its text.
+
+    CSS ``opacity`` fades the whole element; here only the picture or pattern is faded, the text,
+    outline and effects having been faded already. ``isolation`` keeps the layer's negative
+    ``z-index`` inside the element.
+    """
+    kept: list[str] = []
+    moved: list[str] = []
+    for declaration in style.split(";"):
+        (moved if declaration.strip().startswith("background") else kept).append(declaration)
+    layer = (
+        '<div data-domoxml-fill-layer="true" style="position:absolute;left:0;top:0;width:100%;'
+        f"height:100%;border-radius:inherit;pointer-events:none;z-index:-1;{';'.join(moved)};"
+        f'opacity:{_number(opacity)}"></div>'
+    )
+    return ";".join([*kept, "isolation:isolate"]), layer
+
+
+def _clip_shape(geometry: CustomGeometry, box: Box) -> str | None:
+    """The CSS clip for a custom outline: ``polygon()`` when straight, else ``path()``."""
+    polygon = _polygon_points(geometry, box)
+    return f"polygon({polygon})" if polygon is not None else _path_px(geometry, box)
 
 
 def _fill_survives_as_polygon_clip(node: ShapeNode) -> bool:
@@ -255,7 +317,7 @@ def _fill_survives_as_polygon_clip(node: ShapeNode) -> bool:
         and node.portable_fallback is None
         and not node.effects
         and node.line is None
-        and _polygon_points(node.custom_geom) is not None
+        and _clip_shape(node.custom_geom, node.box) is not None
     )
 
 
@@ -331,8 +393,13 @@ def _shape_style(
                     )
                 )
             )
-    fill_uses_opacity = isinstance(node.fill, PictureFill | PatternFill) or node.fill is None
-    if fill_uses_opacity and node.opacity < 1.0:
+    # ``opacity`` is the fill's alone (the rest of the shape was faded in the IR), so a picture or
+    # pattern that is not the only thing painted is faded on its own layer, never the element.
+    if (
+        isinstance(node.fill, PictureFill | PatternFill)
+        and node.opacity < 1.0
+        and not _fill_layer_needed(node)
+    ):
         styles.append(f"opacity:{_number(node.opacity)}")
     if node.line is not None:
         line = node.line
@@ -386,9 +453,9 @@ def _shape_style(
         if clip is not None:
             styles.append(clip)
     if _fill_survives_as_polygon_clip(node) and node.custom_geom is not None:
-        points = _polygon_points(node.custom_geom)
-        if points is not None:
-            styles.append(f"clip-path:polygon({points})")
+        clip_shape = _clip_shape(node.custom_geom, node.box)
+        if clip_shape is not None:
+            styles.append(f"clip-path:{clip_shape}")
     # Emit effects
     _append_effect_styles(node, styles, warnings)
     # Emit rotation/flip transform if present.
@@ -689,6 +756,20 @@ def _blurred_reflection_layer(node: ShapeNode, assets: dict[str, HtmlAsset]) -> 
     return parent_attrs, child
 
 
+_UNDERLINE_STYLES = {
+    "wavy": "wavy",
+    "wavyHeavy": "wavy",
+    "wavyDbl": "wavy",
+    "dotted": "dotted",
+    "dottedHeavy": "dotted",
+    "dash": "dashed",
+    "dashHeavy": "dashed",
+    "dashLong": "dashed",
+    "dashLongHeavy": "dashed",
+    "dbl": "double",
+}
+
+
 def _decoration_css(run: TextRun) -> str | None:
     """``text-decoration-line`` for the run (underline and/or line-through), or ``None``."""
     lines: list[str] = []
@@ -710,6 +791,11 @@ def _run_html(run: TextRun) -> str:
     decoration = _decoration_css(run)
     if decoration is not None:
         styles.append(f"text-decoration-line:{decoration}")
+        style = _UNDERLINE_STYLES.get(run.underline) if isinstance(run.underline, str) else None
+        if style is not None:
+            styles.append(f"text-decoration-style:{style}")
+        if run.underline_color is not None and run.underline is not False:
+            styles.append(f"text-decoration-color:{_rgba(run.underline_color)}")
     if run.caps == "all":
         styles.append("text-transform:uppercase")
     elif run.caps == "small":
@@ -1337,10 +1423,17 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
         raster_attr = ""
         if isinstance(node.fill, PictureFill) and node.fill.raster_role is not None:
             raster_attr = f' data-domoxml-raster="{escape(node.fill.raster_role, quote=True)}"'
+        fill_layer = ""
+        if (
+            isinstance(node.fill, PictureFill | PatternFill)
+            and node.opacity < 1.0
+            and _fill_layer_needed(node)
+        ):
+            combined_style, fill_layer = _faded_fill_layer(combined_style, node.opacity)
         style = escape(combined_style, quote=True)
         metadata_attrs = _identity_attrs(node) + _effect_attrs(node) + _text_payload_attrs(node)
         reflection_attrs, reflection_layer = _blurred_reflection_layer(node, assets)
-        text_html = _text_html(node.text, warnings)
+        text_html = fill_layer + _text_html(node.text, warnings)
         flipped = node.transform is not None and node.transform.flip_h
         if text_html and flipped != (node.text is not None and node.text.mirror_x):
             # CSS mirrors the element's text with the element; PowerPoint does not, unless the

@@ -466,3 +466,74 @@ def _inset(body: str, width: float, height: float) -> Polygon | None:
             return None  # per-corner radii differ: not one rounded box
         radius = float(values[0] or 0.0)
     return [(x + beside_left, y + above) for x, y in rounded_box(inner_w, inner_h, radius)]
+
+
+type Corner = tuple[float, float]
+_KAPPA = 0.5522847498
+
+
+def corner_radii(
+    styles: dict[str, str], *, width_px: float, height_px: float
+) -> tuple[Corner, Corner, Corner, Corner] | None:
+    """The four ``(horizontal, vertical)`` corner radii in px (TL, TR, BR, BL), or ``None``.
+
+    Read from the computed longhands, scaled down together when neighbours would overlap, as CSS
+    requires.
+    """
+    corners: list[Corner] = []
+    for key in (
+        "borderTopLeftRadius",
+        "borderTopRightRadius",
+        "borderBottomRightRadius",
+        "borderBottomLeftRadius",
+    ):
+        tokens = (styles.get(key) or "0px").split()
+        if not 1 <= len(tokens) <= 2:
+            return None
+        horizontal = _length(tokens[0], width_px)
+        vertical = _length(tokens[-1], height_px)
+        if horizontal is None or vertical is None:
+            return None
+        corners.append((max(0.0, horizontal), max(0.0, vertical)))
+    top_left, top_right, bottom_right, bottom_left = corners
+    sums = (
+        (width_px, top_left[0] + top_right[0]),
+        (width_px, bottom_left[0] + bottom_right[0]),
+        (height_px, top_left[1] + bottom_left[1]),
+        (height_px, top_right[1] + bottom_right[1]),
+    )
+    scale = min([1.0] + [side / total for side, total in sums if total > side > 0])
+    scaled = [(x * scale, y * scale) for x, y in corners]
+    return scaled[0], scaled[1], scaled[2], scaled[3]
+
+
+def is_plain_round_rect(radii: tuple[Corner, Corner, Corner, Corner]) -> bool:
+    """Whether every corner is the same circle, which a preset ``roundRect`` already is."""
+    first = radii[0]
+    return all(corner == first for corner in radii) and abs(first[0] - first[1]) < 1e-6
+
+
+def rounded_path(
+    width: float, height: float, radii: tuple[Corner, Corner, Corner, Corner]
+) -> list[tuple[str, list[tuple[float, float]]]]:
+    """A box with elliptical corners as ``("M"|"L"|"C", points)`` commands, clockwise from TL."""
+    (tl_x, tl_y), (tr_x, tr_y), (br_x, br_y), (bl_x, bl_y) = radii
+    k = _KAPPA
+    return [
+        ("M", [(tl_x, 0.0)]),
+        ("L", [(width - tr_x, 0.0)]),
+        ("C", [(width - tr_x + tr_x * k, 0.0), (width, tr_y - tr_y * k), (width, tr_y)]),
+        ("L", [(width, height - br_y)]),
+        (
+            "C",
+            [
+                (width, height - br_y + br_y * k),
+                (width - br_x + br_x * k, height),
+                (width - br_x, height),
+            ],
+        ),
+        ("L", [(bl_x, height)]),
+        ("C", [(bl_x - bl_x * k, height), (0.0, height - bl_y + bl_y * k), (0.0, height - bl_y)]),
+        ("L", [(0.0, tl_y)]),
+        ("C", [(0.0, tl_y - tl_y * k), (tl_x - tl_x * k, 0.0), (tl_x, 0.0)]),
+    ]

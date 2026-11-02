@@ -123,7 +123,10 @@ def _blip_fill(
     svg_rid: str | None = None,
     *,
     tag: str = "a:blipFill",
+    opacity: float = 1.0,
 ) -> str:
+    # ``a:alphaModFix`` is the picture's own opacity (measured exact in PowerPoint and LibreOffice).
+    alpha = f'<a:alphaModFix amt="{round(opacity * 100000)}"/>' if opacity < 1.0 else ""
     if svg_rid is not None:
         # Pair the raster PNG (a:blip) with the original SVG so PowerPoint renders the vector
         # at native resolution while the PNG is the downlevel fallback.
@@ -131,9 +134,13 @@ def _blip_fill(
             f'<a:ext uri="{_ASVG_URI}">'
             f'<asvg:svgBlip xmlns:asvg="{_ASVG_NS}" r:embed="{svg_rid}"/></a:ext>'
         )
-        blip = f'<a:blip r:embed="{blip_rid}"><a:extLst>{ext}</a:extLst></a:blip>'
+        blip = f'<a:blip r:embed="{blip_rid}">{alpha}<a:extLst>{ext}</a:extLst></a:blip>'
     else:
-        blip = f'<a:blip r:embed="{blip_rid}"/>'
+        blip = (
+            f'<a:blip r:embed="{blip_rid}">{alpha}</a:blip>'
+            if alpha
+            else f'<a:blip r:embed="{blip_rid}"/>'
+        )
     return f"<{tag}>{blip}{_src_rect_xml(crop)}<a:stretch><a:fillRect/></a:stretch></{tag}>"
 
 
@@ -187,7 +194,9 @@ def _fill_xml(
     if isinstance(fill, PatternFill):
         return _pattern_fill(fill)
     # PictureFill: a blip fill if the package writer assigned a media relationship, else nothing.
-    return _blip_fill(blip_rid, fill.crop, svg_rid) if blip_rid is not None else "<a:noFill/>"
+    if blip_rid is None:
+        return "<a:noFill/>"
+    return _blip_fill(blip_rid, fill.crop, svg_rid, opacity=opacity)
 
 
 def line_xml(line: Line | None) -> str:
@@ -435,10 +444,15 @@ def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:
         else _solid_fill(run.color)
     )
     shadow = f"<a:effectLst>{_text_shadow_xml(run.shadow)}</a:effectLst>" if run.shadow else ""
+    underline_fill = (
+        f"<a:uFill>{_solid_fill(run.underline_color)}</a:uFill>"
+        if run.underline_color is not None and run.underline is not False
+        else ""
+    )
     rpr = (
         f'<a:rPr lang="en-US" sz="{round(run.size_pt * 100)}"{bold} '
         f'i="{1 if run.italic else 0}"{decorations} dirty="0">'
-        f"{outline}{fill}{shadow}"
+        f"{outline}{fill}{shadow}{underline_fill}"
         f"{_hyperlink_xml(run.hyperlink, rid)}"
         f'<a:latin typeface="{_attr(run.font_family)}"/></a:rPr>'
     )
@@ -627,7 +641,6 @@ def can_emit_picture(node: ShapeNode) -> bool:
         and node.side_lines is None
         and not node.effects
         and node.corner_radius_emu == 0
-        and node.opacity == 1.0
         and node.text is None
     )
 
@@ -650,7 +663,7 @@ def picture_xml(
         if fill.raster_role is not None
         else alt_text_attr(node)
     )
-    blip_fill = _blip_fill(blip_rid, fill.crop, svg_rid, tag="p:blipFill")
+    blip_fill = _blip_fill(blip_rid, fill.crop, svg_rid, tag="p:blipFill", opacity=node.opacity)
     return (
         f'<p:pic><p:nvPicPr><p:cNvPr id="{shape_id}" name="Picture {shape_id}"{descr}/>'
         '<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>'

@@ -54,6 +54,12 @@ def _int_attr(element: Element, name: str, default: int = 0) -> int:
     return int(value) if value is not None else default
 
 
+def _underline_fill(element: Element | None, colors: ThemeColors) -> Rgba | None:
+    """An underline's own colour (``a:uFill``), or ``None`` when it follows the text."""
+    solid = element.find("a:solidFill", _NS) if element is not None else None
+    return rgba(solid, colors) if solid is not None else None
+
+
 def _underline(value: str | None) -> bool | str:
     if value is None or value == "none":
         return False
@@ -176,6 +182,7 @@ def read_text_run(
         bold=attribute("b") == "1",
         italic=attribute("i") == "1",
         underline=_underline(attribute("u")),
+        underline_color=_underline_fill(child("a:uFill"), colors),
         strike=attribute("strike", "noStrike") not in {"noStrike", None},
         caps=_caps(attribute("cap")),
         letter_spacing_pt=int(attribute("spc", "0") or "0") / 100,

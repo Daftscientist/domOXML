@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from domoxml.core.ir.model import CustomGeometry
 from domoxml.core.render.browser import RenderedNode
@@ -66,12 +67,38 @@ def extract_custom_geometry(
 
     width = px_to_emu(node.width)
     height = px_to_emu(node.height)
+    fit = _aspect_alignment(node.styles.get("domoxmlSvgAspect"))
+    if fit == "slice":
+        return SvgGeometryExtract(geometry=None, style_node=style_node)  # overflows its viewport
     path = scale_path_to_emu(
         parsed.commands,
         vb_w=view_width,
         vb_h=view_height,
         box_emu_w=width,
         box_emu_h=height,
+        align=fit,
     )
     geometry = CustomGeometry(width_emu=width, height_emu=height, path=tuple(path))
     return SvgGeometryExtract(geometry=geometry, style_node=style_node)
+
+
+_ALIGN_FRACTION = {"min": 0.0, "mid": 0.5, "max": 1.0}
+
+
+def _aspect_alignment(value: str | None) -> tuple[float, float] | None | Literal["slice"]:
+    """How ``preserveAspectRatio`` places the viewBox: ``None`` to stretch, ``"slice"`` to crop,
+    otherwise the fractions of free space before the content (the default is ``xMidYMid meet``)."""
+    words = (value or "xMidYMid meet").split()
+    if not words or words[0] == "defer":
+        words = words[1:] or ["xMidYMid"]
+    if words[0].lower() == "none":
+        return None
+    if len(words) > 1 and words[1] == "slice":
+        return "slice"
+    token = words[0]
+    if len(token) != 8 or token[0] != "x" or token[4] != "Y":
+        return 0.5, 0.5
+    return (
+        _ALIGN_FRACTION.get(token[1:4].lower(), 0.5),
+        _ALIGN_FRACTION.get(token[5:8].lower(), 0.5),
+    )

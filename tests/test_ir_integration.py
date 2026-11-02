@@ -2801,3 +2801,51 @@ async def test_svg_gaussian_blur_filter_becomes_a_native_blur_scaled_to_the_box(
     [blur] = [effect for effect in shape.effects if isinstance(effect, Blur)]
     # 3 user units at the SVG's uniform scale (the smaller of 3.6 and 2.2 px per unit).
     assert abs(blur.radius_emu - px_to_emu(3 * 2.2)) < px_to_emu(0.2)
+
+
+async def test_svg_geometry_keeps_its_aspect_ratio_inside_a_wider_box() -> None:
+    ir = await _render_and_extract(
+        "<svg style='position:absolute;left:100px;top:100px;width:360px;height:220px' "
+        "viewBox='0 0 100 100'><path d='M0 0H100V100H0Z' fill='#c20'/></svg>"
+    )
+
+    shape = next(s for s in ir.shapes if s.custom_geom is not None)
+    assert shape.custom_geom is not None
+    xs = [c.to.x for c in shape.custom_geom.path if isinstance(c, LineTo | MoveTo)]
+    ys = [c.to.y for c in shape.custom_geom.path if isinstance(c, LineTo | MoveTo)]
+    # The browser draws a 220px square centred in the 360px width, not a stretched rectangle.
+    tolerance = px_to_emu(1)
+    assert abs(max(xs) - min(xs) - px_to_emu(220)) < tolerance
+    assert abs(min(xs) - px_to_emu(70)) < tolerance
+    assert abs(max(ys) - min(ys) - px_to_emu(220)) < tolerance
+
+
+@pytest.mark.parametrize(
+    "filter_markup",
+    [
+        "<filter id='f' primitiveUnits='objectBoundingBox'><feGaussianBlur stdDeviation='.05'/>"
+        "</filter>",
+        "<filter id='f'><feGaussianBlur stdDeviation='1e309'/></filter>",
+    ],
+)
+async def test_svg_blur_that_is_not_a_plain_user_unit_length_keeps_its_raster(
+    filter_markup: str,
+) -> None:
+    result = await _render_and_extract_result(
+        "<svg style='position:absolute;left:100px;top:100px;width:220px;height:220px' "
+        f"viewBox='0 0 100 100'><defs>{filter_markup}</defs>"
+        "<path d='M10 10H90V90H10Z' fill='#c20' filter='url(#f)'/></svg>"
+    )
+
+    assert not any(isinstance(e, Blur) for s in result.slide.shapes for e in s.effects)
+
+
+async def test_a_css_filter_overriding_the_svg_filter_attribute_is_not_replaced_by_a_blur() -> None:
+    result = await _render_and_extract_result(
+        "<svg style='position:absolute;left:100px;top:100px;width:220px;height:220px' "
+        "viewBox='0 0 100 100'><defs><filter id='f'><feGaussianBlur stdDeviation='3'/></filter>"
+        "</defs><path d='M10 10H90V90H10Z' fill='#c20' filter='url(#f)' "
+        "style='filter:brightness(2)'/></svg>"
+    )
+
+    assert not any(isinstance(e, Blur) for s in result.slide.shapes for e in s.effects)

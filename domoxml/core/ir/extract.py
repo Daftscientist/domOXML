@@ -1438,18 +1438,42 @@ def plan_backdrop_layers(rendered: RenderedSlide) -> frozenset[int]:
     return _dry_run(rendered)[1]
 
 
-def _svg_blur(node: RenderedNode, source: str | None) -> Blur | None:
-    """A native blur for an SVG ``feGaussianBlur`` filter, scaled from user units to px."""
+def _svg_blur(node: RenderedNode, source: str | None, effective_filter: str) -> Blur | None:
+    """A native blur for an SVG ``feGaussianBlur`` filter, scaled from user units to px.
+
+    The captured filter only counts when it is the filter the browser actually applies: a CSS
+    ``filter`` can override the ``filter`` attribute that named it.
+    """
     sigma = parse_svg_blur_sigma(source)
     view_box = node.src.split()
-    if sigma is None or len(view_box) != 4:
+    identifier = re.search(r'<filter\b[^>]*\bid="([^"]+)"', source or "")
+    if (
+        sigma is None
+        or len(view_box) != 4
+        or identifier is None
+        or f"#{identifier.group(1)}" not in effective_filter
+    ):
         return None
     try:
         scale_x, scale_y = node.width / float(view_box[2]), node.height / float(view_box[3])
     except (ValueError, ZeroDivisionError):
         return None
     # An SVG scales uniformly by the smaller factor (``xMidYMid meet``), so one radius is exact.
-    return Blur(radius_emu=px_to_emu(sigma * min(scale_x, scale_y)))
+    radius = sigma * min(scale_x, scale_y)
+    return Blur(radius_emu=px_to_emu(radius)) if math.isfinite(radius) else None
+
+
+def _backdrop_order_note(node: RenderedNode) -> str:
+    """A coverage note when colour maths follows the blur in CSS but runs before it natively.
+
+    Both are linear per pixel, so only channels that clamp differ (a saturated edge, a doubled
+    brightness at a black/white boundary); the browser's own blurred pixels remain the fallback.
+    """
+    functions = parse_filters(node.styles.get("backdropFilter", "")) or ()
+    names = [function.name for function in functions]
+    if "blur" in names and any(name != "blur" for name in names[names.index("blur") + 1 :]):
+        return "; colour functions follow the blur in CSS and are applied before it here"
+    return ""
 
 
 def _backdrop_filter_parts(value: str) -> tuple[float | None, tuple[FilterFunction, ...]]:
@@ -2336,7 +2360,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 )
                 blur = parse_blur_filter(filter_value) if encoded_effects is None else None
                 if blur is None and encoded_effects is None:
-                    blur = _svg_blur(node, filter_styles.get("domoxmlSvgFilter"))
+                    blur = _svg_blur(node, filter_styles.get("domoxmlSvgFilter"), filter_value)
                 svg_soft_edge = (
                     parse_svg_soft_edge_filter(filter_styles.get("domoxmlSvgFilter"))
                     if encoded_effects is None
@@ -2650,6 +2674,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                             reason=(
                                 "backdrop blur is a native a:blur on the sharp backdrop picture, "
                                 "with the browser's blurred pixels as the owned fallback"
+                                + _backdrop_order_note(node)
                             ),
                         )
                     )

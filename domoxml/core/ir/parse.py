@@ -560,6 +560,8 @@ def parse_svg_blur_sigma(value: str | None) -> float | None:
     children = list(root)
     if root.tag.rsplit("}", 1)[-1].lower() != "filter" or len(children) != 1:
         return None
+    if root.get("primitiveUnits", "userSpaceOnUse") != "userSpaceOnUse":
+        return None  # a fraction of the bounding box, not a length
     blur = children[0]
     if (
         blur.tag.rsplit("}", 1)[-1].lower() != "fegaussianblur"

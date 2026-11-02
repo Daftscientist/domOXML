@@ -294,20 +294,30 @@ def scale_path_to_emu(
     vb_h: float,
     box_emu_w: int,
     box_emu_h: int,
+    align: tuple[float, float] | None = None,
 ) -> list[PathCommand]:
     """Scale path commands from SVG viewBox units to EMU coordinates.
 
     ``vb_w``/``vb_h`` are the viewBox dimensions; ``box_emu_w``/``box_emu_h`` are the
     target bounding box in EMUs.  ClosePath has no coordinates and passes through unchanged.
+
+    By default the viewBox is stretched to the box. With ``align`` (the fractions
+    ``(x, y)`` of the free space placed before the content: 0, 0.5 or 1) it keeps its aspect
+    ratio and sits inside the box, which is what an SVG does with ``preserveAspectRatio`` ``meet``.
     """
     if vb_w <= 0 or vb_h <= 0:
         return commands
 
     sx = box_emu_w / vb_w
     sy = box_emu_h / vb_h
+    offset_x = offset_y = 0.0
+    if align is not None:
+        sx = sy = min(sx, sy)
+        offset_x = (box_emu_w - vb_w * sx) * align[0]
+        offset_y = (box_emu_h - vb_h * sy) * align[1]
 
     def _pt(p: Point) -> Point:
-        return Point(x=round(p.x * sx), y=round(p.y * sy))
+        return Point(x=round(p.x * sx + offset_x), y=round(p.y * sy + offset_y))
 
     result: list[PathCommand] = []
     for cmd in commands:

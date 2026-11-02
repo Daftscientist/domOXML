@@ -89,6 +89,13 @@
     "reasons": [],
     "similarity": 0.989
   },
+  "details": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.977
+  },
   "elliptical-radius": {
     "dropped": false,
     "inherent": false,
@@ -240,6 +247,13 @@
     "reasons": [],
     "similarity": 0.994
   },
+  "sup-sub": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.96
+  },
   "svg-blur-filter": {
     "dropped": false,
     "inherent": false,
@@ -276,6 +290,13 @@
       "SVG could not be converted to custom geometry; rasterised"
     ],
     "similarity": 0.994
+  },
+  "text-after-block": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.989
   },
   "text-decoration-wavy": {
     "dropped": false,

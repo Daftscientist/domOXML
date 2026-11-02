@@ -258,6 +258,25 @@ _UNDERLINE_TOKENS: dict[str, str] = {
 }
 
 
+# PowerPoint draws a run with a ``baseline`` at two thirds of its stored size.
+BASELINE_SIZE_FACTOR = 2 / 3
+
+
+def _baseline(styles: dict[str, str]) -> int:
+    """``vertical-align`` as a DrawingML ``baseline``: ``super`` and ``sub`` or a length."""
+    value = (styles.get("verticalAlign") or "baseline").strip().lower()
+    if value == "super":
+        return 30_000
+    if value == "sub":
+        return -25_000
+    lift_pt = parse_length_px(value) * 0.75 if value.endswith("px") else 0.0
+    size_pt = px_to_pt(parse_length_px(styles.get("fontSize")) or 16.0)
+    if lift_pt == 0.0 or size_pt <= 0:
+        return 0
+    # The stored size is the drawn size over BASELINE_SIZE_FACTOR, and the lift is a share of it.
+    return round(lift_pt / (size_pt / BASELINE_SIZE_FACTOR) * 100_000)
+
+
 def _underline_colour(styles: dict[str, str]) -> Rgba | None:
     """The underline colour when it is not simply the text colour (``currentcolor`` is)."""
     drawn = parse_color(styles.get("textDecorationColor"))
@@ -282,6 +301,7 @@ def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
         size_pt=px_to_pt(parse_length_px(styles.get("fontSize")) or 16.0),
         bold=is_bold(styles.get("fontWeight")),
         italic=styles.get("fontStyle", "normal") == "italic",
+        baseline=_baseline(styles),
         underline=underline,
         underline_color=underline_color,
         strike=strike,

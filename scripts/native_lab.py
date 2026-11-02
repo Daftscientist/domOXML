@@ -653,6 +653,34 @@ def probe_svg_filters() -> Path:
     return sheet("svg-filters", render(_deck("lab_svg_filters", build), graph=_GRAPH))
 
 
+def probe_baseline() -> Path:
+    """How PowerPoint sizes and lifts ``baseline`` runs (superscript/subscript)."""
+
+    def build(_: PresentationType, slide: Slide) -> None:
+        cases = [
+            ("normal 40pt", 'sz="4000"'),
+            ("baseline=30000 sz=4000", 'sz="4000" baseline="30000"'),
+            ("baseline=-25000 sz=4000", 'sz="4000" baseline="-25000"'),
+            ("baseline=30000 sz=6000", 'sz="6000" baseline="30000"'),
+        ]
+        for index, (label, attributes) in enumerate(cases):
+            box = slide.shapes.add_textbox(
+                Inches(0.5), Inches(0.4 + index * 1.6), Inches(8), Inches(1.4)
+            )
+            body = box._element.find(_q(P, "txBody"))
+            for old in body.findall(_q(A, "p")):
+                body.remove(old)
+            body.append(
+                _xml(
+                    f'<a:p><a:r><a:rPr lang="en-US" sz="4000"/><a:t>H</a:t></a:r>'
+                    f'<a:r><a:rPr lang="en-US" {attributes}/><a:t>2O</a:t></a:r>'
+                    f'<a:r><a:rPr lang="en-US" sz="1200"/><a:t>  {label}</a:t></a:r></a:p>'
+                )
+            )
+
+    return sheet("baseline", render(_deck("lab_baseline", build), graph=_GRAPH))
+
+
 def probe_online_video() -> Path:
     """Does Office accept an online-video picture (poster + external video link)?"""
 
@@ -811,6 +839,7 @@ PROBES: dict[str, Callable[[], Path]] = {
     "blur-edges": probe_blur_edges,
     "blur-scale": probe_blur_scale,
     "svg-blip": probe_svg_blip,
+    "baseline": probe_baseline,
     "svg-filters": probe_svg_filters,
     "online-video": probe_online_video,
     "model3d": probe_model3d,

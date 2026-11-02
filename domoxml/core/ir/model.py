@@ -420,6 +420,10 @@ class TextRun(BaseModel):
     bold: bool = False
     bold_inherited: bool = False
     italic: bool = False
+    # Superscript/subscript lift in thousandths of a percent of the font size (``a:rPr baseline``,
+    # CSS ``vertical-align``). ``size_pt`` stays the size the run is drawn at; PowerPoint draws a
+    # lifted run at two thirds of its stored size, which the writer and reader account for.
+    baseline: int = 0
     underline: bool | str = False
     # The underline's own colour (``a:uFill``, CSS ``text-decoration-color``) when it differs.
     underline_color: Rgba | None = None

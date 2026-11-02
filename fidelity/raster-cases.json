@@ -179,5 +179,17 @@
   "columns": {
     "html": "<div style='{BOX}column-count:2;font-size:20px'>Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua</div>",
     "inherent": false
+  },
+  "text-after-block": {
+    "html": "<div style='{BOX}font-size:24px;background:#eee'>Before<div style='height:60px;background:#c20'></div>After</div>",
+    "inherent": false
+  },
+  "details": {
+    "html": "<details open style='{BOX}font-size:24px'><summary>Title</summary>Body text</details>",
+    "inherent": false
+  },
+  "sup-sub": {
+    "html": "<div style='{BOX}font-size:40px'>H<sub>2</sub>O x<sup>2</sup></div>",
+    "inherent": false
   }
 }

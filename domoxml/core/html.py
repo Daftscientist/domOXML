@@ -27,6 +27,7 @@ from domoxml.core.ir.model import (
     Box,
     CanvasNode,
     CharBullet,
+    ClosePath,
     ColorSpec,
     Connector,
     CustomGeometry,
@@ -36,7 +37,9 @@ from domoxml.core.ir.model import (
     GradientFill,
     GroupNode,
     Line,
+    LineTo,
     MediaNode,
+    MoveTo,
     Node,
     PatternFill,
     PictureFill,
@@ -222,6 +225,37 @@ def _clip_path_css(geom: str) -> str | None:
     return f"clip-path:polygon({points})"
 
 
+def _polygon_points(geometry: CustomGeometry) -> str | None:
+    """``geometry`` as CSS ``polygon()`` points in px, or ``None`` if it has curves or holes."""
+    points: list[str] = []
+    last = len(geometry.path) - 1
+    for index, command in enumerate(geometry.path):
+        if (index == 0 and isinstance(command, MoveTo)) or isinstance(command, LineTo):
+            points.append(
+                f"{_number(emu_to_px(command.to.x))}px {_number(emu_to_px(command.to.y))}px"
+            )
+        elif not (isinstance(command, ClosePath) and index == last):
+            return None
+    return ", ".join(points) if len(points) >= 3 else None
+
+
+def _fill_survives_as_polygon_clip(node: ShapeNode) -> bool:
+    """Whether a free-form polygon with a gradient or picture fill is a CSS ``clip-path``.
+
+    The SVG form of custom geometry paints only a solid fill, so a gradient or picture would
+    vanish on the way to HTML. A polygon-only path is the same shape as a clip over the element's
+    own background, which any fill and the round trip back to a native path both survive.
+    """
+    return (
+        node.custom_geom is not None
+        and isinstance(node.fill, GradientFill | PictureFill)
+        and node.portable_fallback is None
+        and not node.effects
+        and node.line is None
+        and _polygon_points(node.custom_geom) is not None
+    )
+
+
 def _transform_css(t: Transform | None) -> str | None:
     """Return a CSS ``transform`` value for a :class:`Transform`, or ``None`` for identity.
 
@@ -348,6 +382,10 @@ def _shape_style(
         clip = _clip_path_css(node.geom)
         if clip is not None:
             styles.append(clip)
+    if _fill_survives_as_polygon_clip(node) and node.custom_geom is not None:
+        points = _polygon_points(node.custom_geom)
+        if points is not None:
+            styles.append(f"clip-path:polygon({points})")
     # Emit effects
     _append_effect_styles(node, styles, warnings)
     # Emit rotation/flip transform if present.
@@ -1181,7 +1219,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                 f'style="{escape(";".join(styles), quote=True)}">'
             )
         # Custom geometry: emit an inline SVG instead of a CSS-bordered div.
-        if node.custom_geom is not None:
+        if node.custom_geom is not None and not _fill_survives_as_polygon_clip(node):
             cg = node.custom_geom
             left = _px(node.box.x)
             top = _px(node.box.y)
@@ -1299,10 +1337,16 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
         style = escape(combined_style, quote=True)
         metadata_attrs = _identity_attrs(node) + _effect_attrs(node) + _text_payload_attrs(node)
         reflection_attrs, reflection_layer = _blurred_reflection_layer(node, assets)
+        text_html = _text_html(node.text, warnings)
+        flipped = node.transform is not None and node.transform.flip_h
+        if text_html and flipped != (node.text is not None and node.text.mirror_x):
+            # CSS mirrors the element's text with the element; PowerPoint does not, unless the
+            # text body says so. Turn it back so the text reads as it does in the deck.
+            text_html = f'<div style="transform:scaleX(-1)">{text_html}</div>'
         inner = (
             f'<div class="domoxml-shape"{metadata_attrs} style="{style}"'
             f"{autofit_attr}{text_body_attr}{raster_attr}{reflection_attrs}>"
-            f"{_text_html(node.text, warnings)}{reflection_layer}</div>"
+            f"{text_html}{reflection_layer}</div>"
         )
         return inner
     if isinstance(node, GroupNode):

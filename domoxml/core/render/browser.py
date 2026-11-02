@@ -367,6 +367,30 @@ _SNAPSHOT_JS = """
         }
       }
     }
+    if (computed.transform && computed.transform !== 'none' && el instanceof HTMLElement) {
+      // The transformed corners of the element's own box (skew and perspective included), so a
+      // plain filled box under a non-rotation transform can be a native quadrilateral. Only when
+      // no ancestor is transformed: the corners are measured through the ancestors' transforms.
+      let transformedAncestor = false;
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        if (getComputedStyle(a).transform !== 'none') { transformedAncestor = true; break; }
+      }
+      if (!transformedAncestor) {
+        const saved = el.style.transform;
+        el.style.transform = 'none';
+        const box = el.getBoundingClientRect();
+        el.style.transform = saved;
+        const [originX, originY] = computed.transformOrigin.split(' ').map(parseFloat);
+        const matrix = new DOMMatrix(computed.transform);
+        const corners = [[box.left, box.top], [box.right, box.top], [box.right, box.bottom],
+          [box.left, box.bottom]].map(([x, y]) => {
+          const point = matrix.transformPoint(new DOMPoint(x - box.left - originX,
+            y - box.top - originY, 0, 1));
+          return [box.left + originX + point.x / point.w, box.top + originY + point.y / point.w];
+        });
+        styles.domoxmlQuad = corners.flat().map((value) => Math.round(value * 100) / 100).join(',');
+      }
+    }
     let effectiveLinear = inheritedLinear;
     if (computed.transform && computed.transform !== 'none') {
       const own = new DOMMatrix(computed.transform);
@@ -393,12 +417,43 @@ _SNAPSHOT_JS = """
     walked.set(el, { rect: r, linear: effectiveLinear, computed });
     if (r.width > 0 && r.height > 0) {
       const corners = cornersOf(r, effectiveLinear, el);
+      let window = null;
+      let windowExact = true;
       for (const ancestor of clippersOf(el)) {
         const region = clipRegion(ancestor);
         if (region && !region.coversSlide && corners.some((point) => outsideClip(region, point))) {
           styles.domoxmlClippedByAncestor = 'true';
-          break;
         }
+        if (!region || region.coversSlide) continue;
+        // The clip as a page rectangle (and corner radius), when it is upright and unscaled.
+        const inverse = region.inverse;
+        const upright = Math.abs(inverse.a - 1) < 1e-6 && Math.abs(inverse.d - 1) < 1e-6
+          && Math.abs(inverse.b) < 1e-6 && Math.abs(inverse.c) < 1e-6;
+        if (!upright || region.clipX !== region.clipY) { windowExact = false; continue; }
+        const cx = region.centre.x + region.shift.x, cy = region.centre.y + region.shift.y;
+        const rect = { left: cx - region.half.x, top: cy - region.half.y,
+          right: cx + region.half.x, bottom: cy + region.half.y, radius: region.radius };
+        if (!window) { window = rect; continue; }
+        const merged = {
+          left: Math.max(window.left, rect.left), top: Math.max(window.top, rect.top),
+          right: Math.min(window.right, rect.right),
+          bottom: Math.min(window.bottom, rect.bottom),
+          radius: Math.max(window.radius, rect.radius),
+        };
+        // A rounded clip survives an intersection only when it is the whole result: otherwise a
+        // new straight edge cuts through its corners and the result is not one rounded box.
+        const same = (a, b) => Math.abs(a.left - b.left) + Math.abs(a.top - b.top)
+          + Math.abs(a.right - b.right) + Math.abs(a.bottom - b.bottom) < 0.01;
+        if ((window.radius > 0 && !same(merged, window))
+            || (rect.radius > 0 && !same(merged, rect))) {
+          windowExact = false;
+        }
+        window = merged;
+      }
+      if (styles.domoxmlClippedByAncestor && window && windowExact) {
+        const parts = [window.left, window.top, window.right - window.left,
+          window.bottom - window.top, window.radius];
+        styles.domoxmlClipRect = parts.map((v) => Math.round(v * 100) / 100).join(',');
       }
     }
     if (styles.transform && styles.transform !== 'none') {

@@ -502,6 +502,8 @@ class TextBody(BaseModel):
     columns: int = Field(default=1, ge=1)
     column_gap_emu: int = Field(default=0, ge=0)
     margins: tuple[int, int, int, int] = (0, 0, 0, 0)
+    # The text itself is mirrored left to right (a CSS ``scaleX(-1)``): ``bodyPr`` 3-D ``lon=180``.
+    mirror_x: bool = False
 
 
 # --------------------------------------------------------------------------- geometry

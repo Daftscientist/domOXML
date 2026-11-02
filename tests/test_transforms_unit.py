@@ -345,23 +345,24 @@ def test_structural_raster_center_origin_is_native() -> None:
     assert reason is None
 
 
-def test_structural_raster_flip_with_text_preserves_css_semantics() -> None:
+def test_horizontal_flip_with_text_no_longer_rasters_but_vertical_flip_does() -> None:
     from domoxml.core.ir.extract import _structural_raster_reason
 
-    node = RenderedNode(
-        tag="div",
-        x=0,
-        y=0,
-        width=100,
-        height=100,
-        text="Mirrored",
-        styles={"transform": "matrix(-1, 0, 0, 1, 0, 0)"},
-    )
+    def reason_for(transform: str) -> str | None:
+        node = RenderedNode(
+            tag="div",
+            x=0,
+            y=0,
+            width=100,
+            height=100,
+            text="Mirrored",
+            styles={"transform": transform},
+        )
+        return _structural_raster_reason(node)
 
-    reason = _structural_raster_reason(node)
-
-    assert reason is not None
-    assert "mirrors text" in reason
+    assert reason_for("matrix(-1, 0, 0, 1, 0, 0)") is None
+    vertical = reason_for("matrix(1, 0, 0, -1, 0, 0)")
+    assert vertical is not None and "vertical flip" in vertical
 
 
 def test_box_recovers_pre_transform_layout_dimensions_about_center() -> None:

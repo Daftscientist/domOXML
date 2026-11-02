@@ -45,14 +45,18 @@ from domoxml.core.ir.geometry_payload import decode_custom_geometry
 from domoxml.core.ir.group_payload import GroupMemberPayload, GroupPayload, decode_group_payload
 from domoxml.core.ir.layers import (
     Wedge,
+    clip_polygon,
     conic_wedges,
+    parse_clip_shape,
     parse_conic,
     parse_radial,
     radial_bands,
+    rounded_box,
     stacked_gradients,
 )
 from domoxml.core.ir.lowering import (
     colour_functions,
+    fill_only,
     filter_functions,
     is_leaf,
     lower_drop_shadow,
@@ -645,12 +649,13 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
         # attempt fails, extract_slide will rasterise it explicitly.
         return None
     clip = styles.get("clipPath", "none")
-    if clip not in ("none", "") and not (
-        clip.strip().lower().startswith("polygon(") or "polygon(" in clip
+    if (
+        clip not in ("none", "")
+        and "polygon(" not in clip
+        and parse_clip_shape(clip, width_px=node.width, height_px=node.height) is None
     ):
-        # Only polygon() is potentially mappable — non-polygon clip-paths still rasterise.
-        # The actual polygon→preset matching happens later in the main loop; here we just
-        # allow polygon() through.
+        # polygon(), circle(), ellipse() and inset() can become native geometry; the choice
+        # between a preset and a free-form path is made later in the main loop.
         return "clip-path has no native mapping"
     if styles.get("mixBlendMode", "normal") not in ("normal", ""):
         return "mix-blend-mode has no native mapping"
@@ -785,12 +790,12 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
     ):
         return "mixed multiple box-shadow layers have no proven DrawingML effect graph"
     transform_val = styles.get("transform")
-    if _has_complex_transform(transform_val):
+    if _has_complex_transform(transform_val) and "domoxmlQuad" not in styles:
         return "skew/perspective/shear transform has no native mapping"
     if transform_val and transform_val != "none":
-        _rotation, flip_h, flip_v = parse_native_transform(transform_val)
-        if (flip_h or flip_v) and (node.text or node.text_runs):
-            return "CSS flip mirrors text but PowerPoint keeps shape text readable"
+        _rotation, _flip_h, flip_v = parse_native_transform(transform_val)
+        if flip_v and (node.text or node.text_runs):
+            return "CSS vertical flip turns text upside down, which a shape flip does not"
     # A non-center transform-origin cannot be faithfully round-tripped via a:xfrm
     # (which always rotates about the shape center).
     if transform_val and transform_val != "none":
@@ -798,6 +803,127 @@ def _structural_raster_reason(node: RenderedNode) -> str | None:
         if not _is_center_transform_origin(origin):
             return "transform-origin is not center — rotation falls back to raster"
     return None
+
+
+def _ancestor_clip_window(node: RenderedNode) -> tuple[float, float, float, float, float] | None:
+    """The page rectangle ``(x, y, width, height, radius)`` an ancestor clips ``node`` to."""
+    raw = node.styles.get("domoxmlClipRect")
+    if raw is None or not node.styles.get("domoxmlClippedByAncestor"):
+        return None
+    values = [float(value) for value in raw.split(",")]
+    return (values[0], values[1], values[2], values[3], values[4]) if len(values) == 5 else None
+
+
+def _cropped_geometry(
+    node: RenderedNode,
+    window: tuple[float, float, float, float, float],
+    existing: CustomGeometry | None,
+) -> tuple[CustomGeometry | None, str | None]:
+    """The element's shape cut to the ancestor's clip window, as a native free-form path.
+
+    PowerPoint never clips one shape to another, but a clipped box is just a smaller polygon, and
+    a free-form path in the box's own coordinate space keeps any fill or picture mapped as it was.
+    Text, borders and shadows cannot be cropped that way, so those keep the raster.
+    """
+    if (
+        existing is not None
+        or node.styles.get("transform", "none") not in ("none", "")
+        or node.styles.get("clipPath", "none") not in ("none", "")
+    ):
+        return None, "clipped by an ancestor's overflow has no native mapping"
+    if not fill_only(node) or node.text_runs:
+        return None, "clipped by an ancestor's overflow has no native mapping"
+    x, y, width, height, radius = window
+    shape_radius = parse_radius_px(
+        node.styles.get("borderRadius"), shorter_side_px=min(node.width, node.height)
+    )
+    subject = rounded_box(node.width, node.height, shape_radius)
+    area = [(px - node.x, py - node.y) for px, py in ((x, y), (x + width, y + height))]
+    (left, top), (right, bottom) = area
+    frame = [(px + left, py + top) for px, py in rounded_box(right - left, bottom - top, radius)]
+    clipped = clip_polygon(subject, frame)
+    if len(clipped) < 3:
+        return None, "clipped by an ancestor's overflow hides the whole element"
+    box = _box(node)
+    points = [Point(x=px_to_emu(px), y=px_to_emu(py)) for px, py in clipped]
+    path = (MoveTo(to=points[0]), *(LineTo(to=point) for point in points[1:]), ClosePath())
+    return CustomGeometry(width_emu=box.width, height_emu=box.height, path=path), None
+
+
+def _mirrored(text: TextBody | None, node: RenderedNode) -> TextBody | None:
+    """``text`` marked as mirrored when the element is flipped horizontally."""
+    transform = node.styles.get("transform")
+    if text is None or not transform or transform == "none":
+        return text
+    _rotation, flip_h, _flip_v = parse_native_transform(transform)
+    return text.model_copy(update={"mirror_x": True}) if flip_h else text
+
+
+def _quad_geometry(
+    node: RenderedNode, fill: Fill | None, existing: CustomGeometry | None
+) -> tuple[CustomGeometry | None, str | None]:
+    """The transformed corners of a skewed or perspective-projected box as a native quadrilateral.
+
+    The quad is exact for a plain solid fill. A gradient or picture would have to be warped with
+    the box, and text, a border or a shadow would stay upright, so those keep the raster.
+    """
+    raw = node.styles.get("domoxmlQuad")
+    if raw is None:
+        return None, "skew/perspective/shear transform has no native mapping"
+    if not (is_leaf(node) and fill_only(node)) or isinstance(fill, GradientFill | PictureFill):
+        return None, "skew/perspective of an element with content or a warped fill is raster"
+    rounded = parse_radius_px(node.styles.get("borderRadius"), shorter_side_px=1.0) > 0
+    if existing is not None or rounded or node.styles.get("clipPath", "none") not in ("none", ""):
+        return None, "skew/perspective of a clipped or rounded box is raster"
+    values = [float(value) for value in raw.split(",")]
+    box = _box(node)
+    points = [
+        Point(x=px_to_emu(x - node.x), y=px_to_emu(y - node.y))
+        for x, y in zip(values[0::2], values[1::2], strict=True)
+    ]
+    path = (MoveTo(to=points[0]), *(LineTo(to=point) for point in points[1:]), ClosePath())
+    return CustomGeometry(width_emu=box.width, height_emu=box.height, path=path), None
+
+
+def _clip_geometry(node: RenderedNode) -> tuple[Geometry, CustomGeometry | None, str | None]:
+    """``(preset, custom geometry, raster reason)`` for an element with a ``clip-path`` shape.
+
+    The shape is intersected with the element's own (rounded) box, because a clip can only remove
+    paint. A clip also hides the element's text, border and shadow, which a native shape would
+    still draw, so those keep the raster. An ellipse that is the whole box is the ``ellipse``
+    preset; anything else is a free-form path in the box's own coordinate space, so a gradient or
+    picture fill still maps onto the whole box as it does in the browser.
+    """
+    clip = node.styles.get("clipPath", "none")
+    width, height = node.width, node.height
+    polygon = (
+        parse_polygon(clip, width_px=width, height_px=height)
+        if "polygon(" in clip
+        else parse_clip_shape(clip, width_px=width, height_px=height)
+    )
+    if polygon is None:
+        return "rect", None, "clip-path has no native mapping"
+    if not (is_leaf(node) and fill_only(node)):
+        return "rect", None, "clip-path on an element with content has no native mapping"
+    radius = parse_radius_px(node.styles.get("borderRadius"), shorter_side_px=min(width, height))
+    clipped = clip_polygon(polygon, rounded_box(width, height, radius))
+    if len(clipped) < 3:
+        return "rect", None, "clip-path clips the whole element"
+    xs, ys = [x for x, _ in clipped], [y for _, y in clipped]
+    if (
+        clip.lstrip().lower().startswith(("circle(", "ellipse("))
+        and len(polygon) >= 32
+        and abs(min(xs)) < 0.5
+        and abs(max(xs) - width) < 0.5
+        and abs(min(ys)) < 0.5
+        and abs(max(ys) - height) < 0.5
+        and len(clipped) == len(polygon)
+    ):
+        return "ellipse", None, None
+    box = _box(node)
+    points = [Point(x=px_to_emu(x), y=px_to_emu(y)) for x, y in clipped]
+    path = (MoveTo(to=points[0]), *(LineTo(to=point) for point in points[1:]), ClosePath())
+    return "rect", CustomGeometry(width_emu=box.width, height_emu=box.height, path=path), None
 
 
 def _resolve_preset_geom(node: RenderedNode) -> tuple[Geometry, bool]:
@@ -2089,7 +2215,9 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # PowerPoint never clips a shape to another shape. A descendant the browser clips at an
         # ancestor's overflow edge is rasterised in isolation (the capture keeps the ancestor's
         # clip), so it keeps exactly its visible pixels and nothing spills past the clipping box.
-        if node.styles.get("domoxmlClippedByAncestor"):
+        # SVG keeps the raster: its custom geometry is built elsewhere and is not cropped here.
+        ancestor_clip = None if node.tag == "svg" else _ancestor_clip_window(node)
+        if node.styles.get("domoxmlClippedByAncestor") and ancestor_clip is None:
             label = _label(node)
             clip_reason = "clipped by an ancestor's overflow has no native mapping"
             clip_shape = _raster_shape(node, rendered)
@@ -2420,10 +2548,18 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         )
         preset_geom: Geometry = "rect"
         polygon_matched = False
+        clip_geometry: CustomGeometry | None = None
         if has_polygon_clip and reason is None:
             preset_geom, polygon_matched = _resolve_preset_geom(node)
-            if not polygon_matched:
-                reason = "clip-path polygon does not match any known preset geometry"
+        if clip not in ("none", "") and reason is None and not polygon_matched:
+            preset_geom, clip_geometry, reason = _clip_geometry(node)
+            polygon_matched = clip_geometry is None and reason is None
+
+        if reason is None and _has_complex_transform(node.styles.get("transform")):
+            clip_geometry, reason = _quad_geometry(node, fill, clip_geometry)
+        if reason is None and ancestor_clip is not None:
+            clip_geometry, reason = _cropped_geometry(node, ancestor_clip, clip_geometry)
+            polygon_matched = polygon_matched and clip_geometry is None
 
         if reason is not None:
             label = _label(node)
@@ -2782,6 +2918,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     ShapeNode(
                         box=box,
                         geom=geom,
+                        custom_geom=clip_geometry,
                         fill=fill,
                         line=line,
                         effects=effects,
@@ -2791,8 +2928,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         portable_fallback=portable_fallback,
                         corner_radius_emu=corner,
                         opacity=_opacity(node.styles),
-                        text=text,
-                        transform=_parse_transform(node.styles),
+                        text=text if encoded_text is not None else _mirrored(text, node),
+                        transform=None
+                        if _has_complex_transform(node.styles.get("transform"))
+                        else _parse_transform(node.styles),
                     ),
                     colour_functions(node),
                 ),

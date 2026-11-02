@@ -341,3 +341,128 @@ def _cross(a: Point, b: Point, c: Point, d: Point) -> Point:
         return b
     c1, c2 = a1 * a[0] + b1 * a[1], a2 * c[0] + b2 * c[1]
     return (b2 * c1 - b1 * c2) / determinant, (a1 * c2 - a2 * c1) / determinant
+
+
+_CLIP = re.compile(r"^\s*(circle|ellipse|inset)\s*\((.*)\)\s*$", re.IGNORECASE | re.DOTALL)
+_CLIP_AT = re.compile(r"\bat\s+(.+)$", re.IGNORECASE)
+_CLIP_ROUND = re.compile(r"\bround\s+(.+)$", re.IGNORECASE)
+_ELLIPSE_STEPS = 96
+
+
+def _length(token: str, reference: float) -> float | None:
+    """A CSS length or percentage of ``reference`` in px, or ``None``."""
+    match = re.fullmatch(r"(-?[\d.]+)(px|%)?", token.strip())
+    if match is None:
+        return None
+    number = float(match.group(1))
+    return number / 100.0 * reference if match.group(2) == "%" else number
+
+
+def _position(text: str | None, width: float, height: float) -> tuple[float, float] | None:
+    """The ``at`` position of a basic shape (keywords or lengths), default the centre."""
+    if text is None:
+        return width / 2, height / 2
+    words = {"left": "0%", "top": "0%", "center": "50%", "right": "100%", "bottom": "100%"}
+    tokens = [words.get(token.lower(), token) for token in text.split()]
+    if len(tokens) == 1:
+        tokens = [tokens[0], "50%"]
+    if len(tokens) != 2:
+        return None
+    x, y = _length(tokens[0], width), _length(tokens[1], height)
+    if x is None or y is None:
+        return None
+    # `top left` style keyword pairs come in either order: a vertical keyword first means swap.
+    first = text.split()[0].lower()
+    if first in ("top", "bottom") and len(text.split()) == 2:
+        x, y = _length(tokens[1], width), _length(tokens[0], height)
+        if x is None or y is None:
+            return None
+    return x, y
+
+
+def ellipse_polygon(cx: float, cy: float, rx: float, ry: float) -> Polygon:
+    """A clockwise polygon approximating an ellipse."""
+    return [
+        (
+            cx + rx * math.cos(2 * math.pi * i / _ELLIPSE_STEPS),
+            cy + ry * math.sin(2 * math.pi * i / _ELLIPSE_STEPS),
+        )
+        for i in range(_ELLIPSE_STEPS)
+    ]
+
+
+def parse_clip_shape(value: str | None, *, width_px: float, height_px: float) -> Polygon | None:
+    """A ``clip-path`` basic shape (circle, ellipse, inset) as a polygon in box px, else ``None``.
+
+    ``polygon()`` is parsed by :func:`domoxml.core.ir.parse.parse_polygon`.
+    """
+    match = _CLIP.match(value or "")
+    if match is None:
+        return None
+    kind, body = match.group(1).lower(), match.group(2).strip()
+    if kind == "inset":
+        return _inset(body, width_px, height_px)
+    at = _CLIP_AT.search(body)
+    centre = _position(at.group(1) if at else None, width_px, height_px)
+    radii = (body[: at.start()] if at else body).split()
+    if centre is None:
+        return None
+    reference = math.sqrt((width_px**2 + height_px**2) / 2)
+    near_x, near_y = min(centre[0], width_px - centre[0]), min(centre[1], height_px - centre[1])
+    far_x, far_y = max(centre[0], width_px - centre[0]), max(centre[1], height_px - centre[1])
+    if kind == "circle":
+        if len(radii) > 1:
+            return None
+        word = radii[0].lower() if radii else "closest-side"
+        radius = {
+            "closest-side": min(near_x, near_y),
+            "farthest-side": max(far_x, far_y),
+        }.get(word)
+        if radius is None:
+            radius = _length(word, reference)
+        return None if radius is None else ellipse_polygon(*centre, radius, radius)
+    if len(radii) not in (0, 2):
+        return None
+    sides = {
+        "closest-side": (near_x, near_y),
+        "farthest-side": (far_x, far_y),
+    }
+    if not radii:
+        rx, ry = sides["closest-side"]
+    elif radii[0].lower() in sides and radii[1].lower() in sides:
+        rx, ry = sides[radii[0].lower()][0], sides[radii[1].lower()][1]
+    else:
+        horizontal, vertical = _length(radii[0], width_px), _length(radii[1], height_px)
+        if horizontal is None or vertical is None:
+            return None
+        rx, ry = horizontal, vertical
+    return ellipse_polygon(*centre, rx, ry)
+
+
+def _inset(body: str, width: float, height: float) -> Polygon | None:
+    round_match = _CLIP_ROUND.search(body)
+    sides = (body[: round_match.start()] if round_match else body).split()
+    if not 1 <= len(sides) <= 4:
+        return None
+    pattern = {1: (0, 0, 0, 0), 2: (0, 1, 0, 1), 3: (0, 1, 2, 1), 4: (0, 1, 2, 3)}[len(sides)]
+    top, right, bottom, left = (sides[index] for index in pattern)
+    insets = (
+        _length(top, height),
+        _length(right, width),
+        _length(bottom, height),
+        _length(left, width),
+    )
+    if any(value is None for value in insets):
+        return None
+    above, beside_right, below, beside_left = (float(v) for v in insets if v is not None)
+    inner_w = width - beside_left - beside_right
+    inner_h = height - above - below
+    if inner_w <= 0 or inner_h <= 0:
+        return []
+    radius = 0.0
+    if round_match:
+        values = [_length(part, min(inner_w, inner_h)) for part in round_match.group(1).split()]
+        if any(value is None for value in values) or len(set(values)) != 1:
+            return None  # per-corner radii differ: not one rounded box
+        radius = float(values[0] or 0.0)
+    return [(x + beside_left, y + above) for x, y in rounded_box(inner_w, inner_h, radius)]

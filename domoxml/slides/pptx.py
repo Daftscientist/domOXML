@@ -44,6 +44,14 @@ from domoxml.core.opc import (
 from domoxml.core.units import emu_to_px
 from domoxml.slides import _templates as t
 from domoxml.slides.background import background_xml
+from domoxml.slides.notes import (
+    NOTES_MASTER,
+    NOTES_MASTER_CT,
+    NOTES_MASTER_RELS,
+    NOTES_SLIDE_CT,
+    notes_slide_rels,
+    notes_slide_xml,
+)
 from domoxml.slides.transition import transition_xml
 from domoxml.slides.validation import validate_pptx_package
 
@@ -93,6 +101,7 @@ def _override(part: str, content_type: str) -> str:
 def _content_types(
     n_slides: int,
     *,
+    notes_slides: tuple[int, ...] = (),
     has_fonts: bool,
     image_exts: set[str],
     has_svg: bool = False,
@@ -107,6 +116,15 @@ def _content_types(
     overrides += [
         _override(f"/ppt/slides/slide{i}.xml", f"{_PML}.slide+xml") for i in range(1, n_slides + 1)
     ]
+    if notes_slides:
+        overrides += [
+            _override("/ppt/notesMasters/notesMaster1.xml", NOTES_MASTER_CT),
+            _override("/ppt/theme/theme2.xml", _THEME_CT),
+            *(
+                _override(f"/ppt/notesSlides/notesSlide{i}.xml", NOTES_SLIDE_CT)
+                for i in notes_slides
+            ),
+        ]
     overrides += [
         _override(f"/{part}", content_type)
         for part, content_type in sorted((preserved_content_types or {}).items())
@@ -153,13 +171,25 @@ def _embedded_font_lst(font_rels: list[FontRel]) -> str:
     return f"<p:embeddedFontLst>{''.join(entries)}</p:embeddedFontLst>"
 
 
-def _presentation(width_emu: int, height_emu: int, n_slides: int, font_rels: list[FontRel]) -> str:
+def _presentation(
+    width_emu: int,
+    height_emu: int,
+    n_slides: int,
+    font_rels: list[FontRel],
+    notes_master_rid: str | None = None,
+) -> str:
     # rId1 is the master; slide i uses rId(i+1) and sldId 255+i.
     ids = "".join(f'<p:sldId id="{255 + i}" r:id="rId{i + 1}"/>' for i in range(1, n_slides + 1))
     embed_attr = ' embedTrueTypeFonts="1"' if font_rels else ""
+    notes_master_list = (
+        f'<p:notesMasterIdLst><p:notesMasterId r:id="{notes_master_rid}"/></p:notesMasterIdLst>'
+        if notes_master_rid
+        else ""
+    )
     return (
         f"{t.XML_DECL}<p:presentation {t.NS}{embed_attr}>"
         '<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>'
+        f"{notes_master_list}"
         f"<p:sldIdLst>{ids}</p:sldIdLst>"
         f'<p:sldSz cx="{width_emu}" cy="{height_emu}"/>'
         '<p:notesSz cx="6858000" cy="9144000"/>'
@@ -167,7 +197,9 @@ def _presentation(width_emu: int, height_emu: int, n_slides: int, font_rels: lis
     )
 
 
-def _presentation_rels(n_slides: int, font_rels: list[FontRel]) -> str:
+def _presentation_rels(
+    n_slides: int, font_rels: list[FontRel], notes_master_rid: str | None = None
+) -> str:
     slides = "".join(
         f'<Relationship Id="rId{i + 1}" Type="{_REL_TYPE}/slide" Target="slides/slide{i}.xml"/>'
         for i in range(1, n_slides + 1)
@@ -176,11 +208,17 @@ def _presentation_rels(n_slides: int, font_rels: list[FontRel]) -> str:
         f'<Relationship Id="{rid}" Type="{_REL_TYPE}/font" Target="{part.removeprefix("ppt/")}"/>'
         for _face, part, rid in font_rels
     )
+    notes_master = (
+        f'<Relationship Id="{notes_master_rid}" Type="{_REL_TYPE}/notesMaster" '
+        'Target="notesMasters/notesMaster1.xml"/>'
+        if notes_master_rid
+        else ""
+    )
     return (
         f'{t.XML_DECL}<Relationships xmlns="{_PKG_REL_NS}">'
         f'<Relationship Id="rId1" Type="{_REL_TYPE}/slideMaster" '
         'Target="slideMasters/slideMaster1.xml"/>'
-        f"{slides}{fonts}</Relationships>"
+        f"{slides}{fonts}{notes_master}</Relationships>"
     )
 
 
@@ -364,6 +402,13 @@ def _slide(
 
     media_links: dict[int, tuple[str, str | None, str]] = {}
     extra_rels: list[str] = []
+    if slide.notes:
+        notes_rid = f"rId{next_rid}"
+        next_rid += 1
+        extra_rels.append(
+            f'<Relationship Id="{notes_rid}" Type="{_REL_TYPE}/notesSlide" '
+            f'Target="../notesSlides/notesSlide{slide_number}.xml"/>'
+        )
     for position, node in enumerate(slide.contents):
         if not isinstance(node, MediaNode):
             continue
@@ -846,9 +891,12 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
     # The svg extension carries its own content type; never list it among raster _IMAGE_CT.
     image_exts.discard("svg")
 
+    notes_slides = tuple(i for i, slide in enumerate(slides, start=1) if slide.notes)
+    notes_master_rid = f"rId{n + 2 + len(font_rels)}" if notes_slides else None
     parts: dict[str, bytes | str] = {
         "[Content_Types].xml": _content_types(
             n,
+            notes_slides=notes_slides,
             has_fonts=bool(font_rels),
             image_exts=image_exts,
             has_svg=has_svg,
@@ -858,8 +906,8 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
             },
         ),
         "_rels/.rels": t.ROOT_RELS,
-        "ppt/presentation.xml": _presentation(width, height, n, font_rels),
-        "ppt/_rels/presentation.xml.rels": _presentation_rels(n, font_rels),
+        "ppt/presentation.xml": _presentation(width, height, n, font_rels, notes_master_rid),
+        "ppt/_rels/presentation.xml.rels": _presentation_rels(n, font_rels, notes_master_rid),
         "ppt/theme/theme1.xml": preserved_theme.data if preserved_theme is not None else t.THEME,
         "ppt/slideMasters/slideMaster1.xml": t.SLIDE_MASTER,
         "ppt/slideMasters/_rels/slideMaster1.xml.rels": t.SLIDE_MASTER_RELS,
@@ -869,6 +917,13 @@ def build_pptx(slides: list[SlideIR], *, faces: list[FontFace] | None = None) ->
     for face, part, _rid in font_rels:
         parts[part] = face.data
     parts.update(slide_parts)
+    if notes_slides:
+        parts["ppt/notesMasters/notesMaster1.xml"] = NOTES_MASTER
+        parts["ppt/notesMasters/_rels/notesMaster1.xml.rels"] = NOTES_MASTER_RELS
+        parts["ppt/theme/theme2.xml"] = t.THEME
+        for i in notes_slides:
+            parts[f"ppt/notesSlides/notesSlide{i}.xml"] = notes_slide_xml(slides[i - 1].notes or "")
+            parts[f"ppt/notesSlides/_rels/notesSlide{i}.xml.rels"] = notes_slide_rels(i)
     if preserved_theme is not None and preserved_theme.relationships:
         theme_rels_part = relationship_part_name("ppt/theme/theme1.xml")
         parts[theme_rels_part] = relationships_xml(

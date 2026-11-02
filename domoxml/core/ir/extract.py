@@ -3175,5 +3175,6 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         background=background,
         renderer_fallback=renderer_fallback,
         renderer_fallback_owner_node_id=attached_owner_node_id,
+        notes=slide_root.styles.get("domoxmlNotes") if slide_root is not None else None,
     )
     return ExtractResult(slide=slide, coverage=tuple(coverage), warnings=tuple(warnings))

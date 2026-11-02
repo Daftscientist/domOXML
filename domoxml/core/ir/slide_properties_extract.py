@@ -51,6 +51,7 @@ def extract_slide_properties(
             if node.parent == 0
             and (
                 node.styles.get("domoxmlTransition")
+                or node.styles.get("domoxmlNotes")
                 or node.styles.get("domoxmlSlideRoot") == "true"
             )
         ),

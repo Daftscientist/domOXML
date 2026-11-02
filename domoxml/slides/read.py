@@ -95,6 +95,7 @@ from domoxml.slides.inherit import (
     parse_theme_fonts,
 )
 from domoxml.slides.media_read import read_media
+from domoxml.slides.notes import read_notes
 from domoxml.slides.text_read import read_text_body, read_text_run
 from domoxml.slides.transition import parse_transition
 from domoxml.types import (
@@ -1896,6 +1897,7 @@ def _slide(
             background=background,
             renderer_fallback=renderer_fallback,
             renderer_fallback_owner_node_id=renderer_fallback_owner_node_id,
+            notes=read_notes(package, slide_part),
         ),
         tuple(warnings),
         tuple(preserved),

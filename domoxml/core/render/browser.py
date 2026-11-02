@@ -489,6 +489,8 @@ _SNAPSHOT_JS = """
       if (tr) styles.domoxmlTransition = tr;
       if (trDur) styles.domoxmlTransitionDuration = trDur;
       if (trDir) styles.domoxmlTransitionDirection = trDir;
+      const notes = el.getAttribute('data-notes');
+      if (notes && notes.trim()) styles.domoxmlNotes = notes;
     }
     // Stable Canvas IR identity/provenance emitted by normalized HTML. Keep it separate from
     // computed CSS so a PPTX -> HTML -> PPTX cycle can recover source ownership exactly.

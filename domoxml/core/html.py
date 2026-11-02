@@ -1533,6 +1533,11 @@ def _media_html(
     )
 
 
+def _slide_notes_attr(notes: str | None) -> str:
+    """The ``data-notes`` attribute carrying a slide's speaker notes, or an empty string."""
+    return f' data-notes="{escape(notes, quote=True)}"' if notes else ""
+
+
 def _slide_transition_attrs(transition: SlideTransition | None) -> str:
     """Return HTML data attribute string for the slide root element's transition."""
     if transition is None or transition.type == "none":
@@ -1606,7 +1611,9 @@ def serialize_canvas(
         shapes += _slide_renderer_fallback_html(slide, assets)
         width_px = round(emu_to_px(slide.width))
         height_px = round(emu_to_px(slide.height))
-        transition_attrs = _slide_transition_attrs(slide.transition)
+        transition_attrs = _slide_transition_attrs(slide.transition) + _slide_notes_attr(
+            slide.notes
+        )
         bg_css = _slide_background_css(slide.background, assets)
         base_style = f"{_SLIDE_BASE_STYLE};width:{width_px}px;height:{height_px}px"
         slide_style = f"{base_style};{bg_css}" if bg_css else base_style

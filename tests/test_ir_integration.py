@@ -2991,3 +2991,37 @@ async def test_alt_text_survives_html_to_pptx_to_html() -> None:
     assert {s.alt_text for s in again.shapes if s.alt_text} == described
     html = inline_assets(serialize_canvas([again])).slides[0].html
     assert 'aria-label="A red square"' in html
+
+
+async def test_speaker_notes_round_trip_html_pptx_html() -> None:
+    html = (
+        "<div class='domoxml-slide' data-notes='Open with the headline.&#10;Pause here.&#10;&#10;"
+        "Then the demo.' style='position:relative;width:960px;height:540px'>"
+        "<div style='position:absolute;left:50px;top:50px;width:200px;height:100px;"
+        "background:#c20'></div></div>"
+    )
+    ir = await _render_and_extract(html)
+    assert ir.notes == "Open with the headline.\nPause here.\n\nThen the demo."
+
+    data = build_pptx([ir], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        names = set(package.namelist())
+        assert {"ppt/notesSlides/notesSlide1.xml", "ppt/notesMasters/notesMaster1.xml"} <= names
+        assert "Open with the headline." in package.read("ppt/notesSlides/notesSlide1.xml").decode()
+        assert "notesMasterIdLst" in package.read("ppt/presentation.xml").decode()
+
+    again = read_pptx(data)[0]
+    assert again.notes == ir.notes
+    serialized = serialize_canvas([again]).slides[0].html
+    assert "data-notes=" in serialized and "Pause here." in serialized
+
+
+async def test_slides_without_notes_write_no_notes_parts() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:200px;height:100px;"
+        "background:#c20'></div>"
+    )
+
+    assert ir.notes is None
+    with ZipFile(BytesIO(build_pptx([ir], faces=[]))) as package:
+        assert not [n for n in package.namelist() if "notes" in n.lower()]

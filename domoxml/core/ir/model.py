@@ -1017,6 +1017,8 @@ class SlideIR(BaseModel):
     background: SlideBackground | None = None
     renderer_fallback: PictureFill | None = None
     renderer_fallback_owner_node_id: str | None = Field(default=None, min_length=1, max_length=512)
+    # Speaker notes as plain text, one line per paragraph; ``None`` means the slide has none.
+    notes: str | None = None
 
     def __init__(
         self,
@@ -1030,6 +1032,7 @@ class SlideIR(BaseModel):
         background: SlideBackground | None = None,
         renderer_fallback: PictureFill | None = None,
         renderer_fallback_owner_node_id: str | None = None,
+        notes: str | None = None,
     ) -> None:
         if contents is not None and (shapes is not None or nodes is not None):
             raise ValueError("pass contents or legacy shapes/nodes, not both")
@@ -1044,6 +1047,7 @@ class SlideIR(BaseModel):
             background=background,
             renderer_fallback=renderer_fallback,
             renderer_fallback_owner_node_id=renderer_fallback_owner_node_id,
+            notes=notes,
         )
         object.__setattr__(self, "contents", _normalise_node_ids(self.contents))
 

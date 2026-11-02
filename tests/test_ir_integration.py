@@ -2462,3 +2462,47 @@ async def test_redrawing_a_canvas_keeps_only_the_current_frame() -> None:
 
     picture = next(s.fill for s in ir.shapes if isinstance(s.fill, PictureFill))
     assert picture.svg_data is not None and picture.svg_data.count(b"<path") == 1
+
+
+async def test_canvas_keeps_its_css_presentation() -> None:
+    ir = await _render_and_extract(
+        "<canvas id='c' width='100' height='100' style='position:absolute;left:50px;top:50px;"
+        "opacity:.5;transform:rotate(20deg);border:4px solid #f00;border-radius:12px'>"
+        "</canvas><script>document.getElementById('c').getContext('2d').fillRect(0,0,50,50)"
+        "</script>"
+    )
+
+    shape = next(s for s in ir.shapes if isinstance(s.fill, PictureFill) and s.fill.svg_data)
+    assert shape.transform is not None
+    assert shape.line is not None or any(s.line is not None for s in ir.shapes)
+
+
+async def test_draw_image_does_not_recurse_through_the_recorder() -> None:
+    ir = await _render_and_extract(
+        "<canvas id='src' width='20' height='20'></canvas>"
+        "<canvas id='c' width='100' height='100' style='position:absolute;left:50px;top:50px'>"
+        "</canvas><script>const s=document.getElementById('src').getContext('2d');"
+        "s.fillStyle='#f00';s.fillRect(0,0,20,20);"
+        "document.getElementById('c').getContext('2d').drawImage(document.getElementById('src'),5,5)"
+        "</script>"
+    )
+
+    drawn = [
+        s.fill.svg_data
+        for s in ir.shapes
+        if isinstance(s.fill, PictureFill) and s.fill.svg_data and b"<image" in s.fill.svg_data
+    ]
+    assert len(drawn) == 1 and drawn[0].count(b"<image") == 1
+
+
+async def test_resizing_a_canvas_forgets_the_open_path() -> None:
+    result = await _render_and_extract(
+        "<canvas id='c' width='100' height='100' style='position:absolute;left:50px;top:50px'>"
+        "</canvas><script>const k=document.getElementById('c'),x=k.getContext('2d');"
+        "x.rect(10,10,20,20);k.width=100;x.fill();x.fillStyle='#0f0';x.fillRect(0,0,5,5)</script>"
+    )
+
+    picture = next(
+        s.fill for s in result.shapes if isinstance(s.fill, PictureFill) and s.fill.svg_data
+    )
+    assert picture.svg_data is not None and picture.svg_data.count(b"<path") == 1

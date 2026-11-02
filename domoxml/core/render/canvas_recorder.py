@@ -24,6 +24,7 @@ RECORDER_JS = r"""
   const logs = new WeakMap();
   const states = new WeakMap();
   const gradients = new WeakMap();
+  const natives = {};
   const scratch = document.createElement('canvas').getContext('2d');
   const proto = CanvasRenderingContext2D.prototype;
   const n = (v) => Math.round(v * 1000) / 1000;
@@ -39,10 +40,11 @@ RECORDER_JS = r"""
   const reset = (log) => {
     log.body = []; log.defs = []; log.open = 0; log.count = 0; log.stack = [];
   };
+  const resetAll = (log) => { reset(log); if (log.ctx) states.delete(log.ctx); };
   const bad = (log, why) => { if (!log.bad) log.bad = why; };
   const stateFor = (ctx) => {
     let s = states.get(ctx);
-    if (!s) { s = { path: [], cur: null, start: null }; states.set(ctx, s); }
+    if (!s) { s = { path: [], cur: null, start: null }; states.set(ctx, s); logFor(ctx.canvas).ctx = ctx; }
     return s;
   };
   const point = (ctx, x, y) => {
@@ -159,6 +161,7 @@ RECORDER_JS = r"""
   const wrap = (name, fn) => {
     const original = proto[name];
     if (typeof original !== 'function') return;
+    natives[name] = original;
     proto[name] = function (...args) {
       try { fn.call(this, args); } catch (e) { bad(logFor(this.canvas), `recorder error in ${name}`); }
       return original.apply(this, args);
@@ -232,7 +235,7 @@ RECORDER_JS = r"""
   wrap('strokeRect', function (a) { paintPath(this, rectD(this, a[0], a[1], a[2], a[3]), 'stroke', 'nonzero'); });
   wrap('clearRect', function (a) {
     const log = logFor(this.canvas);
-    if (fullCanvas(this, a[0], a[1], a[2], a[3])) { reset(log); return; }
+    if (!log.open && !log.stack.length && fullCanvas(this, a[0], a[1], a[2], a[3])) { reset(log); return; }
     if (log.body.length) bad(log, 'partial clearRect');
   });
   wrap('clip', function (a) {
@@ -250,7 +253,7 @@ RECORDER_JS = r"""
     const to = log.stack.pop();
     while (log.open > to) { log.body.push('</g>'); log.open--; }
   });
-  wrap('reset', function () { reset(logFor(this.canvas)); });
+  wrap('reset', function () { resetAll(logFor(this.canvas)); });
 
   // ctx.font is a CSS shorthand; SVG consumers read the longhand attributes far more reliably.
   const fontAttributes = (font) => {
@@ -288,7 +291,7 @@ RECORDER_JS = r"""
     let url;
     try {
       const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
-      tmp.getContext('2d').drawImage(src, 0, 0);
+      natives.drawImage.call(tmp.getContext('2d'), src, 0, 0);
       url = tmp.toDataURL('image/png');
     } catch (e) { bad(log, 'drawImage of a tainted or unreadable source'); return; }
     const smooth = this.imageSmoothingEnabled ? '' : ' style="image-rendering:pixelated"';
@@ -324,7 +327,7 @@ RECORDER_JS = r"""
     const d = Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, side);
     Object.defineProperty(HTMLCanvasElement.prototype, side, {
       ...d,
-      set(value) { reset(logFor(this)); d.set.call(this, value); },
+      set(value) { resetAll(logFor(this)); d.set.call(this, value); },
     });
   }
   const getContext = HTMLCanvasElement.prototype.getContext;

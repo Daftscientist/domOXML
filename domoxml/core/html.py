@@ -1356,7 +1356,12 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
             if node.line is not None:
                 line = node.line
                 stroke_w_px = _number(emu_to_px(line.width_emu))
-                dash_lengths = svg_dash_lengths(line.dash, emu_to_px(line.width_emu))
+                stroke_px = emu_to_px(line.width_emu)
+                dash_lengths = (
+                    tuple(length * stroke_px for length in line.custom_dash)
+                    if line.custom_dash
+                    else svg_dash_lengths(line.dash, stroke_px)
+                )
                 dash_attr = (
                     ' stroke-dasharray="'
                     + " ".join(_number(length) for length in dash_lengths)

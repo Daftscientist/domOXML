@@ -305,6 +305,12 @@ def line_element(element: Element, colors: ThemeColors) -> Line | None:
         return None
     dash = element.find("a:prstDash", _NS)
     dash_value = dash.get("val", "solid") if dash is not None else "solid"
+    custom: list[float] = []
+    for pair in element.findall("a:custDash/a:ds", _NS):
+        custom += [
+            _int_attr(pair, "d", 100_000) / 100_000,
+            _int_attr(pair, "sp", 100_000) / 100_000,
+        ]
     join: Literal["round", "bevel", "miter"] = "round"
     if element.find("a:bevel", _NS) is not None:
         join = "bevel"
@@ -314,6 +320,7 @@ def line_element(element: Element, colors: ThemeColors) -> Line | None:
         color=color,
         width_emu=max(1, _int_attr(element, "w", 1)),
         dash=_DASH_FROM_OOXML.get(dash_value, "solid"),
+        custom_dash=tuple(custom),
         cap=_CAP_FROM_OOXML.get(element.get("cap", "flat"), "flat"),
         join=join,
         gradient=gradient_fill,

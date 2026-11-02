@@ -149,6 +149,7 @@ from domoxml.core.ir.parse import (
 from domoxml.core.ir.pattern import match_pattern_fill
 from domoxml.core.ir.slide_properties_extract import extract_slide_properties
 from domoxml.core.ir.svg_extract import extract_custom_geometry
+from domoxml.core.ir.svg_shapes import svg_to_shapes
 from domoxml.core.ir.svg_vector import vector_picture
 from domoxml.core.ir.table_extract import extract_table
 from domoxml.core.ir.table_payload import apply_table_geometry, decode_table_geometry
@@ -1781,6 +1782,57 @@ def _media_poster(node: RenderedNode, rendered: RenderedSlide) -> PictureFill:
     )
 
 
+def _svg_editable_shapes(
+    node: RenderedNode, rendered: RenderedSlide, faded: float
+) -> list[ShapeNode] | None:
+    """Native shapes for an inline SVG, under the same guards as its vector picture."""
+    source = node.styles.get("domoxmlSvgSource")
+    if source is None or any(
+        node.styles.get(key, "none") not in ("none", "")
+        for key in ("transform", "filter", "maskImage", "clipPath")
+    ):
+        return None
+    if node.styles.get("mixBlendMode", "normal") not in ("normal", ""):
+        return None
+    if _has_transformed_ancestor(node, rendered) or node.styles.get("domoxmlClippedByAncestor"):
+        return None
+    shapes = svg_to_shapes(source, box=_box(node), width_px=node.width, height_px=node.height)
+    if shapes is None:
+        return None
+    return [fade_shape(s.model_copy(update={"opacity": faded}), faded) for s in shapes]
+
+
+def _emit_svg_shapes(
+    shapes: list[ShapeNode],
+    node: RenderedNode,
+    identities: _IdentityAllocator,
+    contents: list[Node],
+    coverage: list[CoverageItem],
+    label: str,
+) -> None:
+    for index, shape in enumerate(shapes):
+        contents.append(identities.apply(shape, node, role=None if index == 0 else f"svg-{index}"))
+    coverage.append(
+        CoverageItem(
+            element=label,
+            representation=Representation.DECOMPOSED if len(shapes) > 1 else Representation.NATIVE,
+            editability=Editability.COMPONENTS if len(shapes) > 1 else Editability.SEMANTIC,
+            output_count=len(shapes),
+            reason="SVG drawn as editable shapes" if len(shapes) > 1 else "",
+        )
+    )
+
+
+def _has_transformed_ancestor(node: RenderedNode, rendered: RenderedSlide) -> bool:
+    by_index = {candidate.index: candidate for candidate in rendered.nodes}
+    ancestor = by_index.get(node.parent)
+    while ancestor is not None:
+        if ancestor.styles.get("transform", "none") not in ("none", ""):
+            return True
+        ancestor = by_index.get(ancestor.parent)
+    return False
+
+
 def _svg_vector(
     shape: ShapeNode | None, node: RenderedNode, rendered: RenderedSlide
 ) -> ShapeNode | None:
@@ -2746,6 +2798,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     shape = _raster_shape(node, rendered)
                     consumed |= _subtree(node.index, children)
                     raster_reason = f"SVG custom geometry paint cannot map natively: {paint_reason}"
+                    editable = _svg_editable_shapes(node, rendered, effective_opacity(node))
+                    if editable is not None:
+                        _emit_svg_shapes(editable, node, identities, contents, coverage, label)
+                        continue
                     vector = _svg_vector(shape, node, rendered)
                     if vector is not None:
                         contents.append(identities.apply(vector, node))
@@ -2858,6 +2914,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 shape = _raster_shape(node, rendered)
                 consumed |= _subtree(node.index, children)
                 raster_reason = "SVG could not be converted to custom geometry; rasterised"
+                editable = _svg_editable_shapes(node, rendered, effective_opacity(node))
+                if editable is not None:
+                    _emit_svg_shapes(editable, node, identities, contents, coverage, label)
+                    continue
                 vector = _svg_vector(shape, node, rendered)
                 if vector is not None:
                     contents.append(identities.apply(vector, node))

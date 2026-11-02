@@ -11,6 +11,10 @@ from domoxml.core.svg_path import parse_svg_path, scale_path_to_emu
 from domoxml.core.units import px_to_emu
 from domoxml.types import ConversionWarning
 
+_NON_DRAWING = frozenset(
+    {"defs", "title", "desc", "metadata", "style", "lineargradient", "radialgradient", "filter"}
+)
+
 
 @dataclass(frozen=True)
 class SvgGeometryExtract:
@@ -46,6 +50,14 @@ def extract_custom_geometry(
         if nodes[index].tag == "path" and nodes[index].src
     ]
     if len(paths) != 1:
+        return SvgGeometryExtract(geometry=None, style_node=node)
+    # Anything else the SVG draws (text, shapes, groups) would be silently dropped.
+    drawn = {
+        nodes[index].tag
+        for index in children.get(node.index, [])
+        if nodes[index].tag not in _NON_DRAWING
+    }
+    if drawn - {"path"}:
         return SvgGeometryExtract(geometry=None, style_node=node)
     style_node = paths[0]
     if encoded_geometry is not None:

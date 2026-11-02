@@ -2512,26 +2512,71 @@ _SVG_BOX = "position:absolute;left:50px;top:50px;width:200px;height:200px;"
 
 
 @pytest.mark.parametrize(
-    "body",
+    ("body", "count"),
     [
-        "<path d='M10 10H50V50H10Z' fill='#c20'/><path d='M55 55H95V95H55Z' fill='#08f'/>",
-        "<defs><linearGradient id='g'><stop offset='0' stop-color='#c20'/>"
-        "<stop offset='1' stop-color='#08f'/></linearGradient></defs>"
-        "<path d='M10 10H90V90H10Z' fill='url(#g)'/>",
-        "<path d='M10 50H90' stroke='#c20' stroke-width='6' stroke-dasharray='10 4 2 4'/>",
+        ("<path d='M10 10H50V50H10Z' fill='#c20'/><path d='M55 55H95V95H55Z' fill='#08f'/>", 2),
+        (
+            "<defs><linearGradient id='g'><stop offset='0' stop-color='#c20'/>"
+            "<stop offset='1' stop-color='#08f'/></linearGradient></defs>"
+            "<path d='M10 10H90V90H10Z' fill='url(#g)'/>",
+            1,
+        ),
+        ("<path d='M10 50H90' stroke='#c20' stroke-width='6' stroke-dasharray='10 4 2 4'/>", 1),
+        (
+            "<g transform='translate(10 10)' opacity='.5'><circle cx='30' cy='30' r='20' "
+            "fill='#c20'/><rect x='5' y='5' width='20' height='10' rx='3' fill='#08f'/>"
+            "<polyline points='0,0 40,40 80,0' fill='none' stroke='#000' stroke-width='2'/></g>",
+            3,
+        ),
     ],
 )
-async def test_svg_without_a_native_shape_form_leaves_as_a_vector_picture(body: str) -> None:
+async def test_svg_becomes_editable_shapes_in_both_directions(body: str, count: int) -> None:
     result = await _render_and_extract_result(
         f"<svg style='{_SVG_BOX}' viewBox='0 0 100 100'>{body}</svg>"
     )
 
-    picture = next(s.fill for s in result.slide.shapes if isinstance(s.fill, PictureFill))
-    assert picture.svg_data is not None and b"<svg" in picture.svg_data
-    assert all(item.representation.value == "native" for item in result.coverage)
+    shapes = [s for s in result.slide.shapes if s.custom_geom is not None]
+    assert len(shapes) == count
+    assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+    assert all(item.representation.value in ("native", "decomposed") for item in result.coverage)
 
     again = read_pptx(build_pptx([result.slide], faces=[]))[0]
-    assert any(isinstance(s.fill, PictureFill) and s.fill.svg_data for s in again.shapes)
+    assert len([s for s in again.shapes if s.custom_geom is not None]) == count
+    html = serialize_canvas([again]).slides[0].html
+    reloaded = await _render_and_extract(html)
+    assert not any(isinstance(s.fill, PictureFill) for s in reloaded.shapes)
+
+
+async def test_svg_dash_pattern_and_gradient_are_exact_natives() -> None:
+    result = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}' viewBox='0 0 100 100'>"
+        "<defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' "
+        "stop-color='#ff0000'/><stop offset='1' stop-color='#0000ff'/></linearGradient></defs>"
+        "<rect x='10' y='10' width='80' height='30' fill='url(#g)'/>"
+        "<path d='M10 70H90' stroke='#000' stroke-width='4' stroke-dasharray='8 4 2 4'/></svg>"
+    )
+
+    gradient = next(s.fill for s in result.slide.shapes if isinstance(s.fill, GradientFill))
+    assert abs(gradient.angle_deg - 180.0) < 0.5  # top to bottom
+    dashed = next(s.line for s in result.slide.shapes if s.line is not None)
+    assert dashed is not None and dashed.custom_dash == (2.0, 1.0, 0.5, 1.0)
+    data = build_pptx([result.slide], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        xml = package.read("ppt/slides/slide1.xml").decode()
+    assert '<a:ds d="200000" sp="100000"/>' in xml
+    again = [s.line for s in read_pptx(data)[0].shapes if s.line is not None]
+    assert again[0] is not None and again[0].custom_dash == (2.0, 1.0, 0.5, 1.0)
+
+
+async def test_svg_with_text_or_markers_stays_a_vector_picture() -> None:
+    result = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}' viewBox='0 0 100 100'>"
+        "<path d='M10 10H50V50H10Z' fill='#c20'/><text x='10' y='80' font-size='20'>Hi</text></svg>"
+    )
+
+    pictures = [s.fill for s in result.slide.shapes if isinstance(s.fill, PictureFill)]
+    assert pictures and pictures[0].svg_data is not None
+    assert all(item.representation.value == "native" for item in result.coverage)
 
 
 @pytest.mark.parametrize(

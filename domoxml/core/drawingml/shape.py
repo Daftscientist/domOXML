@@ -558,13 +558,14 @@ def _text_body(body: TextBody | None, hyperlink_rid: HyperlinkRid) -> str:
             '</a:camera><a:lightRig rig="threePt" dir="t"/></a:scene3d>'
         )
 
+    vertical = f' vert="{body.vertical}"' if body.vertical != "horz" else ""
     paragraphs = "".join(
         _paragraph(paragraph, hyperlink_rid, mirrored=body.mirror_x)
         for paragraph in body.paragraphs
     )
     return (
-        f'<p:txBody><a:bodyPr wrap="square" anchor="{anchor}" lIns="{left}" rIns="{right}"'
-        f' tIns="{top}" bIns="{bottom}"{col_attrs}>'
+        f'<p:txBody><a:bodyPr{vertical} wrap="square" anchor="{anchor}"'
+        f' lIns="{left}" rIns="{right}" tIns="{top}" bIns="{bottom}"{col_attrs}>'
         f"{autofit_el}</a:bodyPr><a:lstStyle/>{paragraphs}</p:txBody>"
     )
 

@@ -32,6 +32,7 @@ _SNAPSHOT_JS = """
     fontWeight: cs.fontWeight, fontStyle: cs.fontStyle,
     textDecorationLine: cs.textDecorationLine, textDecorationStyle: cs.textDecorationStyle,
     textDecorationColor: cs.textDecorationColor, verticalAlign: cs.verticalAlign,
+    writingMode: cs.writingMode,
     textTransform: cs.textTransform,
     fontVariantCaps: cs.fontVariantCaps, letterSpacing: cs.letterSpacing,
     textAlign: cs.textAlign, lineHeight: cs.lineHeight,

@@ -34,6 +34,11 @@ _ALIGN_FROM_OOXML: dict[str, Literal["left", "center", "right", "justify"]] = {
     "r": "right",
     "just": "justify",
 }
+_ANCHOR: dict[str, Literal["top", "middle", "bottom"]] = {
+    "t": "top",
+    "ctr": "middle",
+    "b": "bottom",
+}
 _POWERPOINT_DEFAULT_TABLE_STYLE = "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"
 _DEFAULT_CELL_MARGINS = (91_440, 45_720, 91_440, 45_720)
 _DEFAULT_TABLE_BORDER_WIDTH = 12_700
@@ -270,6 +275,9 @@ def parse_table(
                     fill=fill,
                     borders=borders,
                     margins=margins,
+                    valign=_ANCHOR.get(
+                        properties.get("anchor", "t") if properties is not None else "t", "top"
+                    ),
                     col_span=max(1, _int_attr(cell, "gridSpan", 1)),
                     row_span=max(1, _int_attr(cell, "rowSpan", 1)),
                 )

@@ -909,6 +909,10 @@ def _text_body_css(body: TextBody | None, warnings: list[ConversionWarning]) -> 
         styles.extend(["display:flex", "flex-direction:column", "justify-content:center"])
     elif body.anchor == "bottom":
         styles.extend(["display:flex", "flex-direction:column", "justify-content:flex-end"])
+    if body.vertical != "horz":
+        styles.append(
+            "writing-mode:vertical-rl" if body.vertical == "vert" else "writing-mode:sideways-lr"
+        )
     if body.columns > 1:
         styles.append(f"column-count:{body.columns}")
         styles.append("column-fill:auto")
@@ -1255,6 +1259,7 @@ def _table_html(
                 cell_styles.append(f"border-top:{_border_side_css(b.top)}")
                 cell_styles.append(f"border-bottom:{_border_side_css(b.bottom)}")
 
+            cell_styles.append(f"vertical-align:{cell.valign}")
             td_style = escape(";".join(cell_styles), quote=True)
 
             # Span attributes.

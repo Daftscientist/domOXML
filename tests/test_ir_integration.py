@@ -3400,3 +3400,39 @@ async def test_an_absolutely_positioned_child_is_not_pulled_into_an_anonymous_bl
     assert abs((glow.box.y + glow.box.height / 2) - (red.box.y + red.box.height / 2)) < px_to_emu(
         20
     )
+
+
+async def test_table_cell_vertical_alignment_round_trips() -> None:
+    ir = await _render_and_extract(
+        "<table style='position:absolute;left:50px;top:50px;border-collapse:collapse'><tr>"
+        "<td style='height:120px;vertical-align:top'>T</td>"
+        "<td style='vertical-align:middle'>M</td>"
+        "<td style='vertical-align:bottom'>B</td></tr></table>"
+    )
+    table = next(n for n in ir.contents if isinstance(n, TableNode))
+    assert [c.valign for c in table.rows[0].cells] == ["top", "middle", "bottom"]
+
+    data = build_pptx([ir], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        xml = package.read("ppt/slides/slide1.xml").decode()
+    assert 'anchor="ctr"' in xml and 'anchor="b"' in xml
+    again = next(n for n in read_pptx(data)[0].contents if isinstance(n, TableNode))
+    assert [c.valign for c in again.rows[0].cells] == ["top", "middle", "bottom"]
+    html = serialize_canvas([read_pptx(data)[0]]).slides[0].html
+    assert "vertical-align:bottom" in html and "vertical-align:middle" in html
+
+
+async def test_vertical_writing_mode_round_trips_as_bodypr_vert() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:50px;width:80px;height:300px;"
+        "font-size:30px;writing-mode:vertical-rl'>Vertical</div>"
+    )
+    shape = next(s for s in ir.shapes if s.text)
+    assert shape.text is not None and shape.text.vertical == "vert"
+
+    data = build_pptx([ir], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        assert 'vert="vert"' in package.read("ppt/slides/slide1.xml").decode()
+    again = next(s for s in read_pptx(data)[0].shapes if s.text)
+    assert again.text is not None and again.text.vertical == "vert"
+    assert "writing-mode:vertical-rl" in serialize_canvas([read_pptx(data)[0]]).slides[0].html

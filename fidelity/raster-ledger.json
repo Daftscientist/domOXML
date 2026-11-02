@@ -45,6 +45,13 @@
     ],
     "similarity": 1.0
   },
+  "checkbox-radio-range": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.988
+  },
   "clip-path-circle": {
     "dropped": false,
     "inherent": false,
@@ -175,6 +182,13 @@
     "reasons": [],
     "similarity": 0.992
   },
+  "meter": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.983
+  },
   "mix-blend-multiply": {
     "dropped": false,
     "inherent": false,
@@ -210,7 +224,7 @@
     "inherent": false,
     "non_native": 0,
     "reasons": [],
-    "similarity": 0.409
+    "similarity": 0.992
   },
   "pseudo-before": {
     "dropped": false,

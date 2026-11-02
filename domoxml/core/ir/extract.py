@@ -34,6 +34,7 @@ from domoxml.core.images import (
     normalise_image,
 )
 from domoxml.core.ir.connector_extract import extract_connector
+from domoxml.core.ir.controls import control_shapes
 from domoxml.core.ir.effect_calibration import (
     BOX_SHADOW_BLUR_TO_DML,
     CUSTOM_GLOW_ALPHA_TO_DML,
@@ -703,6 +704,10 @@ def _soft_edge_mask(node: RenderedNode) -> SoftEdge | None:
 def _structural_raster_reason(node: RenderedNode) -> str | None:
     """A reason this element can only be rasterised, independent of its fill, or ``None``."""
     styles = node.styles
+    if "domoxmlControl" in styles:
+        # Reached only when the control branch could not draw it (clipped, transformed or an
+        # animated progress bar), so the browser's own pixels stay.
+        return "form control state has no native drawing"
     if node.tag == "canvas" and "domoxmlCanvasSvg" in styles:
         return None  # recorded drawing calls: handled as a vector picture in extract_slide
     if node.tag in _RASTER_TAGS and node.tag != "svg":
@@ -2504,6 +2509,49 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                     warnings.append(ConversionWarning(message=reason, element=label))
             continue
+
+        if (
+            "domoxmlControl" in node.styles
+            and not node.styles.get("domoxmlClippedByAncestor")
+            and node.styles.get("transform", "none") in ("none", "")
+        ):
+            drawn = control_shapes(
+                node.styles["domoxmlControl"],
+                node.x,
+                node.y,
+                node.width,
+                node.height,
+                parse_color(node.styles.get("accentColor")),
+            )
+            if drawn:
+                shown = effective_opacity(node)
+                for index, part in enumerate(drawn):
+                    contents.append(
+                        identities.apply(
+                            fade_shape(part.model_copy(update={"opacity": shown}), shown),
+                            node,
+                            role=None if index == 0 else f"control-{index}",
+                        )
+                    )
+                consumed |= _subtree(node.index, children)
+                coverage.append(
+                    CoverageItem(
+                        element=_label(node),
+                        representation=(
+                            Representation.DECOMPOSED if len(drawn) > 1 else Representation.NATIVE
+                        ),
+                        editability=(
+                            Editability.COMPONENTS if len(drawn) > 1 else Editability.SEMANTIC
+                        ),
+                        output_count=len(drawn),
+                        reason=(
+                            "form control redrawn from its state as editable shapes"
+                            if len(drawn) > 1
+                            else ""
+                        ),
+                    )
+                )
+                continue
 
         if node.tag in ("video", "audio", "iframe"):
             media = _media_node(node, rendered)

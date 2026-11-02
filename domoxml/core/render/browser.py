@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from domoxml.core.images import apply_alpha_mask, crop_png, unrotate_region
 from domoxml.core.ir.parse import parse_shadows
+from domoxml.core.render.canvas_recorder import RECORDER_JS
 from domoxml.core.units import emu_to_px
 
 # Walks the rendered DOM and, per element, captures its box, direct text, ordered inline
@@ -426,6 +427,15 @@ _SNAPSHOT_JS = """
       if (value) styles[key] = value;
     }
     if (el.id) styles.domoxmlElementId = el.id;
+    if (tag === 'canvas' && window.__domoxmlCanvas) {
+      const recorded = window.__domoxmlCanvas(el);
+      if (recorded.svg) {
+        styles.domoxmlCanvasSvg = recorded.svg;
+        styles.domoxmlCanvasPng = recorded.png;
+      } else {
+        styles.domoxmlCanvasReason = recorded.reason;
+      }
+    }
     out.push({
       tag,
       x: r.x, y: r.y, width: r.width, height: r.height,
@@ -1038,6 +1048,7 @@ class BrowserSession:
                     await route.continue_()
 
         try:
+            await context.add_init_script(RECORDER_JS)
             page = await context.new_page()
             await page.route("**/*", _capture)
             await page.set_content(html, wait_until="load")

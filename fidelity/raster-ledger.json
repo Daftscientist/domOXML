@@ -19,10 +19,26 @@
   },
   "canvas": {
     "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 1.0
+  },
+  "canvas-shadow": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "<canvas> has no native OOXML mapping (canvas shadow)"
+    ],
+    "similarity": 0.996
+  },
+  "canvas-webgl": {
+    "dropped": false,
     "inherent": true,
     "non_native": 1,
     "reasons": [
-      "<canvas> has no native OOXML mapping"
+      "<canvas> has no native OOXML mapping (webgl canvas context)"
     ],
     "similarity": 1.0
   },
@@ -88,7 +104,7 @@
     "inherent": false,
     "non_native": 0,
     "reasons": [],
-    "similarity": 0.994
+    "similarity": 0.995
   },
   "filter-hue-rotate": {
     "dropped": false,

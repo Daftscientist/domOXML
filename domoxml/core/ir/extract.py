@@ -632,8 +632,12 @@ def _soft_edge_mask(node: RenderedNode) -> SoftEdge | None:
 def _structural_raster_reason(node: RenderedNode) -> str | None:
     """A reason this element can only be rasterised, independent of its fill, or ``None``."""
     styles = node.styles
+    if node.tag == "canvas" and "domoxmlCanvasSvg" in styles:
+        return None  # recorded drawing calls: handled as a vector picture in extract_slide
     if node.tag in _RASTER_TAGS and node.tag != "svg":
-        return f"<{node.tag}> has no native OOXML mapping"
+        reason = styles.get("domoxmlCanvasReason")
+        detail = f" ({reason})" if reason else ""
+        return f"<{node.tag}> has no native OOXML mapping{detail}"
     if node.tag == "svg":
         # SVG is handled by the custom-geometry path in extract_slide; returning None
         # here lets the SVG node fall through to that check. If the custom-geometry
@@ -947,6 +951,15 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
                 return None, "SVG fill paint has no native mapping"
             if color.a > 0:
                 return SolidFill(color=color), None
+
+    if node.tag == "canvas" and "domoxmlCanvasSvg" in styles:
+        # Recorded drawing calls over the canvas's own pixels. The box keeps its CSS (opacity,
+        # transform, border, background) because it goes through the same path as an <img>.
+        encoded = styles["domoxmlCanvasPng"]
+        if not encoded.startswith("data:image/png;base64,"):
+            return None, "canvas bitmap was not captured"
+        png = base64.b64decode(encoded.split(",", 1)[1])
+        return PictureFill(data=png, ext="png", svg_data=styles["domoxmlCanvasSvg"].encode()), None
 
     if node.tag == "img" and node.src:
         # SVG source: preserve the vector via the svgBlip extension with a PNG fallback blip.

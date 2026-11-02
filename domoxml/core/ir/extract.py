@@ -704,6 +704,10 @@ def _soft_edge_mask(node: RenderedNode) -> SoftEdge | None:
 def _structural_raster_reason(node: RenderedNode) -> str | None:
     """A reason this element can only be rasterised, independent of its fill, or ``None``."""
     styles = node.styles
+    if "domoxmlControl" in styles:
+        # Reached only when the control branch could not draw it (clipped, transformed or an
+        # animated progress bar), so the browser's own pixels stay.
+        return "form control state has no native drawing"
     if node.tag == "canvas" and "domoxmlCanvasSvg" in styles:
         return None  # recorded drawing calls: handled as a vector picture in extract_slide
     if node.tag in _RASTER_TAGS and node.tag != "svg":
@@ -2506,7 +2510,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     warnings.append(ConversionWarning(message=reason, element=label))
             continue
 
-        if "domoxmlControl" in node.styles:
+        if (
+            "domoxmlControl" in node.styles
+            and not node.styles.get("domoxmlClippedByAncestor")
+            and node.styles.get("transform", "none") in ("none", "")
+        ):
             drawn = control_shapes(
                 node.styles["domoxmlControl"],
                 node.x,
@@ -2516,10 +2524,13 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 parse_color(node.styles.get("accentColor")),
             )
             if drawn:
+                shown = effective_opacity(node)
                 for index, part in enumerate(drawn):
                     contents.append(
                         identities.apply(
-                            part, node, role=None if index == 0 else f"control-{index}"
+                            fade_shape(part.model_copy(update={"opacity": shown}), shown),
+                            node,
+                            role=None if index == 0 else f"control-{index}",
                         )
                     )
                 consumed |= _subtree(node.index, children)

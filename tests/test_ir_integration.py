@@ -3465,3 +3465,33 @@ async def test_form_controls_are_redrawn_from_their_state_as_shapes() -> None:
 
     again = read_pptx(build_pptx([result.slide], faces=[]))[0]
     assert len(again.shapes) == len(shapes)
+
+
+async def test_control_edge_cases_follow_direction_zero_maxima_and_opacity() -> None:
+    result = await _render_and_extract_result(
+        "<div style='opacity:.5'><input type='range' min='-10' max='0' value='-5' "
+        "style='position:absolute;left:50px;top:50px;width:300px;height:20px;margin:0'></div>"
+        "<progress value='50' max='100' dir='rtl' style='position:absolute;left:50px;top:100px;"
+        "width:300px;height:20px'></progress>"
+        "<progress style='position:absolute;left:50px;top:150px;width:300px;height:20px'>"
+        "</progress>"
+        "<input type='checkbox' style='position:absolute;left:50px;top:200px;width:20px;"
+        "height:20px;transform:rotate(30deg)'>"
+    )
+
+    shapes = result.slide.shapes
+    thumb = next(s for s in shapes if s.geom == "ellipse" and s.fill is not None)
+    # min -10, max 0, value -5: the thumb is mid-track, not near the start.
+    assert abs(thumb.box.x + thumb.box.width / 2 - px_to_emu(200)) < px_to_emu(10)
+    assert thumb.opacity == 0.5
+    bar = next(
+        s
+        for s in shapes
+        if isinstance(s.fill, SolidFill)
+        and s.fill.color.hex == "0075FF"
+        and s.box.y == px_to_emu(105)
+        and s.box.height == px_to_emu(10)
+    )
+    assert bar.box.x > px_to_emu(150)  # right-to-left: the 50% bar sits on the right
+    # An indeterminate bar and a rotated control keep their raster instead of an upright redraw.
+    assert sum(isinstance(s.fill, PictureFill) for s in shapes) == 2

@@ -535,7 +535,8 @@ _SNAPSHOT_JS = """
       styles.domoxmlControl = JSON.stringify({
         tag, type: el.type || '', checked: !!el.checked, value: number(el.value),
         min: number(el.min), max: number(el.max), low: number(el.low), high: number(el.high),
-        optimum: number(el.optimum),
+        optimum: number(el.optimum), indeterminate: tag === 'progress' && el.position === -1,
+        rtl: getComputedStyle(el).direction === 'rtl',
       });
     }
     if (el.getAttribute('aria-hidden') !== 'true') {

@@ -45,23 +45,26 @@ def control_shapes(
         return None
     tag, kind = state.get("tag"), state.get("type")
     colour = accent or ACCENT
+    if state.get("indeterminate"):
+        return None  # an animated bar has no value to draw
+    rtl = bool(state.get("rtl"))
     if tag == "progress":
-        return _bar(x, y, width, height, _fraction(state), colour)
+        return _bar(x, y, width, height, _fraction(state), colour, rtl=rtl)
     if tag == "meter":
-        return _bar(x, y, width, height, _fraction(state), _meter_colour(state))
+        return _bar(x, y, width, height, _fraction(state), _meter_colour(state), rtl=rtl)
     if tag == "input" and kind == "checkbox":
         return _checkbox(x, y, width, height, bool(state.get("checked")), colour)
     if tag == "input" and kind == "radio":
         return _radio(x, y, width, height, bool(state.get("checked")), colour)
     if tag == "input" and kind == "range":
-        return _range(x, y, width, height, _fraction(state, default_max=100.0), colour)
+        return _range(x, y, width, height, _fraction(state, default_max=100.0), colour, rtl=rtl)
     return None
 
 
 def _fraction(state: dict[str, float], default_max: float = 1.0) -> float:
-    low = float(state.get("min") or 0.0)
-    high = float(state.get("max") or default_max)
-    value = float(state.get("value") or 0.0)
+    low = 0.0 if state.get("min") is None else float(state["min"])
+    high = default_max if state.get("max") is None else float(state["max"])
+    value = 0.0 if state.get("value") is None else float(state["value"])
     if high <= low:
         return 0.0
     return min(1.0, max(0.0, (value - low) / (high - low)))
@@ -69,12 +72,12 @@ def _fraction(state: dict[str, float], default_max: float = 1.0) -> float:
 
 def _meter_colour(state: dict[str, float]) -> Rgba:
     """Green in the optimum region, amber next to it, red-orange two regions away."""
-    low = float(state.get("min") or 0.0)
-    high = float(state.get("max") or 1.0)
-    lo = float(state.get("low", low))
-    hi = float(state.get("high", high))
-    optimum = float(state.get("optimum", (low + high) / 2))
-    value = float(state.get("value") or 0.0)
+    low = 0.0 if state.get("min") is None else float(state["min"])
+    high = 1.0 if state.get("max") is None else float(state["max"])
+    lo = low if state.get("low") is None else float(state["low"])
+    hi = high if state.get("high") is None else float(state["high"])
+    optimum = (low + high) / 2 if state.get("optimum") is None else float(state["optimum"])
+    value = 0.0 if state.get("value") is None else float(state["value"])
 
     def region(v: float) -> int:
         return 0 if v < lo else 2 if v > hi else 1
@@ -105,14 +108,23 @@ def _pill(
 
 
 def _bar(
-    x: float, y: float, width: float, height: float, fraction: float, colour: Rgba
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    fraction: float,
+    colour: Rgba,
+    *,
+    rtl: bool = False,
 ) -> list[ShapeNode]:
     """A pill track with a pill bar; Chrome draws both half the element's height, centred."""
     thickness = height / 2
     top = y + (height - thickness) / 2
     shapes = [_pill(x, top, width, thickness, TRACK, TRACK_EDGE)]
     if fraction > 0:
-        shapes.append(_pill(x, top, max(thickness, width * fraction), thickness, colour, None))
+        length = max(thickness, width * fraction)
+        start = x + width - length if rtl else x
+        shapes.append(_pill(start, top, length, thickness, colour, None))
     return shapes
 
 
@@ -172,13 +184,23 @@ def _radio(
 
 
 def _range(
-    x: float, y: float, width: float, height: float, fraction: float, accent: Rgba
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    fraction: float,
+    accent: Rgba,
+    *,
+    rtl: bool = False,
 ) -> list[ShapeNode]:
     thickness, thumb = 6.0, min(15.0, height)
     top = y + (height - thickness) / 2
-    centre = x + thumb / 2 + fraction * max(0.0, width - thumb)
+    travel = max(0.0, width - thumb)
+    centre = x + thumb / 2 + (1.0 - fraction) * travel if rtl else x + thumb / 2 + fraction * travel
     shapes = [_pill(x, top, width, thickness, TRACK, RANGE_EDGE)]
-    if centre > x:
+    if rtl and centre < x + width:
+        shapes.append(_pill(centre, top, x + width - centre, thickness, accent, None))
+    elif not rtl and centre > x:
         shapes.append(_pill(x, top, centre - x, thickness, accent, None))
     shapes.append(
         ShapeNode(

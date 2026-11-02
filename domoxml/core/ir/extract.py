@@ -3191,9 +3191,12 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                 )
         # Emit per-side border rects before the main shape so they appear behind its fill.
-        contents.extend(side_rect_shapes)
         faded = effective_opacity(node)
-        outline = _outline_shape(node, box, geom, corner, clip_geometry)
+        contents.extend(
+            shape.model_copy(update={"opacity": faded}) if faded < 1.0 else shape
+            for shape in side_rect_shapes
+        )
+        outline = _outline_shape(node, _box(node), geom, corner, clip_geometry)
         contents.append(
             identities.apply(
                 fade_shape(

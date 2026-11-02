@@ -3238,3 +3238,76 @@ async def test_underline_colour_that_differs_from_the_text_travels_both_ways() -
         "text-decoration-color:rgba(204,34,0"
         in serialize_canvas([read_pptx(data)[0]]).slides[0].html
     )
+
+
+async def test_faded_picture_with_text_fades_only_its_own_layer_in_html() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:300px;height:200px;opacity:.5;"
+        f"background:url({_PNG}) center/cover;color:#000000;font-size:30px'>Caption</div>"
+    )
+
+    html = serialize_canvas([ir]).slides[0].html
+    assert html.count("opacity:0.5") == 1  # the fill layer; the element itself is not faded
+    assert 'data-domoxml-fill-layer="true"' in html and "isolation:isolate" in html
+    caption = next(s for s in ir.shapes if s.text)
+    assert caption.text is not None and caption.text.paragraphs[0].runs[0].color.a == 0.5
+
+
+async def test_faded_per_side_borders_are_faded_with_the_element() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:300px;height:200px;opacity:.5;"
+        "background:#eeeeee;border-left:8px solid #cc2200;border-top:2px solid #0044cc'></div>"
+    )
+
+    drawn = [s for s in ir.shapes if s.fill is not None]
+    assert len(drawn) >= 3 and all(s.opacity == 0.5 for s in drawn)
+
+
+async def test_outline_follows_the_css_box_not_the_text_slack_box() -> None:
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:100px;top:100px;width:200px;font-size:24px;"
+        "outline:4px solid #cc2200'>Text only</div>"
+    )
+
+    ring = next(s for s in ir.shapes if s.line is not None and s.fill is None)
+    assert ring.box.x == px_to_emu(100) - px_to_emu(2)
+    assert ring.box.width == px_to_emu(200) + 2 * px_to_emu(2)
+
+
+def test_custom_outline_in_a_small_coordinate_space_is_scaled_to_its_box_in_html() -> None:
+    from domoxml.core.ir.model import (
+        Box,
+        ClosePath,
+        CubicTo,
+        CustomGeometry,
+        MoveTo,
+        Point,
+        ShapeNode,
+        SlideIR,
+    )
+
+    square = Point(x=0, y=0)
+    geometry = CustomGeometry(
+        width_emu=100,
+        height_emu=100,
+        path=(
+            MoveTo(to=square),
+            CubicTo(c1=Point(x=50, y=0), c2=Point(x=100, y=50), to=Point(x=100, y=100)),
+            ClosePath(),
+        ),
+    )
+    node = ShapeNode(
+        box=Box(x=0, y=0, width=px_to_emu(200), height=px_to_emu(100)),
+        custom_geom=geometry,
+        fill=GradientFill(
+            stops=(
+                GradientStop(pos=0.0, color=Rgba(r=200, g=0, b=0)),
+                GradientStop(pos=1.0, color=Rgba(r=0, g=0, b=200)),
+            ),
+            angle_deg=90,
+        ),
+    )
+    html = serialize_canvas([SlideIR(width=px_to_emu(400), height=px_to_emu(300), shapes=(node,))])
+
+    # 100 path units across a 200px box: the curve's far corner is at 200px, not at ~0.
+    assert "path(&#x27;M 0 0 C 100 0 200 50 200 100 Z&#x27;)" in html.slides[0].html

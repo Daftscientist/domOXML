@@ -23,6 +23,8 @@ import json
 import sys
 from pathlib import Path
 
+from playwright.async_api import Error as PlaywrightError
+
 from domoxml import Presentation, Slide
 from domoxml.core.fidelity.libreoffice import render_pptx_to_pngs
 from domoxml.core.fidelity.score import compare
@@ -70,10 +72,20 @@ async def measure() -> dict[str, dict[str, object]]:
     results: dict[str, dict[str, object]] = {}
     expectations = load_expectations()
     exemptions = load_look_exemptions()
-    async with BrowserSession() as session:
+    session = BrowserSession()
+    await session.__aenter__()
+    try:
         for name, (html, inherent) in load_cases().items():
             page = compose_page(html, css=None, theme=Theme(), width_px=1280, height_px=720)
-            extracted = extract_slide(await session.render(page, width=1280, height=720))
+            try:
+                rendered = await session.render(page, width=1280, height=720)
+            except PlaywrightError:
+                # A long run in one browser occasionally loses a screenshot; start a fresh one.
+                await session.__aexit__(None, None, None)
+                session = BrowserSession()
+                await session.__aenter__()
+                rendered = await session.render(page, width=1280, height=720)
+            extracted = extract_slide(rendered)
             rasters = [
                 item for item in extracted.coverage if item.representation.value not in NATIVE
             ]
@@ -94,6 +106,8 @@ async def measure() -> dict[str, dict[str, object]]:
                 ],
                 "similarity": 1.0 if name in exemptions else await similarity(html),
             }
+    finally:
+        await session.__aexit__(None, None, None)
     return results
 
 

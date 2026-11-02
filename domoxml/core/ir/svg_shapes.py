@@ -35,6 +35,9 @@ from domoxml.core.ir.model import (
     Shadow,
     ShapeNode,
     SolidFill,
+    TextBody,
+    TextParagraph,
+    TextRun,
 )
 from domoxml.core.ir.parse import parse_color
 from domoxml.core.units import px_to_emu
@@ -44,7 +47,6 @@ _XLINK = "http://www.w3.org/1999/xlink"
 _KAPPA = 0.5522847498
 _NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 _UNSUPPORTED = {
-    "text",
     "image",
     "use",
     "symbol",
@@ -216,6 +218,8 @@ class _Reader:
             faded = opacity * _number(_attr(child, "opacity"), 1.0)
             if name == "g":
                 yield from self._walk(child, here, faded, shadow)
+            elif name == "text":
+                yield self._text(child, here, faded, shadow)
             elif name in ("path", "rect", "circle", "ellipse", "line", "polyline", "polygon"):
                 shape = self._shape(child, name, here, faded, shadow)
                 if shape is not None:
@@ -293,6 +297,91 @@ class _Reader:
             line=stroke,
         )
 
+    # text ----------------------------------------------------------------------------------
+
+    def _text(
+        self, element: Element, matrix: Affine, opacity: float, shadow: Shadow | None
+    ) -> ShapeNode:
+        """A text element as one text box whose first baseline sits at the element's ``y``."""
+        if any(_local(child) != "tspan" or list(child) for child in element) or any(
+            _local(child) == "tspan" for child in element
+        ):
+            raise _Unsupported("tspan")
+        text = "".join(element.itertext())
+        if not text.strip():
+            raise _Unsupported("empty text")
+        scale = matrix.scale()
+        if (
+            scale < 0
+            or abs(matrix.b) > 1e-9
+            or abs(matrix.c) > 1e-9
+            or matrix.a < 0
+            or matrix.d < 0
+        ):
+            raise _Unsupported("rotated, reflected or skewed text")
+        if (_attr(element, "stroke") or "none") not in ("none", "transparent"):
+            raise _Unsupported("stroked text")
+        fill = (_attr(element, "fill") or "black").strip()
+        if fill.startswith("url("):
+            raise _Unsupported("gradient text")
+        colour = _colour(fill)
+        if colour is None:
+            raise _Unsupported("text fill")
+        colour = _with_alpha(colour, _number(_attr(element, "fill-opacity"), 1.0) * opacity)
+        size_px = _length(_attr(element, "font-size"), 16.0) * scale
+        weight = (_attr(element, "font-weight") or "normal").lower()
+        family = (_attr(element, "font-family") or "sans-serif").split(",")[0].strip().strip("'\"")
+        run = TextRun(
+            text=text,
+            font_family=family or "sans-serif",
+            size_pt=size_px * 0.75,
+            bold=weight in ("bold", "bolder") or (weight.isdigit() and int(weight) >= 600),
+            italic=(_attr(element, "font-style") or "normal") in ("italic", "oblique"),
+            color=colour,
+            letter_spacing_pt=_letter_spacing(_attr(element, "letter-spacing")) * scale * 0.75,
+        )
+        anchor = (_attr(element, "text-anchor") or "start").lower()
+        for name in ("x", "y", "dx", "dy"):
+            if len((element.get(name) or "").replace(",", " ").split()) > 1:
+                raise _Unsupported("per-character text positions")
+        x, y = matrix.apply(
+            (
+                _length(element.get("x"), 0.0) + _length(element.get("dx"), 0.0),
+                _length(element.get("y"), 0.0) + _length(element.get("dy"), 0.0),
+            )
+        )
+        # A box wide enough that PowerPoint never wraps it, placed so the anchor stays put.
+        width = max(size_px * len(text) * 1.2, size_px) + 2 * size_px
+        left = {"start": x, "middle": x - width / 2, "end": x - width}.get(anchor, x)
+        align = {"start": "left", "middle": "center", "end": "right"}.get(anchor, "left")
+        line = size_px * 1.2
+        baseline = (_attr(element, "dominant-baseline") or "alphabetic").lower()
+        top = {
+            "alphabetic": y - size_px * 0.9,
+            "auto": y - size_px * 0.9,
+            "text-before-edge": y,
+            "hanging": y - size_px * 0.1,
+            "central": y - line / 2,
+            "middle": y - line / 2,
+            "text-after-edge": y - line,
+            "ideographic": y - line,
+        }.get(baseline)
+        if top is None:
+            raise _Unsupported("baseline")
+        return ShapeNode(
+            box=Box(
+                x=self.box.x + px_to_emu(left),
+                y=self.box.y + px_to_emu(top),
+                width=px_to_emu(width),
+                height=px_to_emu(line),
+            ),
+            text=TextBody(
+                paragraphs=(TextParagraph(runs=(run,), align=align),),  # type: ignore[arg-type]
+                autofit="none",
+            ),
+            effects=(shadow,) if shadow else (),
+        )
+
     # paint ---------------------------------------------------------------------------------
 
     def _fill(
@@ -352,12 +441,11 @@ class _Reader:
     ) -> GradientFill:
         found = re.search(r"#([^)\"'\s]+)", reference)
         gradient = self.gradients.get(found.group(1)) if found else None
-        if (
-            gradient is None
-            or gradient.get("gradientTransform")
-            or gradient.get("spreadMethod") not in (None, "pad")
-        ):
+        if gradient is None or gradient.get("spreadMethod") not in (None, "pad"):
             raise _Unsupported("gradient")
+        own = _transform(gradient.get("gradientTransform"))
+        if own != Affine() and gradient.get("gradientUnits") != "userSpaceOnUse":
+            raise _Unsupported("gradient transform on bounding-box units")
         stops = self._stops(gradient, alpha)
         if _local(gradient) == "radialgradient":
             plain = all(
@@ -381,7 +469,8 @@ class _Reader:
             start = matrix.apply((left + x1 * (right - left), top + y1 * (bottom - top)))
             end = matrix.apply((left + x2 * (right - left), top + y2 * (bottom - top)))
         else:
-            start, end = matrix.apply((x1, y1)), matrix.apply((x2, y2))
+            start = matrix.apply(own.apply((x1, y1)))
+            end = matrix.apply(own.apply((x2, y2)))
         dx, dy = end[0] - start[0], end[1] - start[1]
         length = math.hypot(dx, dy)
         if length == 0:
@@ -434,6 +523,13 @@ def _length(value: str | None, default: float) -> float:
     if text.endswith(("%", "em", "ex", "rem")):
         raise _Unsupported("relative length")
     return _number(text, default)
+
+
+def _letter_spacing(value: str | None) -> float:
+    """``letter-spacing`` in user units; ``normal`` is zero, relative units are refused."""
+    if (value or "normal").strip() == "normal":
+        return 0.0
+    return _length(value, 0.0)
 
 
 def _segments(element: Element, name: str) -> list[Segment]:

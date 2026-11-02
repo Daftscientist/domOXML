@@ -84,6 +84,7 @@ def _tc_pr_xml(
     fill: Fill | None,
     borders: SideLines | None,
     margins: tuple[int, int, int, int],
+    valign: str = "top",
 ) -> str:
     """Emit ``<a:tcPr>`` with margins, borders, and fill.
 
@@ -100,6 +101,8 @@ def _tc_pr_xml(
         attrs += f' marT="{mar_t}"'
     if mar_b:
         attrs += f' marB="{mar_b}"'
+    if valign != "top":
+        attrs += f' anchor="{"ctr" if valign == "middle" else "b"}"'
 
     # Border lines (all four sides, always emitted — absence means no border).
     ln_l = _tc_border_xml("lnL", borders.left if borders else None)
@@ -249,7 +252,7 @@ def table_xml(node: TableNode, *, shape_id: int) -> str:
                 span_attrs += f' rowSpan="{cell.row_span}"'
 
             tx = _tx_body_xml(cell.text, _no_hyperlink_rid)
-            tc_pr = _tc_pr_xml(cell.fill, cell.borders, cell.margins)
+            tc_pr = _tc_pr_xml(cell.fill, cell.borders, cell.margins, cell.valign)
             cells_xml += f"<a:tc{span_attrs}>{tx}{tc_pr}</a:tc>"
 
         rows_xml += f'<a:tr h="{row.height_emu}">{cells_xml}</a:tr>'

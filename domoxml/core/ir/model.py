@@ -510,6 +510,9 @@ class TextBody(BaseModel):
     margins: tuple[int, int, int, int] = (0, 0, 0, 0)
     # The text itself is mirrored left to right (a CSS ``scaleX(-1)``): ``bodyPr`` 3-D ``lon=180``.
     mirror_x: bool = False
+    # Text direction: ``a:bodyPr vert`` / CSS ``writing-mode`` (``vert`` reads top to bottom,
+    # ``vert270`` bottom to top).
+    vertical: Literal["horz", "vert", "vert270"] = "horz"
 
 
 # --------------------------------------------------------------------------- geometry
@@ -861,6 +864,8 @@ class TableCell(BaseModel):
     fill: Fill | None = None
     borders: SideLines | None = None
     margins: tuple[int, int, int, int] = (0, 0, 0, 0)
+    # Where the text sits in the cell (``a:tcPr anchor``, CSS ``vertical-align``).
+    valign: Literal["top", "middle", "bottom"] = "top"
     row_span: int = Field(default=1, ge=1)
     col_span: int = Field(default=1, ge=1)
 

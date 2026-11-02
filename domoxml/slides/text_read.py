@@ -204,6 +204,15 @@ _MIRRORED_ALIGN: dict[
 }
 
 
+def _vertical(body: Element) -> Literal["horz", "vert", "vert270"]:
+    """``bodyPr vert`` as a text direction; stacked and East-Asian variants read as ``vert``."""
+    properties = body.find("a:bodyPr", _NS)
+    value = properties.get("vert", "horz") if properties is not None else "horz"
+    if value == "vert270":
+        return "vert270"
+    return "vert" if value in {"vert", "eaVert", "wordArtVert"} else "horz"
+
+
 def _text_is_mirrored(body: Element) -> bool:
     """Whether ``bodyPr`` turns the text 180 degrees about the vertical axis (mirrored text)."""
     rotation = body.find("a:bodyPr/a:scene3d/a:camera/a:rot", _NS)
@@ -365,4 +374,5 @@ def read_text_body(
         column_gap_emu=column_gap_emu,
         margins=margins,
         mirror_x=mirrored,
+        vertical=_vertical(body),
     )

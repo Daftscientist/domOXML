@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 
 from domoxml.core.ir.model import (
     Box,
@@ -24,6 +25,12 @@ type BorderResolver = Callable[
     tuple[tuple[Line | None, Line | None, Line | None, Line | None], list[str]],
 ]
 type TextResolver = Callable[[RenderedNode], TextBody | None]
+
+
+_VALIGN: dict[str, Literal["top", "middle", "bottom"]] = {
+    "middle": "middle",
+    "bottom": "bottom",
+}
 
 
 def _margins(styles: dict[str, str]) -> tuple[int, int, int, int]:
@@ -116,6 +123,7 @@ def extract_table(
                     fill=effective_cell_fill(cell_node, row_node),
                     borders=borders,
                     margins=_margins(cell_node.styles),
+                    valign=_VALIGN.get(cell_node.styles.get("verticalAlign", "middle"), "top"),
                     row_span=row_span,
                     col_span=column_span,
                 )

@@ -514,7 +514,16 @@ def _text_body_from_decoded(node: RenderedNode, encoded: TextBody | None) -> Tex
         columns=columns,
         column_gap_emu=column_gap_emu,
         margins=margins,
+        vertical=_VERTICAL_TEXT.get(styles.get("writingMode", "horizontal-tb"), "horz"),
     )
+
+
+_VERTICAL_TEXT: dict[str, Literal["horz", "vert", "vert270"]] = {
+    "vertical-rl": "vert",
+    "vertical-lr": "vert",
+    "sideways-rl": "vert",
+    "sideways-lr": "vert270",
+}
 
 
 def _text_body(node: RenderedNode) -> TextBody | None:

@@ -34,7 +34,9 @@ FIDELITY = Path(__file__).resolve().parent.parent / "fidelity"
 BASELINE = FIDELITY / "raster-ledger.json"
 CASES_FILE = FIDELITY / "raster-cases.json"
 # A layered output holds raster content (types.CoverageItem requires a raster area), so it counts.
-NATIVE = {"native", "decomposed"}
+# A hybrid output is a live native effect (``a:blur``, ``a:reflection``) with the browser's pixels
+# riding along only for renderers that ignore the effect, so the feature itself is native.
+NATIVE = {"native", "decomposed", "hybrid"}
 LOOKS_RIGHT = 0.97
 # Text scores depend on which fonts the machine has: text-shadow measured 0.891 locally and 0.848
 # in CI. The tolerance absorbs that noise yet still catches a real loss (gradient text

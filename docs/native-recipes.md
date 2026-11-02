@@ -45,6 +45,9 @@ converts it with the real Office engine and deletes it. Two things to know:
 | `scene3d` `perspectiveLeft` / `perspectiveRelaxed` | distorts shape and text | different | 3-D / perspective transforms |
 | `custGeom` polygon in the box's own coordinate space | exact for `clip-path` circle/ellipse/inset/polygon, skew and perspective quads, and ancestor `overflow` cropping; fills still map to the whole box | exact | geometry batch (**shipped**) |
 | `bodyPr` 3-D `lon=180` plus swapped left/right paragraph alignment | mirrored text lands where CSS `scaleX(-1)` puts it | ignores the mirror (text reads normally) | flipped text (**shipped**) |
+| `backdrop-filter: blur() saturate()` as a recoloured sharp backdrop picture under a live `a:blur` | matches Chrome (glass keeps its saturation, blur stays editable) | fallback picture | backdrop colour maths (**shipped**) |
+| `a:reflection` from `-webkit-box-reflect` with implicit 0-100% stops | matches Chrome | fallback picture | box reflection (**shipped**) |
+| SVG `feGaussianBlur` on a path as `a:blur` scaled by the viewBox factor | matches | ignored (fallback picture) | SVG blur (**shipped**) |
 | `a:blip` + `asvg:svgBlip` extension (PNG fallback) | **draws the SVG as vector**: gradients, `stroke-dasharray`, paths all exact | uses the PNG fallback | canvas/SVG interim, vector embeds |
 | `p:pic` with `a:videoFile r:link` to an external URL (online video) | accepted; shows the poster | poster | `<iframe>` to YouTube/Vimeo |
 | 3-D model part (`am3d:model3d`, GLB) with PNG fallback | accepted; server render shows the raster | fallback | 3-D content |

@@ -411,15 +411,12 @@ def parse_box_reflection(value: str | None) -> Reflection | None:
     if len(parts) != 2:
         return None
     colors = tuple(parse_color(part) for part in parts)
-    positions = tuple(_PERCENT_RE.search(part) for part in parts)
-    if any(color is None for color in colors) or any(position is None for position in positions):
+    if any(color is None for color in colors):
         return None
-    start_position, end_position = positions
-    if (
-        start_position is None
-        or end_position is None
-        or float(start_position.group(1)) != 0.0
-        or float(end_position.group(1)) != 100.0
+    # A two-stop fade with no stated positions runs 0% to 100%, which is how Chrome reports it.
+    start_position, end_position = (_PERCENT_RE.search(part) for part in parts)
+    if (start_position is not None and float(start_position.group(1)) != 0.0) or (
+        end_position is not None and float(end_position.group(1)) != 100.0
     ):
         return None
     start_color, end_color = colors
@@ -550,6 +547,33 @@ def parse_soft_edge_mask(
     if horizontal is None or vertical is None or horizontal != vertical:
         return None
     return SoftEdge(radius_emu=px_to_emu(horizontal))
+
+
+def parse_svg_blur_sigma(value: str | None) -> float | None:
+    """The standard deviation, in SVG user units, of a filter that is one plain Gaussian blur."""
+    if not value:
+        return None
+    try:
+        root = ElementTree.fromstring(value)
+    except (ElementTree.ParseError, DefusedXmlException):
+        return None
+    children = list(root)
+    if root.tag.rsplit("}", 1)[-1].lower() != "filter" or len(children) != 1:
+        return None
+    blur = children[0]
+    if (
+        blur.tag.rsplit("}", 1)[-1].lower() != "fegaussianblur"
+        or blur.get("in") not in (None, "SourceGraphic")
+        or set(blur.attrib) - {"stdDeviation", "in"}
+        or len(list(blur)) != 0
+    ):
+        return None
+    try:
+        sigma = float((blur.get("stdDeviation") or "").split()[0])
+    except (ValueError, IndexError):
+        return None
+    deviations = (blur.get("stdDeviation") or "").split()
+    return sigma if sigma > 0 and len(set(deviations)) == 1 else None
 
 
 def parse_svg_soft_edge_filter(value: str | None) -> SoftEdge | None:

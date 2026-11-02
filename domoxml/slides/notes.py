@@ -80,7 +80,7 @@ def notes_slide_xml(text: str) -> str:
         f'<a:p><a:r><a:rPr lang="en-US"/><a:t>{escape(line)}</a:t></a:r></a:p>'
         if line
         else '<a:p><a:endParaRPr lang="en-US"/></a:p>'
-        for line in text.split("\n")
+        for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     )
     return (
         f"{t.XML_DECL}<p:notes {t.NS}><p:cSld><p:spTree>{_GROUP}"
@@ -120,8 +120,13 @@ def read_notes(package: OpcPackage, slide_part: str) -> str | None:
             holder = shape.find("p:nvSpPr/p:nvPr/p:ph", _NS)
             if holder is None or holder.get("type") != "body":
                 continue
+            a_ns = _NS["a"]
             lines = [
-                "".join(run.text or "" for run in paragraph.iterfind(".//a:t", _NS))
+                "".join(
+                    "\n" if node.tag == f"{{{a_ns}}}br" else (node.text or "")
+                    for node in paragraph.iter()
+                    if node.tag in (f"{{{a_ns}}}t", f"{{{a_ns}}}br")
+                )
                 for paragraph in shape.iterfind("p:txBody/a:p", _NS)
             ]
             while lines and not lines[-1]:

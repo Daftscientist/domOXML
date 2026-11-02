@@ -3025,3 +3025,26 @@ async def test_slides_without_notes_write_no_notes_parts() -> None:
     assert ir.notes is None
     with ZipFile(BytesIO(build_pptx([ir], faces=[]))) as package:
         assert not [n for n in package.namelist() if "notes" in n.lower()]
+
+
+async def test_notes_normalise_line_endings_and_keep_line_breaks() -> None:
+    from domoxml.slides.notes import notes_slide_xml
+
+    ir = await _render_and_extract(
+        "<div style='position:absolute;left:50px;top:50px;width:200px;height:100px;"
+        "background:#c20'></div>"
+    )
+    data = build_pptx([ir.model_copy(update={"notes": "First\r\nSecond\rThird"})], faces=[])
+    assert read_pptx(data)[0].notes == "First\nSecond\nThird"
+
+    with_break = notes_slide_xml("x").replace(
+        "<a:t>x</a:t></a:r>", "<a:t>one</a:t></a:r><a:br/><a:r><a:t>two</a:t></a:r>"
+    )
+    with ZipFile(BytesIO(data)) as source:
+        parts = {name: source.read(name) for name in source.namelist()}
+    parts["ppt/notesSlides/notesSlide1.xml"] = with_break.encode()
+    buffer = BytesIO()
+    with ZipFile(buffer, "w") as target:
+        for name, content in parts.items():
+            target.writestr(name, content)
+    assert read_pptx(buffer.getvalue())[0].notes == "one\ntwo"

@@ -83,6 +83,7 @@ from domoxml.slides.appearance_read import (
 from domoxml.slides.background import parse_background
 from domoxml.slides.chart_read import chart_picture
 from domoxml.slides.connector_read import read_connector
+from domoxml.slides.diagram_read import diagram_shapes
 from domoxml.slides.effect_read import effect_container_kind, effect_source_ref, read_effects
 from domoxml.slides.geometry_guides import evaluate_guides, resolve_guide
 from domoxml.slides.graphic_frame import read_graphic_frame
@@ -391,11 +392,15 @@ def _shape(
     guide = geometry.find("a:avLst/a:gd", _NS) if geometry is not None else None
     formula = guide.get("fmla", "") if guide is not None else ""
     corner = 0
-    if geom == "roundRect" and formula.startswith("val "):
-        try:
-            corner = round(int(formula.removeprefix("val ")) / 100_000 * min(box.width, box.height))
-        except (TypeError, ValueError):
-            corner = 0
+    if geom == "roundRect":
+        # A roundRect with no ``adj`` guide uses the preset's default, one sixth of the short side.
+        adjust = 16_667
+        if formula.startswith("val "):
+            try:
+                adjust = int(formula.removeprefix("val "))
+            except (TypeError, ValueError):
+                adjust = 16_667
+        corner = round(adjust / 100_000 * min(box.width, box.height))
     declared_effect_intent = _declared_effect_intent(element) if allow_private_over else None
     expected_over = next(
         (
@@ -1735,6 +1740,46 @@ def _slide(
                     contents.append(_with_pptx_identity(frame.table, element, slide_part))
                     coverage.append(_native_reverse_coverage(slide_part, element))
                     continue
+                diagram = diagram_shapes(element, package, slide_part)
+                if diagram is not None:
+                    converted = 0
+                    for part in diagram:
+                        piece, piece_warns, _kept = _shape(
+                            part,
+                            package,
+                            slide_part,
+                            colors,
+                            hyperlink_for,
+                            inherit_ctx=None,
+                        )
+                        warnings.extend(piece_warns)
+                        if piece is not None:
+                            contents.append(_with_pptx_identity(piece, part, slide_part))
+                            converted += 1
+                    if converted:
+                        coverage.append(
+                            CoverageItem(
+                                element=_visual_label(slide_part, element),
+                                representation=(
+                                    Representation.DECOMPOSED
+                                    if converted > 1
+                                    else Representation.NATIVE
+                                ),
+                                editability=(
+                                    Editability.COMPONENTS
+                                    if converted > 1
+                                    else Editability.SEMANTIC
+                                ),
+                                source_retention=SourceRetention.LOST,
+                                output_count=converted,
+                                reason=(
+                                    "SmartArt converted to the shapes PowerPoint drew for it "
+                                    "(as Convert to Shapes does); its data model and layout "
+                                    "rules are not kept"
+                                ),
+                            )
+                        )
+                        continue
                 reason = frame.reason or "preserved unsupported graphicFrame"
                 # An embedded object (OLE) is saved with the picture PowerPoint shows for it.
                 preview = element.find(".//p:oleObj//p:blipFill", _NS)

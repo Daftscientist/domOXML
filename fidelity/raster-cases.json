@@ -165,7 +165,7 @@
     "inherent": false
   },
   "progress": {
-    "html": "<progress value='60' max='100' style='{BOX}'></progress>",
+    "html": "<progress value='60' max='100' style='position:absolute;left:200px;top:150px;width:360px;height:24px'></progress>",
     "inherent": false
   },
   "vertical-text": {
@@ -190,6 +190,14 @@
   },
   "sup-sub": {
     "html": "<div style='{BOX}font-size:40px'>H<sub>2</sub>O x<sup>2</sup></div>",
+    "inherent": false
+  },
+  "meter": {
+    "html": "<meter value='0.6' style='position:absolute;left:200px;top:150px;width:360px;height:24px'></meter>",
+    "inherent": false
+  },
+  "checkbox-radio-range": {
+    "html": "<input type='checkbox' checked style='position:absolute;left:200px;top:150px;width:24px;height:24px;margin:0'><input type='radio' checked style='position:absolute;left:260px;top:150px;width:24px;height:24px;margin:0'><input type='range' value='40' style='position:absolute;left:200px;top:220px;width:360px;height:24px;margin:0'>",
     "inherent": false
   }
 }

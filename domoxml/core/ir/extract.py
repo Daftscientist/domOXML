@@ -34,6 +34,7 @@ from domoxml.core.images import (
     normalise_image,
 )
 from domoxml.core.ir.connector_extract import extract_connector
+from domoxml.core.ir.controls import control_shapes
 from domoxml.core.ir.effect_calibration import (
     BOX_SHADOW_BLUR_TO_DML,
     CUSTOM_GLOW_ALPHA_TO_DML,
@@ -2504,6 +2505,42 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                     warnings.append(ConversionWarning(message=reason, element=label))
             continue
+
+        if "domoxmlControl" in node.styles:
+            drawn = control_shapes(
+                node.styles["domoxmlControl"],
+                node.x,
+                node.y,
+                node.width,
+                node.height,
+                parse_color(node.styles.get("accentColor")),
+            )
+            if drawn:
+                for index, part in enumerate(drawn):
+                    contents.append(
+                        identities.apply(
+                            part, node, role=None if index == 0 else f"control-{index}"
+                        )
+                    )
+                consumed |= _subtree(node.index, children)
+                coverage.append(
+                    CoverageItem(
+                        element=_label(node),
+                        representation=(
+                            Representation.DECOMPOSED if len(drawn) > 1 else Representation.NATIVE
+                        ),
+                        editability=(
+                            Editability.COMPONENTS if len(drawn) > 1 else Editability.SEMANTIC
+                        ),
+                        output_count=len(drawn),
+                        reason=(
+                            "form control redrawn from its state as editable shapes"
+                            if len(drawn) > 1
+                            else ""
+                        ),
+                    )
+                )
+                continue
 
         if node.tag in ("video", "audio", "iframe"):
             media = _media_node(node, rendered)

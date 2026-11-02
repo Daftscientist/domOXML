@@ -32,6 +32,7 @@ _SNAPSHOT_JS = """
     fontWeight: cs.fontWeight, fontStyle: cs.fontStyle,
     textDecorationLine: cs.textDecorationLine, textDecorationStyle: cs.textDecorationStyle,
     textDecorationColor: cs.textDecorationColor, verticalAlign: cs.verticalAlign,
+    accentColor: cs.accentColor,
     writingMode: cs.writingMode,
     textTransform: cs.textTransform,
     fontVariantCaps: cs.fontVariantCaps, letterSpacing: cs.letterSpacing,
@@ -527,6 +528,16 @@ _SNAPSHOT_JS = """
       if (value) styles[key] = value;
     }
     if (el.id) styles.domoxmlElementId = el.id;
+    if (tag === 'progress' || tag === 'meter' || (tag === 'input'
+        && ['checkbox', 'radio', 'range'].includes(el.type))) {
+      const number = (v) => (v === undefined || v === '' || Number.isNaN(Number(v))
+        ? null : Number(v));
+      styles.domoxmlControl = JSON.stringify({
+        tag, type: el.type || '', checked: !!el.checked, value: number(el.value),
+        min: number(el.min), max: number(el.max), low: number(el.low), high: number(el.high),
+        optimum: number(el.optimum),
+      });
+    }
     if (el.getAttribute('aria-hidden') !== 'true') {
       const title = tag === 'svg' ? el.querySelector(':scope > title') : null;
       const alt = el.getAttribute('aria-label')

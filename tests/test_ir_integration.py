@@ -3436,3 +3436,32 @@ async def test_vertical_writing_mode_round_trips_as_bodypr_vert() -> None:
     again = next(s for s in read_pptx(data)[0].shapes if s.text)
     assert again.text is not None and again.text.vertical == "vert"
     assert "writing-mode:vertical-rl" in serialize_canvas([read_pptx(data)[0]]).slides[0].html
+
+
+async def test_form_controls_are_redrawn_from_their_state_as_shapes() -> None:
+    result = await _render_and_extract_result(
+        "<progress value='60' max='100' style='position:absolute;left:50px;top:50px;width:300px;"
+        "height:20px'></progress>"
+        "<meter value='0.9' low='0.5' high='0.8' optimum='0.1' style='position:absolute;left:50px;"
+        "top:100px;width:300px;height:20px'></meter>"
+        "<input type='checkbox' checked style='position:absolute;left:50px;top:150px;width:20px;"
+        "height:20px;margin:0'>"
+        "<input type='radio' style='position:absolute;left:90px;top:150px;width:20px;height:20px;"
+        "margin:0'>"
+        "<input type='range' value='25' style='position:absolute;left:50px;top:200px;width:300px;"
+        "height:20px;margin:0'>"
+    )
+
+    shapes = result.slide.shapes
+    assert not any(isinstance(s.fill, PictureFill) for s in shapes)
+    # Progress: pill track half the element's height plus a bar 60% of the width.
+    bar = _solid_shape(result.slide, "0075FF")
+    assert bar.box.height == px_to_emu(10)
+    # A value in the worst region of the meter is the red-orange, not the optimum green.
+    assert _solid_shape(result.slide, "D83B01").box.width == px_to_emu(270)
+    # A checked checkbox has its check mark; an empty radio has only its ring.
+    assert any(s.custom_geom is not None and s.line is not None for s in shapes)
+    assert all(item.representation.value in ("native", "decomposed") for item in result.coverage)
+
+    again = read_pptx(build_pptx([result.slide], faces=[]))[0]
+    assert len(again.shapes) == len(shapes)

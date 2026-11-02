@@ -2607,6 +2607,32 @@ async def test_svg_and_canvas_text_become_editable_text_boxes_at_their_baseline(
     }
 
 
+async def test_svg_text_keeps_offsets_and_spacing_and_refuses_what_it_cannot_place() -> None:
+    result = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}' viewBox='0 0 200 200'>"
+        "<text x='10' y='50' dy='40' font-size='20' letter-spacing='3'>Spaced</text></svg>"
+    )
+    shape = next(s for s in result.slide.shapes if s.text and s.text.paragraphs)
+    run = shape.text.paragraphs[0].runs[0]  # type: ignore[union-attr]
+    assert run.letter_spacing_pt > 1.0
+    plain = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}' viewBox='0 0 200 200'>"
+        "<text x='10' y='50' font-size='20' letter-spacing='3'>Spaced</text></svg>"
+    )
+    base = next(s for s in plain.slide.shapes if s.text and s.text.paragraphs)
+    assert shape.box.y - base.box.y > 0
+
+    for bad in (
+        "<text x='10' y='50' font-size='20' transform='scale(-1,1)'>Mirror</text>",
+        "<text x='10' y='50' font-size='20' transform='rotate(180 50 50)'>Flip</text>",
+        "<text x='10 40 70' y='50' font-size='20'>Spread</text>",
+    ):
+        out = await _render_and_extract_result(
+            f"<svg style='{_SVG_BOX}' viewBox='0 0 200 200'>{bad}</svg>"
+        )
+        assert not any(s.text for s in out.slide.shapes)
+
+
 @pytest.mark.parametrize(
     "extra",
     [

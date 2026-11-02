@@ -311,8 +311,14 @@ class _Reader:
         if not text.strip():
             raise _Unsupported("empty text")
         scale = matrix.scale()
-        if scale < 0 or abs(matrix.b) > 1e-9 or abs(matrix.c) > 1e-9:
-            raise _Unsupported("rotated or skewed text")
+        if (
+            scale < 0
+            or abs(matrix.b) > 1e-9
+            or abs(matrix.c) > 1e-9
+            or matrix.a < 0
+            or matrix.d < 0
+        ):
+            raise _Unsupported("rotated, reflected or skewed text")
         if (_attr(element, "stroke") or "none") not in ("none", "transparent"):
             raise _Unsupported("stroked text")
         fill = (_attr(element, "fill") or "black").strip()
@@ -332,9 +338,18 @@ class _Reader:
             bold=weight in ("bold", "bolder") or (weight.isdigit() and int(weight) >= 600),
             italic=(_attr(element, "font-style") or "normal") in ("italic", "oblique"),
             color=colour,
+            letter_spacing_pt=_letter_spacing(_attr(element, "letter-spacing")) * scale * 0.75,
         )
         anchor = (_attr(element, "text-anchor") or "start").lower()
-        x, y = matrix.apply((_length(element.get("x"), 0.0), _length(element.get("y"), 0.0)))
+        for name in ("x", "y", "dx", "dy"):
+            if len((element.get(name) or "").replace(",", " ").split()) > 1:
+                raise _Unsupported("per-character text positions")
+        x, y = matrix.apply(
+            (
+                _length(element.get("x"), 0.0) + _length(element.get("dx"), 0.0),
+                _length(element.get("y"), 0.0) + _length(element.get("dy"), 0.0),
+            )
+        )
         # A box wide enough that PowerPoint never wraps it, placed so the anchor stays put.
         width = max(size_px * len(text) * 1.2, size_px) + 2 * size_px
         left = {"start": x, "middle": x - width / 2, "end": x - width}.get(anchor, x)
@@ -508,6 +523,13 @@ def _length(value: str | None, default: float) -> float:
     if text.endswith(("%", "em", "ex", "rem")):
         raise _Unsupported("relative length")
     return _number(text, default)
+
+
+def _letter_spacing(value: str | None) -> float:
+    """``letter-spacing`` in user units; ``normal`` is zero, relative units are refused."""
+    if (value or "normal").strip() == "normal":
+        return 0.0
+    return _length(value, 0.0)
 
 
 def _segments(element: Element, name: str) -> list[Segment]:

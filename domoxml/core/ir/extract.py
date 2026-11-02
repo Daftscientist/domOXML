@@ -632,8 +632,12 @@ def _soft_edge_mask(node: RenderedNode) -> SoftEdge | None:
 def _structural_raster_reason(node: RenderedNode) -> str | None:
     """A reason this element can only be rasterised, independent of its fill, or ``None``."""
     styles = node.styles
+    if node.tag == "canvas" and "domoxmlCanvasSvg" in styles:
+        return None  # recorded drawing calls: handled as a vector picture in extract_slide
     if node.tag in _RASTER_TAGS and node.tag != "svg":
-        return f"<{node.tag}> has no native OOXML mapping"
+        reason = styles.get("domoxmlCanvasReason")
+        detail = f" ({reason})" if reason else ""
+        return f"<{node.tag}> has no native OOXML mapping{detail}"
     if node.tag == "svg":
         # SVG is handled by the custom-geometry path in extract_slide; returning None
         # here lets the SVG node fall through to that check. If the custom-geometry
@@ -1357,6 +1361,16 @@ def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> tuple[ShapeN
         ),
     )
     return native, True
+
+
+def _canvas_picture(node: RenderedNode) -> ShapeNode | None:
+    """A recorded canvas as a vector picture: its drawing calls as SVG over its own pixels."""
+    encoded = node.styles["domoxmlCanvasPng"]
+    if not encoded.startswith("data:image/png;base64,"):
+        return None
+    png = base64.b64decode(encoded.split(",", 1)[1])
+    svg = node.styles["domoxmlCanvasSvg"].encode()
+    return ShapeNode(box=_box(node), fill=PictureFill(data=png, ext="png", svg_data=svg))
 
 
 def _raster_shape(node: RenderedNode, rendered: RenderedSlide) -> ShapeNode | None:
@@ -2095,6 +2109,14 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 ):
                     table = apply_table_geometry(table, geometry)
                 contents.append(identities.apply(table, node))
+                consumed |= _subtree(node.index, children)
+                coverage.append(_native_coverage(_label(node)))
+                continue
+
+        if node.tag == "canvas" and "domoxmlCanvasSvg" in node.styles:
+            picture = _canvas_picture(node)
+            if picture is not None:
+                contents.append(identities.apply(picture, node))
                 consumed |= _subtree(node.index, children)
                 coverage.append(_native_coverage(_label(node)))
                 continue

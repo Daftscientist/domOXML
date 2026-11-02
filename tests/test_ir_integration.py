@@ -2404,3 +2404,61 @@ async def test_text_drop_shadow_reaches_every_run() -> None:
 
     runs = [r for s in ir.shapes if s.text for p in s.text.paragraphs for r in p.runs]
     assert runs and all(r.shadow is not None for r in runs)
+
+
+_CANVAS = (
+    "<canvas id='c' width='360' height='220' style='position:absolute;left:50px;top:50px'>"
+    "</canvas><script>const x=document.getElementById('c').getContext('2d');"
+    "const g=x.createLinearGradient(0,0,360,0);g.addColorStop(0,'#f80');g.addColorStop(1,'#306');"
+    "x.fillStyle=g;x.fillRect(0,0,360,220);x.save();x.translate(180,110);x.rotate(.3);"
+    "x.fillStyle='#fff';x.beginPath();x.arc(0,0,60,0,Math.PI*1.5);x.lineTo(0,0);x.fill();"
+    "x.restore();x.font='bold 28px sans-serif';x.fillText('Canvas',20,200);</script>"
+)
+
+
+async def test_recorded_canvas_becomes_a_vector_picture_in_both_formats() -> None:
+    ir = await _render_and_extract(_CANVAS)
+
+    picture = next(s.fill for s in ir.shapes if isinstance(s.fill, PictureFill))
+    assert picture.svg_data is not None and b"<path" in picture.svg_data
+    assert b"<text" in picture.svg_data and b"linearGradient" in picture.svg_data
+
+    # IR -> PPTX -> IR keeps the vector next to its PNG fallback.
+    again = read_pptx(build_pptx([ir], faces=[]))[0]
+    assert any(isinstance(s.fill, PictureFill) and s.fill.svg_data for s in again.shapes)
+
+    # IR -> HTML ships the vector as an asset.
+    assert any(asset.path.endswith(".svg") for asset in serialize_canvas([ir]).assets)
+
+
+@pytest.mark.parametrize(
+    ("script", "reason"),
+    [
+        ("x.shadowBlur=8;x.shadowColor='#000';x.fillRect(10,10,50,50)", "shadow"),
+        ("x.fillStyle=x.createPattern(x,'repeat');x.fillRect(0,0,50,50)", "createPattern"),
+        ("x.fillRect(0,0,50,50);x.clearRect(5,5,10,10)", "partial clearRect"),
+        ("x.globalCompositeOperation='multiply';x.fillRect(0,0,50,50)", "globalComposite"),
+    ],
+)
+async def test_unrecordable_canvas_stays_raster_with_its_reason(script: str, reason: str) -> None:
+    result = await _render_and_extract_result(
+        "<canvas id='c' width='100' height='100' style='position:absolute;left:50px;top:50px'>"
+        f"</canvas><script>const x=document.getElementById('c').getContext('2d');{script}</script>"
+    )
+
+    assert any(
+        reason in (item.reason or "") and item.representation.value != "native"
+        for item in result.coverage
+    )
+
+
+async def test_redrawing_a_canvas_keeps_only_the_current_frame() -> None:
+    ir = await _render_and_extract(
+        "<canvas id='c' width='100' height='100' style='position:absolute;left:50px;top:50px'>"
+        "</canvas><script>const x=document.getElementById('c').getContext('2d');"
+        "for(let i=0;i<5;i++){x.clearRect(0,0,100,100);x.fillStyle='#0f0';x.fillRect(i,0,20,20)}"
+        "</script>"
+    )
+
+    picture = next(s.fill for s in ir.shapes if isinstance(s.fill, PictureFill))
+    assert picture.svg_data is not None and picture.svg_data.count(b"<path") == 1

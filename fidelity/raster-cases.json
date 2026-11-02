@@ -111,11 +111,19 @@
     "inherent": false
   },
   "canvas": {
-    "html": "<canvas width='360' height='220' style='{BOX}'></canvas>",
-    "inherent": true
+    "html": "<canvas id='c' width='360' height='220' style='{BOX}'></canvas><script>const x=document.getElementById('c').getContext('2d');const g=x.createLinearGradient(0,0,360,0);g.addColorStop(0,'#f80');g.addColorStop(1,'#306');x.fillStyle=g;x.fillRect(0,0,360,220);x.fillStyle='#fff';x.beginPath();x.arc(180,110,60,0,6.283);x.fill();x.strokeStyle='#000';x.lineWidth=4;x.setLineDash([8,4]);x.stroke();x.font='bold 28px sans-serif';x.fillStyle='#fff';x.fillText('Canvas',20,200);</script>",
+    "inherent": false
   },
   "svg-turbulence": {
     "html": "<svg style='{BOX}' viewBox='0 0 100 100'><defs><filter id='n'><feTurbulence baseFrequency='.05'/></filter></defs><rect width='100' height='100' filter='url(#n)'/></svg>",
     "inherent": true
+  },
+  "canvas-webgl": {
+    "html": "<canvas id='c' width='360' height='220' style='{BOX}'></canvas><script>document.getElementById('c').getContext('webgl')</script>",
+    "inherent": true
+  },
+  "canvas-shadow": {
+    "html": "<canvas id='c' width='360' height='220' style='{BOX}'></canvas><script>const x=document.getElementById('c').getContext('2d');x.shadowBlur=12;x.shadowColor='#000';x.fillStyle='#f80';x.fillRect(60,60,200,100)</script>",
+    "inherent": false
   }
 }

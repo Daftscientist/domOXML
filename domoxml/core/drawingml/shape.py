@@ -215,11 +215,25 @@ def line_xml(line: Line | None) -> str:
     return (
         f'<a:ln w="{line.width_emu}" cap="{cap}">'
         f"{fill_xml}"
-        f'<a:prstDash val="{dash}"/>'
+        f"{_dash_xml(line, dash)}"
         f"{join_tag}"
         f"{head_xml}{tail_xml}"
         f"</a:ln>"
     )
+
+
+def _dash_xml(line: Line, preset: str) -> str:
+    """``a:custDash`` for a custom pattern (lengths in thousandths of a percent of the width)."""
+    if not line.custom_dash:
+        return f'<a:prstDash val="{preset}"/>'
+    lengths = list(line.custom_dash)
+    if len(lengths) % 2:
+        lengths *= 2  # an odd SVG pattern repeats with the roles of dash and gap swapped
+    pairs = "".join(
+        f'<a:ds d="{max(1, round(dash * 100_000))}" sp="{max(1, round(gap * 100_000))}"/>'
+        for dash, gap in zip(lengths[0::2], lengths[1::2], strict=True)
+    )
+    return f"<a:custDash>{pairs}</a:custDash>"
 
 
 def _arrowhead_xml(tag: str, arrow: Arrowhead) -> str:

@@ -251,6 +251,9 @@ class Line(BaseModel):
     color: Rgba
     width_emu: int = Field(gt=0)
     dash: DashStyle = "solid"
+    # An arbitrary dash pattern (``a:custDash``) as alternating dash and gap lengths in multiples
+    # of the line width; when present it replaces ``dash``.
+    custom_dash: tuple[float, ...] = ()
     cap: LineCap = "flat"
     join: LineJoin = "round"
     gradient: GradientFill | None = None

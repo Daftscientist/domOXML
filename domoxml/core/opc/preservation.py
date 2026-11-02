@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import posixpath
 from collections import deque
 from collections.abc import Callable
+from io import BytesIO
 from pathlib import PurePosixPath
 from xml.etree import ElementTree as StdElementTree
 from xml.etree.ElementTree import Element
@@ -126,6 +128,7 @@ def capture_payload(
             if relationship.target_mode == "Internal"
         )
 
+    register_source_namespaces(package.read(source_part))
     return PreservationPayload(
         kind=kind,
         root_xml=ElementTree.tostring(element, encoding="unicode"),
@@ -217,6 +220,19 @@ def rewrite_root_xml(
     for prefix, namespace in (("a", _A), ("c", _C), ("p", _P), ("r", _R), ("dx", NAMESPACE)):
         StdElementTree.register_namespace(prefix, namespace)
     return StdElementTree.tostring(root, encoding="unicode")
+
+
+def register_source_namespaces(xml: bytes) -> None:
+    """Register the prefixes ``xml`` declares, so re-serialising keeps names a document relies on.
+
+    A ``mc:Choice Requires="am3d"`` names a prefix, not a namespace: serialising with generated
+    ``ns0``-style prefixes would leave it dangling and PowerPoint would reject the choice.
+    """
+    for _event, declaration in ElementTree.iterparse(BytesIO(xml), events=("start-ns",)):
+        prefix, namespace = str(declaration[0]), str(declaration[1])
+        if prefix:
+            with contextlib.suppress(ValueError):
+                StdElementTree.register_namespace(prefix, namespace)
 
 
 def relationship_part_name(source_part: str) -> str:

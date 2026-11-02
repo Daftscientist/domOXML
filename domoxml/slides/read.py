@@ -481,6 +481,29 @@ def _shape_picture_role(fill: Fill | None, element: Element) -> Fill | None:
     return fill.model_copy(update={"raster_role": descr.removeprefix(_RASTER_MARKER_PREFIX)})
 
 
+def _cropped(fill: PictureFill) -> PictureFill:
+    """``fill`` with its ``a:srcRect`` applied to the pixels, so a plain ``<img>`` shows it."""
+    crop = fill.crop
+    if crop is None:
+        return fill
+    try:
+        with Image.open(BytesIO(fill.data)) as image:
+            width, height = image.size
+            box = (
+                round(crop.left * width),
+                round(crop.top * height),
+                round(width - crop.right * width),
+                round(height - crop.bottom * height),
+            )
+            if box[2] <= box[0] or box[3] <= box[1]:
+                return fill.model_copy(update={"crop": None})
+            buffer = BytesIO()
+            image.crop(box).save(buffer, "PNG")
+    except OSError:
+        return fill.model_copy(update={"crop": None})
+    return fill.model_copy(update={"data": buffer.getvalue(), "ext": "png", "crop": None})
+
+
 def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> ShapeNode | None:
     properties = element.find("p:spPr", _NS)
     transform = properties.find("a:xfrm", _NS) if properties is not None else None
@@ -1210,10 +1233,13 @@ def _slide(
                 ):
                     # A frame this reader does not model (a 3-D model) that PowerPoint saved with
                     # its own poster picture: the poster is the visual, the frame stays attached.
-                    poster = _picture_shape(fallback_element, package, slide_part)
+                    try:
+                        poster = _picture_shape(fallback_element, package, slide_part)
+                    except (KeyError, ValueError):
+                        poster = None  # a dangling picture leaves the frame without a visual
                     if poster is not None and isinstance(poster.fill, PictureFill):
                         fallback_box_override = poster.box
-                        source_poster_fill = poster.fill
+                        source_poster_fill = _cropped(poster.fill)
                         reason = (
                             "frame shown as the poster picture saved with it; the source frame "
                             "stays attached for exact PPTX re-emission"
@@ -1708,9 +1734,12 @@ def _slide(
                 # An embedded object (OLE) is saved with the picture PowerPoint shows for it.
                 preview = element.find(".//p:oleObj//p:blipFill", _NS)
                 if preview is not None:
-                    shown = _picture(preview, package, slide_part)
+                    try:
+                        shown = _picture(preview, package, slide_part)
+                    except (KeyError, ValueError):
+                        shown = None
                     if shown is not None:
-                        source_poster_fill = shown
+                        source_poster_fill = _cropped(shown)
                         reason = (
                             "embedded object shown as its preview picture; the object stays "
                             "attached for exact PPTX re-emission"

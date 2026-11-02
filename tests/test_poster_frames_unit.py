@@ -64,3 +64,40 @@ def test_a_3d_model_frame_is_shown_as_the_poster_saved_with_it() -> None:
     assert layers[0].source_retention.value == "attached"
     assert all(i.representation is not Representation.FAILED for i in html.coverage.items)
     assert "data-domoxml-preserved-payload" in html.slides[0].html
+
+
+def test_a_reexported_model_frame_keeps_the_prefix_its_choice_requires() -> None:
+    from domoxml.core.ir.model import PreservedNode
+    from domoxml.core.opc import rewrite_root_xml
+    from domoxml.slides.read import read_pptx
+
+    slide = read_pptx(_deck_with_3d_model())[0]
+    node = next(n for n in slide.contents if isinstance(n, PreservedNode))
+    xml = rewrite_root_xml(node, shape_id=9, allocate_shape_id=lambda: 10, relationship_ids={})
+
+    assert 'Requires="am3d"' in xml and "xmlns:am3d=" in xml
+
+
+def test_a_cropped_poster_is_shown_cropped_and_a_dangling_one_does_not_abort() -> None:
+    from domoxml.core.ir.model import PictureFill, SrcRect
+    from domoxml.slides.read import _cropped  # pyright: ignore[reportPrivateUsage]
+
+    source = native_lab_png(200, 100)
+    cropped = _cropped(
+        PictureFill(
+            data=source, ext="png", crop=SrcRect(left=0.25, right=0.25, top=0.0, bottom=0.0)
+        )
+    )
+
+    from PIL import Image
+
+    with Image.open(BytesIO(cropped.data)) as image:
+        assert image.size == (100, 100) and cropped.crop is None
+
+
+def native_lab_png(width: int, height: int) -> bytes:
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (width, height), (10, 20, 30)).save(buffer, "PNG")
+    return buffer.getvalue()

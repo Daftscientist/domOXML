@@ -125,5 +125,19 @@
   "canvas-shadow": {
     "html": "<canvas id='c' width='360' height='220' style='{BOX}'></canvas><script>const x=document.getElementById('c').getContext('2d');x.shadowBlur=12;x.shadowColor='#000';x.fillStyle='#f80';x.fillRect(60,60,200,100)</script>",
     "inherent": false
+  },
+  "video": {
+    "html": "<video src='data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDE=' style='{BOX}'></video>",
+    "inherent": false,
+    "look_exempt": "Chrome draws an offline video as an empty box; PowerPoint shows its poster"
+  },
+  "iframe-youtube": {
+    "html": "<iframe src='https://www.youtube.com/embed/dQw4w9WgXcQ' style='{BOX}border:0'></iframe>",
+    "inherent": false,
+    "look_exempt": "Chrome draws an offline player as an empty box; PowerPoint shows its poster"
+  },
+  "iframe-page": {
+    "html": "<iframe srcdoc='<h1>hello</h1>' style='{BOX}'></iframe>",
+    "inherent": true
   }
 }

@@ -17,8 +17,10 @@ import math
 import re
 from contextvars import ContextVar
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Literal
 
+from PIL import Image
 from pydantic import BaseModel, ConfigDict
 
 from domoxml.core.crop import cover_crop
@@ -83,6 +85,7 @@ from domoxml.core.ir.model import (
     Line,
     LineSpacing,
     LineTo,
+    MediaNode,
     MoveTo,
     Node,
     PatternFill,
@@ -143,6 +146,7 @@ from domoxml.core.ir.svg_vector import vector_picture
 from domoxml.core.ir.table_extract import extract_table
 from domoxml.core.ir.table_payload import apply_table_geometry, decode_table_geometry
 from domoxml.core.ir.text_payload import decode_text_body
+from domoxml.core.media import MEDIA_CONTENT_TYPES, MEDIA_TYPES, default_poster, online_video_url
 from domoxml.core.opc import decode_payload
 from domoxml.core.render.browser import (
     RenderedNode,
@@ -1557,6 +1561,69 @@ def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> tuple[ShapeN
     return native, True
 
 
+def _media_node(node: RenderedNode, rendered: RenderedSlide) -> MediaNode | None:
+    """A ``<video>``, ``<audio>`` or YouTube/Vimeo ``<iframe>`` as a native media clip.
+
+    Embedded media (a ``data:`` URI) travels inside the deck; an ``http(s)`` source or an online
+    video player stays a link PowerPoint plays itself. The poster is what the browser showed in
+    isolation (the poster frame), or a plain generated one. Anything else keeps the raster.
+    """
+    box = _box(node)
+    source = node.src.strip()
+    if node.tag == "iframe":
+        url = online_video_url(source)
+        if url is None:
+            return None
+        return MediaNode(
+            box=box, kind="video", media_url=url, poster_fill=_media_poster(node, rendered)
+        )
+    kind = node.tag
+    if kind not in ("video", "audio"):
+        return None
+    if source.startswith("data:"):
+        mime = source[5:].split(";", 1)[0].split(",", 1)[0].lower()
+        known = MEDIA_TYPES.get(mime)
+        data = decode_data_uri(source)
+        if known is None or data is None or known[1] != kind:
+            return None
+        return MediaNode(
+            box=box,
+            kind=kind,
+            media_data=data,
+            media_ext=known[0],
+            poster_fill=_media_poster(node, rendered),
+        )
+    if source.startswith(("http://", "https://")):
+        suffix = source.split("?", 1)[0].rsplit(".", 1)[-1].lower()
+        return MediaNode(
+            box=box,
+            kind=kind,
+            media_url=source,
+            media_ext=suffix if suffix in MEDIA_CONTENT_TYPES else "mp4",
+            poster_fill=_media_poster(node, rendered),
+        )
+    return None
+
+
+def _is_blank(png: bytes) -> bool:
+    """Whether a PNG is fully transparent: what the browser draws for media it cannot load."""
+    try:
+        with Image.open(BytesIO(png)) as image:
+            return image.convert("RGBA").getchannel("A").getextrema() == (0, 0)
+    except OSError:
+        return True
+
+
+def _media_poster(node: RenderedNode, rendered: RenderedSlide) -> PictureFill:
+    """What the browser drew for a media element, or a plain stand-in when it drew nothing."""
+    shape = _raster_shape(node, rendered)
+    if shape is not None and isinstance(shape.fill, PictureFill) and not _is_blank(shape.fill.data):
+        return shape.fill.model_copy(update={"raster_role": None})
+    return default_poster(
+        "audio" if node.tag == "audio" else "video", max(node.width, 16), max(node.height, 16)
+    )
+
+
 def _svg_vector(
     shape: ShapeNode | None, node: RenderedNode, rendered: RenderedSlide
 ) -> ShapeNode | None:
@@ -2268,6 +2335,14 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                     )
                     warnings.append(ConversionWarning(message=reason, element=label))
             continue
+
+        if node.tag in ("video", "audio", "iframe"):
+            media = _media_node(node, rendered)
+            if media is not None:
+                contents.append(identities.apply(media, node))
+                consumed |= _subtree(node.index, children)
+                coverage.append(_native_coverage(_label(node)))
+                continue
 
         # --- Clipped by an ancestor ---
         # PowerPoint never clips a shape to another shape. A descendant the browser clips at an

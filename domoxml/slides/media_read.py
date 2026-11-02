@@ -38,10 +38,16 @@ def read_media(
     non_visual = element.find("p:nvPicPr/p:nvPr", _NS)
     if non_visual is None:
         return None
-    media = non_visual.find("p:videoFile", _NS)
+    # PowerPoint writes the link in the DrawingML namespace (``a:videoFile``); the PresentationML
+    # spelling is accepted too for files that used it.
+    media = non_visual.find("a:videoFile", _NS)
+    if media is None:
+        media = non_visual.find("p:videoFile", _NS)
     kind: Literal["video", "audio"] = "video"
     if media is None:
-        media = non_visual.find("p:audioFile", _NS)
+        media = non_visual.find("a:audioFile", _NS)
+        if media is None:
+            media = non_visual.find("p:audioFile", _NS)
         kind = "audio"
     if media is None:
         return None

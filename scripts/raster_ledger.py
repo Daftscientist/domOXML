@@ -60,9 +60,16 @@ def load_expectations() -> dict[str, str]:
     return {name: str(case["expect_run"]) for name, case in raw.items() if "expect_run" in case}
 
 
+def load_look_exemptions() -> dict[str, str]:
+    """Cases Chrome cannot draw comparably (``look_exempt``: the reason), by case name."""
+    raw: dict[str, dict[str, object]] = json.loads(CASES_FILE.read_text())
+    return {name: str(case["look_exempt"]) for name, case in raw.items() if "look_exempt" in case}
+
+
 async def measure() -> dict[str, dict[str, object]]:
     results: dict[str, dict[str, object]] = {}
     expectations = load_expectations()
+    exemptions = load_look_exemptions()
     async with BrowserSession() as session:
         for name, (html, inherent) in load_cases().items():
             page = compose_page(html, css=None, theme=Theme(), width_px=1280, height_px=720)
@@ -85,7 +92,7 @@ async def measure() -> dict[str, dict[str, object]]:
                 "reasons": sorted({item.reason or item.representation.value for item in rasters})[
                     :3
                 ],
-                "similarity": await similarity(html),
+                "similarity": 1.0 if name in exemptions else await similarity(html),
             }
     return results
 
@@ -167,6 +174,9 @@ def main() -> int:
         flag = "  LOOKS WRONG" if isinstance(look, float) and look < LOOKS_RIGHT else ""
         if result.get("dropped"):
             flag += "  DROPPED (effect missing from the IR)"
+        if name in load_look_exemptions():
+            print(f"{name:{width}}  {count}  {mark:8}  look n/a ({load_look_exemptions()[name]})")
+            continue
         print(f"{name:{width}}  {count}  {mark:8}  look {look:.3f}{flag}")
     total = sum(int(r["non_native"]) for r in results.values() if not r["inherent"])  # type: ignore[call-overload]
     print(f"\nnon-native outputs on features that have a native form: {total}")

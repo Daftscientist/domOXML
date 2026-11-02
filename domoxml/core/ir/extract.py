@@ -1240,6 +1240,9 @@ def _resolve_fill(node: RenderedNode, rendered: RenderedSlide) -> tuple[Fill | N
         encoded = styles["domoxmlCanvasPng"]
         if not encoded.startswith("data:image/png;base64,"):
             return None, "canvas bitmap was not captured"
+        if "<filter" in styles["domoxmlCanvasSvg"]:
+            # A renderer that prefers the SVG over its PNG would draw the shadow filter wrongly.
+            return None, "canvas shadow has no native mapping"
         png = base64.b64decode(encoded.split(",", 1)[1])
         return PictureFill(data=png, ext="png", svg_data=styles["domoxmlCanvasSvg"].encode()), None
 
@@ -1783,10 +1786,10 @@ def _media_poster(node: RenderedNode, rendered: RenderedSlide) -> PictureFill:
 
 
 def _svg_editable_shapes(
-    node: RenderedNode, rendered: RenderedSlide, faded: float
+    node: RenderedNode, rendered: RenderedSlide, faded: float, source: str | None = None
 ) -> list[ShapeNode] | None:
     """Native shapes for an inline SVG, under the same guards as its vector picture."""
-    source = node.styles.get("domoxmlSvgSource")
+    source = source or node.styles.get("domoxmlSvgSource")
     if source is None or any(
         node.styles.get(key, "none") not in ("none", "")
         for key in ("transform", "filter", "maskImage", "clipPath")
@@ -1813,10 +1816,20 @@ def _paints_beyond_its_content(node: RenderedNode) -> bool:
         and not styles.get(f"border{side}Width", "0px").startswith("0")
         for side in ("Top", "Right", "Bottom", "Left")
     )
+    rounded = any(
+        parse_radius_px(styles.get(key), shorter_side_px=1.0) > 0
+        for key in (
+            "borderTopLeftRadius",
+            "borderTopRightRadius",
+            "borderBottomRightRadius",
+            "borderBottomLeftRadius",
+        )
+    )
     return (
         (background is not None and background.a > 0)
         or styles.get("backgroundImage", "none") != "none"
         or borders
+        or rounded
         or styles.get("boxShadow", "none") not in ("none", "")
         or styles.get("webkitBoxReflect", "none") not in ("none", "")
         or bool(styles.get("domoxmlEffects"))
@@ -2624,6 +2637,15 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                         ),
                     )
                 )
+                continue
+
+        if node.tag == "canvas" and "domoxmlCanvasSvg" in node.styles:
+            drawn_canvas = _svg_editable_shapes(
+                node, rendered, effective_opacity(node), node.styles["domoxmlCanvasSvg"]
+            )
+            if drawn_canvas is not None:
+                _emit_svg_shapes(drawn_canvas, node, identities, contents, coverage, _label(node))
+                consumed |= _subtree(node.index, children)
                 continue
 
         if node.tag in ("video", "audio", "iframe"):

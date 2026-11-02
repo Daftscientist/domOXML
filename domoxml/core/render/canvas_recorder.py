@@ -121,14 +121,29 @@ RECORDER_JS = r"""
   const plain = (log, ctx) => {
     if (ctx.globalCompositeOperation !== 'source-over') bad(log, `globalCompositeOperation ${ctx.globalCompositeOperation}`);
     if (ctx.filter && ctx.filter !== 'none') bad(log, 'canvas filter');
-    if (ctx.shadowBlur > 0 || ctx.shadowOffsetX !== 0 || ctx.shadowOffsetY !== 0) {
-      if (color(ctx.shadowColor).a > 0) bad(log, 'canvas shadow');
-    }
+  };
+  // A canvas shadow is drawn with every fill and stroke, in canvas pixels (the transform does not
+  // scale it). It is written as a group carrying both the numbers (so a converter can make a
+  // native shadow) and a real SVG filter (so a renderer that only draws the SVG still shows it).
+  const shadowed = (ctx, log, markup) => {
+    const c = color(ctx.shadowColor);
+    const active = c.a > 0 && (ctx.shadowBlur > 0 || ctx.shadowOffsetX !== 0 || ctx.shadowOffsetY !== 0);
+    if (!active) return markup;
+    const id = `s${log.gid++}`;
+    const alpha = n(c.a * ctx.globalAlpha);
+    const sigma = n(ctx.shadowBlur / 2);
+    log.defs.push(`<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">`
+      + `<feGaussianBlur in="SourceAlpha" stdDeviation="${sigma}" result="b"/>`
+      + `<feOffset in="b" dx="${n(ctx.shadowOffsetX)}" dy="${n(ctx.shadowOffsetY)}" result="o"/>`
+      + `<feFlood flood-color="${c.c}" flood-opacity="${alpha}" result="c"/>`
+      + `<feComposite in="c" in2="o" operator="in" result="s"/>`
+      + `<feMerge><feMergeNode in="s"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`);
+    return `<g data-domoxml-shadow="${n(ctx.shadowOffsetX)} ${n(ctx.shadowOffsetY)} ${n(ctx.shadowBlur)} ${c.c} ${alpha}" filter="url(#${id})">${markup}</g>`;
   };
   const emit = (ctx, markup) => {
     const log = logFor(ctx.canvas);
     if (++log.count > LIMIT) { bad(log, 'too many drawing operations'); return; }
-    log.body.push(markup);
+    log.body.push(shadowed(ctx, log, markup));
   };
   const dashOf = (ctx, scale) => {
     const dash = ctx.getLineDash();

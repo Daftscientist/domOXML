@@ -30,10 +30,8 @@
   "canvas-shadow": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "<canvas> has no native OOXML mapping (canvas shadow)"
-    ],
+    "non_native": 0,
+    "reasons": [],
     "similarity": 0.996
   },
   "canvas-webgl": {

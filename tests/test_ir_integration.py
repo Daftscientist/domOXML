@@ -2434,7 +2434,6 @@ async def test_recorded_canvas_becomes_a_vector_picture_in_both_formats() -> Non
 @pytest.mark.parametrize(
     ("script", "reason"),
     [
-        ("x.shadowBlur=8;x.shadowColor='#000';x.fillRect(10,10,50,50)", "shadow"),
         ("x.fillStyle=x.createPattern(x,'repeat');x.fillRect(0,0,50,50)", "createPattern"),
         ("x.fillRect(0,0,50,50);x.clearRect(5,5,10,10)", "partial clearRect"),
         ("x.globalCompositeOperation='multiply';x.fillRect(0,0,50,50)", "globalComposite"),
@@ -2460,8 +2459,7 @@ async def test_redrawing_a_canvas_keeps_only_the_current_frame() -> None:
         "</script>"
     )
 
-    picture = next(s.fill for s in ir.shapes if isinstance(s.fill, PictureFill))
-    assert picture.svg_data is not None and picture.svg_data.count(b"<path") == 1
+    assert len([s for s in ir.shapes if s.custom_geom is not None]) == 1
 
 
 async def test_canvas_keeps_its_css_presentation() -> None:
@@ -2502,10 +2500,7 @@ async def test_resizing_a_canvas_forgets_the_open_path() -> None:
         "x.rect(10,10,20,20);k.width=100;x.fill();x.fillStyle='#0f0';x.fillRect(0,0,5,5)</script>"
     )
 
-    picture = next(
-        s.fill for s in result.shapes if isinstance(s.fill, PictureFill) and s.fill.svg_data
-    )
-    assert picture.svg_data is not None and picture.svg_data.count(b"<path") == 1
+    assert len([s for s in result.shapes if s.custom_geom is not None]) == 1
 
 
 _SVG_BOX = "position:absolute;left:50px;top:50px;width:200px;height:200px;"
@@ -3594,3 +3589,23 @@ async def test_skew_transform_and_svg_node_paint_are_handled() -> None:
         for s in painted.slide.shapes
     )
     assert not any("falling back to raster" in w.message for w in skewed.warnings)
+
+
+async def test_canvas_drawing_with_a_shadow_becomes_a_shape_with_a_native_shadow() -> None:
+    from domoxml.core.ir.model import Shadow
+
+    result = await _render_and_extract_result(
+        "<canvas id='c' width='300' height='200' style='position:absolute;left:50px;top:50px'>"
+        "</canvas><script>const x=document.getElementById('c').getContext('2d');"
+        "x.shadowBlur=12;x.shadowColor='rgba(0,0,0,.5)';x.shadowOffsetX=6;x.shadowOffsetY=8;"
+        "x.fillStyle='#f80';x.fillRect(40,30,120,80)</script>"
+    )
+
+    [shape] = [s for s in result.slide.shapes if s.custom_geom is not None]
+    [shadow] = [e for e in shape.effects if isinstance(e, Shadow)]
+    assert shadow.color.a == 0.5 and shadow.blur_emu == px_to_emu(12)
+    assert abs(shadow.distance_emu - px_to_emu(10)) < px_to_emu(0.1)  # a 6, 8 offset
+    assert 50 < shadow.direction_deg < 58
+    assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+    again = read_pptx(build_pptx([result.slide], faces=[]))[0]
+    assert any(isinstance(e, Shadow) for s in again.shapes for e in s.effects)

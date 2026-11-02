@@ -32,6 +32,7 @@ from domoxml.core.ir.model import (
     PathCommand,
     Point,
     Rgba,
+    Shadow,
     ShapeNode,
     SolidFill,
 )
@@ -175,9 +176,11 @@ class _Reader:
         self.base = Affine(sx, 0.0, 0.0, sy, tx - vx * sx, ty - vy * sy)
 
     def shapes(self) -> list[ShapeNode]:
-        return list(self._walk(self.root, self.base, 1.0))
+        return list(self._walk(self.root, self.base, 1.0, None))
 
-    def _walk(self, element: Element, matrix: Affine, opacity: float) -> Iterator[ShapeNode]:
+    def _walk(
+        self, element: Element, matrix: Affine, opacity: float, shadow: Shadow | None
+    ) -> Iterator[ShapeNode]:
         for child in element:
             name = _local(child)
             if name in _PASSIVE:
@@ -185,6 +188,14 @@ class _Reader:
             if name in _UNSUPPORTED:
                 raise _Unsupported(name)
             if _hidden(child):
+                continue
+            marker = child.get("data-domoxml-shadow")
+            if marker is not None and name == "g":
+                if shadow is not None:
+                    raise _Unsupported("nested shadows")
+                yield from self._walk(
+                    child, matrix.then(_transform(child.get("transform"))), opacity, _shadow(marker)
+                )
                 continue
             if _attr(child, "filter") not in (None, "none") or _attr(child, "mask") not in (
                 None,
@@ -201,11 +212,11 @@ class _Reader:
             here = matrix.then(_transform(child.get("transform")))
             faded = opacity * _number(_attr(child, "opacity"), 1.0)
             if name == "g":
-                yield from self._walk(child, here, faded)
+                yield from self._walk(child, here, faded, shadow)
             elif name in ("path", "rect", "circle", "ellipse", "line", "polyline", "polygon"):
                 shape = self._shape(child, name, here, faded)
                 if shape is not None:
-                    yield shape
+                    yield shape.model_copy(update={"effects": (shadow,)}) if shadow else shape
             else:
                 raise _Unsupported(name)
 
@@ -276,7 +287,7 @@ class _Reader:
         alpha = _number(_attr(element, "fill-opacity"), 1.0) * opacity
         if value.startswith("url("):
             return self._gradient(value, alpha, bounds, matrix)
-        color = parse_color(value)
+        color = _colour(value)
         if color is None:
             raise _Unsupported("fill")
         return SolidFill(color=_with_alpha(color, alpha))
@@ -291,7 +302,7 @@ class _Reader:
             raise _Unsupported("stroke under uneven scale")
         if value.startswith("url("):
             raise _Unsupported("gradient stroke")
-        color = parse_color(value)
+        color = _colour(value)
         if color is None:
             raise _Unsupported("stroke")
         width_px = width * scale
@@ -382,7 +393,7 @@ class _Reader:
         last = 0.0
         for stop in source.iter(f"{{{_SVG}}}stop"):
             offset = max(last, min(1.0, _unit(stop.get("offset", "0"))))
-            colour = parse_color(_attr(stop, "stop-color") or "black")
+            colour = _colour(_attr(stop, "stop-color") or "black")
             if colour is None:
                 raise _Unsupported("stop")
             weight = _number(_attr(stop, "stop-opacity"), 1.0) * alpha
@@ -625,6 +636,33 @@ def _arc(
 
 
 # --------------------------------------------------------------------------- helpers
+
+
+def _shadow(marker: str) -> Shadow:
+    """The shadow a canvas recording attached to a group: ``dx dy blur colour alpha``."""
+    parts = marker.split()
+    dx, dy, blur, alpha = float(parts[0]), float(parts[1]), float(parts[2]), float(parts[4])
+    colour = _colour(parts[3])
+    if colour is None:
+        raise _Unsupported("shadow colour")
+    return Shadow(
+        color=_with_alpha(colour, alpha),
+        blur_emu=px_to_emu(blur),
+        distance_emu=px_to_emu(math.hypot(dx, dy)),
+        direction_deg=math.degrees(math.atan2(dy, dx)) % 360.0,
+    )
+
+
+def _colour(text: str | None) -> Rgba | None:
+    """A CSS colour, including the ``#rgb`` and ``#rrggbb`` forms SVG and canvas use."""
+    value = (text or "").strip()
+    match = re.fullmatch(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})", value)
+    if match is None:
+        return parse_color(value)
+    digits = match.group(1)
+    if len(digits) == 3:
+        digits = "".join(c * 2 for c in digits)
+    return Rgba(r=int(digits[0:2], 16), g=int(digits[2:4], 16), b=int(digits[4:6], 16))
 
 
 def _local(element: Element) -> str:

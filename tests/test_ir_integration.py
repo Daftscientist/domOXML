@@ -2563,15 +2563,48 @@ async def test_svg_dash_pattern_and_gradient_are_exact_natives() -> None:
     assert again[0] is not None and again[0].custom_dash == (2.0, 1.0, 0.5, 1.0)
 
 
-async def test_svg_with_text_or_markers_stays_a_vector_picture() -> None:
+async def test_svg_with_tspans_or_markers_stays_a_vector_picture() -> None:
     result = await _render_and_extract_result(
         f"<svg style='{_SVG_BOX}' viewBox='0 0 100 100'>"
-        "<path d='M10 10H50V50H10Z' fill='#c20'/><text x='10' y='80' font-size='20'>Hi</text></svg>"
+        "<path d='M10 10H50V50H10Z' fill='#c20'/>"
+        "<text x='10' y='80' font-size='20'><tspan>Hi</tspan>"
+        "<tspan dy='5'>there</tspan></text></svg>"
     )
 
     pictures = [s.fill for s in result.slide.shapes if isinstance(s.fill, PictureFill)]
     assert pictures and pictures[0].svg_data is not None
     assert all(item.representation.value == "native" for item in result.coverage)
+
+
+async def test_svg_and_canvas_text_become_editable_text_boxes_at_their_baseline() -> None:
+    result = await _render_and_extract_result(
+        f"<svg style='{_SVG_BOX}' viewBox='0 0 200 200'>"
+        "<text x='100' y='60' font-size='24' font-weight='700' font-family='Arial' "
+        "text-anchor='middle' fill='#cc2200'>Centred</text>"
+        "<text x='10' y='150' font-size='16' font-style='italic' fill='#0044cc'>Left</text></svg>"
+        "<canvas id='c' width='200' height='100' style='position:absolute;left:300px;top:50px'>"
+        "</canvas><script>const x=document.getElementById('c').getContext('2d');"
+        "x.font='bold 30px sans-serif';x.fillStyle='#008800';x.fillText('Canvas',10,60)</script>"
+    )
+
+    texts = {
+        s.text.paragraphs[0].runs[0].text: s
+        for s in result.slide.shapes
+        if s.text and s.text.paragraphs
+    }
+    assert set(texts) == {"Centred", "Left", "Canvas"}
+    centred = texts["Centred"].text
+    assert centred is not None and centred.paragraphs[0].align == "center"
+    run = centred.paragraphs[0].runs[0]
+    assert run.bold and run.color.hex == "CC2200" and abs(run.size_pt - 18.0 * 1.0) < 6
+    assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+
+    again = read_pptx(build_pptx([result.slide], faces=[]))[0]
+    assert {r.text for s in again.shapes if s.text for p in s.text.paragraphs for r in p.runs} == {
+        "Centred",
+        "Left",
+        "Canvas",
+    }
 
 
 @pytest.mark.parametrize(

@@ -30,6 +30,7 @@ from domoxml.core.ir.model import (
     ClosePath,
     ColorSpec,
     Connector,
+    CubicTo,
     CustomGeometry,
     Fill,
     FillOverlay,
@@ -242,6 +243,33 @@ def _polygon_points(geometry: CustomGeometry) -> str | None:
     return ", ".join(points) if len(points) >= 3 else None
 
 
+def _path_px(geometry: CustomGeometry) -> str | None:
+    """``geometry`` as a CSS ``path()`` string in px of the element's own box, or ``None``."""
+    parts: list[str] = []
+
+    def px(point: Point) -> str:
+        return f"{_number(emu_to_px(point.x))} {_number(emu_to_px(point.y))}"
+
+    for command in geometry.path:
+        if isinstance(command, MoveTo):
+            parts.append(f"M {px(command.to)}")
+        elif isinstance(command, LineTo):
+            parts.append(f"L {px(command.to)}")
+        elif isinstance(command, CubicTo):
+            parts.append(f"C {px(command.c1)} {px(command.c2)} {px(command.to)}")
+        elif isinstance(command, ClosePath):
+            parts.append("Z")
+        else:
+            return None
+    return f"path('{' '.join(parts)}')" if parts else None
+
+
+def _clip_shape(geometry: CustomGeometry) -> str | None:
+    """The CSS clip for a custom outline: ``polygon()`` when straight, else ``path()``."""
+    polygon = _polygon_points(geometry)
+    return f"polygon({polygon})" if polygon is not None else _path_px(geometry)
+
+
 def _fill_survives_as_polygon_clip(node: ShapeNode) -> bool:
     """Whether a free-form polygon with a gradient or picture fill is a CSS ``clip-path``.
 
@@ -255,7 +283,7 @@ def _fill_survives_as_polygon_clip(node: ShapeNode) -> bool:
         and node.portable_fallback is None
         and not node.effects
         and node.line is None
-        and _polygon_points(node.custom_geom) is not None
+        and _clip_shape(node.custom_geom) is not None
     )
 
 
@@ -386,9 +414,9 @@ def _shape_style(
         if clip is not None:
             styles.append(clip)
     if _fill_survives_as_polygon_clip(node) and node.custom_geom is not None:
-        points = _polygon_points(node.custom_geom)
-        if points is not None:
-            styles.append(f"clip-path:polygon({points})")
+        clip_shape = _clip_shape(node.custom_geom)
+        if clip_shape is not None:
+            styles.append(f"clip-path:{clip_shape}")
     # Emit effects
     _append_effect_styles(node, styles, warnings)
     # Emit rotation/flip transform if present.
@@ -689,6 +717,20 @@ def _blurred_reflection_layer(node: ShapeNode, assets: dict[str, HtmlAsset]) -> 
     return parent_attrs, child
 
 
+_UNDERLINE_STYLES = {
+    "wavy": "wavy",
+    "wavyHeavy": "wavy",
+    "wavyDbl": "wavy",
+    "dotted": "dotted",
+    "dottedHeavy": "dotted",
+    "dash": "dashed",
+    "dashHeavy": "dashed",
+    "dashLong": "dashed",
+    "dashLongHeavy": "dashed",
+    "dbl": "double",
+}
+
+
 def _decoration_css(run: TextRun) -> str | None:
     """``text-decoration-line`` for the run (underline and/or line-through), or ``None``."""
     lines: list[str] = []
@@ -710,6 +752,11 @@ def _run_html(run: TextRun) -> str:
     decoration = _decoration_css(run)
     if decoration is not None:
         styles.append(f"text-decoration-line:{decoration}")
+        style = _UNDERLINE_STYLES.get(run.underline) if isinstance(run.underline, str) else None
+        if style is not None:
+            styles.append(f"text-decoration-style:{style}")
+        if run.underline_color is not None and run.underline is not False:
+            styles.append(f"text-decoration-color:{_rgba(run.underline_color)}")
     if run.caps == "all":
         styles.append("text-transform:uppercase")
     elif run.caps == "small":

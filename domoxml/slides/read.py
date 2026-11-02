@@ -525,6 +525,11 @@ def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> Sh
     picture = _picture(fill, package, slide_part, raster_role=_raster_role(element))
     if picture is None:
         return None
+    modifier = fill.find("a:blip/a:alphaModFix", _NS)
+    opacity = 1.0
+    if modifier is not None:
+        with contextlib.suppress(ValueError):
+            opacity = min(1.0, max(0.0, int(modifier.get("amt", "100000")) / 100_000))
     return _with_pptx_identity(
         ShapeNode(
             box=Box(
@@ -534,6 +539,7 @@ def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> Sh
                 height=_int_attr(extent, "cy"),
             ),
             fill=picture,
+            opacity=opacity,
         ),
         element,
         slide_part,

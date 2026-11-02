@@ -6,6 +6,13 @@
     "reasons": [],
     "similarity": 0.995
   },
+  "border-dashed": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.852
+  },
   "box-reflect": {
     "dropped": false,
     "inherent": false,
@@ -66,12 +73,28 @@
     "reasons": [],
     "similarity": 0.997
   },
+  "columns": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 1,
+    "reasons": [
+      "balanced CSS columns approximated as sequential PowerPoint columns"
+    ],
+    "similarity": 0.824
+  },
   "conic-gradient": {
     "dropped": false,
     "inherent": false,
     "non_native": 0,
     "reasons": [],
     "similarity": 0.989
+  },
+  "elliptical-radius": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.769
   },
   "filter-brightness": {
     "dropped": false,
@@ -154,12 +177,47 @@
     ],
     "similarity": 0.792
   },
+  "opacity-group": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.733
+  },
+  "outline": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.827
+  },
   "perspective-rotate-y": {
     "dropped": false,
     "inherent": false,
     "non_native": 0,
     "reasons": [],
     "similarity": 0.996
+  },
+  "progress": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.409
+  },
+  "pseudo-before": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.998
+  },
+  "pseudo-content": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.984
   },
   "radial-gradient-ellipse": {
     "dropped": false,
@@ -219,6 +277,13 @@
     ],
     "similarity": 0.994
   },
+  "text-decoration-wavy": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.958
+  },
   "text-gradient-clip": {
     "dropped": false,
     "inherent": false,
@@ -239,6 +304,13 @@
     "non_native": 0,
     "reasons": [],
     "similarity": 0.927
+  },
+  "vertical-text": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.847
   },
   "video": {
     "dropped": false,

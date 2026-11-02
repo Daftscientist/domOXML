@@ -126,3 +126,68 @@ def test_a_round_rect_without_an_adjust_guide_gets_powerpoints_default_corner() 
     # 16.667% of the short side (1,200,000 EMU) is the preset's own default.
     assert first.geom == "roundRect"
     assert abs(first.corner_radius_emu - round(0.16667 * 1_200_000)) <= 1
+
+
+def _style_only_deck() -> bytes:
+    """A diagram whose shape has no explicit fill, only ``fillRef`` / ``fontRef`` colours."""
+    deck = _deck_with_smartart()
+    import zipfile
+
+    source = zipfile.ZipFile(BytesIO(deck))
+    parts = {name: source.read(name) for name in source.namelist()}
+    drawing = parts["ppt/diagrams/drawing1.xml"].decode()
+    drawing = drawing.replace(
+        '<a:solidFill><a:srgbClr val="4472C4"/></a:solidFill></dsp:spPr>',
+        '</dsp:spPr><dsp:style><a:lnRef idx="2"><a:schemeClr val="accent1"/></a:lnRef>'
+        '<a:fillRef idx="1"><a:srgbClr val="123456"/></a:fillRef><a:effectRef idx="0">'
+        '<a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor">'
+        '<a:srgbClr val="FEDCBA"/></a:fontRef></dsp:style>',
+        1,
+    )
+    drawing = drawing.replace(
+        '<a:rPr lang="en-US" sz="2400"><a:solidFill><a:srgbClr val="FFFFFF"/>'
+        "</a:solidFill></a:rPr>",
+        '<a:rPr lang="en-US" sz="2400"/>',
+        1,
+    )
+    parts["ppt/diagrams/drawing1.xml"] = drawing.encode()
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w") as target:
+        for name, content in parts.items():
+            target.writestr(name, content)
+    return out.getvalue()
+
+
+def test_colours_referenced_only_by_the_diagram_style_are_made_explicit() -> None:
+    from domoxml.core.ir.model import SolidFill
+
+    slide = read_pptx(_style_only_deck())[0]
+    first = next(n for n in slide.contents if isinstance(n, ShapeNode) and n.text)
+
+    assert isinstance(first.fill, SolidFill) and first.fill.color.hex == "123456"
+    assert first.line is not None
+    run = first.text.paragraphs[0].runs[0] if first.text else None
+    assert run is not None and run.color.hex == "FEDCBA"
+
+
+def test_two_unnamed_drawings_keep_the_frame_preserved_instead_of_guessing() -> None:
+    import zipfile
+
+    source = zipfile.ZipFile(BytesIO(_deck_with_smartart()))
+    parts = {name: source.read(name) for name in source.namelist()}
+    parts["ppt/diagrams/data1.xml"] = parts["ppt/diagrams/data1.xml"].replace(b'relId="', b'x="', 1)
+    rels = parts["ppt/slides/_rels/slide1.xml.rels"].decode()
+    rels = rels.replace(
+        "</Relationships>",
+        '<Relationship Id="rId77" Type="http://schemas.microsoft.com/office/2007/relationships/'
+        'diagramDrawing" Target="../diagrams/drawing1.xml"/></Relationships>',
+    )
+    parts["ppt/slides/_rels/slide1.xml.rels"] = rels.encode()
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w") as target:
+        for name, content in parts.items():
+            target.writestr(name, content)
+
+    html = Presentation.from_pptx(out.getvalue())
+
+    assert not any("SmartArt converted" in i.reason for i in html.coverage.items)

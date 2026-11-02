@@ -1742,36 +1742,43 @@ def _slide(
                     continue
                 diagram = diagram_shapes(element, package, slide_part)
                 if diagram is not None:
-                    converted = 0
-                    for part in diagram:
-                        piece, piece_warns, _kept = _shape(
+                    drawing, drawing_part = diagram
+                    pieces: list[ShapeNode] = []
+                    piece_warnings: list[ConversionWarning] = []
+                    complete = True
+                    for part in drawing:
+                        # The shapes belong to the drawing part: relationships resolve there.
+                        piece, piece_warns, kept = _shape(
                             part,
                             package,
-                            slide_part,
+                            drawing_part,
                             colors,
                             hyperlink_for,
                             inherit_ctx=None,
                         )
-                        warnings.extend(piece_warns)
-                        if piece is not None:
-                            contents.append(_with_pptx_identity(piece, part, slide_part))
-                            converted += 1
-                    if converted:
+                        piece_warnings.extend(piece_warns)
+                        if piece is None or kept:
+                            complete = False
+                            break
+                        pieces.append(_with_pptx_identity(piece, part, drawing_part))
+                    if complete and pieces:
+                        contents.extend(pieces)
+                        warnings.extend(piece_warnings)
                         coverage.append(
                             CoverageItem(
                                 element=_visual_label(slide_part, element),
                                 representation=(
                                     Representation.DECOMPOSED
-                                    if converted > 1
+                                    if len(pieces) > 1
                                     else Representation.NATIVE
                                 ),
                                 editability=(
                                     Editability.COMPONENTS
-                                    if converted > 1
+                                    if len(pieces) > 1
                                     else Editability.SEMANTIC
                                 ),
                                 source_retention=SourceRetention.LOST,
-                                output_count=converted,
+                                output_count=len(pieces),
                                 reason=(
                                     "SmartArt converted to the shapes PowerPoint drew for it "
                                     "(as Convert to Shapes does); its data model and layout "

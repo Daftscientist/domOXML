@@ -6,7 +6,7 @@ import warnings
 from collections.abc import Callable
 from xml.sax.saxutils import escape
 
-from domoxml.core.drawingml.identity import node_identity_xml
+from domoxml.core.drawingml.identity import alt_text_attr, node_identity_xml
 from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
 from domoxml.core.ir.gradient import drawingml_gradient_angle, drawingml_gradient_projection
 from domoxml.core.ir.model import (
@@ -606,6 +606,8 @@ def shape_xml(
     if isinstance(node.fill, PictureFill) and node.fill.raster_role is not None:
         # A picture-filled shape is not a p:pic, so the role marker rides on the shape itself.
         hidden_attr += f' descr="{_attr(f"domoxml-raster:{node.fill.raster_role}")}"'
+    else:
+        hidden_attr += alt_text_attr(node)
     return (
         f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Shape {shape_id}"{hidden_attr}/>'
         f"<p:cNvSpPr/><p:nvPr>{node_identity_xml(node)}</p:nvPr></p:nvSpPr>"
@@ -642,10 +644,11 @@ def picture_xml(
         raise ValueError("native picture output requires a pure rectangular PictureFill node")
     fill = node.fill
     assert isinstance(fill, PictureFill)
+    # A decorative raster layer is marked, not described; any other picture keeps its alt text.
     descr = (
         f' descr="{_attr(f"domoxml-raster:{fill.raster_role}")}"'
         if fill.raster_role is not None
-        else ""
+        else alt_text_attr(node)
     )
     blip_fill = _blip_fill(blip_rid, fill.crop, svg_rid, tag="p:blipFill")
     return (

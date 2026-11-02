@@ -667,6 +667,8 @@ class CanvasNode(BaseModel):
 
     node_id: str | None = Field(default=None, min_length=1, max_length=512)
     provenance: SourceProvenance | None = None
+    # What a screen reader says: ``cNvPr descr`` in PPTX, ``aria-label`` or ``alt`` in HTML.
+    alt_text: str | None = Field(default=None, min_length=1, max_length=4096)
 
 
 class PreservationRelationship(BaseModel):

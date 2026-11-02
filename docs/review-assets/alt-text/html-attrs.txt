@@ -1,0 +1,1 @@
+<div class="domoxml-shape" data-domoxml-node-id="html-auto-1" data-domoxml-source-format="html" data-domoxml-source-id="dom:1" aria-label="Quarterly revenue bars"

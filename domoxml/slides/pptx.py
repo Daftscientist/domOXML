@@ -9,7 +9,11 @@ from xml.sax.saxutils import escape
 from defusedxml import ElementTree
 
 from domoxml.core.drawingml import can_emit_picture, line_xml, picture_xml, shape_xml, table_xml
-from domoxml.core.drawingml.identity import node_identity_ext_xml, node_identity_xml
+from domoxml.core.drawingml.identity import (
+    alt_text_attr,
+    node_identity_ext_xml,
+    node_identity_xml,
+)
 from domoxml.core.fonts import FontFace, load_faces
 from domoxml.core.ir.group import group_pptx_write_error
 from domoxml.core.ir.model import (
@@ -248,7 +252,7 @@ def _connector_xml(conn: Connector, *, shape_id: int) -> str:
     return (
         f"<p:cxnSp>"
         f"<p:nvCxnSpPr>"
-        f'<p:cNvPr id="{shape_id}" name="Connector {shape_id}"/>'
+        f'<p:cNvPr id="{shape_id}" name="Connector {shape_id}"{alt_text_attr(conn)}/>'
         f"<p:cNvCxnSpPr/>"
         f"<p:nvPr>{node_identity_xml(conn)}</p:nvPr>"
         f"</p:nvCxnSpPr>"
@@ -555,7 +559,7 @@ def _slide(
                 children.append(group_xml(child, shape_id=child_id))
         return (
             "<p:grpSp><p:nvGrpSpPr>"
-            f'<p:cNvPr id="{shape_id}" name="Group {shape_id}"/>'
+            f'<p:cNvPr id="{shape_id}" name="Group {shape_id}"{alt_text_attr(group)}/>'
             f"<p:cNvGrpSpPr/><p:nvPr>{node_identity_xml(group)}</p:nvPr>"
             "</p:nvGrpSpPr><p:grpSpPr>"
             f"<a:xfrm{transform_attrs}>"
@@ -742,7 +746,8 @@ def _media_xml(
         )
     extension_list = f"<p:extLst>{extensions}</p:extLst>" if extensions else ""
     return (
-        f'<p:pic><p:nvPicPr><p:cNvPr id="{shape_id}" name="{node.kind.title()} {shape_id}"/>'
+        f'<p:pic><p:nvPicPr><p:cNvPr id="{shape_id}" name="{node.kind.title()} {shape_id}"'
+        f"{alt_text_attr(node)}/>"
         '<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>'
         f'<p:nvPr><a:{tag} r:link="{link_rid}"/>{_play_settings(node)}{extension_list}</p:nvPr>'
         "</p:nvPicPr>"

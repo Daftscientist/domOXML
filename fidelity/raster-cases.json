@@ -139,5 +139,45 @@
   "iframe-page": {
     "html": "<iframe srcdoc='<h1>hello</h1>' style='{BOX}'></iframe>",
     "inherent": true
+  },
+  "pseudo-before": {
+    "html": "<style>.p::before{content:'';position:absolute;left:10px;top:10px;width:80px;height:80px;background:#c20}</style><div class='p' style='{BOX}background:#eee'></div>",
+    "inherent": false
+  },
+  "pseudo-content": {
+    "html": "<style>.p::before{content:'Hello ';color:#c20;font-size:30px}</style><div class='p' style='{BOX}background:#eee;font-size:30px'>world</div>",
+    "inherent": false
+  },
+  "border-dashed": {
+    "html": "<div style='{BOX}border:6px dashed #c20'></div>",
+    "inherent": false
+  },
+  "outline": {
+    "html": "<div style='{BOX}background:#eee;outline:6px solid #c20;outline-offset:6px'></div>",
+    "inherent": false
+  },
+  "opacity-group": {
+    "html": "<div style='{BOX}opacity:.5;background:#eee'><div style='width:100px;height:100px;background:#c20'></div><div style='width:100px;height:60px;background:#08f;margin-left:40px'></div></div>",
+    "inherent": false
+  },
+  "elliptical-radius": {
+    "html": "<div style='{BOX}background:#c20;border-radius:50% / 30%'></div>",
+    "inherent": false
+  },
+  "progress": {
+    "html": "<progress value='60' max='100' style='{BOX}'></progress>",
+    "inherent": false
+  },
+  "vertical-text": {
+    "html": "<div style='{BOX}font-size:36px;writing-mode:vertical-rl'>Vertical text</div>",
+    "inherent": false
+  },
+  "text-decoration-wavy": {
+    "html": "<div style='{BOX}font-size:40px;text-decoration:underline wavy #c20'>Wavy text</div>",
+    "inherent": false
+  },
+  "columns": {
+    "html": "<div style='{BOX}column-count:2;font-size:20px'>Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua</div>",
+    "inherent": false
   }
 }

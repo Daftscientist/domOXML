@@ -3048,3 +3048,40 @@ async def test_notes_normalise_line_endings_and_keep_line_breaks() -> None:
         for name, content in parts.items():
             target.writestr(name, content)
     assert read_pptx(buffer.getvalue())[0].notes == "one\ntwo"
+
+
+async def test_pseudo_elements_become_real_shapes_and_text() -> None:
+    ir = await _render_and_extract(
+        "<style>.card::before{content:'';position:absolute;left:10px;top:10px;width:80px;"
+        "height:60px;background:#cc2200}"
+        ".card::after{content:' - ' attr(data-tag) ' \\201C';color:#0044cc;font-size:24px}"
+        ".none::before{content:none;background:#00ff00;width:50px;height:50px}</style>"
+        "<div class='card' data-tag='new' style='position:absolute;left:50px;top:50px;"
+        "width:300px;height:200px;background:#eeeeee;font-size:24px'>Title</div>"
+        "<div class='none' style='position:absolute;left:400px;top:50px;width:50px;"
+        "height:50px'></div>"
+    )
+
+    badge = _solid_shape(ir, "CC2200")
+    assert badge.box.width == px_to_emu(80) and badge.box.height == px_to_emu(60)
+    texts = " ".join(
+        run.text for s in ir.shapes if s.text for p in s.text.paragraphs for run in p.runs
+    )
+    assert "Title" in texts and "- new" in texts and "“" in texts
+    assert not any(
+        isinstance(s.fill, SolidFill) and s.fill.color.hex == "00FF00" for s in ir.shapes
+    )
+
+
+async def test_counters_and_images_in_generated_content_are_left_alone() -> None:
+    ir = await _render_and_extract(
+        "<style>.c{counter-reset:n}.c li{counter-increment:n}"
+        ".c li::before{content:counter(n) '. '}</style>"
+        "<ol class='c' style='position:absolute;left:50px;top:50px;list-style:none;"
+        "font-size:24px'><li>One</li><li>Two</li></ol>"
+    )
+
+    texts = " ".join(
+        run.text for s in ir.shapes if s.text for p in s.text.paragraphs for run in p.runs
+    )
+    assert "One" in texts and "Two" in texts

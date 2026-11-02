@@ -554,6 +554,85 @@ _SNAPSHOT_JS = """
     });
     for (const child of el.children) walk(child, index, effectiveLinear);
   };
+  // ::before and ::after have no box of their own to measure, so each one that paints is turned
+  // into a real element carrying its computed style; the pseudo is then switched off. Layout is
+  // unchanged (the real child sits where the pseudo did), and everything downstream sees an
+  // ordinary element.
+  const materializePseudos = () => {
+    const VOID = new Set(['IMG', 'INPUT', 'BR', 'HR', 'TEXTAREA', 'SELECT', 'VIDEO', 'AUDIO',
+      'CANVAS', 'IFRAME', 'SVG', 'PROGRESS', 'METER']);
+    const style = document.createElement('style');
+    style.textContent = '[data-domoxml-pseudo-host]::before,[data-domoxml-pseudo-host]::after'
+      + '{content:none !important}';
+    document.head.appendChild(style);
+    // The text of a computed `content` value: quoted strings and attr() only. Anything else
+    // (counters, images) returns null and the pseudo-element is left as it was.
+    const textOf = (host, content) => {
+      let text = '';
+      let at = 0;
+      while (at < content.length) {
+        const ch = content[at];
+        if (ch === ' ') { at += 1; continue; }
+        if (ch === '"' || ch === "'") {
+          let end = at + 1;
+          let piece = '';
+          while (end < content.length && content[end] !== ch) {
+            if (content[end] === String.fromCharCode(92) && end + 1 < content.length) {
+              end += 1;
+              let hex = '';
+              while (end < content.length && hex.length < 6 && /[0-9a-fA-F]/.test(content[end])) {
+                hex += content[end];
+                end += 1;
+              }
+              if (hex) {
+                piece += String.fromCodePoint(parseInt(hex, 16));
+                if (content[end] === ' ') end += 1;
+                continue;
+              }
+            }
+            piece += content[end];
+            end += 1;
+          }
+          if (end >= content.length) return null;
+          text += piece;
+          at = end + 1;
+        } else if (content.startsWith('attr(', at)) {
+          const close = content.indexOf(')', at);
+          if (close < 0) return null;
+          text += host.getAttribute(content.slice(at + 5, close).trim()) || '';
+          at = close + 1;
+        } else {
+          return null;
+        }
+      }
+      return text;
+    };
+    for (const host of Array.from(document.body.querySelectorAll('*'))) {
+      if (VOID.has(host.tagName.toUpperCase()) || host.closest('svg')) continue;
+      // Read both pseudo-elements before changing anything: marking the host switches them off,
+      // and a computed style is live.
+      const found = [];
+      for (const which of ['before', 'after']) {
+        const cs = getComputedStyle(host, '::' + which);
+        const content = cs.content;
+        if (!content || content === 'none' || content === 'normal') continue;
+        const text = textOf(host, content);
+        if (text === null) continue;  // counters, images and the like: left as they were
+        const properties = Array.from(cs, (name) => [name, cs.getPropertyValue(name)]);
+        found.push({ which, text, properties });
+      }
+      for (const { which, text, properties } of found) {
+        const span = document.createElement('span');
+        span.setAttribute('data-domoxml-pseudo', which);
+        for (const [name, value] of properties) span.style.setProperty(name, value);
+        span.textContent = text;
+        if (which === 'before') host.insertBefore(span, host.firstChild);
+        else host.appendChild(span);
+      }
+      if (found.length) host.setAttribute('data-domoxml-pseudo-host', '1');
+    }
+  };
+  materializePseudos();
   walk(document.body, -1, null);
   return out;
 }

@@ -174,7 +174,11 @@ def _with_pptx_identity[T: CanvasNode](output: T, element: Element, slide_part: 
         owner_node_id=metadata.get("ownerId") if metadata is not None else None,
         role=metadata.get("role") if metadata is not None else None,
     )
-    return output.model_copy(update={"node_id": node_id, "provenance": provenance})
+    described = non_visual.get("descr") if non_visual is not None else None
+    alt_text = described if described and not described.startswith(_RASTER_MARKER_PREFIX) else None
+    return output.model_copy(
+        update={"node_id": node_id, "provenance": provenance, "alt_text": alt_text}
+    )
 
 
 def _declared_effect_intent(element: Element) -> EffectPayload | None:

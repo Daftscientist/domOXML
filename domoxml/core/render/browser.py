@@ -517,6 +517,13 @@ _SNAPSHOT_JS = """
       if (value) styles[key] = value;
     }
     if (el.id) styles.domoxmlElementId = el.id;
+    if (el.getAttribute('aria-hidden') !== 'true') {
+      const title = tag === 'svg' ? el.querySelector(':scope > title') : null;
+      const alt = el.getAttribute('aria-label')
+        || (tag === 'img' ? el.getAttribute('alt') : null)
+        || (title ? title.textContent : null);
+      if (alt && alt.trim()) styles.domoxmlAlt = alt.trim();
+    }
     if (tag === 'svg' && el.getAttribute('preserveAspectRatio')) {
       styles.domoxmlSvgAspect = el.getAttribute('preserveAspectRatio');
     }

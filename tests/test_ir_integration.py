@@ -2966,3 +2966,28 @@ async def test_media_identity_and_play_settings_survive_the_pptx_round_trip() ->
     again = _media(read_pptx(build_pptx([tagged], faces=[]))[0])
     assert again.play_settings_xml is not None and "autoplay" in again.play_settings_xml
     assert again.node_id == clip.node_id and again.provenance is not None
+
+
+async def test_alt_text_survives_html_to_pptx_to_html() -> None:
+    ir = await _render_and_extract(
+        "<div role='img' aria-label='Quarterly revenue bars' style='position:absolute;left:50px;"
+        "top:50px;width:200px;height:100px;background:#c20'></div>"
+        "<img alt='A red square' src='data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA='"
+        " style='position:absolute;left:300px;top:50px;width:100px;height:100px'>"
+        "<svg role='img' viewBox='0 0 10 10' style='position:absolute;left:450px;top:50px;"
+        "width:100px;height:100px'><title>A tiny path</title><path d='M0 0H10V10Z' fill='red'/>"
+        "</svg>"
+    )
+
+    described = {s.alt_text for s in ir.shapes if s.alt_text}
+    assert {"Quarterly revenue bars", "A red square", "A tiny path"} <= described
+
+    data = build_pptx([ir], faces=[])
+    with ZipFile(BytesIO(data)) as package:
+        slide_xml = package.read("ppt/slides/slide1.xml").decode()
+    assert 'descr="Quarterly revenue bars"' in slide_xml and 'descr="A red square"' in slide_xml
+
+    again = read_pptx(data)[0]
+    assert {s.alt_text for s in again.shapes if s.alt_text} == described
+    html = inline_assets(serialize_canvas([again])).slides[0].html
+    assert 'aria-label="A red square"' in html

@@ -588,7 +588,10 @@ class _IdentityAllocator:
             ),
             role=role or source.styles.get("domoxmlLayerRole") or None,
         )
-        return output.model_copy(update={"node_id": node_id, "provenance": provenance})
+        alt = source.styles.get("domoxmlAlt") if role is None else None
+        return output.model_copy(
+            update={"node_id": node_id, "provenance": provenance, "alt_text": alt or None}
+        )
 
 
 def _has_complex_transform(value: str | None) -> bool:

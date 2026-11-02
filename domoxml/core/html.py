@@ -128,6 +128,8 @@ def _identity_attrs(node: CanvasNode) -> str:
             attrs.append(("data-domoxml-owner-node-id", provenance.owner_node_id))
         if provenance.role is not None:
             attrs.append(("data-domoxml-layer-role", provenance.role))
+    if node.alt_text:
+        attrs.append(("aria-label", node.alt_text))
     return "".join(f' {name}="{escape(value, quote=True)}"' for name, value in attrs)
 
 
@@ -1363,8 +1365,9 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
         f"position:absolute;left:{_px(node.box.x)};top:{_px(node.box.y)};"
         f"width:{_px(node.box.width)};height:{_px(node.box.height)};"
     )
+    hidden = "" if node.alt_text else ' aria-hidden="true"'
     metadata = (
-        f'class="domoxml-preserved"{_identity_attrs(node)} aria-hidden="true" '
+        f'class="domoxml-preserved"{_identity_attrs(node)}{hidden} '
         f'data-domoxml-preserved-payload="{payload}"'
     )
     if node.fallback is not None:
@@ -1373,7 +1376,8 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
         representation = node.fallback_representation.replace("_", "-")
         return (
             f'<img {metadata} data-domoxml-representation="{representation}" '
-            f'src="../{asset.path}" alt="" style="{base}object-fit:fill"/>'
+            f'src="../{asset.path}" alt="{escape(node.alt_text or "", quote=True)}" '
+            f'style="{base}object-fit:fill"/>'
         )
     return f'<div {metadata} style="{base}opacity:0;pointer-events:none;overflow:hidden"></div>'
 

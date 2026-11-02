@@ -18,6 +18,11 @@ def _attr(value: str) -> str:
     )
 
 
+def alt_text_attr(node: CanvasNode) -> str:
+    """The ``descr`` attribute carrying ``node``'s alternative text, or an empty string."""
+    return f' descr="{_attr(node.alt_text)}"' if node.alt_text else ""
+
+
 def node_identity_xml(node: CanvasNode) -> str:
     """Return a ``p:extLst`` carrying domOXML metadata, or an empty string."""
     extension = node_identity_ext_xml(node)

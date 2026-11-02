@@ -81,6 +81,7 @@ from domoxml.slides.appearance_read import (
     rgba as _rgba,
 )
 from domoxml.slides.background import parse_background
+from domoxml.slides.chart_read import chart_picture
 from domoxml.slides.connector_read import read_connector
 from domoxml.slides.effect_read import effect_container_kind, effect_source_ref, read_effects
 from domoxml.slides.geometry_guides import evaluate_guides, resolve_guide
@@ -1180,6 +1181,7 @@ def _slide(
         only_visual = visual_elements[0] if len(visual_elements) == 1 else None
         for element in tree_elements:
             kind = _local_name(element)
+            chart_drawn = False
             preserved_owner_id: str | None = None
             preserve_whole_node = True
             use_slide_renderer_fallback = False
@@ -1731,6 +1733,19 @@ def _slide(
                             reason += "; visual retained as an element layer"
                     else:
                         source_retention = SourceRetention.ATTACHED
+                        if (
+                            fallback is None
+                            and kind == "graphicFrame"
+                            and not use_slide_renderer_fallback
+                        ):
+                            drawn = chart_picture(payload, box, colors)
+                            if drawn is not None:
+                                fallback = drawn
+                                chart_drawn = True
+                                reason = (
+                                    "chart redrawn as vector SVG from its data; the native chart "
+                                    "part stays attached for exact PPTX re-emission"
+                                )
                         preserved_node = _with_pptx_identity(
                             PreservedNode(
                                 box=box,
@@ -1752,6 +1767,16 @@ def _slide(
                     has_visual_layer = fallback is not None and preserved_owner_id is not None
                 if use_slide_renderer_fallback and owns_slide_renderer_fallback:
                     pass
+                elif chart_drawn and has_visual_layer and box is not None:
+                    coverage.append(
+                        CoverageItem(
+                            element=_visual_label(slide_part, element),
+                            representation=Representation.APPROXIMATED,
+                            editability=Editability.COMPONENTS,
+                            source_retention=source_retention,
+                            reason=reason,
+                        )
+                    )
                 elif has_visual_layer and box is not None:
                     coverage.append(
                         CoverageItem(

@@ -103,3 +103,53 @@ def read_media(
         poster_fill=poster,
         play_settings_xml=play_xml,
     )
+
+
+_WEB_NS = "http://schemas.microsoft.com/office/webextensions/webextension/2010/11"
+_WEB_NAMES = {"we": _WEB_NS, "p": _P, "a": _A}
+
+
+def read_web_viewer(element: Element, package: OpcPackage, slide_part: str) -> MediaNode | None:
+    """A Web Viewer ``p:graphicFrame``: the page it shows and the snapshot PowerPoint draws."""
+    reference = element.find("a:graphic/a:graphicData/we:webextensionref", _WEB_NAMES)
+    transform = element.find("p:xfrm", _WEB_NAMES)
+    offset = transform.find("a:off", _WEB_NAMES) if transform is not None else None
+    extent = transform.find("a:ext", _WEB_NAMES) if transform is not None else None
+    if reference is None or offset is None or extent is None:
+        return None
+    try:
+        extension_part = package.related_part(slide_part, reference.get(_EMBED_ID, ""))
+        extension = ElementTree.fromstring(package.read(extension_part).decode("utf-8"))
+    except (KeyError, ValueError, ElementTree.ParseError, UnicodeDecodeError):
+        return None
+    url = None
+    for prop in extension.iterfind("we:properties/we:property", _WEB_NAMES):
+        if prop.get("name") == "url":
+            url = (prop.get("value") or "").strip().strip('"') or None
+    if url is None:
+        return None
+    poster: PictureFill | None = None
+    snapshot = extension.find("we:snapshot", _WEB_NAMES)
+    if snapshot is not None:
+        try:
+            image_part = package.related_part(extension_part, snapshot.get(_EMBED, ""))
+            suffix = PurePosixPath(image_part).suffix.lower().lstrip(".")
+            ext = "jpeg" if suffix == "jpg" else suffix
+            if ext == "png" or ext == "jpeg" or ext == "gif":
+                poster = PictureFill(data=package.read(image_part), ext=ext)
+        except (KeyError, ValueError):
+            poster = None
+    return MediaNode(
+        box=Box(
+            x=_int_attr(offset, "x"),
+            y=_int_attr(offset, "y"),
+            width=_int_attr(extent, "cx"),
+            height=_int_attr(extent, "cy"),
+        ),
+        kind="web",
+        media_url=url,
+        poster_fill=poster,
+    )
+
+
+_EMBED_ID = f"{{{_R}}}id"

@@ -1798,6 +1798,12 @@ def _media_html(
                 "not represented in HTML/CSS"
             )
         )
+    if node.kind == "web" and node.media_url is not None:
+        # A Web Viewer frame is a live page; it comes back as the iframe it started as.
+        return (
+            f'<iframe{_identity_attrs(node)} style="{escape(pos, quote=True)};border:0"'
+            f"{src_attr}></iframe>"
+        )
     if node.media_url is not None and online_video_url(node.media_url) is not None:
         # An online player is a page, not a file: it comes back as the embed it started as.
         return (

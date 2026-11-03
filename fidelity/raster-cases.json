@@ -215,5 +215,10 @@
   "table-bg": {
     "html": "<table style='position:absolute;left:150px;top:120px;font-size:22px;border-collapse:collapse;background:#eef'><thead style='background:#c20;color:#fff'><tr><th>A</th><th>B</th></tr></thead><tbody><tr style='background:#cfc'><td>1</td><td style='background:#fc0'>2</td></tr><tr><td>3</td><td>4</td></tr></tbody></table>",
     "inherent": false
+  },
+  "iframe-web": {
+    "html": "<iframe src='https://example.invalid/page' style='{BOX}border:0'></iframe>",
+    "inherent": false,
+    "look_exempt": "Chrome draws an offline page as an empty box; PowerPoint shows its snapshot"
   }
 }

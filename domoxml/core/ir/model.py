@@ -916,14 +916,15 @@ class MediaNode(CanvasNode):
     ``box`` is the slide-space position/size.  ``media_data`` is the embedded media bytes
     (``None`` for external references, where ``media_url`` carries the URL).
     ``media_ext`` is the MIME-friendly file extension (e.g. ``"mp4"``, ``"ogg"``, ``"mp3"``).
-    ``kind`` is ``"video"`` or ``"audio"``.
+    ``kind`` is ``"video"``, ``"audio"`` or ``"web"`` (a Web Viewer frame: ``media_url`` is the page
+    and ``poster_fill`` its snapshot).
     ``poster_fill`` is the blip image from ``p:blipFill`` used as the poster/placeholder.
     ``play_settings_xml`` is the raw ``p:videoPr``/``p:audioPr`` XML preserved for round-trip."""
 
     model_config = _FROZEN
 
     box: Box
-    kind: Literal["video", "audio"] = "video"
+    kind: Literal["video", "audio", "web"] = "video"
     media_data: bytes | None = None
     media_url: str | None = None
     media_ext: str = "mp4"

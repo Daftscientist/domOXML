@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import posixpath
 import warnings
 from xml.sax.saxutils import escape
@@ -422,8 +423,25 @@ def _slide(
             f'<Relationship Id="{notes_rid}" Type="{_REL_TYPE}/notesSlide" '
             f'Target="../notesSlides/notesSlide{slide_number}.xml"/>'
         )
+    web_frames: dict[int, str] = {}
+    web_parts: list[tuple[str, PreservationPart]] = []
     for position, node in enumerate(slide.contents):
         if not isinstance(node, MediaNode):
+            continue
+        if node.kind == "web" and node.media_url is not None:
+            snapshot = node.poster_fill or default_poster(
+                "web", emu_to_px(node.box.width), emu_to_px(node.box.height)
+            )
+            register_media(snapshot.data, snapshot.ext)
+            extension, rid = _web_extension(
+                node.media_url,
+                f"ppt/webextensions/webextension{slide_number}_{position}.xml",
+                f"ppt/media/{media_registry[(snapshot.ext, snapshot.data)]}",
+                next_rid,
+            )
+            next_rid += 1
+            web_parts.append((rid, extension))
+            web_frames[position] = rid
             continue
         poster = node.poster_fill or default_poster(
             node.kind, emu_to_px(node.box.width), emu_to_px(node.box.height)
@@ -508,6 +526,12 @@ def _slide(
             if existing is not None and existing != part:
                 raise ValueError(f"conflicting preserved OPC part: {part.name}")
             preserved_parts[part.name] = part
+
+    for web_rid, extension in web_parts:
+        preserved_parts[extension.name] = extension
+        preserved_rels.append(
+            (web_rid, PreservationRelationship(id=web_rid, type=_WEB_REL, target=extension.name))
+        )
 
     def _hyperlink_rid(link: Hyperlink) -> str | None:
         return rid_by_link.get(id(link))
@@ -716,7 +740,9 @@ def _slide(
         elif isinstance(node, TableNode):
             content_parts.append(table_xml(node, shape_id=shape_id))
         elif isinstance(node, MediaNode):
-            if position in media_links:
+            if position in web_frames:
+                content_parts.append(_web_viewer_xml(node, shape_id, web_frames[position]))
+            elif position in media_links:
                 content_parts.append(_media_xml(node, shape_id, *media_links[position]))
         else:
             native_xml = rewrite_root_xml(
@@ -787,6 +813,51 @@ def _slide(
         has_svg,
         preserved_parts,
         preserved_theme,
+    )
+
+
+_WEB_NS = "http://schemas.microsoft.com/office/webextensions/webextension/2010/11"
+_WEB_REL = "http://schemas.microsoft.com/office/2011/relationships/webextension"
+_WEB_CT = "application/vnd.ms-office.webextension+xml"
+# The Web Viewer add-in's store id: what makes PowerPoint show a page in a frame.
+_WEB_VIEWER_ID = "WA104295837"
+
+
+def _web_extension(
+    url: str, part_name: str, snapshot_part: str, rid_number: int
+) -> tuple[PreservationPart, str]:
+    """The Web Viewer extension part for ``url`` (snapshot image included) and its slide rid."""
+    digest = hashlib.sha1(url.encode(), usedforsecurity=False).hexdigest().upper()
+    guid = f"{{{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}}}"
+    xml = (
+        f'{t.XML_DECL}<we:webextension xmlns:we="{_WEB_NS}" xmlns:r="{_REL_TYPE}" id="{guid}">'
+        f'<we:reference id="{_WEB_VIEWER_ID}" version="1.0.0.0" store="en-US" storeType="OMEX"/>'
+        '<we:alternateReferences/><we:properties><we:property name="url" '
+        f'value="&quot;{_attr(url)}&quot;"/></we:properties><we:bindings/>'
+        '<we:snapshot r:embed="rId1"/></we:webextension>'
+    )
+    part = PreservationPart(
+        name=part_name,
+        content_type=_WEB_CT,
+        data=xml.encode(),
+        relationships=(
+            PreservationRelationship(id="rId1", type=f"{_REL_TYPE}/image", target=snapshot_part),
+        ),
+    )
+    return part, f"rId{rid_number}"
+
+
+def _web_viewer_xml(node: MediaNode, shape_id: int, rid: str) -> str:
+    """A Web Viewer frame: a graphic frame pointing at the page's extension part."""
+    return (
+        f'<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="{shape_id}" name="Web Viewer {shape_id}"'
+        f"{alt_text_attr(node)}/>"
+        f"<p:cNvGraphicFramePr/><p:nvPr>{node_identity_xml(node)}</p:nvPr></p:nvGraphicFramePr>"
+        f'<p:xfrm><a:off x="{node.box.x}" y="{node.box.y}"/>'
+        f'<a:ext cx="{node.box.width}" cy="{node.box.height}"/></p:xfrm>'
+        f'<a:graphic><a:graphicData uri="{_WEB_NS}">'
+        f'<we:webextensionref xmlns:we="{_WEB_NS}" r:id="{rid}"/>'
+        "</a:graphicData></a:graphic></p:graphicFrame>"
     )
 
 

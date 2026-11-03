@@ -3722,6 +3722,9 @@ async def test_border_image_with_rounded_corners_or_a_sliced_image_is_not_an_out
     for style in (
         "border:8px solid #444;border-radius:20px;border-image:linear-gradient(#c20,#08f) 1",
         "border:8px solid #444;border-image:linear-gradient(#c20,#08f) 30",
+        "border:8px solid #444;border-image:linear-gradient(#c20,#08f) 100%",
+        "border:8px solid #444;border-radius:0 20px;border-image:linear-gradient(#c20,#08f) 1",
+        "border:8px solid #444;border-image:linear-gradient(#c20,#08f) 1 repeat",
     ):
         ir = await _render_and_extract(
             f"<div style='position:absolute;left:100px;top:80px;width:300px;height:160px;{style}'>"

@@ -53,6 +53,7 @@ _SNAPSHOT_JS = """
     borderTopColor: cs.borderTopColor,
     borderImageSource: cs.borderImageSource, borderImageSlice: cs.borderImageSlice,
     borderImageWidth: cs.borderImageWidth, borderImageOutset: cs.borderImageOutset,
+    borderImageRepeat: cs.borderImageRepeat,
     borderRightWidth: cs.borderRightWidth, borderRightStyle: cs.borderRightStyle,
     borderRightColor: cs.borderRightColor,
     borderBottomWidth: cs.borderBottomWidth, borderBottomStyle: cs.borderBottomStyle,

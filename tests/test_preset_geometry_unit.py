@@ -12,6 +12,8 @@ from domoxml.core.ir.model import (
     ArcTo,
     Box,
     GeometryKind,
+    GradientFill,
+    GradientStop,
     Line,
     LineTo,
     MoveTo,
@@ -19,6 +21,10 @@ from domoxml.core.ir.model import (
     ShapeNode,
     SlideIR,
     SolidFill,
+    TextBody,
+    TextParagraph,
+    TextRun,
+    Transform,
 )
 from domoxml.presentation import pptx_to_html
 from domoxml.slides.pptx import build_pptx
@@ -88,3 +94,82 @@ def test_presets_the_ir_cannot_name_read_back_as_native_outlines_and_reach_html(
     html = pptx_to_html(patched.getvalue()).slides[0].html
     assert "clip-path" in html or "<svg" in html or "<path" in html
     assert serialize_canvas(list(result.slides)).slides[0].html
+
+
+def _preset_deck(prst: str, **shape_fields: object) -> bytes:
+    shape = ShapeNode(
+        box=Box(x=100 * _UNIT, y=100 * _UNIT, width=200 * _UNIT, height=120 * _UNIT),
+        geom="rect",
+        **shape_fields,  # type: ignore[arg-type]
+    )
+    source = build_pptx(
+        [SlideIR(width=1280 * _UNIT, height=720 * _UNIT, contents=(shape,))], faces=[]
+    )
+    patched = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(source)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "ppt/slides/slide1.xml":
+                data = re.sub(rb'prst="rect"', f'prst="{prst}"'.encode(), data)
+            zout.writestr(item, data)
+    return patched.getvalue()
+
+
+_BLUE = SolidFill(color=Rgba(r=40, g=100, b=200))
+_GRADIENT = GradientFill(
+    stops=(
+        GradientStop(pos=0, color=Rgba(r=40, g=100, b=200)),
+        GradientStop(pos=1, color=Rgba(r=200, g=40, b=100)),
+    ),
+    angle_deg=90,
+)
+_WORDS = TextBody(
+    paragraphs=(
+        TextParagraph(
+            runs=(
+                TextRun(
+                    text="Label", font_family="Arial", size_pt=18, color=Rgba(r=255, g=255, b=255)
+                ),
+            )
+        ),
+    )
+)
+
+
+def test_a_preset_with_text_keeps_its_text_instead_of_an_svg_outline() -> None:
+    deck = _preset_deck("flowChartPunchedTape", fill=_BLUE, text=_WORDS)
+
+    result = read_pptx_result(deck)
+
+    [shape] = result.slides[0].contents
+    assert isinstance(shape, ShapeNode) and shape.custom_geom is None
+    assert "Label" in pptx_to_html(deck).slides[0].html
+
+
+def test_a_rotated_stroked_preset_keeps_its_rotation_in_html() -> None:
+    deck = _preset_deck(
+        "donut",
+        fill=_BLUE,
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+        transform=Transform(rotation_deg=30),
+    )
+
+    html = pptx_to_html(deck).slides[0].html
+
+    assert "rotate(30deg)" in html and "<svg" in html
+
+
+async def test_a_curved_preset_clip_survives_chrome_and_extracts_without_a_raster() -> None:
+    from domoxml.core.ir import extract_slide
+    from domoxml.core.ir.model import PictureFill
+    from domoxml.core.render import BrowserSession
+
+    html = pptx_to_html(_preset_deck("flowChartPunchedTape", fill=_GRADIENT))
+    page = f"<body style='margin:0'>{html.slides[0].html}</body>"
+    async with BrowserSession() as session:
+        rendered = await session.render(page, width=1280, height=720)
+
+    result = extract_slide(rendered)
+
+    assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+    assert any(s.custom_geom is not None for s in result.slide.shapes)

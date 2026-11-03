@@ -180,7 +180,7 @@ def preset_geometry(
     stroke-only or shaded sub-paths that a single filled outline cannot carry. ``geometry`` is
     ``None`` for an unknown preset or one whose formulas this cannot evaluate.
     """
-    definition = _definitions().find(name)
+    definition = next((child for child in _definitions() if child.tag == name), None)
     if definition is None:
         return None, False
     # A horizontal or vertical line has no extent on one axis; the path space still needs one.

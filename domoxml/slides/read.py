@@ -1201,7 +1201,12 @@ def _slide(
             if _local_name(element) == "grpSp"
         }
         has_unsupported_group = any(
-            group is None or bool(group_preserved) or group_pptx_write_error(group) is not None
+            group is None
+            or bool(group_preserved)
+            or group_pptx_write_error(group) is not None
+            # Source-only effects (preset shadows) are painted only by the slide raster, so a
+            # slide that has them keeps it for any group the structural HTML cannot carry.
+            or (bool(source_only_effect_visuals) and group_html_roundtrip_error(group) is not None)
             for group, _group_warns, group_preserved in group_results.values()
         )
         if (
@@ -1724,6 +1729,7 @@ def _slide(
                     group is not None
                     and not group_preserved
                     and group_pptx_write_error(group) is None
+                    and not source_only_effect_visuals
                 ):
                     # Transformed, nested or connector-bearing groups have no structural HTML
                     # projection, but every child is native: the serializer lays them out in a

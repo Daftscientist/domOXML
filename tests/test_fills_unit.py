@@ -399,3 +399,20 @@ def test_shape_colours_apply_their_lightness_tint_and_shade_transforms() -> None
     assert light.r > 200 and light.g > 225 and light.b > 240  # a pale tint, not the accent
     assert half is not None and half.a == 0.5
     assert shaded is not None and (shaded.r, shaded.g, shaded.b) == (128, 128, 128)
+
+
+def test_a_tint_keeps_the_stated_share_of_the_colour_and_fades_the_rest_to_white() -> None:
+    from xml.etree.ElementTree import fromstring
+
+    from domoxml.slides.appearance_read import rgba
+
+    ns = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+
+    def tinted(value: int):  # type: ignore[no-untyped-def]
+        colour = f'<a:srgbClr val="FF0000"><a:tint val="{value}"/></a:srgbClr>'
+        return rgba(fromstring(f"<a:solidFill {ns}>{colour}</a:solidFill>"), {})
+
+    whole, none, half = tinted(100_000), tinted(0), tinted(50_000)
+    assert whole is not None and (whole.r, whole.g, whole.b) == (255, 0, 0)
+    assert none is not None and (none.r, none.g, none.b) == (255, 255, 255)
+    assert half is not None and (half.r, half.g, half.b) == (255, 128, 128)

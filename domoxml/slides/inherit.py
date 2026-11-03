@@ -399,7 +399,7 @@ def apply_color_transforms(
       lumOff  : H,L,S → L' = clamp(L + value, 0, 1)           (HLS lightness offset)
       satMod  : H,L,S → S' = clamp(S * value, 0, 1)           (HLS saturation multiply)
       shade   : sRGB  → ch' = round(ch * value)                (scale each channel toward 0)
-      tint    : sRGB  → ch' = round(ch + (255 - ch) * value)   (scale each channel toward 255)
+      tint    : sRGB  → ch' = round(255 - (255 - ch) * value)   (value = share of the colour kept)
       alpha   : replaces alpha directly with value              (fraction [0, 1])
     """
     rf, gf, bf = r / 255.0, g / 255.0, b / 255.0
@@ -426,9 +426,10 @@ def apply_color_transforms(
             bf = max(0.0, min(1.0, bf * value))
 
         elif local == "tint":
-            rf = max(0.0, min(1.0, rf + (1.0 - rf) * value))
-            gf = max(0.0, min(1.0, gf + (1.0 - gf) * value))
-            bf = max(0.0, min(1.0, bf + (1.0 - bf) * value))
+            # ``val`` is how much of the colour is kept: 100% is the colour, 0% is white.
+            rf = max(0.0, min(1.0, 1.0 - (1.0 - rf) * value))
+            gf = max(0.0, min(1.0, 1.0 - (1.0 - gf) * value))
+            bf = max(0.0, min(1.0, 1.0 - (1.0 - bf) * value))
 
         elif local == "alpha":
             a = max(0.0, min(1.0, value))

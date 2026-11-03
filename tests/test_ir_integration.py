@@ -3937,6 +3937,20 @@ async def test_summary_gets_a_disclosure_triangle_and_its_text_sits_after_it() -
     title = next(
         s for s in result.slide.shapes if s.text and s.text.paragraphs[0].runs[0].text == "Title"
     )
-    assert title.text.margins[0] > 20 * 9525  # type: ignore[union-attr]
+    assert title.text.paragraphs[0].indent_pt > 18  # type: ignore[union-attr]
+    assert title.text.margins[0] == 0  # type: ignore[union-attr]
     again = read_pptx(build_pptx([result.slide], faces=[]))[0]
     assert sum(1 for s in again.shapes if s.custom_geom is not None) == 2
+
+
+async def test_a_block_summary_has_no_marker_and_no_indent() -> None:
+    result = await _render_and_extract_result(
+        "<details open style='position:absolute;left:100px;top:100px;width:400px;font:24px Arial'>"
+        "<summary style='display:block'>Plain</summary>Body</details>"
+    )
+
+    assert not any(s.custom_geom is not None for s in result.slide.shapes)
+    plain = next(
+        s for s in result.slide.shapes if s.text and s.text.paragraphs[0].runs[0].text == "Plain"
+    )
+    assert plain.text.paragraphs[0].indent_pt == 0  # type: ignore[union-attr]

@@ -777,9 +777,11 @@ def _blend_over_solids(
 
 def _summary_indent_px(node: RenderedNode) -> float:
     """How far a ``<summary>``'s text sits right of its box for the disclosure marker."""
-    if node.tag != "summary" or node.styles.get("listStyleType") not in (
-        "disclosure-open",
-        "disclosure-closed",
+    if (
+        node.tag != "summary"
+        # A block or flex summary draws no marker although its list-style stays computed.
+        or node.styles.get("display") != "list-item"
+        or node.styles.get("listStyleType") not in ("disclosure-open", "disclosure-closed")
     ):
         return 0.0
     return 1.06 * parse_length_px(node.styles.get("fontSize"))
@@ -3384,10 +3386,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         encoded_text = decode_text_body(node.styles.get("domoxmlTextPayload"))
         text = _text_body_from_decoded(node, encoded_text)
         if text is not None and (indent := _summary_indent_px(node)):
-            left, top, right, bottom = text.margins
-            text = text.model_copy(
-                update={"margins": (left + px_to_emu(indent), top, right, bottom)}
-            )
+            # The marker sits before the first line only; later lines start at the left edge.
+            first, *rest = text.paragraphs
+            first = first.model_copy(update={"indent_pt": first.indent_pt + px_to_pt(indent)})
+            text = text.model_copy(update={"paragraphs": (first, *rest)})
         approximation_reasons = list(warn_msgs)
         if (
             text is not None

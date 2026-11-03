@@ -7,6 +7,7 @@ import re
 import zipfile
 
 import pytest
+from PIL import Image
 
 from domoxml.core.drawingml.preset_geometry import preset_geometry, preset_names
 from domoxml.core.html import serialize_canvas
@@ -20,6 +21,7 @@ from domoxml.core.ir.model import (
     Line,
     LineTo,
     MoveTo,
+    PictureFill,
     Rgba,
     ShapeNode,
     SlideIR,
@@ -29,6 +31,7 @@ from domoxml.core.ir.model import (
     TextRun,
     Transform,
 )
+from domoxml.core.roundtrip import inline_assets
 from domoxml.presentation import pptx_to_html
 from domoxml.slides.pptx import build_pptx
 from domoxml.slides.read import read_pptx_result
@@ -228,7 +231,6 @@ def test_a_rotated_stroked_preset_keeps_its_rotation_in_html() -> None:
 @pytest.mark.integration
 async def test_a_curved_preset_clip_survives_chrome_and_extracts_without_a_raster() -> None:
     from domoxml.core.ir import extract_slide
-    from domoxml.core.ir.model import PictureFill
     from domoxml.core.render import BrowserSession
 
     html = pptx_to_html(_preset_deck("flowChartPunchedTape", fill=_GRADIENT))
@@ -334,3 +336,65 @@ def test_gradients_that_differ_only_in_opacity_get_different_ids() -> None:
     )
 
     assert len(set(re.findall(r'<linearGradient id="(grad-[0-9a-f]+)"', html))) == 2
+
+
+def _picture() -> PictureFill:
+    out = io.BytesIO()
+    Image.new("RGB", (8, 8), "#c20").save(out, "PNG")
+    return PictureFill(data=out.getvalue(), ext="png")
+
+
+def test_a_picture_filled_preset_with_stroke_and_text_is_three_layers_in_html() -> None:
+    deck = _preset_deck(
+        "heart",
+        fill=_picture(),
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+        text=_WORDS,
+    )
+
+    [shape] = read_pptx_result(deck).slides[0].contents
+    html = pptx_to_html(deck).slides[0].html
+
+    assert isinstance(shape, ShapeNode) and shape.custom_geom is not None
+    assert html.count("clip-path:path(") == 1  # the picture, clipped to the outline
+    assert "<svg" in html and "stroke-width" in html and 'fill="none"' in html
+    assert "Label" in html
+
+
+@pytest.mark.integration
+async def test_picture_stroke_and_text_layers_extract_to_native_shapes() -> None:
+    from domoxml.core.ir import extract_slide
+    from domoxml.core.render import BrowserSession
+
+    deck = _preset_deck(
+        "heart",
+        fill=_picture(),
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+        text=_WORDS,
+    )
+    html = inline_assets(pptx_to_html(deck)).slides[0].html
+    async with BrowserSession() as session:
+        rendered = await session.render(
+            f"<body style='margin:0'>{html}</body>", width=1280, height=720
+        )
+
+    shapes = extract_slide(rendered).slide.shapes
+
+    assert any(isinstance(s.fill, PictureFill) and s.custom_geom is not None for s in shapes)
+    assert any(s.line is not None and s.custom_geom is not None for s in shapes)
+    assert any(s.text for s in shapes)
+
+
+def test_a_picture_outline_that_leaves_its_box_keeps_its_rectangle() -> None:
+    deck = _preset_deck(
+        "wedgeRoundRectCallout",
+        fill=_picture(),
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+    )
+
+    result = read_pptx_result(deck)
+
+    [shape] = result.slides[0].contents
+    assert isinstance(shape, ShapeNode) and shape.custom_geom is None
+    [item] = result.coverage.items
+    assert item.representation.value == "approximated"

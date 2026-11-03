@@ -280,3 +280,74 @@ def _arc_end(current: Point, radius_x: float, radius_y: float, start: float, swe
         x=round(centre_x + max(radius_x, 0.0) * math.cos(finish)),
         y=round(centre_y + max(radius_y, 0.0) * math.sin(finish)),
     )
+
+
+def outline_leaves_box(geometry: CustomGeometry) -> bool:
+    """Whether the outline leaves its own box (a callout's tail, a cloud's lowest bubble).
+
+    A picture only paints inside its element's box, so a clip cannot reveal it out there.
+    """
+    xs: list[float] = []
+    ys: list[float] = []
+    current = (0.0, 0.0)
+    start = current
+    for command in geometry.path:
+        if isinstance(command, MoveTo):
+            current = start = (float(command.to.x), float(command.to.y))
+            xs.append(current[0])
+            ys.append(current[1])
+        elif isinstance(command, LineTo):
+            current = (float(command.to.x), float(command.to.y))
+            xs.append(current[0])
+            ys.append(current[1])
+        elif isinstance(command, CubicTo | QuadTo):
+            # The curve, not its control points, is what is drawn: sample it.
+            end = (float(command.to.x), float(command.to.y))
+            for step in range(1, 11):
+                t = step / 10
+                u = 1 - t
+                if isinstance(command, CubicTo):
+                    x = (
+                        u**3 * current[0]
+                        + 3 * u * u * t * command.c1.x
+                        + 3 * u * t * t * command.c2.x
+                        + t**3 * end[0]
+                    )
+                    y = (
+                        u**3 * current[1]
+                        + 3 * u * u * t * command.c1.y
+                        + 3 * u * t * t * command.c2.y
+                        + t**3 * end[1]
+                    )
+                else:
+                    x = u * u * current[0] + 2 * u * t * command.c1.x + t * t * end[0]
+                    y = u * u * current[1] + 2 * u * t * command.c1.y + t * t * end[1]
+                xs.append(x)
+                ys.append(y)
+            current = end
+        elif isinstance(command, ArcTo):
+            begin = math.radians(command.start_angle / 60_000)
+            centre = (
+                current[0] - command.width_radius * math.cos(begin),
+                current[1] - command.height_radius * math.sin(begin),
+            )
+            steps = max(2, int(abs(command.sweep_angle) / 60_000 / 5))
+            for index in range(steps + 1):
+                angle = math.radians(
+                    (command.start_angle + command.sweep_angle * index / steps) / 60_000
+                )
+                current = (
+                    centre[0] + command.width_radius * math.cos(angle),
+                    centre[1] + command.height_radius * math.sin(angle),
+                )
+                xs.append(current[0])
+                ys.append(current[1])
+        else:
+            current = start
+    slack = 0.005
+    return bool(xs) and (
+        min(xs) < -slack * geometry.width_emu
+        or max(xs) > (1 + slack) * geometry.width_emu
+        or min(ys) < -slack * geometry.height_emu
+        or max(ys) > (1 + slack) * geometry.height_emu
+    )

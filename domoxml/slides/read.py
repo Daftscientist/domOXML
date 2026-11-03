@@ -17,7 +17,7 @@ from defusedxml import ElementTree
 from PIL import Image, ImageChops
 
 from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
-from domoxml.core.drawingml.preset_geometry import preset_geometry
+from domoxml.core.drawingml.preset_geometry import outline_leaves_box, preset_geometry
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
@@ -440,7 +440,10 @@ def _shape(
         and geom_name not in _valid_geom_kinds
         and _outline_survives_html(element, properties)
     ):
-        custom_geom, _complete = _preset_outline(geometry, box)
+        custom_geom, _complete = _preset_outline(
+            geometry, box, picture_beside_paint=_picture_beside_paint(element, properties)
+        )
+
     return (
         _with_pptx_identity(
             ShapeNode(
@@ -690,32 +693,51 @@ def _native_reverse_coverage(slide_part: str, element: Element) -> CoverageItem:
     )
 
 
+def _picture_beside_paint(element: Element, properties: Element) -> bool:
+    """Whether a picture fill shares its shape with a stroke or text."""
+    outlined = properties.find("a:ln", _NS) is not None and (
+        properties.find("a:ln/a:noFill", _NS) is None
+    )
+    has_text = any((run.text or "").strip() for run in element.iterfind(".//a:t", _NS))
+    return properties.find("a:blipFill", _NS) is not None and (outlined or has_text)
+
+
 def _outline_survives_html(element: Element, properties: Element) -> bool:
     """Whether an outline drawn from a preset keeps all of the shape's paint in HTML.
 
     Custom geometry reaches HTML as an SVG (solid or gradient fill, and stroke) with any text laid
-    over it, or, for a picture fill with neither a stroke nor text, a clip over the element's own
-    background. A picture fill beside a stroke or text has no form there yet.
+    over it, or, for a picture fill, a clipped picture with the stroke and text layered over it. A
+    hatch pattern beside a stroke or text has no form there yet.
     """
     has_text = any((run.text or "").strip() for run in element.iterfind(".//a:t", _NS))
     outlined = properties.find("a:ln", _NS) is not None and (
         properties.find("a:ln/a:noFill", _NS) is None
     )
-    picture = any(
-        properties.find(f"a:{kind}", _NS) is not None for kind in ("blipFill", "pattFill")
-    )
-    return not (picture and (outlined or has_text))
+    # Only a hatch pattern still has no form beside a stroke or text; a picture is layered.
+    pattern = properties.find("a:pattFill", _NS) is not None
+    return not (pattern and (outlined or has_text))
 
 
-def _preset_outline(geometry: Element, box: Box) -> tuple[CustomGeometry | None, bool]:
-    """A preset the IR has no named geometry for, drawn from the standard's definition."""
+def _preset_outline(
+    geometry: Element, box: Box, *, picture_beside_paint: bool = False
+) -> tuple[CustomGeometry | None, bool]:
+    """A preset the IR has no named geometry for, drawn from the standard's definition.
+
+    A picture is painted only inside the shape's box, so a picture-filled outline with a stroke or
+    text that leaves it (a callout's tail, a cloud's last bubble) keeps its rectangle.
+    """
     adjusts: dict[str, float] = {}
     for guide in geometry.findall("a:avLst/a:gd", _NS):
         formula = guide.get("fmla", "")
         if formula.startswith("val "):
             with contextlib.suppress(ValueError):
                 adjusts[guide.get("name", "")] = float(formula.removeprefix("val "))
-    return preset_geometry(geometry.get("prst", "rect"), box.width, box.height, adjusts)
+    outline, complete = preset_geometry(
+        geometry.get("prst", "rect"), box.width, box.height, adjusts
+    )
+    if outline is not None and picture_beside_paint and outline_leaves_box(outline):
+        return None, False
+    return outline, complete
 
 
 def _shape_reverse_coverage(
@@ -742,6 +764,7 @@ def _shape_reverse_coverage(
                         width=_int_attr(transform, "cx"),
                         height=_int_attr(transform, "cy"),
                     ),
+                    picture_beside_paint=_picture_beside_paint(element, properties),
                 )
                 if transform is not None
                 and properties is not None

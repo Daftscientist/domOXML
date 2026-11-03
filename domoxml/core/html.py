@@ -1322,21 +1322,12 @@ def _table_html(
     )
 
 
-def _text_over_outline_html(
-    node: ShapeNode,
-    d: str,
-    fill_attr: str,
-    stroke_attrs: str,
-    effect_filter: str | None,
-    warnings: list[ConversionWarning],
-) -> str:
-    """A free-form outline with its text: the outline's SVG with the text laid over it.
+def _text_layer_html(node: ShapeNode, warnings: list[ConversionWarning]) -> str:
+    """The text of a free-form outline as its own layer over the outline's SVG.
 
-    The SVG form of custom geometry has no text, so the text sits in the wrapper that places the
-    shape and the outline fills it from behind.
+    The SVG form of custom geometry has no text, so the shape's text sits in a transparent box
+    placed exactly over it; it follows the outline in z-order and extracts as a text shape.
     """
-    cg = node.custom_geom
-    assert cg is not None
     styles = [
         "position:absolute",
         "box-sizing:border-box",
@@ -1347,27 +1338,16 @@ def _text_over_outline_html(
     ]
     if body_css := _text_body_css(node.text, warnings):
         styles.append(body_css)
-    if node.opacity < 1.0:
-        styles.append(f"opacity:{_number(node.opacity)}")
     if (transform_css := _transform_css(node.transform)) is not None:
         styles.append(f"transform:{transform_css}")
-    outline_style = (
-        "position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;z-index:-1"
-    )
-    if effect_filter is not None:
-        outline_style += f";filter:{effect_filter}"
-    outline = (
-        '<svg xmlns="http://www.w3.org/2000/svg"'
-        f"{_custom_geometry_attrs(cg)}{_effect_attrs(node)}"
-        f' viewBox="0 0 {cg.width_emu} {cg.height_emu}" preserveAspectRatio="none"'
-        f' style="{escape(outline_style, quote=True)}"'
-        f'><path d="{escape(d, quote=True)}" {fill_attr}{stroke_attrs}/></svg>'
-    )
+    text_html = _text_html(node.text, warnings)
+    flipped = node.transform is not None and node.transform.flip_h
+    if text_html and flipped != (node.text is not None and node.text.mirror_x):
+        text_html = f'<div style="transform:scaleX(-1)">{text_html}</div>'
     text_body_attr = ' data-domoxml-text-body="true"' if _plain_text_body(node.text) else ""
     return (
-        f'<div class="domoxml-shape"{_identity_attrs(node)}{_text_payload_attrs(node)}'
-        f'{text_body_attr} style="{escape(";".join(styles), quote=True)};isolation:isolate">'
-        f"{outline}{_text_html(node.text, warnings)}</div>"
+        f'<div class="domoxml-shape"{_text_payload_attrs(node)}{text_body_attr} '
+        f'style="{escape(";".join(styles), quote=True)}">{text_html}</div>'
     )
 
 
@@ -1507,10 +1487,6 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                         element=node.node_id or "custom-geometry",
                     )
                 )
-            if node.text is not None and node.portable_fallback is None:
-                return _text_over_outline_html(
-                    node, d, fill_attr, stroke_attrs, effect_filter, warnings
-                )
             inner = (
                 f'<svg xmlns="http://www.w3.org/2000/svg"{_identity_attrs(node)}'
                 f"{_custom_geometry_attrs(cg)}{_effect_attrs(node)}"
@@ -1522,6 +1498,8 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                 f"{path_visibility}/>"
                 f"</svg>"
             )
+            if node.text is not None and node.portable_fallback is None:
+                inner += _text_layer_html(node, warnings)
             return inner
         # Merge text body CSS (flex anchor, columns) into the shape style.
         body_css = _text_body_css(node.text, warnings)

@@ -2543,7 +2543,6 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             current = parent
 
     children = _children(rendered.nodes)
-    node_at = {candidate.index: candidate for candidate in rendered.nodes}
     consumed: set[int] = set()
     contents: list[Node] = []
     coverage: list[CoverageItem] = []
@@ -3477,15 +3476,6 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             shape.model_copy(update={"opacity": faded}) if faded < 1.0 else shape
             for shape in side_rect_shapes
         )
-        if encoded_text is not None:
-            # An outline drawn behind the text is its own shape and sits beneath it.
-            for child_index in children.get(node.index, ()):
-                child = node_at[child_index]
-                if child.tag != "svg":
-                    continue
-                behind = _svg_editable_shapes(child, rendered, effective_opacity(child))
-                if behind:
-                    _emit_svg_shapes(behind, child, identities, contents, coverage, _label(child))
         outline = _outline_shape(node, _box(node), geom, corner, clip_geometry)
         contents.append(
             identities.apply(

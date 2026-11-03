@@ -96,7 +96,7 @@ from domoxml.slides.inherit import (
     inherit_xfrm,
     parse_theme_fonts,
 )
-from domoxml.slides.media_read import read_media
+from domoxml.slides.media_read import read_media, read_web_viewer
 from domoxml.slides.notes import read_notes
 from domoxml.slides.text_read import read_text_body, read_text_run
 from domoxml.slides.transition import parse_transition
@@ -1840,6 +1840,11 @@ def _slide(
                     else "preserved group that the reverse adapter could not map"
                 )
             elif kind == "graphicFrame":
+                web = read_web_viewer(element, package, slide_part)
+                if web is not None:
+                    contents.append(_with_pptx_identity(web, element, slide_part))
+                    coverage.append(_native_reverse_coverage(slide_part, element))
+                    continue
                 frame = read_graphic_frame(
                     element,
                     fill_for=lambda properties: _fill(properties, package, slide_part, colors),

@@ -150,6 +150,13 @@
     ],
     "similarity": 0.988
   },
+  "iframe-web": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 1.0
+  },
   "iframe-youtube": {
     "dropped": false,
     "inherent": false,

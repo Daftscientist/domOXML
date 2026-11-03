@@ -50,10 +50,26 @@ def online_video_url(source: str) -> str | None:
     return source if _ONLINE_VIDEO.match(source.strip()) else None
 
 
+def web_page_url(source: str) -> str | None:
+    """``source`` if it is an ``http(s)`` page URL, else ``None``."""
+    stripped = source.strip()
+    return stripped if stripped.lower().startswith(("http://", "https://")) else None
+
+
 def default_poster(kind: str, width_px: float, height_px: float) -> PictureFill:
     """A plain stand-in poster at the clip's aspect ratio (at most 640 px wide)."""
     width = max(16, min(640, round(width_px)))
     height = max(16, round(width * height_px / width_px)) if width_px > 0 else width
+    if kind == "web":
+        # A blank browser window: the page itself only runs in the viewer.
+        image = Image.new("RGB", (width, height), (250, 250, 252))
+        draw = ImageDraw.Draw(image)
+        bar = max(8, height // 10)
+        draw.rectangle((0, 0, width, bar), fill=(222, 224, 230))
+        draw.rectangle((0, 0, width - 1, height - 1), outline=(190, 194, 204))
+        buffer = BytesIO()
+        image.save(buffer, "PNG")
+        return PictureFill(data=buffer.getvalue(), ext="png")
     image = Image.new("RGB", (width, height), (28, 28, 40))
     draw = ImageDraw.Draw(image)
     centre_x, centre_y, size = width / 2, height / 2, min(width, height) / 5

@@ -155,7 +155,13 @@ from domoxml.core.ir.svg_vector import vector_picture
 from domoxml.core.ir.table_extract import extract_table
 from domoxml.core.ir.table_payload import apply_table_geometry, decode_table_geometry
 from domoxml.core.ir.text_payload import decode_text_body
-from domoxml.core.media import MEDIA_CONTENT_TYPES, MEDIA_TYPES, default_poster, online_video_url
+from domoxml.core.media import (
+    MEDIA_CONTENT_TYPES,
+    MEDIA_TYPES,
+    default_poster,
+    online_video_url,
+    web_page_url,
+)
 from domoxml.core.opc import decode_payload
 from domoxml.core.render.browser import (
     RenderedNode,
@@ -1837,10 +1843,19 @@ def _media_node(node: RenderedNode, rendered: RenderedSlide) -> MediaNode | None
     source = node.src.strip()
     if node.tag == "iframe":
         url = online_video_url(source)
-        if url is None:
+        if url is not None:
+            return MediaNode(
+                box=box, kind="video", media_url=url, poster_fill=_media_poster(node, rendered)
+            )
+        page = web_page_url(source)
+        # A frame with inline content shows that, not the page its ``src`` falls back to.
+        if page is None or node.styles.get("domoxmlSrcdoc"):
             return None
         return MediaNode(
-            box=box, kind="video", media_url=url, poster_fill=_media_poster(node, rendered)
+            box=box,
+            kind="web",
+            media_url=page,
+            poster_fill=_media_poster(node, rendered, kind="web"),
         )
     kind = node.tag
     if kind not in ("video", "audio"):
@@ -1879,7 +1894,9 @@ def _is_blank(png: bytes) -> bool:
         return True
 
 
-def _media_poster(node: RenderedNode, rendered: RenderedSlide) -> PictureFill:
+def _media_poster(
+    node: RenderedNode, rendered: RenderedSlide, *, kind: str | None = None
+) -> PictureFill:
     """What the browser drew for a media element, or a plain stand-in when it drew nothing."""
     inside = (
         node.x >= 0
@@ -1891,7 +1908,9 @@ def _media_poster(node: RenderedNode, rendered: RenderedSlide) -> PictureFill:
     if crop is not None and crop is not _PLANNING_PNG and not _is_blank(crop):
         return PictureFill(data=crop, ext="png")
     return default_poster(
-        "audio" if node.tag == "audio" else "video", max(node.width, 16), max(node.height, 16)
+        kind or ("audio" if node.tag == "audio" else "video"),
+        max(node.width, 16),
+        max(node.height, 16),
     )
 
 

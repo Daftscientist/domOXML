@@ -58,6 +58,7 @@ from domoxml.core.ir.model import (
 )
 from domoxml.core.opc import OpcPackage, capture_payload
 from domoxml.core.opc.preservation import relationship_part_name
+from domoxml.core.opc.reader import Relationship
 from domoxml.slides.appearance_read import (
     DEFAULT_THEME_COLORS,
     ThemeColors,
@@ -2171,6 +2172,11 @@ def _slide(
     )
 
 
+def _is_false(value: str | None) -> bool:
+    """Whether an OOXML boolean attribute is spelled false (``0`` or ``false``)."""
+    return value is not None and value.strip().lower() in ("0", "false")
+
+
 def _attr(value: str) -> str:
     return escape(value, {'"': "&quot;"})
 
@@ -2207,7 +2213,7 @@ def _inherited_shapes(
     reader maps is mapped here too, and the results carry no identity of their own.
     """
     layout_part = _related_part_by_type(package, slide_part, _SLIDE_LAYOUT_REL)
-    if layout_part is None or slide.get("showMasterSp") == "0":
+    if layout_part is None or _is_false(slide.get("showMasterSp")):
         return []
     master_part = _related_part_by_type(package, layout_part, _SLIDE_MASTER_REL)
     try:
@@ -2215,7 +2221,7 @@ def _inherited_shapes(
     except (KeyError, ElementTree.ParseError):
         return []
     sources = [layout_part]
-    if master_part is not None and layout_root.get("showMasterSp") != "0":
+    if master_part is not None and not _is_false(layout_root.get("showMasterSp")):
         sources.insert(0, master_part)
     shapes: list[Node] = []
     for number, part in enumerate(sources):
@@ -2235,8 +2241,16 @@ def _inherited_shapes(
             continue
         name = f"ppt/slides/__inherited_{slide_part.rsplit('/', 1)[-1]}_{number}.xml"
         layout_target = posixpath.relpath(layout_part, "ppt/slides")
+
+        def target(relationship: Relationship, source: str = part) -> str:
+            # Internal targets are relative to the source part; the copy sits in ppt/slides.
+            if relationship.target_mode != "Internal":
+                return relationship.target
+            resolved = package.resolve(source, relationship)
+            return posixpath.relpath(resolved, "ppt/slides")
+
         rels = "".join(
-            f'<Relationship Id="{_attr(r.id)}" Type="{_attr(r.type)}" Target="{_attr(r.target)}"'
+            f'<Relationship Id="{_attr(r.id)}" Type="{_attr(r.type)}" Target="{_attr(target(r))}"'
             + ("" if r.target_mode == "Internal" else ' TargetMode="External"')
             + "/>"
             for r in package.relationships(part)

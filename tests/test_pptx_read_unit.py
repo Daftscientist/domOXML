@@ -2166,3 +2166,62 @@ def test_inherited_art_rebuilds_into_the_output_slide() -> None:
     rebuilt = build_pptx(list(read_pptx_result(deck).slides), faces=[])
 
     assert _fills(rebuilt) == ["C00000", "0000C8"]
+
+
+def test_show_master_shapes_false_spelling_also_hides_the_masters_art() -> None:
+    master, layout = _band(90, "C00000", 0), _band(91, "00C000", 457_200)
+
+    assert _fills(_deck_with_decorations(master, layout, 'showMasterSp="false"')) == [
+        "00C000",
+        "0000C8",
+    ]
+
+
+def test_a_master_picture_with_a_directory_relative_target_still_resolves() -> None:
+    from PIL import Image
+
+    png = BytesIO()
+    Image.new("RGB", (4, 4), "#c20").save(png, "PNG")
+    source = _deck_with_decorations(
+        master=(
+            '<p:pic><p:nvPicPr><p:cNvPr id="95" name="Logo"/><p:cNvPicPr/>'
+            '<p:nvPr userDrawn="1"/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdLogo"/>'
+            "<a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm>"
+            '<a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm>'
+            '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>'
+        )
+    )
+    patched = BytesIO()
+    with zipfile.ZipFile(BytesIO(source)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "ppt/slideMasters/_rels/slideMaster1.xml.rels":
+                data = data.replace(
+                    b"</Relationships>",
+                    b'<Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/'
+                    b'officeDocument/2006/relationships/image" Target="logo.png"/>'
+                    b"</Relationships>",
+                )
+            if item.filename == "ppt/slideMasters/slideMaster1.xml":
+                data = (
+                    data.replace(
+                        b"<p:sldMaster ",
+                        b'<p:sldMaster xmlns:r="http://schemas.openxmlformats.org/officeDocument/'
+                        b'2006/relationships" ',
+                        1,
+                    )
+                    if b"xmlns:r=" not in data
+                    else data
+                )
+            zout.writestr(item, data)
+        zout.writestr("ppt/slideMasters/logo.png", png.getvalue())
+
+    contents = read_pptx_result(patched.getvalue()).slides[0].contents
+
+    assert any(
+        isinstance(n, ShapeNode)
+        and isinstance(n.fill, PictureFill)
+        and n.node_id is not None
+        and n.node_id.startswith("inherited-")
+        for n in contents
+    )

@@ -1468,7 +1468,7 @@ def test_reverse_coverage_records_retained_native_group_semantics() -> None:
 
 
 def test_reverse_coverage_is_exact_for_plain_connectors_and_approximate_for_other_routes() -> None:
-    def connector(preset: str, adjust: str = "") -> ElementTree.Element:
+    def connector(preset: str, adjust: str = "") -> Element:
         return ElementTree.fromstring(
             f'<p:cxnSp xmlns:p="{_P}" xmlns:a="{_A}"><p:nvCxnSpPr>'
             '<p:cNvPr id="12" name="connector"/></p:nvCxnSpPr>'

@@ -13,6 +13,7 @@ from domoxml.core.html import serialize_canvas
 from domoxml.core.ir.model import (
     ArcTo,
     Box,
+    ClosePath,
     GeometryKind,
     GradientFill,
     GradientStop,
@@ -176,3 +177,19 @@ async def test_a_curved_preset_clip_survives_chrome_and_extracts_without_a_raste
 
     assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
     assert any(s.custom_geom is not None for s in result.slide.shapes)
+
+
+def test_an_arc_with_one_zero_radius_is_a_straight_run_not_nothing() -> None:
+    from xml.etree.ElementTree import fromstring
+
+    from domoxml.core.drawingml.preset_geometry import _path_commands  # pyright: ignore
+
+    path = fromstring(
+        '<path><moveTo><pt x="0" y="0"/></moveTo>'
+        '<arcTo wR="0" hR="1000" stAng="0" swAng="5400000"/><close/></path>'
+    )
+
+    commands = _path_commands(path, {}, (1.0, 1.0))
+
+    assert [type(c) for c in commands] == [MoveTo, LineTo, ClosePath]
+    assert isinstance(commands[1], LineTo) and commands[1].to.y == 1000

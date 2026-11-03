@@ -224,32 +224,59 @@ def _path_commands(
     path: Element, env: Mapping[str, float], scale: tuple[float, float]
 ) -> list[PathCommand]:
     commands: list[PathCommand] = []
+    current = Point(x=0, y=0)
+    start = current
     for step in path:
         kind = _tag(step)
         points = [_point(point, env, scale) for point in step if _tag(point) == "pt"]
         if kind == "moveTo":
             commands.append(MoveTo(to=points[0]))
+            current = start = points[0]
         elif kind == "lnTo":
             commands.append(LineTo(to=points[0]))
+            current = points[0]
         elif kind == "cubicBezTo":
             commands.append(CubicTo(c1=points[0], c2=points[1], to=points[2]))
+            current = points[2]
         elif kind == "quadBezTo":
             commands.append(QuadTo(c1=points[0], to=points[1]))
+            current = points[1]
         elif kind == "arcTo":
             radius_x = _number(step.get("wR"), env) * scale[0]
             radius_y = _number(step.get("hR"), env) * scale[1]
+            start_angle = _number(step.get("stAng"), env)
+            sweep_angle = _number(step.get("swAng"), env)
             if radius_x <= 0 or radius_y <= 0:
-                continue  # a zero-radius corner is a sharp one: the arc draws nothing
+                # A flat ellipse is a straight run: a sharp corner when both radii are zero.
+                end = _arc_end(current, radius_x, radius_y, start_angle, sweep_angle)
+                if end != current:
+                    commands.append(LineTo(to=end))
+                    current = end
+                continue
             commands.append(
                 ArcTo(
                     width_radius=max(1, round(radius_x)),
                     height_radius=max(1, round(radius_y)),
-                    start_angle=round(_number(step.get("stAng"), env)),
-                    sweep_angle=round(_number(step.get("swAng"), env)),
+                    start_angle=round(start_angle),
+                    sweep_angle=round(sweep_angle),
                 )
             )
+            current = _arc_end(current, radius_x, radius_y, start_angle, sweep_angle)
         elif kind == "close":
             commands.append(ClosePath())
+            current = start
         else:
             raise _Unsupported(f"unknown path command {kind!r}")
     return commands
+
+
+def _arc_end(current: Point, radius_x: float, radius_y: float, start: float, sweep: float) -> Point:
+    """Where an ``arcTo`` that began at ``current`` ends."""
+    begin = math.radians(start / _ANGLE)
+    finish = math.radians((start + sweep) / _ANGLE)
+    centre_x = current.x - max(radius_x, 0.0) * math.cos(begin)
+    centre_y = current.y - max(radius_y, 0.0) * math.sin(begin)
+    return Point(
+        x=round(centre_x + max(radius_x, 0.0) * math.cos(finish)),
+        y=round(centre_y + max(radius_y, 0.0) * math.sin(finish)),
+    )

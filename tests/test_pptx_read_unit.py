@@ -1117,15 +1117,15 @@ def test_slide_fallback_decision_is_stable_before_multiple_effects_and_group() -
 
     result = read_pptx_result(source, fallback_pngs=(rendered.getvalue(),))
 
-    assert result.slides[0].renderer_fallback is not None
-    preserved_nodes = [
-        node for node in result.slides[0].contents if isinstance(node, PreservedNode)
-    ]
-    assert len(preserved_nodes) == 3
-    assert result.slides[0].renderer_fallback_owner_node_id == preserved_nodes[0].node_id
+    # The transformed group is native and flattened visibly, so it no longer forces the slide
+    # fallback; the source-only effect shapes stay native approximations on their own.
+    slide = result.slides[0]
+    assert slide.renderer_fallback is None
+    assert not any(isinstance(node, PreservedNode) for node in slide.contents)
+    assert sum(isinstance(node, GroupNode) for node in slide.contents) == 1
     representations = [item.representation for item in result.coverage.items]
-    assert representations.count(Representation.RASTERIZED) == 1
-    assert representations.count(Representation.FAILED) == 2
+    assert Representation.RASTERIZED not in representations
+    assert Representation.FAILED not in representations
 
 
 def test_malformed_slide_fallback_marker_stays_source_owned() -> None:

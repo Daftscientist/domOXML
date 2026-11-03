@@ -272,7 +272,7 @@ def test_group_with_unsupported_child_retains_source_with_honest_rasterized_visu
     assert len(ids) == len(set(ids))
 
 
-def test_transformed_group_stays_owned_until_group_transform_html_is_exact() -> None:
+def test_transformed_group_flattens_natively_without_a_raster_owner() -> None:
     group = GroupNode(
         box=Box(x=2_000_000, y=1_000_000, width=3_200_000, height=2_100_000),
         child_box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
@@ -290,29 +290,21 @@ def test_transformed_group_stays_owned_until_group_transform_html_is_exact() -> 
 
     result = read_pptx_result(source, fallback_pngs=[fallback.getvalue()])
 
-    [preserved] = result.slides[0].contents
-    assert isinstance(preserved, PreservedNode)
-    assert preserved.payload.kind == "grpSp"
-    assert preserved.fallback is None
-    assert result.slides[0].renderer_fallback is not None
-    assert result.slides[0].renderer_fallback_owner_node_id == preserved.node_id
+    [flattened] = result.slides[0].contents
+    assert isinstance(flattened, GroupNode)
+    assert flattened.transform == Transform(rotation_deg=15)
+    assert result.slides[0].renderer_fallback is None
     [coverage] = result.coverage.items
-    assert coverage.representation is Representation.RASTERIZED
-    assert coverage.editability is Editability.NONE
-    assert coverage.source_retention is SourceRetention.ATTACHED
+    assert coverage.representation is Representation.NATIVE
 
     without_renderer = read_pptx_result(source)
-    [preserved_without_renderer] = without_renderer.slides[0].contents
-    assert isinstance(preserved_without_renderer, PreservedNode)
-    assert preserved_without_renderer.fallback is None
-    assert without_renderer.slides[0].renderer_fallback is None
-    [failed] = without_renderer.coverage.items
-    assert failed.representation is Representation.FAILED
-    assert failed.editability is Editability.NONE
-    assert failed.source_retention is SourceRetention.ATTACHED
+    [again] = without_renderer.slides[0].contents
+    assert isinstance(again, GroupNode)
+    [native] = without_renderer.coverage.items
+    assert native.representation is Representation.NATIVE
 
 
-def test_nested_group_retains_source_until_nested_html_reconstruction_is_proven() -> None:
+def test_nested_group_flattens_natively_without_a_raster_owner() -> None:
     inner = GroupNode(
         box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
         child_box=Box(x=0, y=0, width=1_600_000, height=1_050_000),
@@ -334,18 +326,15 @@ def test_nested_group_retains_source_until_nested_html_reconstruction_is_proven(
 
     result = read_pptx_result(source, fallback_pngs=[fallback.getvalue()])
 
-    [preserved] = result.slides[0].contents
-    assert isinstance(preserved, PreservedNode)
-    assert preserved.payload.kind == "grpSp"
-    assert preserved.fallback is None
-    assert result.slides[0].renderer_fallback is not None
-    assert result.slides[0].renderer_fallback_owner_node_id == preserved.node_id
+    [flattened] = result.slides[0].contents
+    assert isinstance(flattened, GroupNode)
+    assert isinstance(flattened.children[0], GroupNode)
+    assert result.slides[0].renderer_fallback is None
     [coverage] = result.coverage.items
-    assert coverage.representation is Representation.RASTERIZED
-    assert coverage.source_retention is SourceRetention.ATTACHED
+    assert coverage.representation is Representation.NATIVE
 
 
-def test_multiple_unsupported_groups_keep_one_owner_and_explicit_remaining_debt() -> None:
+def test_multiple_transformed_groups_each_flatten_natively() -> None:
     first = GroupNode(
         node_id="unsupported-group-1",
         box=Box(x=1_000_000, y=1_000_000, width=2_000_000, height=1_500_000),
@@ -374,18 +363,14 @@ def test_multiple_unsupported_groups_keep_one_owner_and_explicit_remaining_debt(
 
     result = read_pptx_result(source, fallback_pngs=[fallback.getvalue()])
 
-    first_preserved, second_preserved = result.slides[0].contents
-    assert isinstance(first_preserved, PreservedNode)
-    assert isinstance(second_preserved, PreservedNode)
-    assert first_preserved.node_id != second_preserved.node_id
-    assert result.slides[0].renderer_fallback_owner_node_id == first_preserved.node_id
+    first_group, second_group = result.slides[0].contents
+    assert isinstance(first_group, GroupNode)
+    assert isinstance(second_group, GroupNode)
+    assert first_group.transform == Transform(rotation_deg=10)
+    assert second_group.transform == Transform(rotation_deg=-12)
+    assert result.slides[0].renderer_fallback is None
     representations = [item.representation for item in result.coverage.items]
-    assert representations.count(Representation.RASTERIZED) == 1
-    assert representations.count(Representation.FAILED) == 1
-    failed = next(
-        item for item in result.coverage.items if item.representation is Representation.FAILED
-    )
-    assert failed.source_retention is SourceRetention.ATTACHED
+    assert representations == [Representation.NATIVE, Representation.NATIVE]
 
 
 def test_preserved_group_rewrites_connector_shape_id_references() -> None:

@@ -33,6 +33,7 @@ from domoxml.core.images import (
     image_dimensions,
     normalise_image,
 )
+from domoxml.core.ir.blend import blended_shapes
 from domoxml.core.ir.connector_extract import extract_connector
 from domoxml.core.ir.controls import control_shapes, select_arrow
 from domoxml.core.ir.effect_calibration import (
@@ -740,6 +741,32 @@ def _soft_edge_mask(node: RenderedNode) -> SoftEdge | None:
         mode=styles.get("maskMode"),
         ellipse=_geometry(_box(node), corner) == "ellipse",
     )
+
+
+def _blend_over_solids(
+    node: RenderedNode,
+    rendered: RenderedSlide,
+    contents: list[Node],
+    opacity: float,
+) -> list[ShapeNode] | None:
+    """A blended filled box as plain shapes in the colours it makes over what is beneath."""
+    styles = node.styles
+    if (
+        not is_leaf(node)
+        or not fill_only(node)
+        or parse_radius_px(styles.get("borderRadius"), shorter_side_px=1.0) > 0
+        or styles.get("transform", "none") not in ("none", "")
+        or styles.get("clipPath", "none") not in ("none", "")
+        or styles.get("filter", "none") not in ("none", "")
+        or styles.get("maskImage", "none") not in ("none", "")
+        or styles.get("domoxmlClippedByAncestor")
+        or opacity != 1.0
+    ):
+        return None
+    fill, reason = _resolve_fill(node, rendered)
+    if reason is not None or not isinstance(fill, SolidFill):
+        return None
+    return blended_shapes(styles["mixBlendMode"], _box(node), fill.color, contents)
 
 
 def _structural_raster_reason(node: RenderedNode) -> str | None:
@@ -3071,6 +3098,32 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
 
         node = lower_drop_shadow(node)
         reason = _structural_raster_reason(node)
+        if reason == "mix-blend-mode has no native mapping":
+            blended = _blend_over_solids(node, rendered, contents, effective_opacity(node))
+            if blended is not None:
+                for index, part in enumerate(blended):
+                    contents.append(
+                        identities.apply(part, node, role=None if index == 0 else f"blend-{index}")
+                    )
+                coverage.append(
+                    CoverageItem(
+                        element=_label(node),
+                        representation=(
+                            Representation.DECOMPOSED if len(blended) > 1 else Representation.NATIVE
+                        ),
+                        editability=(
+                            Editability.COMPONENTS if len(blended) > 1 else Editability.SEMANTIC
+                        ),
+                        output_count=len(blended),
+                        reason=(
+                            f"{node.styles['mixBlendMode']} resolved against the solid shapes "
+                            "beneath it"
+                            if len(blended) > 1
+                            else ""
+                        ),
+                    )
+                )
+                continue
         fill: Fill | None = None
         if reason is None:
             fill, reason = _resolve_fill(node, rendered)

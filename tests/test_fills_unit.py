@@ -375,3 +375,44 @@ def test_reverse_reads_pattfill_and_crop_from_pptx() -> None:
     assert "data:image/svg" in slide_html  # approximated preset
     assert "background-size:200% 100%" in slide_html  # inverted crop
     assert any("pattFill" in w.message and "diagCross" in w.message for w in html.warnings)
+
+
+def test_shape_colours_apply_their_lightness_tint_and_shade_transforms() -> None:
+    from xml.etree.ElementTree import fromstring
+
+    from domoxml.slides.appearance_read import rgba
+
+    ns = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+    colors = {"accent5": "4EA6DC"}
+
+    def fill(inner: str):  # type: ignore[no-untyped-def]
+        return rgba(fromstring(f"<a:solidFill {ns}>{inner}</a:solidFill>"), colors)
+
+    light = fill(
+        '<a:schemeClr val="accent5"><a:lumMod val="20000"/><a:lumOff val="80000"/></a:schemeClr>'
+    )
+    plain = fill('<a:schemeClr val="accent5"/>')
+    half = fill('<a:srgbClr val="FF0000"><a:alpha val="50000"/></a:srgbClr>')
+    shaded = fill('<a:srgbClr val="FFFFFF"><a:shade val="50000"/></a:srgbClr>')
+
+    assert plain is not None and light is not None
+    assert light.r > 200 and light.g > 225 and light.b > 240  # a pale tint, not the accent
+    assert half is not None and half.a == 0.5
+    assert shaded is not None and (shaded.r, shaded.g, shaded.b) == (128, 128, 128)
+
+
+def test_a_tint_keeps_the_stated_share_of_the_colour_and_fades_the_rest_to_white() -> None:
+    from xml.etree.ElementTree import fromstring
+
+    from domoxml.slides.appearance_read import rgba
+
+    ns = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+
+    def tinted(value: int):  # type: ignore[no-untyped-def]
+        colour = f'<a:srgbClr val="FF0000"><a:tint val="{value}"/></a:srgbClr>'
+        return rgba(fromstring(f"<a:solidFill {ns}>{colour}</a:solidFill>"), {})
+
+    whole, none, half = tinted(100_000), tinted(0), tinted(50_000)
+    assert whole is not None and (whole.r, whole.g, whole.b) == (255, 0, 0)
+    assert none is not None and (none.r, none.g, none.b) == (255, 255, 255)
+    assert half is not None and (half.r, half.g, half.b) == (255, 128, 128)

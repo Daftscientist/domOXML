@@ -39,7 +39,10 @@ class _Unsupported(Exception):
 
 @lru_cache(maxsize=1)
 def _definitions() -> Element:
-    return ElementTree.parse(str(_DEFINITIONS)).getroot()
+    root = ElementTree.parse(str(_DEFINITIONS)).getroot()
+    if root is None:
+        raise RuntimeError("preset shape definitions are empty")
+    return root
 
 
 def preset_names() -> frozenset[str]:
@@ -127,7 +130,8 @@ def _evaluate(formula: str, env: Mapping[str, float]) -> float:
             return args[0] * math.cos(math.atan2(args[2], args[1]))
         case "sat2":
             return args[0] * math.sin(math.atan2(args[2], args[1]))
-    raise _Unsupported(f"unknown operator {operator!r}")
+        case _:
+            raise _Unsupported(f"unknown operator {operator!r}")
 
 
 def _guides(definition: Element, env: dict[str, float], overrides: Mapping[str, float]) -> None:

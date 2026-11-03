@@ -340,7 +340,13 @@ def read_text_body(
                     start_at=_int_attr(auto_bullet, "startAt", 1),
                 )
 
-        fallback_rpr = resolve_run_rpr(None, level, ph_ctx) if ph_ctx is not None else None
+        fallback_rpr = resolve_run_rpr(
+            None,
+            level,
+            ph_ctx,
+            own_list_style=body.find("a:lstStyle", _NS),
+            default_style=theme_ctx.default_text_style if theme_ctx is not None else None,
+        )
         runs = tuple(
             run
             for element in paragraph

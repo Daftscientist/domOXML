@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -47,6 +48,7 @@ from domoxml.core.ir.model import (
     QuadTo,
     Shadow,
     ShapeNode,
+    SlideBackground,
     SlideIR,
     SolidFill,
     SourceProvenance,
@@ -81,7 +83,6 @@ from domoxml.slides.appearance_read import (
 from domoxml.slides.appearance_read import (
     rgba as _rgba,
 )
-from domoxml.slides.background import parse_background
 from domoxml.slides.chart_read import chart_picture
 from domoxml.slides.connector_read import read_connector
 from domoxml.slides.diagram_read import diagram_shapes
@@ -1022,6 +1023,74 @@ def _hyperlink_resolver(
     return resolve
 
 
+def _slide_background(
+    package: OpcPackage, slide_part: str, slide: Element, colors: ThemeColors
+) -> SlideBackground | None:
+    """The slide's background: its own, else the layout's, else the master's.
+
+    A background is a fill (``bgPr``) or a reference to one of the theme's background fills
+    (``bgRef``, whose own colour stands in for the style's ``phClr`` placeholder).
+    """
+    layout_part = _related_part_by_type(package, slide_part, _SLIDE_LAYOUT_REL)
+    master_part = (
+        _related_part_by_type(package, layout_part, _SLIDE_MASTER_REL) if layout_part else None
+    )
+    levels: list[tuple[Element, str]] = [(slide, slide_part)]
+    for part in (layout_part, master_part):
+        if part is None:
+            continue
+        with contextlib.suppress(KeyError, ElementTree.ParseError):
+            levels.append((ElementTree.fromstring(package.read(part)), part))
+    for level, (root, part) in enumerate(levels):
+        background = root.find("p:cSld/p:bg", _NS)
+        if background is None:
+            continue
+        properties = background.find("p:bgPr", _NS)
+        if properties is not None:
+            fill = _fill(properties, package, part, colors)
+        else:
+            fill = _background_reference_fill(
+                background.find("p:bgRef", _NS), package, master_part, colors
+            )
+        if fill is None:
+            return None
+        return SlideBackground(fill=fill, inherited=level > 0)
+    return None
+
+
+def _background_reference_fill(
+    reference: Element | None, package: OpcPackage, master_part: str | None, colors: ThemeColors
+) -> Fill | None:
+    """The theme background fill a ``bgRef`` points at, painted in the reference's colour."""
+    if reference is None or master_part is None:
+        return None
+    theme_part = _related_part_by_type(package, master_part, _THEME_REL)
+    if theme_part is None:
+        return None
+    try:
+        theme = ElementTree.fromstring(package.read(theme_part))
+        index = int(reference.get("idx", "0"))
+    except (KeyError, ValueError, ElementTree.ParseError):
+        return None
+    styles = theme.find("a:themeElements/a:fmtScheme/a:bgFillStyleLst", _NS)
+    position = index - 1001
+    if styles is None or not 0 <= position < len(styles):
+        return None
+    style = copy.deepcopy(styles[position])
+    colour = next(iter(reference), None)
+    if colour is not None:
+        for parent in style.iter():
+            for child_index, child in enumerate(list(parent)):
+                if child.tag == f"{{{_A}}}schemeClr" and child.get("val") == "phClr":
+                    # The style's own colour transforms (alpha, tint...) apply to the reference's.
+                    replacement = copy.deepcopy(colour)
+                    replacement.extend(copy.deepcopy(transform) for transform in child)
+                    parent[child_index] = replacement
+    holder = Element("holder")
+    holder.append(style)
+    return _fill(holder, package, theme_part, colors)
+
+
 def _build_slide_inherit_ctx(package: OpcPackage, slide_part: str) -> _SlideInheritCtx:
     """Build the per-slide inheritance context (layout/master XML + theme fonts).
 
@@ -1054,10 +1123,17 @@ def _build_slide_inherit_ctx(package: OpcPackage, slide_part: str) -> _SlideInhe
 
     # Build colors dict for scheme color resolution in text runs.
     colors = _slide_colors(package, slide_part)
+    default_text_style: Element | None = None
+    with contextlib.suppress(KeyError, ValueError, ElementTree.ParseError):
+        presentation = ElementTree.fromstring(
+            package.read(package.related_part_by_type(None, _OFFICE_DOCUMENT_REL))
+        )
+        default_text_style = presentation.find("p:defaultTextStyle", _NS)
     theme_ctx = ThemeContext(
         major_latin=major_latin,
         minor_latin=minor_latin,
         colors=colors,
+        default_text_style=default_text_style,
     )
     return _SlideInheritCtx(
         layout_root=layout_root,
@@ -1186,10 +1262,13 @@ def _slide(
     renderer_fallback_owner_node_id: str | None = None
 
     # --- Slide-level: background (p:cSld/p:bg) ---
-    background = parse_background(
-        root, lambda properties: _fill(properties, package, slide_part, colors)
-    )
-    if background is not None:
+    background = _slide_background(package, slide_part, root, colors)
+    # An inherited background is the layout's or master's own, not an element of this slide.
+    if (
+        background is not None
+        and not background.inherited
+        and (root.find("p:cSld/p:bg/p:bgPr", _NS) is not None)
+    ):
         coverage.append(
             CoverageItem(
                 element=f"{slide_part}:background",

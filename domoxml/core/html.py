@@ -815,13 +815,39 @@ def _decoration_css(run: TextRun) -> str | None:
     return " ".join(lines) if lines else None
 
 
-_FONT_FALLBACKS = {"courier new": "monospace", "times new roman": "serif"}
+_SERIF_FONTS = frozenset(
+    {
+        "times new roman", "times", "georgia", "cambria", "garamond", "palatino",
+        "palatino linotype", "book antiqua", "baskerville", "didot", "constantia", "minion pro",
+        "century schoolbook", "bodoni mt", "hoefler text", "iowan old style", "charter",
+    }
+)  # fmt: skip
+_MONO_FONTS = frozenset(
+    {
+        "courier new", "courier", "consolas", "menlo", "monaco", "lucida console",
+        "andale mono", "source code pro", "fira code", "jetbrains mono", "sf mono",
+    }
+)  # fmt: skip
 
 
 def _css_font_family(family: str) -> str:
     """A family with the generic one a browser should fall back to when the font is missing."""
-    fallback = _FONT_FALLBACKS.get(family.lower())
-    return f"{family},{fallback}" if fallback else family
+    if "," in family or family.lower() in _GENERIC_FAMILIES:
+        return family
+    lowered = family.lower()
+    generic = (
+        "serif"
+        if lowered in _SERIF_FONTS
+        else "monospace"
+        if lowered in _MONO_FONTS
+        else "sans-serif"
+    )
+    return f"{family},{generic}"
+
+
+_GENERIC_FAMILIES = frozenset(
+    {"serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"}
+)
 
 
 def _run_html(run: TextRun) -> str:

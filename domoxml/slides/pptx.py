@@ -799,6 +799,8 @@ def _slide(
             f"<mc:Fallback>{fallback_xml}</mc:Fallback>"
             "</mc:AlternateContent>"
         )
+    # The output has its own master, so a background the slide only inherited from a source
+    # master is written onto the slide itself.
     bg_xml = background_xml(slide.background, bg_blip_rid) if slide.background is not None else ""
     transition = transition_xml(slide.transition)
     slide_xml = (

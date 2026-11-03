@@ -1031,6 +1031,10 @@ def _cropped_geometry(
     if local is not None:
         layout_width = float(node.styles.get("domoxmlLayoutWidth") or node.width)
         layout_height = float(node.styles.get("domoxmlLayoutHeight") or node.height)
+        corners = corner_radii(node.styles, width_px=layout_width, height_px=layout_height)
+        if corners is not None and not is_plain_round_rect(corners):
+            # One circular radius cannot stand for uneven or elliptical corners.
+            return None, "clipped by an ancestor's overflow has no native mapping"
         left, top, width, height, radius = local
         shape_radius = parse_radius_px(
             node.styles.get("borderRadius"), shorter_side_px=min(layout_width, layout_height)
@@ -2853,7 +2857,13 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # clip), so it keeps exactly its visible pixels and nothing spills past the clipping box.
         # SVG keeps the raster: its custom geometry is built elsewhere and is not cropped here.
         ancestor_clip = None if node.tag == "svg" else _ancestor_clip_window(node)
-        local_clip = None if node.tag == "svg" else _local_clip_window(node)
+        local_clip = (
+            _local_clip_window(node)
+            if node.tag not in ("svg", "table", "canvas", "video", "audio", "iframe", "img")
+            and fill_only(node)
+            and not node.text_runs
+            else None
+        )
         if (
             node.styles.get("domoxmlClippedByAncestor")
             and ancestor_clip is None

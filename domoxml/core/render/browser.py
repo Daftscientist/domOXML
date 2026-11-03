@@ -582,6 +582,7 @@ _SNAPSHOT_JS = """
       domoxmlOwnerNodeId: 'data-domoxml-owner-node-id',
       domoxmlLayerRole: 'data-domoxml-layer-role',
       domoxmlPreservedPayload: 'data-domoxml-preserved-payload',
+      domoxmlChart: 'data-chart',
       domoxmlRepresentation: 'data-domoxml-representation',
       domoxmlSlideFallback: 'data-domoxml-slide-fallback',
       domoxmlConnector: 'data-domoxml-connector',

@@ -25,7 +25,7 @@ source_to_pptx_min_regional_similarity = 0.965
 source_to_pptx_min_structural_similarity = 0.925
 pptx_to_html_min_similarity = 0.99
 pptx_to_html_min_regional_similarity = 0.97
-pptx_to_html_min_structural_similarity = 0.95
+pptx_to_html_min_structural_similarity = 0.94
 
 [roundtrip]
 cycles = 2

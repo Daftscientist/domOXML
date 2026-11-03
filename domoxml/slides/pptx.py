@@ -8,6 +8,7 @@ from xml.sax.saxutils import escape
 
 from defusedxml import ElementTree
 
+from domoxml.core.connector_geometry import connector_box
 from domoxml.core.drawingml import can_emit_picture, line_xml, picture_xml, shape_xml, table_xml
 from domoxml.core.drawingml.identity import (
     alt_text_attr,
@@ -280,12 +281,19 @@ def _shape_hyperlinks(body: TextBody | None) -> list[Hyperlink]:
     ]
 
 
+_CONNECTOR_PRESETS = {"straight": "line", "bent": "bentConnector3", "curved": "curvedConnector3"}
+
+
 def _connector_xml(conn: Connector, *, shape_id: int) -> str:
     """Emit a ``<p:cxnSp>`` element for a connector node."""
-    x = min(conn.start.x, conn.end.x)
-    y = min(conn.start.y, conn.end.y)
-    cx = max(1, abs(conn.end.x - conn.start.x))
-    cy = max(1, abs(conn.end.y - conn.start.y))
+    x, y, cx, cy, rotation, flip_h, flip_v = connector_box(
+        conn.start, conn.end, conn.vertical_first and conn.kind != "straight"
+    )
+    attributes = (
+        (f' rot="{rotation}"' if rotation else "")
+        + (' flipH="1"' if flip_h else "")
+        + (' flipV="1"' if flip_v else "")
+    )
     line = line_xml(conn.line)
     return (
         f"<p:cxnSp>"
@@ -295,8 +303,8 @@ def _connector_xml(conn: Connector, *, shape_id: int) -> str:
         f"<p:nvPr>{node_identity_xml(conn)}</p:nvPr>"
         f"</p:nvCxnSpPr>"
         f"<p:spPr>"
-        f'<a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
-        f'<a:prstGeom prst="line"><a:avLst/></a:prstGeom>'
+        f'<a:xfrm{attributes}><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
+        f'<a:prstGeom prst="{_CONNECTOR_PRESETS[conn.kind]}"><a:avLst/></a:prstGeom>'
         f"{line}"
         f"</p:spPr>"
         f"</p:cxnSp>"

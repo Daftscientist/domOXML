@@ -838,6 +838,8 @@ class Connector(CanvasNode):
     start: Point
     end: Point
     kind: Literal["straight", "bent", "curved"] = "straight"
+    # Whether an elbow or curve leaves ``start`` vertically rather than horizontally.
+    vertical_first: bool = False
     line: Line
 
 

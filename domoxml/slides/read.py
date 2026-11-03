@@ -834,7 +834,7 @@ def _connector_reverse_coverage(slide_part: str, element: Element) -> CoverageIt
         representation=Representation.APPROXIMATED,
         editability=Editability.SEMANTIC,
         source_retention=SourceRetention.LOST,
-        reason="connector routing and exact endpoints are approximated from its transform box",
+        reason="connector adjust handles and multi-bend routes are approximated by one elbow",
     )
 
 

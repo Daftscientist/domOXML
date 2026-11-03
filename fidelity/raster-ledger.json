@@ -188,11 +188,9 @@
   "mix-blend-multiply": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "mix-blend-mode has no native mapping"
-    ],
-    "similarity": 0.792
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.96
   },
   "opacity-group": {
     "dropped": false,

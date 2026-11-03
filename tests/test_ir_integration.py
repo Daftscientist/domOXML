@@ -3847,3 +3847,47 @@ async def test_generic_monospace_and_serif_become_named_office_fonts() -> None:
 
     html = inline_assets(serialize_canvas([result.slide])).slides[0].html
     assert "font-family:Courier New,monospace" in html
+
+
+async def test_multiply_over_a_solid_shape_becomes_plain_shapes_in_the_blended_colour() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
+        "background:#ffcc00'></div>"
+        "<div style='position:absolute;left:300px;top:200px;width:300px;height:200px;"
+        "background:#00ccff;mix-blend-mode:multiply'></div>"
+    )
+
+    colours = [s.fill.color for s in result.slide.shapes if isinstance(s.fill, SolidFill)]
+    # The overlap is yellow x cyan; the rest of the cyan box sits on the white slide.
+    assert Rgba(r=0, g=163, b=0) in colours
+    assert any((c.r, c.g, c.b) == (0, 204, 255) for c in colours)
+    assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+    assert any(item.representation.value == "decomposed" for item in result.coverage)
+
+
+async def test_multiply_over_a_picture_still_keeps_its_raster() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
+        "background:linear-gradient(#ffcc00,#cc00ff)'></div>"
+        "<div style='position:absolute;left:300px;top:200px;width:300px;height:200px;"
+        "background:#00ccff;mix-blend-mode:multiply'></div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+
+
+async def test_screen_over_the_bare_canvas_keeps_its_own_colour() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
+        "background:#336699'></div>"
+        "<div style='position:absolute;left:250px;top:200px;width:300px;height:200px;"
+        "background:#cc6600;mix-blend-mode:screen'></div>"
+    )
+
+    colours = {
+        (s.fill.color.r, s.fill.color.g, s.fill.color.b)
+        for s in result.slide.shapes
+        if isinstance(s.fill, SolidFill)
+    }
+    assert (204, 102, 0) in colours  # outside the overlap the canvas blends as transparent
+    assert (214, 163, 153) in colours  # 1 - (1 - a)(1 - b) per channel inside it

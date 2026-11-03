@@ -199,5 +199,21 @@
   "checkbox-radio-range": {
     "html": "<input type='checkbox' checked style='position:absolute;left:200px;top:150px;width:24px;height:24px;margin:0'><input type='radio' checked style='position:absolute;left:260px;top:150px;width:24px;height:24px;margin:0'><input type='range' value='40' style='position:absolute;left:200px;top:220px;width:360px;height:24px;margin:0'>",
     "inherent": false
+  },
+  "text-input": {
+    "html": "<input type='text' value='Hello world' style='position:absolute;left:200px;top:150px;width:360px;height:40px;font-size:20px'><input type='text' placeholder='Your name' style='position:absolute;left:200px;top:220px;width:360px;height:40px;font-size:20px'>",
+    "inherent": false
+  },
+  "textarea": {
+    "html": "<textarea style='position:absolute;left:200px;top:150px;width:360px;height:120px;font-size:20px'>Some multi line\ntext in a box</textarea>",
+    "inherent": false
+  },
+  "select": {
+    "html": "<select style='position:absolute;left:200px;top:150px;width:240px;height:40px;font-size:20px'><option>One</option><option selected>Two</option></select>",
+    "inherent": false
+  },
+  "table-bg": {
+    "html": "<table style='position:absolute;left:150px;top:120px;font-size:22px;border-collapse:collapse;background:#eef'><thead style='background:#c20;color:#fff'><tr><th>A</th><th>B</th></tr></thead><tbody><tr style='background:#cfc'><td>1</td><td style='background:#fc0'>2</td></tr><tr><td>3</td><td>4</td></tr></tbody></table>",
+    "inherent": false
   }
 }

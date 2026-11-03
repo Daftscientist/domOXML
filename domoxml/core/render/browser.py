@@ -542,6 +542,7 @@ _SNAPSHOT_JS = """
         rtl: getComputedStyle(el).direction === 'rtl',
       });
     }
+    if (tag === 'select' && (el.multiple || el.size > 1)) styles.domoxmlSelectList = 'true';
     if (el.getAttribute('aria-hidden') !== 'true') {
       const title = tag === 'svg' ? el.querySelector(':scope > title') : null;
       const alt = el.getAttribute('aria-label')
@@ -589,13 +590,40 @@ _SNAPSHOT_JS = """
         styles.domoxmlCanvasReason = recorded.reason;
       }
     }
+    let fieldText = text;
+    let fieldRuns = null;
+    const textTypes = ['', 'text', 'search', 'email', 'url', 'tel', 'password', 'number'];
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+      styles.domoxmlField = tag === 'textarea' ? 'multi' : 'single';
+      // Chrome paints a default drop-down white although its computed background is grey.
+      if (tag === 'select' && styles.backgroundColor === 'rgb(239, 239, 239)') {
+        styles.backgroundColor = 'rgb(255, 255, 255)';
+      }
+    }
+    if (tag === 'select' && !el.multiple && el.size <= 1 && el.selectedOptions[0]) {
+      fieldText = el.selectedOptions[0].label || el.selectedOptions[0].textContent || '';
+    } else if (tag === 'input' && textTypes.includes(el.type)) {
+      let shown = el.value;
+      if (shown && el.type === 'password') shown = '\u2022'.repeat(shown.length);
+      const hint = !shown && el.placeholder;
+      fieldText = shown || el.placeholder || '';
+      if (hint) {
+        const ph = pick(computed);
+        ph.color = getComputedStyle(el, '::placeholder').color;
+        ph.webkitTextFillColor = ph.color;
+        fieldRuns = [{ text: fieldText, styles: ph }];
+      }
+    }
+    if (fieldText && fieldText !== text) {
+      fieldRuns = fieldRuns || [{ text: fieldText, styles: pick(computed) }];
+    }
     out.push({
       tag,
       x: r.x, y: r.y, width: r.width, height: r.height,
-      text, index, parent,
+      text: fieldText, index, parent,
       src: svgSrc,
       styles,
-      textRuns: inlineRuns(el, consolidateText),
+      textRuns: fieldRuns || inlineRuns(el, consolidateText),
     });
     for (const child of el.children) walk(child, index, effectiveLinear);
   };

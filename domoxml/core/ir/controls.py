@@ -213,3 +213,24 @@ def _range(
 
 
 __all__ = ["ClosePath", "control_shapes"]
+
+
+ARROW = Rgba(r=16, g=16, b=16)
+
+
+def select_arrow(x: float, y: float, width: float, height: float) -> ShapeNode | None:
+    """The down chevron Chrome paints at the right of a drop-down ``<select>``."""
+    if width < 40 or height < 14:
+        return None
+    arrow_w, arrow_h = 10.0, 6.0
+    box = _box(x + width - 8.0 - arrow_w, y + (height - arrow_h) / 2, arrow_w, arrow_h)
+    path = (
+        MoveTo(to=Point(x=0, y=0)),
+        LineTo(to=Point(x=box.width // 2, y=box.height)),
+        LineTo(to=Point(x=box.width, y=0)),
+    )
+    return ShapeNode(
+        box=box,
+        custom_geom=CustomGeometry(width_emu=box.width, height_emu=box.height, path=path),
+        line=_line(ARROW, 1.5),
+    )

@@ -3825,3 +3825,25 @@ async def test_custom_styled_select_gets_no_chevron_and_fields_never_wrap() -> N
 
     again = read_pptx(build_pptx([result.slide], faces=[]))[0]
     assert any(s.text and s.text.wrap == "none" for s in again.shapes)
+
+
+async def test_generic_monospace_and_serif_become_named_office_fonts() -> None:
+    result = await _render_and_extract_result(
+        "<pre style='position:absolute;left:100px;top:100px;margin:0;font-size:20px'>code</pre>"
+        "<div style='position:absolute;left:100px;top:200px;font:24px serif'>serif text</div>"
+        "<div style='position:absolute;left:100px;top:300px;font:24px Georgia, serif'>named</div>"
+    )
+
+    families = {
+        r.text: r.font_family
+        for s in result.slide.shapes
+        if s.text
+        for p in s.text.paragraphs
+        for r in p.runs
+    }
+    assert families["code"] == "Courier New"
+    assert families["serif text"] == "Times New Roman"
+    assert families["named"] == "Georgia"
+
+    html = inline_assets(serialize_canvas([result.slide])).slides[0].html
+    assert "font-family:Courier New,monospace" in html

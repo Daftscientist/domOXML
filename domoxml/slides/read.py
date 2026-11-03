@@ -14,6 +14,7 @@ from defusedxml import ElementTree
 from PIL import Image, ImageChops
 
 from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
+from domoxml.core.drawingml.preset_geometry import preset_geometry
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
@@ -428,6 +429,8 @@ def _shape(
         shape_effects = applied_effect_intent.effects
     custgeom_el = properties.find(f"{{{_A}}}custGeom")
     custom_geom = _custGeom(custgeom_el, box) if custgeom_el is not None else None
+    if custom_geom is None and geometry is not None and geom_name not in _valid_geom_kinds:
+        custom_geom, _complete = _preset_outline(geometry, box)
     return (
         _with_pptx_identity(
             ShapeNode(
@@ -677,6 +680,17 @@ def _native_reverse_coverage(slide_part: str, element: Element) -> CoverageItem:
     )
 
 
+def _preset_outline(geometry: Element, box: Box) -> tuple[CustomGeometry | None, bool]:
+    """A preset the IR has no named geometry for, drawn from the standard's definition."""
+    adjusts: dict[str, float] = {}
+    for guide in geometry.findall("a:avLst/a:gd", _NS):
+        formula = guide.get("fmla", "")
+        if formula.startswith("val "):
+            with contextlib.suppress(ValueError):
+                adjusts[guide.get("name", "")] = float(formula.removeprefix("val "))
+    return preset_geometry(geometry.get("prst", "rect"), box.width, box.height, adjusts)
+
+
 def _shape_reverse_coverage(
     slide_part: str,
     element: Element,
@@ -690,8 +704,28 @@ def _shape_reverse_coverage(
         name = geometry.get("prst", "rect")
         valid_geometry = frozenset(GeometryKind.__args__)  # type: ignore[attr-defined]
         if name not in valid_geometry:
-            reasons.append(f"unsupported preset geometry {name!r} mapped to a rectangle")
-            retention = SourceRetention.LOST
+            transform = element.find("p:spPr/a:xfrm/a:ext", _NS)
+            outline, complete = (
+                _preset_outline(
+                    geometry,
+                    Box(
+                        x=0,
+                        y=0,
+                        width=_int_attr(transform, "cx"),
+                        height=_int_attr(transform, "cy"),
+                    ),
+                )
+                if transform is not None
+                else (None, False)
+            )
+            if outline is None:
+                reasons.append(f"unsupported preset geometry {name!r} mapped to a rectangle")
+                retention = SourceRetention.LOST
+            elif not complete:
+                reasons.append(
+                    f"preset {name!r} outline drawn; its stroke-only or shaded parts dropped"
+                )
+                retention = SourceRetention.LOST
     if has_preserved_effects:
         reasons.append("shape has detached source-only effect fragments")
         if retention is SourceRetention.NOT_REQUIRED:

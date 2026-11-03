@@ -288,6 +288,22 @@ def _underline_colour(styles: dict[str, str]) -> Rgba | None:
     return drawn
 
 
+# PowerPoint has no generic font families, so a bare ``monospace`` or ``serif`` would fall back to
+# its default face; these are the named fonts every Office install has.
+_GENERIC_FONTS = {
+    "monospace": "Courier New",
+    "ui-monospace": "Courier New",
+    "serif": "Times New Roman",
+    "ui-serif": "Times New Roman",
+}
+
+
+def _font_family(value: str | None) -> str:
+    """The first family of a CSS ``font-family`` list, with generic families made concrete."""
+    first = (value or "sans-serif").split(",")[0].strip().strip("'\"")
+    return _GENERIC_FONTS.get(first.lower(), first)
+
+
 def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
     if not text:
         return None
@@ -299,7 +315,7 @@ def _text_run(text: str, styles: dict[str, str]) -> TextRun | None:
     underline_color = _underline_colour(styles) if underline is not False else None
     return TextRun(
         text=text,
-        font_family=(styles.get("fontFamily") or "sans-serif").split(",")[0].strip().strip("'\""),
+        font_family=_font_family(styles.get("fontFamily")),
         size_pt=px_to_pt(parse_length_px(styles.get("fontSize")) or 16.0),
         bold=is_bold(styles.get("fontWeight")),
         italic=styles.get("fontStyle", "normal") == "italic",

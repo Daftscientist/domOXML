@@ -790,9 +790,18 @@ def _decoration_css(run: TextRun) -> str | None:
     return " ".join(lines) if lines else None
 
 
+_FONT_FALLBACKS = {"courier new": "monospace", "times new roman": "serif"}
+
+
+def _css_font_family(family: str) -> str:
+    """A family with the generic one a browser should fall back to when the font is missing."""
+    fallback = _FONT_FALLBACKS.get(family.lower())
+    return f"{family},{fallback}" if fallback else family
+
+
 def _run_html(run: TextRun) -> str:
     styles = [
-        f"font-family:{run.font_family}",
+        f"font-family:{_css_font_family(run.font_family)}",
         f"font-size:{_number(run.size_pt)}pt",
         f"font-weight:{'700' if run.bold else '400'}",
         f"font-style:{'italic' if run.italic else 'normal'}",

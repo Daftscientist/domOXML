@@ -3919,3 +3919,38 @@ async def test_a_blended_box_that_is_masked_or_clipped_by_an_ancestor_keeps_its_
     result = await _render_and_extract_result(html)
 
     assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+
+
+async def test_summary_gets_a_disclosure_triangle_and_its_text_sits_after_it() -> None:
+    result = await _render_and_extract_result(
+        "<details open style='position:absolute;left:100px;top:100px;width:400px;font:24px Arial'>"
+        "<summary>Title</summary>Body</details>"
+        "<details style='position:absolute;left:100px;top:300px;width:400px;font:24px Arial'>"
+        "<summary>Closed</summary>Hidden</details>"
+    )
+
+    triangles = [s for s in result.slide.shapes if s.custom_geom is not None]
+    assert len(triangles) == 2
+    down, right = sorted(triangles, key=lambda s: s.box.y)
+    assert down.box.width > down.box.height  # open: a triangle pointing down
+    assert right.box.height > right.box.width  # closed: pointing right
+    title = next(
+        s for s in result.slide.shapes if s.text and s.text.paragraphs[0].runs[0].text == "Title"
+    )
+    assert title.text.paragraphs[0].indent_pt > 18  # type: ignore[union-attr]
+    assert title.text.margins[0] == 0  # type: ignore[union-attr]
+    again = read_pptx(build_pptx([result.slide], faces=[]))[0]
+    assert sum(1 for s in again.shapes if s.custom_geom is not None) == 2
+
+
+async def test_a_block_summary_has_no_marker_and_no_indent() -> None:
+    result = await _render_and_extract_result(
+        "<details open style='position:absolute;left:100px;top:100px;width:400px;font:24px Arial'>"
+        "<summary style='display:block'>Plain</summary>Body</details>"
+    )
+
+    assert not any(s.custom_geom is not None for s in result.slide.shapes)
+    plain = next(
+        s for s in result.slide.shapes if s.text and s.text.paragraphs[0].runs[0].text == "Plain"
+    )
+    assert plain.text.paragraphs[0].indent_pt == 0  # type: ignore[union-attr]

@@ -234,3 +234,31 @@ def select_arrow(x: float, y: float, width: float, height: float) -> ShapeNode |
         custom_geom=CustomGeometry(width_emu=box.width, height_emu=box.height, path=path),
         line=_line(ARROW, 1.5),
     )
+
+
+def disclosure_marker(
+    opened: bool, x: float, y: float, font_px: float, line_px: float, colour: Rgba
+) -> ShapeNode:
+    """The triangle Chrome draws before a ``<summary>``: down when open, right when closed.
+
+    ``x`` and ``y`` are the summary's top left; both triangles are equilateral with a side of
+    0.64em and centred on the first line.
+    """
+    side, altitude = 0.64 * font_px, 0.55 * font_px
+    width, height = (side, altitude) if opened else (altitude, side)
+    box = _box(x + 0.005 * font_px, y + line_px / 2 - height / 2, width, height)
+    corners = (
+        [(0, 0), (box.width, 0), (box.width // 2, box.height)]
+        if opened
+        else [(0, 0), (box.width, box.height // 2), (0, box.height)]
+    )
+    path = (
+        MoveTo(to=Point(x=corners[0][0], y=corners[0][1])),
+        *(LineTo(to=Point(x=px, y=py)) for px, py in corners[1:]),
+        ClosePath(),
+    )
+    return ShapeNode(
+        box=box,
+        custom_geom=CustomGeometry(width_emu=box.width, height_emu=box.height, path=path),
+        fill=SolidFill(color=colour),
+    )

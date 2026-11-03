@@ -79,3 +79,16 @@ async def test_a_data_chart_block_becomes_a_native_chart_and_reads_back_as_one()
     [read] = back.slides[0].contents
     assert isinstance(read, PreservedNode) and read.fallback is not None
     assert "<svg" in pptx_to_html(deck).slides[0].html.lower() or read.fallback.svg_data
+
+
+@pytest.mark.integration
+async def test_a_turned_data_chart_block_is_not_placed_upright() -> None:
+    html = (
+        f"<div data-chart='{json.dumps(_COLUMN)}' style='position:absolute;left:40px;top:30px;"
+        "width:580px;height:300px;transform:rotate(10deg)'></div>"
+    )
+    page = compose_page(html, css=None, theme=Theme(), width_px=1280, height_px=720)
+    async with BrowserSession() as session:
+        rendered = await session.render(page, width=1280, height=720)
+
+    assert not any(isinstance(n, PreservedNode) for n in extract_slide(rendered).slide.contents)

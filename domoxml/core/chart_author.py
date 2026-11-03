@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from typing import cast
 from xml.sax.saxutils import escape
@@ -85,7 +86,13 @@ def parse_chart_spec(raw: str) -> ChartSpec | None:
         for value in cast("list[object]", values):
             if isinstance(value, bool) or not isinstance(value, int | float):
                 return None
-            numbers.append(float(value))
+            try:
+                number = float(value)
+            except OverflowError:
+                return None
+            if not math.isfinite(number):
+                return None
+            numbers.append(number)
         name = fields.get("name")
         colour = fields.get("color")
         parsed.append(

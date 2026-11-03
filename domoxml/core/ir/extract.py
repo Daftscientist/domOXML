@@ -815,7 +815,13 @@ def _summary_marker(node: RenderedNode) -> ShapeNode | None:
 def _authored_chart(node: RenderedNode) -> PreservedNode | None:
     """A ``data-chart`` block as a native chart frame, drawn in HTML as the SVG of its data."""
     spec = parse_chart_spec(node.styles["domoxmlChart"])
-    if spec is None or node.styles.get("domoxmlClippedByAncestor"):
+    if (
+        spec is None
+        or node.styles.get("domoxmlClippedByAncestor")
+        # The chart frame carries only a position and size, so a turned or flipped block is
+        # not one this path can place faithfully.
+        or node.styles.get("transform", "none") not in ("none", "")
+    ):
         return None
     box = _box(node)
     payload = chart_payload(spec, box)

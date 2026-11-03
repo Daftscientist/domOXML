@@ -4110,3 +4110,22 @@ async def test_darken_over_a_gradient_keeps_its_raster() -> None:
     )
 
     assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+
+
+async def test_a_hard_transition_in_the_backdrop_gradient_stays_hard_after_the_blend() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:100px;width:400px;height:200px;"
+        "background:linear-gradient(90deg,#ff0000 0%,#ff0000 50%,#ffff00 50%,#ffff00 100%)'></div>"
+        "<div style='position:absolute;left:100px;top:200px;width:400px;height:100px;"
+        "background:#00ffff;mix-blend-mode:multiply'></div>"
+    )
+
+    fills = [
+        s.fill
+        for s in result.slide.shapes
+        if isinstance(s.fill, GradientFill) and s.box.y > 150 * 9525
+    ]
+    stops = fills[0].stops
+    # Red x cyan is black, yellow x cyan is green: two stops at the midpoint, one of each.
+    middle = [(round(stop.pos, 2), (stop.color.r, stop.color.g, stop.color.b)) for stop in stops]
+    assert (0.5, (0, 0, 0)) in middle and (0.5, (0, 255, 0)) in middle

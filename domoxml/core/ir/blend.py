@@ -145,11 +145,18 @@ def _blended_gradient(
     if end - start <= 1e-9:
         return None
     stops = gradient.stops
-    positions = [start, *(stop.pos for stop in stops if start < stop.pos < end), end]
+    # Interior stops keep their own colours (so a hard transition stays hard); only the two new
+    # ends are sampled just inside the patch, so a stop sitting on an end gives its inner side.
+    inside = 1e-9
+    points = [
+        (start, sample_gradient(stops, start + inside)),
+        *((stop.pos, stop.color) for stop in stops if start < stop.pos < end),
+        (end, sample_gradient(stops, end - inside)),
+    ]
     blended: list[GradientStop] = []
-    for at in positions:
-        colour = blend_colour(mode, source, sample_gradient(stops, at))
-        if colour is None:
+    for at, colour in points:
+        mixed = blend_colour(mode, source, colour)
+        if mixed is None:
             return None
-        blended.append(GradientStop(pos=(at - start) / (end - start), color=colour))
+        blended.append(GradientStop(pos=(at - start) / (end - start), color=mixed))
     return gradient.model_copy(update={"stops": tuple(blended)})

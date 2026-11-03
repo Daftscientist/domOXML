@@ -2,15 +2,18 @@
 
 HTML has no chart element, so a chart is written as ``data-chart='{...}'`` on a block: a type
 (``bar``, ``column``, ``line``, ``pie``), the category labels and one or more named series. The
-spec becomes a real ``c:chartSpace`` part (data held as literal caches, so PowerPoint draws it and
-styles it natively), wrapped in the graphic frame that places it on the slide.
+spec becomes a real ``c:chartSpace`` part (its data cached beside an embedded workbook, so
+PowerPoint draws it, styles it and opens Edit Data natively), wrapped in the graphic frame that
+places it on the slide.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
+import zipfile
 from dataclasses import dataclass
 from typing import cast
 from xml.sax.saxutils import escape
@@ -30,6 +33,12 @@ _GRIDLINES = (
     '<c:majorGridlines><c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="D9D9D9"/>'
     "</a:solidFill></a:ln></c:spPr></c:majorGridlines>"
 )
+_CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+_RELS_CT = "application/vnd.openxmlformats-package.relationships+xml"
+_SHEET_BASE = "application/vnd.openxmlformats-officedocument.spreadsheetml"
+_SHEET_CT = f"{_SHEET_BASE}.sheet"
+_SS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+_XLSX_CT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _CHART_CT = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
 _PALETTE = ("4472C4", "ED7D31", "A5A5A5", "FFC000", "5B9BD5", "70AD47")
 _TYPES = ("bar", "column", "line", "pie")
@@ -130,8 +139,8 @@ def _strings(values: tuple[str, ...], tag: str) -> str:
 def _numbers(values: tuple[float, ...]) -> str:
     points = "".join(f'<c:pt idx="{i}"><c:v>{v!r}</c:v></c:pt>' for i, v in enumerate(values))
     return (
-        "<c:numLit><c:formatCode>General</c:formatCode>"
-        f'<c:ptCount val="{len(values)}"/>{points}</c:numLit>'
+        "<c:numCache><c:formatCode>General</c:formatCode>"
+        f'<c:ptCount val="{len(values)}"/>{points}</c:numCache>'
     )
 
 
@@ -139,8 +148,12 @@ def _series(spec: ChartSpec, index: int, item: SeriesSpec) -> str:
     kind = spec.kind
     colour = _colour(item.color, index)
     name = escape(item.name)
-    categories = _strings(spec.categories, "strLit")
-    values = _numbers(item.values)
+    last = len(spec.categories) + 1
+    column = _column(index + 1)
+    cached = _strings(spec.categories, "strCache")
+    categories = f"<c:strRef><c:f>Sheet1!$A$2:$A${last}</c:f>{cached}</c:strRef>"
+    numbers = _numbers(item.values)
+    values = f"<c:numRef><c:f>Sheet1!${column}$2:${column}${last}</c:f>{numbers}</c:numRef>"
     if kind == "pie":
         extra = "".join(
             f'<c:dPt><c:idx val="{i}"/><c:bubble3D val="0"/><c:spPr><a:solidFill>'
@@ -161,10 +174,75 @@ def _series(spec: ChartSpec, index: int, item: SeriesSpec) -> str:
     smooth = '<c:smooth val="0"/>' if kind == "line" else ""
     return (
         f'<c:ser><c:idx val="{index}"/><c:order val="{index}"/>'
-        '<c:tx><c:strRef><c:f/><c:strCache><c:ptCount val="1"/>'
+        f'<c:tx><c:strRef><c:f>Sheet1!${column}$1</c:f><c:strCache><c:ptCount val="1"/>'
         f'<c:pt idx="0"><c:v>{name}</c:v></c:pt></c:strCache></c:strRef></c:tx>'
         f"{shape}{extra}<c:cat>{categories}</c:cat><c:val>{values}</c:val>{smooth}</c:ser>"
     )
+
+
+def _column(index: int) -> str:
+    """The spreadsheet column letter for a zero-based index (A, B, ... Z, AA)."""
+    letters = ""
+    index += 1
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
+def workbook_bytes(spec: ChartSpec) -> bytes:
+    """A minimal ``.xlsx`` of the chart's data: categories in column A, one column per series."""
+    rows: list[str] = []
+    header = "".join(
+        f'<c r="{_column(i + 1)}1" t="inlineStr"><is><t>{escape(item.name)}</t></is></c>'
+        for i, item in enumerate(spec.series)
+    )
+    rows.append(f'<row r="1">{header}</row>')
+    for row, category in enumerate(spec.categories, start=2):
+        cells = f'<c r="A{row}" t="inlineStr"><is><t>{escape(category)}</t></is></c>'
+        for i, item in enumerate(spec.series):
+            cells += f'<c r="{_column(i + 1)}{row}"><v>{item.values[row - 2]!r}</v></c>'
+        rows.append(f'<row r="{row}">{cells}</row>')
+    sheet = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"<sheetData>{''.join(rows)}</sheetData></worksheet>"
+    )
+    parts = {
+        "[Content_Types].xml": (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            f'<Types xmlns="{_CT_NS}">'
+            f'<Default Extension="rels" ContentType="{_RELS_CT}"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            f'<Override PartName="/xl/workbook.xml" ContentType="{_SHEET_CT}.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" '
+            f'ContentType="{_SHEET_BASE}.worksheet+xml"/>'
+            "</Types>"
+        ),
+        "_rels/.rels": (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'<Relationship Id="rId1" Type="{_R}/officeDocument" Target="xl/workbook.xml"/>'
+            "</Relationships>"
+        ),
+        "xl/workbook.xml": (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            f'<workbook xmlns="{_SS}" xmlns:r="{_R}">'
+            '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>'
+        ),
+        "xl/_rels/workbook.xml.rels": (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'<Relationship Id="rId1" Type="{_R}/worksheet" Target="worksheets/sheet1.xml"/>'
+            "</Relationships>"
+        ),
+        "xl/worksheets/sheet1.xml": sheet,
+    }
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+    return out.getvalue()
 
 
 def chart_part_xml(spec: ChartSpec) -> bytes:
@@ -220,7 +298,7 @@ def chart_part_xml(spec: ChartSpec) -> bytes:
         f'<c:chartSpace xmlns:c="{_C}" xmlns:a="{_A}" xmlns:r="{_R}">'
         f'<c:roundedCorners val="0"/><c:chart>{title_xml}<c:plotArea><c:layout/>{plot}{axis_xml}'
         f'</c:plotArea>{legend}<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart>'
-        "</c:chartSpace>"
+        '<c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData></c:chartSpace>'
     )
     return xml.encode()
 
@@ -237,9 +315,22 @@ def chart_payload(spec: ChartSpec, box: Box) -> PreservationPayload:
         f'<a:graphicData uri="{_C}"><c:chart xmlns:c="{_C}" r:id="rId1"/></a:graphicData>'
         "</a:graphic></p:graphicFrame>"
     )
+    workbook = workbook_bytes(spec)
+    book_id = hashlib.sha1(workbook, usedforsecurity=False).hexdigest()[:10]
+    book = f"ppt/embeddings/Microsoft_Excel_Sheet_{book_id}.xlsx"
     return PreservationPayload(
         kind="graphicFrame",
         root_xml=frame,
         relationships=(PreservationRelationship(id="rId1", type=f"{_R}/chart", target=name),),
-        parts=(PreservationPart(name=name, content_type=_CHART_CT, data=data),),
+        parts=(
+            PreservationPart(
+                name=name,
+                content_type=_CHART_CT,
+                data=data,
+                relationships=(
+                    PreservationRelationship(id="rId1", type=f"{_R}/package", target=book),
+                ),
+            ),
+            PreservationPart(name=book, content_type=_XLSX_CT, data=workbook),
+        ),
     )

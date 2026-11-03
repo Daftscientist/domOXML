@@ -578,7 +578,7 @@ def _text_body(body: TextBody | None, hyperlink_rid: HyperlinkRid) -> str:
         for paragraph in body.paragraphs
     )
     return (
-        f'<p:txBody><a:bodyPr{vertical} wrap="square" anchor="{anchor}"'
+        f'<p:txBody><a:bodyPr{vertical} wrap="{body.wrap}" anchor="{anchor}"'
         f' lIns="{left}" rIns="{right}" tIns="{top}" bIns="{bottom}"{col_attrs}>'
         f"{autofit_el}</a:bodyPr><a:lstStyle/>{paragraphs}</p:txBody>"
     )

@@ -213,6 +213,11 @@ def _vertical(body: Element) -> Literal["horz", "vert", "vert270"]:
     return "vert" if value in {"vert", "eaVert", "wordArtVert"} else "horz"
 
 
+def _wrap(body: Element) -> Literal["square", "none"]:
+    properties = body.find("a:bodyPr", _NS)
+    return "none" if properties is not None and properties.get("wrap") == "none" else "square"
+
+
 def _text_is_mirrored(body: Element) -> bool:
     """Whether ``bodyPr`` turns the text 180 degrees about the vertical axis (mirrored text)."""
     rotation = body.find("a:bodyPr/a:scene3d/a:camera/a:rot", _NS)
@@ -375,4 +380,5 @@ def read_text_body(
         margins=margins,
         mirror_x=mirrored,
         vertical=_vertical(body),
+        wrap=_wrap(body),
     )

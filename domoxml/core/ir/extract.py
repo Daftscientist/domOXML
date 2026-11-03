@@ -539,6 +539,7 @@ def _text_body_from_decoded(node: RenderedNode, encoded: TextBody | None) -> Tex
         columns=columns,
         column_gap_emu=column_gap_emu,
         margins=margins,
+        wrap="none" if styles.get("domoxmlField") == "single" else "square",
         vertical=_VERTICAL_TEXT.get(styles.get("writingMode", "horizontal-tb"), "horz"),
     )
 
@@ -3497,6 +3498,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             and not node.styles.get("domoxmlClippedByAncestor")
             and node.styles.get("transform", "none") in ("none", "")
             and node.styles.get("domoxmlSelectList") != "true"
+            and node.styles.get("appearance", "auto") != "none"
             else None
         )
         if arrow is not None:

@@ -24,7 +24,8 @@ from domoxml.core.units import emu_to_px
 _SNAPSHOT_JS = """
 () => {
   const pick = (cs) => ({
-    color: cs.color, backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage,
+    color: cs.color, appearance: cs.appearance, backgroundColor: cs.backgroundColor,
+    backgroundImage: cs.backgroundImage,
     backgroundSize: cs.backgroundSize, backgroundPosition: cs.backgroundPosition,
     backgroundRepeat: cs.backgroundRepeat, backgroundBlendMode: cs.backgroundBlendMode,
     backgroundOrigin: cs.backgroundOrigin, backgroundClip: cs.backgroundClip,
@@ -596,7 +597,8 @@ _SNAPSHOT_JS = """
     if (tag === 'input' || tag === 'textarea' || tag === 'select') {
       styles.domoxmlField = tag === 'textarea' ? 'multi' : 'single';
       // Chrome paints a default drop-down white although its computed background is grey.
-      if (tag === 'select' && styles.backgroundColor === 'rgb(239, 239, 239)') {
+      if (tag === 'select' && styles.appearance === 'auto'
+          && styles.backgroundColor === 'rgb(239, 239, 239)') {
         styles.backgroundColor = 'rgb(255, 255, 255)';
       }
     }

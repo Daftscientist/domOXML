@@ -3805,3 +3805,23 @@ async def test_text_fields_and_selects_carry_their_visible_text() -> None:
         "Hello",
         "Two",
     }
+
+
+async def test_custom_styled_select_gets_no_chevron_and_fields_never_wrap() -> None:
+    result = await _render_and_extract_result(
+        "<select style='appearance:none;position:absolute;left:100px;top:100px;width:240px;"
+        "height:40px'><option>One</option></select>"
+        "<input type='text' value='A value far too long to fit in this narrow field at all' "
+        "style='position:absolute;left:100px;top:200px;width:120px;height:40px'>"
+    )
+
+    assert not any(s.custom_geom is not None and s.line is not None for s in result.slide.shapes)
+    field = next(
+        s.text
+        for s in result.slide.shapes
+        if s.text and "too long" in s.text.paragraphs[0].runs[0].text
+    )
+    assert field.wrap == "none"
+
+    again = read_pptx(build_pptx([result.slide], faces=[]))[0]
+    assert any(s.text and s.text.wrap == "none" for s in again.shapes)

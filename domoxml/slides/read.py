@@ -540,6 +540,7 @@ def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> Sh
             ),
             fill=picture,
             opacity=opacity,
+            transform=_xfrm_transform(transform),
         ),
         element,
         slide_part,

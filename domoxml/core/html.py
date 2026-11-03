@@ -7,6 +7,7 @@ import math
 from html import escape
 from urllib.parse import urlsplit
 
+from domoxml.core.drawingml.preset_geometry import outline_leaves_box
 from domoxml.core.drawingml.presets import preset_defaults, preset_vertices
 from domoxml.core.fillcrop import srcrect_to_background
 from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_css
@@ -1348,6 +1349,43 @@ def _table_html(
     )
 
 
+def _picture_outline_layers(
+    node: ShapeNode, assets: dict[str, HtmlAsset], warnings: list[ConversionWarning]
+) -> str | None:
+    """A free-form picture fill with a stroke or text as the picture, its outline and its text.
+
+    The SVG form of custom geometry cannot paint a picture, and a CSS clip hides the border and
+    the text, so the three are separate layers over the same box: the clipped picture, a
+    stroke-only SVG of the outline, and the text.
+    """
+    if (
+        node.custom_geom is None
+        or not isinstance(node.fill, PictureFill)
+        or (node.line is None and node.text is None)
+        or node.portable_fallback is not None
+    ):
+        return None
+    picture = node.model_copy(update={"line": None, "text": None})
+    if not _fill_survives_as_polygon_clip(picture) or outline_leaves_box(node.custom_geom):
+        return None
+    parts = [_node_html(picture, assets, warnings)]
+    if node.line is not None:
+        outline = node.model_copy(
+            update={
+                "fill": None,
+                "text": None,
+                "effects": (),
+                "opacity": 1.0,
+                "node_id": None,
+                "provenance": None,
+            }
+        )
+        parts.append(_node_html(outline, assets, warnings))
+    if node.text is not None:
+        parts.append(_text_layer_html(node, warnings))
+    return "".join(parts)
+
+
 def _outlined_polygon_preset(node: ShapeNode) -> ShapeNode:
     """A stroked polygon preset as free-form geometry, so its outline is drawn.
 
@@ -1448,6 +1486,9 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
     """Serialize one slide node. :class:`ShapeNode`, :class:`MediaNode`, and
     :class:`TableNode` have HTML mappings; others warn and emit nothing."""
     if isinstance(node, ShapeNode):
+        layered = _picture_outline_layers(node, assets, warnings)
+        if layered is not None:
+            return layered
         node = _outlined_polygon_preset(node)
         if (
             isinstance(node.fill, PictureFill)

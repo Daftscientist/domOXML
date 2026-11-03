@@ -155,12 +155,39 @@ def test_a_preset_with_text_keeps_both_its_outline_and_its_text_in_html() -> Non
     assert "Label" in html and "<svg" in html
 
 
-def test_a_gradient_preset_with_text_keeps_a_rectangle_for_now() -> None:
-    deck = _preset_deck("flowChartPunchedTape", fill=_GRADIENT, text=_WORDS)
+def test_a_gradient_preset_with_a_stroke_and_text_keeps_gradient_outline_and_text() -> None:
+    deck = _preset_deck(
+        "flowChartPunchedTape",
+        fill=_GRADIENT,
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+        text=_WORDS,
+    )
 
     [shape] = read_pptx_result(deck).slides[0].contents
+    html = pptx_to_html(deck).slides[0].html
 
-    assert isinstance(shape, ShapeNode) and shape.custom_geom is None
+    assert isinstance(shape, ShapeNode) and shape.custom_geom is not None
+    assert isinstance(shape.fill, GradientFill)
+    assert "<linearGradient" in html and "url(#grad-" in html and "Label" in html
+
+
+@pytest.mark.integration
+async def test_a_gradient_outline_extracts_back_to_a_gradient_shape() -> None:
+    from domoxml.core.ir import extract_slide
+    from domoxml.core.render import BrowserSession
+
+    deck = _preset_deck(
+        "flowChartPunchedTape",
+        fill=_GRADIENT,
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+    )
+    page = f"<body style='margin:0'>{pptx_to_html(deck).slides[0].html}</body>"
+    async with BrowserSession() as session:
+        rendered = await session.render(page, width=1280, height=720)
+
+    shapes = extract_slide(rendered).slide.shapes
+
+    assert any(isinstance(s.fill, GradientFill) and s.custom_geom is not None for s in shapes)
 
 
 @pytest.mark.integration
@@ -251,3 +278,59 @@ def test_a_faded_preset_with_text_is_not_faded_twice() -> None:
 
     assert "opacity:0.5" not in html
     assert "rgba(40,100,200,0.5)" in html
+
+
+def test_a_stroked_polygon_preset_is_an_svg_outline_so_its_stroke_is_drawn() -> None:
+    stroked = ShapeNode(
+        box=Box(x=100 * _UNIT, y=100 * _UNIT, width=200 * _UNIT, height=200 * _UNIT),
+        geom="star5",
+        fill=_BLUE,
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+    )
+    plain = stroked.model_copy(update={"line": None})
+    slide = SlideIR(width=1280 * _UNIT, height=720 * _UNIT, contents=(stroked,))
+
+    html = serialize_canvas([slide]).slides[0].html
+    unstroked = serialize_canvas([slide.model_copy(update={"contents": (plain,)})]).slides[0].html
+
+    assert "<svg" in html and "stroke-width" in html and "clip-path" not in html
+    assert "clip-path:polygon" in unstroked
+
+
+def test_a_picture_filled_stroked_polygon_keeps_its_clipped_div() -> None:
+    from domoxml.core.ir.model import PictureFill
+
+    picture = ShapeNode(
+        box=Box(x=100 * _UNIT, y=100 * _UNIT, width=200 * _UNIT, height=200 * _UNIT),
+        geom="star5",
+        fill=PictureFill(data=b"x", ext="png"),
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+    )
+
+    html = (
+        serialize_canvas([SlideIR(width=1280 * _UNIT, height=720 * _UNIT, contents=(picture,))])
+        .slides[0]
+        .html
+    )
+
+    assert "clip-path:polygon" in html and "<svg" not in html
+
+
+def test_gradients_that_differ_only_in_opacity_get_different_ids() -> None:
+    outline, _ = preset_geometry("heart", 200 * _UNIT, 200 * _UNIT)
+    box = Box(x=100 * _UNIT, y=100 * _UNIT, width=200 * _UNIT, height=200 * _UNIT)
+    line = Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050)
+    shapes = tuple(
+        ShapeNode(
+            box=box, geom="rect", custom_geom=outline, fill=_GRADIENT, line=line, opacity=opacity
+        )
+        for opacity in (1.0, 0.5)
+    )
+
+    html = (
+        serialize_canvas([SlideIR(width=1280 * _UNIT, height=720 * _UNIT, contents=shapes)])
+        .slides[0]
+        .html
+    )
+
+    assert len(set(re.findall(r'<linearGradient id="(grad-[0-9a-f]+)"', html))) == 2

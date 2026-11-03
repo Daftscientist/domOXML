@@ -2279,24 +2279,6 @@ async def test_serialized_plain_text_body_preserves_anchor_and_columns() -> None
 
 
 @pytest.mark.integration
-async def test_balanced_columns_warn_about_powerpoint_sequential_fill() -> None:
-    result = await _render_and_extract_result(
-        """
-        <div style="position:absolute;left:20px;top:20px;width:300px;height:180px;
-                    column-count:2;column-gap:24px">
-          Balanced browser columns cannot map exactly to native PowerPoint columns.
-        </div>
-        """
-    )
-
-    assert any("balanced CSS columns" in warning.message for warning in result.warnings)
-    assert any(
-        item.representation is Representation.APPROXIMATED and "balanced CSS columns" in item.reason
-        for item in result.coverage
-    )
-
-
-@pytest.mark.integration
 async def test_transition_root_background_does_not_emit_body_cover_shape() -> None:
     result = await _render_and_extract_result(
         """
@@ -3731,3 +3713,31 @@ async def test_border_image_with_rounded_corners_or_a_sliced_image_is_not_an_out
             "</div>"
         )
         assert not any(s.line is not None and s.line.gradient is not None for s in ir.shapes)
+
+
+_COLUMN_TEXT = " ".join(f"Line number {n} of the text." for n in range(1, 17))
+
+
+async def test_balanced_columns_shrink_the_text_area_to_the_tallest_column() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:60px;top:60px;width:520px;height:400px;"
+        f"columns:2;column-gap:20px;font:20px/28px Arial'>{_COLUMN_TEXT}</div>"
+    )
+
+    body = next(s.text for s in result.slide.shapes if s.text and s.text.columns == 2)
+    # The text balances to a few lines per column, so most of the 400px box stays empty below.
+    assert body.margins[3] > 150 * 9525
+    assert not any("balanced CSS columns" in w.message for w in result.warnings)
+
+    again = read_pptx(build_pptx([result.slide], faces=[]))[0]
+    assert any(s.text and s.text.columns == 2 and s.text.margins[3] > 0 for s in again.shapes)
+
+
+async def test_sequentially_filled_columns_keep_the_full_text_area() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:60px;top:60px;width:520px;height:120px;"
+        f"columns:2;column-fill:auto;column-gap:20px;font:20px/28px Arial'>{_COLUMN_TEXT}</div>"
+    )
+
+    body = next(s.text for s in result.slide.shapes if s.text and s.text.columns == 2)
+    assert body.margins[3] == 0

@@ -81,11 +81,9 @@
   "columns": {
     "dropped": false,
     "inherent": false,
-    "non_native": 1,
-    "reasons": [
-      "balanced CSS columns approximated as sequential PowerPoint columns"
-    ],
-    "similarity": 0.824
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.878
   },
   "conic-gradient": {
     "dropped": false,

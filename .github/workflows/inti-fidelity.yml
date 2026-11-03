@@ -30,6 +30,9 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libreoffice-impress poppler-utils
       - name: Render six Inti slides through domOXML
         run: uv run python .github/inti-fidelity/run.py
+      - name: Bundle compiler source for exact local rerun
+        run: |
+          tar -czf inti-main-fidelity-results/compiler-source.tar.gz domoxml pyproject.toml README.md
       - name: Upload exact-main render evidence
         if: always()
         uses: actions/upload-artifact@v4

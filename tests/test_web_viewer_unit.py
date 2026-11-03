@@ -98,3 +98,34 @@ async def test_an_iframe_to_a_page_extracts_as_a_web_frame() -> None:
     [frame] = [n for n in result.slide.contents if isinstance(n, MediaNode)]
     assert frame.kind == "web" and frame.media_url == "https://example.invalid/page"
     assert frame.poster_fill is not None
+
+
+def test_another_add_in_with_a_url_is_not_read_as_a_web_viewer() -> None:
+    deck = _deck(_web(_snapshot()))
+    patched = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(deck)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename.startswith("ppt/webextensions/webextension"):
+                data = data.replace(b"WA104295837", b"WA999999999")
+            zout.writestr(item, data)
+
+    result = read_pptx_result(patched.getvalue())
+
+    assert not any(isinstance(n, MediaNode) for n in result.slides[0].contents)
+
+
+@pytest.mark.integration
+async def test_an_iframe_with_inline_content_is_not_a_web_frame_even_with_a_src() -> None:
+    from domoxml.core.ir import extract_slide
+    from domoxml.core.render import BrowserSession
+
+    page = (
+        "<body style='margin:0'><iframe srcdoc='<h1>inline</h1>' src='https://example.invalid/x' "
+        "style='position:absolute;left:100px;top:80px;width:640px;height:360px;border:0'>"
+        "</iframe></body>"
+    )
+    async with BrowserSession() as session:
+        rendered = await session.render(page, width=1280, height=720)
+
+    assert not any(isinstance(n, MediaNode) for n in extract_slide(rendered).slide.contents)

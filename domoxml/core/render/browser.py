@@ -544,6 +544,7 @@ _SNAPSHOT_JS = """
       });
     }
     if (tag === 'select' && (el.multiple || el.size > 1)) styles.domoxmlSelectList = 'true';
+    if (tag === 'iframe' && el.hasAttribute('srcdoc')) styles.domoxmlSrcdoc = 'true';
     if (el.getAttribute('aria-hidden') !== 'true') {
       const title = tag === 'svg' ? el.querySelector(':scope > title') : null;
       const alt = el.getAttribute('aria-label')

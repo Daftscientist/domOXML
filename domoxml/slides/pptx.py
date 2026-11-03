@@ -46,6 +46,7 @@ from domoxml.core.opc import (
 from domoxml.core.units import emu_to_px
 from domoxml.slides import _templates as t
 from domoxml.slides.background import background_xml
+from domoxml.slides.media_read import WEB_VIEWER_ID
 from domoxml.slides.notes import (
     NOTES_MASTER,
     NOTES_MASTER_CT,
@@ -819,8 +820,6 @@ def _slide(
 _WEB_NS = "http://schemas.microsoft.com/office/webextensions/webextension/2010/11"
 _WEB_REL = "http://schemas.microsoft.com/office/2011/relationships/webextension"
 _WEB_CT = "application/vnd.ms-office.webextension+xml"
-# The Web Viewer add-in's store id: what makes PowerPoint show a page in a frame.
-_WEB_VIEWER_ID = "WA104295837"
 
 
 def _web_extension(
@@ -831,7 +830,7 @@ def _web_extension(
     guid = f"{{{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}}}"
     xml = (
         f'{t.XML_DECL}<we:webextension xmlns:we="{_WEB_NS}" xmlns:r="{_REL_TYPE}" id="{guid}">'
-        f'<we:reference id="{_WEB_VIEWER_ID}" version="1.0.0.0" store="en-US" storeType="OMEX"/>'
+        f'<we:reference id="{WEB_VIEWER_ID}" version="1.0.0.0" store="en-US" storeType="OMEX"/>'
         '<we:alternateReferences/><we:properties><we:property name="url" '
         f'value="&quot;{_attr(url)}&quot;"/></we:properties><we:bindings/>'
         '<we:snapshot r:embed="rId1"/></we:webextension>'

@@ -107,6 +107,8 @@ def read_media(
 
 _WEB_NS = "http://schemas.microsoft.com/office/webextensions/webextension/2010/11"
 _WEB_NAMES = {"we": _WEB_NS, "p": _P, "a": _A}
+# The Web Viewer add-in's store id: what makes PowerPoint show a page in a frame.
+WEB_VIEWER_ID = "WA104295837"
 
 
 def read_web_viewer(element: Element, package: OpcPackage, slide_part: str) -> MediaNode | None:
@@ -121,6 +123,10 @@ def read_web_viewer(element: Element, package: OpcPackage, slide_part: str) -> M
         extension_part = package.related_part(slide_part, reference.get(_EMBED_ID, ""))
         extension = ElementTree.fromstring(package.read(extension_part).decode("utf-8"))
     except (KeyError, ValueError, ElementTree.ParseError, UnicodeDecodeError):
+        return None
+    # Only the Web Viewer is a page frame; another add-in keeps its identity as preserved source.
+    reference_id = extension.find("we:reference", _WEB_NAMES)
+    if reference_id is None or reference_id.get("id") != WEB_VIEWER_ID:
         return None
     url = None
     for prop in extension.iterfind("we:properties/we:property", _WEB_NAMES):

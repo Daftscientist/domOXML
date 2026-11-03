@@ -1848,7 +1848,8 @@ def _media_node(node: RenderedNode, rendered: RenderedSlide) -> MediaNode | None
                 box=box, kind="video", media_url=url, poster_fill=_media_poster(node, rendered)
             )
         page = web_page_url(source)
-        if page is None:
+        # A frame with inline content shows that, not the page its ``src`` falls back to.
+        if page is None or node.styles.get("domoxmlSrcdoc"):
             return None
         return MediaNode(
             box=box,

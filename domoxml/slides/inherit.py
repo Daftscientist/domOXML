@@ -88,6 +88,7 @@ class ThemeContext:
     major_latin: str  # a:fontScheme majorFont a:latin typeface
     minor_latin: str  # a:fontScheme minorFont a:latin typeface
     colors: dict[str, str]  # resolved hex strings keyed by scheme slot name
+    default_text_style: Element | None = None  # presentation p:defaultTextStyle
 
 
 # ---------------------------------------------------------------------------
@@ -320,20 +321,42 @@ def resolve_run_rpr(
     slide_rpr: Element | None,
     level: int,
     ctx: PlaceholderContext | None,
+    *,
+    own_list_style: Element | None = None,
+    default_style: Element | None = None,
 ) -> Element | None:
-    """Return the best a:rPr for a run, walking the full chain."""
+    """Return the effective run properties, merging the chain nearest first.
+
+    The chain is the shape's own ``a:lstStyle``, the layout and master placeholders and the
+    master's text styles, then the presentation's default text style. A nearer link overrides a
+    farther one property by property, so a layout that only sets the size still inherits the
+    master's colour and font.
+    """
     if slide_rpr is not None:
         return slide_rpr
     lvl_tag = _LVL_TAG.get(max(1, min(9, level + 1)))
     if lvl_tag is None:
         return None
-    for lst in _lstStyle_chain(ctx):
-        lvl_ppr = lst.find(lvl_tag, _NS)
-        if lvl_ppr is not None:
-            defRPr = lvl_ppr.find("a:defRPr", _NS)
-            if defRPr is not None:
-                return defRPr
-    return None
+    styles = [own_list_style, *_lstStyle_chain(ctx), default_style]
+    merged: Element | None = None
+    for style in styles:
+        lvl_ppr = style.find(lvl_tag, _NS) if style is not None else None
+        defRPr = lvl_ppr.find("a:defRPr", _NS) if lvl_ppr is not None else None
+        if defRPr is None:
+            continue
+        if merged is None:
+            merged = copy.deepcopy(defRPr)
+            continue
+        for name, value in defRPr.attrib.items():
+            merged.attrib.setdefault(name, value)
+        for farther in defRPr:
+            decided = any(
+                farther.tag in group and any(child.tag in group for child in merged)
+                for group in _RPR_CHOICE_GROUPS
+            ) or any(child.tag == farther.tag for child in merged)
+            if not decided:
+                merged.append(copy.deepcopy(farther))
+    return merged
 
 
 # ---------------------------------------------------------------------------

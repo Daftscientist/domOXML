@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import zipfile
 from io import BytesIO
 from xml.etree.ElementTree import Element
 
@@ -1263,7 +1264,9 @@ def test_unsupported_over_overlay_uses_owned_source_render_and_re_emits() -> Non
             assert isinstance(center, tuple)
             assert corner[3] == 0
             assert center[3] == 255
-        [coverage] = html.coverage.items
+        [coverage] = [
+            item for item in html.coverage.items if not item.element.endswith(":background")
+        ]
         assert coverage.representation is Representation.ELEMENT_LAYER
         assert coverage.editability is Editability.LAYERS
         assert coverage.source_retention is SourceRetention.ATTACHED
@@ -1992,3 +1995,40 @@ def test_rotated_and_flipped_pictures_keep_their_transform_inside_a_group() -> N
     [child] = read_group.children
     assert isinstance(child, ShapeNode)
     assert child.transform == Transform(rotation_deg=30, flip_h=True)
+
+
+def _deck_with_master_background(background_xml: str) -> bytes:
+    source = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=())], faces=[])
+    patched = BytesIO()
+    with zipfile.ZipFile(BytesIO(source)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "ppt/slideMasters/slideMaster1.xml":
+                text = data.decode()
+                start, end = text.index("<p:bg>"), text.index("</p:bg>") + len("</p:bg>")
+                data = (text[:start] + background_xml + text[end:]).encode()
+            zout.writestr(item, data)
+    return patched.getvalue()
+
+
+def test_a_slide_without_a_background_takes_the_masters_fill() -> None:
+    deck = _deck_with_master_background(
+        '<p:bg><p:bgPr><a:solidFill><a:srgbClr val="112233"/></a:solidFill><a:effectLst/>'
+        "</p:bgPr></p:bg>"
+    )
+
+    background = read_pptx_result(deck).slides[0].background
+
+    assert background is not None and isinstance(background.fill, SolidFill)
+    assert background.fill.color == Rgba(r=17, g=34, b=51)
+
+
+def test_a_background_reference_paints_the_theme_style_in_its_own_colour() -> None:
+    deck = _deck_with_master_background(
+        '<p:bg><p:bgRef idx="1001"><a:srgbClr val="AA0000"/></p:bgRef></p:bg>'
+    )
+
+    background = read_pptx_result(deck).slides[0].background
+
+    assert background is not None and isinstance(background.fill, SolidFill)
+    assert background.fill.color == Rgba(r=170, g=0, b=0)

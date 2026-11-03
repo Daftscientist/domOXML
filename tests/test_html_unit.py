@@ -684,3 +684,13 @@ def test_html_space_before_after_emits_margins() -> None:
     html = serialize_canvas([slide]).slides[0].html
     assert "margin-top:9pt" in html
     assert "margin-bottom:18pt" in html
+
+
+def test_every_font_family_names_the_generic_family_a_browser_falls_back_to() -> None:
+    from domoxml.core.html import _css_font_family  # pyright: ignore[reportPrivateUsage]
+
+    assert _css_font_family("Helvetica Neue") == "Helvetica Neue,sans-serif"
+    assert _css_font_family("Georgia") == "Georgia,serif"
+    assert _css_font_family("Consolas") == "Consolas,monospace"
+    assert _css_font_family("Courier New") == "Courier New,monospace"
+    assert _css_font_family("sans-serif") == "sans-serif"

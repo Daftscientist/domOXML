@@ -17,13 +17,13 @@ pptx_to_html_min_structural_similarity = 0.90
 
 [reverse]
 min_representation = { rasterized = 1 }
-max_representation = { rasterized = 1, native = 0, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
+max_representation = { rasterized = 1, native = 1, decomposed = 0, approximated = 0, hybrid = 0, layered = 0, element_layer = 0, failed = 0 }
 min_editability = { none = 1 }
-max_editability = { semantic = 0, components = 0, layers = 0, none = 1 }
+max_editability = { semantic = 1, components = 0, layers = 0, none = 1 }
 min_source_retention = { attached = 1 }
-max_source_retention = { not_required = 0, attached = 1, detached = 0, ignored = 0, lost = 0 }
+max_source_retention = { not_required = 1, attached = 1, detached = 0, ignored = 0, lost = 0 }
 min_output_count = 1
-max_output_count = 1
+max_output_count = 2
 min_raster_area_emu2 = 83612736000000
 max_raster_area_emu2 = 83612736000000
 expected_slides = 1

@@ -1011,6 +1011,8 @@ class SlideBackground(BaseModel):
     model_config = _FROZEN
 
     fill: Fill
+    # Taken from the layout or master the slide sits on: shown, but the slide does not own it.
+    inherited: bool = False
 
 
 class SlideIR(BaseModel):

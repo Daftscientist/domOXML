@@ -348,3 +348,52 @@ def test_apply_color_transforms_alpha_sets_fraction() -> None:
     el = fromstring(f'<a:srgbClr xmlns:a="{_A}" val="FF0000"><a:alpha val="40000"/></a:srgbClr>')
     _, _, _, a = apply_color_transforms(255, 0, 0, 1.0, el)
     assert abs(a - 0.4) < 1e-9
+
+
+def _style(xml: str):  # type: ignore[no-untyped-def]
+    return fromstring(f'<root xmlns:a="{_A}" xmlns:p="{_P}">{xml}</root>')[0]
+
+
+def test_a_nearer_run_default_overrides_only_the_properties_it_sets() -> None:
+    from domoxml.slides.inherit import resolve_run_rpr
+
+    context = PlaceholderContext(
+        ph_type="title",
+        ph_idx=0,
+        layout_ph_sppr=None,
+        layout_ph_body_pr=None,
+        layout_ph_lstStyle=_style(
+            '<a:lstStyle><a:lvl1pPr><a:defRPr sz="6000"/></a:lvl1pPr></a:lstStyle>'
+        ),
+        master_ph_sppr=None,
+        master_ph_body_pr=None,
+        master_ph_lstStyle=None,
+        master_tx_styles=_style(
+            "<p:txStyles><p:titleStyle><a:lvl1pPr>"
+            '<a:defRPr sz="2900" b="1"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill>'
+            '<a:latin typeface="+mj-lt"/></a:defRPr></a:lvl1pPr></p:titleStyle></p:txStyles>'
+        ),
+    )
+
+    merged = resolve_run_rpr(None, 0, context)
+
+    assert merged is not None
+    assert merged.get("sz") == "6000" and merged.get("b") == "1"
+    assert merged.find("a:solidFill/a:schemeClr", {"a": _A}) is not None
+    latin = merged.find("a:latin", {"a": _A})
+    assert latin is not None and latin.get("typeface") == "+mj-lt"
+
+
+def test_a_shapes_own_list_style_beats_the_presentation_default_text_style() -> None:
+    from domoxml.slides.inherit import resolve_run_rpr
+
+    own = _style('<a:lstStyle><a:lvl1pPr><a:defRPr sz="3200"/></a:lvl1pPr></a:lstStyle>')
+    default = _style(
+        '<p:defaultTextStyle><a:lvl1pPr><a:defRPr sz="1800"><a:solidFill>'
+        '<a:schemeClr val="tx1"/></a:solidFill></a:defRPr></a:lvl1pPr></p:defaultTextStyle>'
+    )
+
+    merged = resolve_run_rpr(None, 0, None, own_list_style=own, default_style=default)
+
+    assert merged is not None and merged.get("sz") == "3200"
+    assert merged.find("a:solidFill", {"a": _A}) is not None

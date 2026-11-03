@@ -34,7 +34,7 @@ from domoxml.core.images import (
     normalise_image,
 )
 from domoxml.core.ir.connector_extract import extract_connector
-from domoxml.core.ir.controls import control_shapes
+from domoxml.core.ir.controls import control_shapes, select_arrow
 from domoxml.core.ir.effect_calibration import (
     BOX_SHADOW_BLUR_TO_DML,
     CUSTOM_GLOW_ALPHA_TO_DML,
@@ -331,6 +331,8 @@ def _detect_anchor(styles: dict[str, str]) -> Literal["top", "middle", "bottom"]
       - ``align-items:flex-end`` + row-ish → anchor "bottom"
     Default is "top" which emits no special attribute.
     """
+    if styles.get("domoxmlField") == "single":
+        return "middle"
     display = (styles.get("display") or "").lower()
     if "flex" not in display:
         return "top"
@@ -423,13 +425,19 @@ def _text_body_margins(node: RenderedNode) -> tuple[int, int, int, int]:
         styles.get("domoxmlConsolidatedText") == "true"
         or "flex" in (styles.get("display") or "").lower()
         or _detect_columns(styles)[0] > 1
+        or "domoxmlField" in styles
     )
     if not is_container:
         return (0, 0, 0, 0)
-    left = px_to_emu(parse_length_px(styles.get("paddingLeft")))
-    top = px_to_emu(parse_length_px(styles.get("paddingTop")))
-    right = px_to_emu(parse_length_px(styles.get("paddingRight")))
-    bottom = px_to_emu(parse_length_px(styles.get("paddingBottom")))
+
+    def edge(side: str) -> int:
+        # A form field's text sits inside its border as well as its padding.
+        padding = parse_length_px(styles.get(f"padding{side}"))
+        if "domoxmlField" in styles:
+            padding += parse_length_px(styles.get(f"border{side}Width"))
+        return px_to_emu(padding)
+
+    left, top, right, bottom = edge("Left"), edge("Top"), edge("Right"), edge("Bottom")
     try:
         balanced = float(styles.get("domoxmlColumnsHeight") or 0)
     except ValueError:
@@ -531,6 +539,7 @@ def _text_body_from_decoded(node: RenderedNode, encoded: TextBody | None) -> Tex
         columns=columns,
         column_gap_emu=column_gap_emu,
         margins=margins,
+        wrap="none" if styles.get("domoxmlField") == "single" else "square",
         vertical=_VERTICAL_TEXT.get(styles.get("writingMode", "horizontal-tb"), "horz"),
     )
 
@@ -1463,6 +1472,16 @@ def _gradient_border(styles: dict[str, str]) -> GradientFill | None:
     if styles.get("borderImageOutset", "0").split() not in ([], ["0"], ["0"] * 4):
         return None
     return parse_gradient(source)
+
+
+def _default_field_border(styles: dict[str, str]) -> bool:
+    """Whether all four borders are the browser's untouched ``2px inset`` of a text field."""
+    return all(
+        styles.get(f"border{side}Style") == "inset"
+        and styles.get(f"border{side}Width") == "2px"
+        and styles.get(f"border{side}Color") == "rgb(118, 118, 118)"
+        for side in ("Top", "Right", "Bottom", "Left")
+    )
 
 
 def _make_side_rect(box: Box, fill: Fill) -> ShapeNode:
@@ -3145,6 +3164,13 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         (side_top, side_right, side_bottom, side_left), warn_msgs = _resolve_border_sides(
             node.styles
         )
+        if node.tag == "input" and _default_field_border(node.styles):
+            # Chrome paints a default text field's 2px inset border as one 1px grey outline.
+            hairline = (
+                side_top.model_copy(update={"width_emu": px_to_emu(1.0)}) if side_top else None
+            )
+            side_top = side_right = side_bottom = side_left = hairline
+            warn_msgs = []
         present_sides = [s for s in (side_top, side_right, side_bottom, side_left) if s is not None]
 
         line: Line | None = None
@@ -3466,6 +3492,17 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         )
         if outline is not None:
             contents.append(identities.apply(fade_shape(outline, faded), node, role="outline"))
+        arrow = (
+            select_arrow(node.x, node.y, node.width, node.height)
+            if node.tag == "select"
+            and not node.styles.get("domoxmlClippedByAncestor")
+            and node.styles.get("transform", "none") in ("none", "")
+            and node.styles.get("domoxmlSelectList") != "true"
+            and node.styles.get("appearance", "auto") != "none"
+            else None
+        )
+        if arrow is not None:
+            contents.append(identities.apply(fade_shape(arrow, faded), node, role="select-arrow"))
         if node.styles.get("domoxmlConsolidatedText") == "true" or encoded_text is not None:
             consumed |= _subtree(node.index, children) - {node.index}
         if side_rect_shapes and not approximation_reasons:

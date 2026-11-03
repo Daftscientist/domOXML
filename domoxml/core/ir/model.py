@@ -508,6 +508,8 @@ class TextBody(BaseModel):
     paragraphs: tuple[TextParagraph, ...]
     anchor: Literal["top", "middle", "bottom"] = "top"
     autofit: Literal["none", "normal", "shape"] = "normal"
+    # ``a:bodyPr wrap``: ``none`` keeps every line on one row however long it is (a text field).
+    wrap: Literal["square", "none"] = "square"
     columns: int = Field(default=1, ge=1)
     column_gap_emu: int = Field(default=0, ge=0)
     margins: tuple[int, int, int, int] = (0, 0, 0, 0)

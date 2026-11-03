@@ -3752,3 +3752,76 @@ async def test_balanced_columns_under_a_transform_keep_the_full_text_area() -> N
 
     body = next(s.text for s in result.slide.shapes if s.text and s.text.columns == 2)
     assert body.margins[3] == 0
+
+
+async def test_default_text_field_border_is_a_native_hairline_not_a_raster() -> None:
+    result = await _render_and_extract_result(
+        "<input type='text' value='Hello' style='position:absolute;left:100px;top:100px;"
+        "width:300px;height:40px;font-size:20px'>"
+    )
+
+    outlined = [s for s in result.slide.shapes if s.line is not None]
+    assert len(outlined) == 1 and outlined[0].line.width_emu == 9525  # type: ignore[union-attr]
+    assert not any("3D border" in item.reason for item in result.coverage)
+    assert all(item.representation.value == "native" for item in result.coverage)
+
+
+async def test_drop_down_select_gets_its_chevron_and_a_list_box_does_not() -> None:
+    result = await _render_and_extract_result(
+        "<select style='position:absolute;left:100px;top:100px;width:240px;height:40px'>"
+        "<option>One</option></select>"
+        "<select multiple style='position:absolute;left:100px;top:200px;width:240px;height:80px'>"
+        "<option>One</option></select>"
+    )
+
+    arrows = [s for s in result.slide.shapes if s.custom_geom is not None and s.line is not None]
+    assert len(arrows) == 1
+    assert all(item.representation.value == "native" for item in result.coverage)
+
+
+async def test_text_fields_and_selects_carry_their_visible_text() -> None:
+    result = await _render_and_extract_result(
+        "<input type='text' value='Hello' style='position:absolute;left:100px;top:60px;"
+        "width:300px;height:40px;font-size:20px'>"
+        "<input type='text' placeholder='Your name' style='position:absolute;left:100px;"
+        "top:120px;width:300px;height:40px;font-size:20px'>"
+        "<input type='password' value='abc' style='position:absolute;left:100px;top:180px;"
+        "width:300px;height:40px;font-size:20px'>"
+        "<select style='position:absolute;left:100px;top:240px;width:240px;height:40px'>"
+        "<option>One</option><option selected>Two</option></select>"
+    )
+
+    runs = {
+        r.text: r for s in result.slide.shapes if s.text for p in s.text.paragraphs for r in p.runs
+    }
+    assert set(runs) == {"Hello", "Your name", "•••", "Two"}
+    assert runs["Your name"].color != runs["Hello"].color
+    fields = [s for s in result.slide.shapes if s.text and s.text.anchor == "middle"]
+    assert len(fields) == 4
+    assert all(s.text.margins[0] > 0 for s in fields)  # type: ignore[union-attr]
+
+    again = read_pptx(build_pptx([result.slide], faces=[]))[0]
+    assert {r.text for s in again.shapes if s.text for p in s.text.paragraphs for r in p.runs} >= {
+        "Hello",
+        "Two",
+    }
+
+
+async def test_custom_styled_select_gets_no_chevron_and_fields_never_wrap() -> None:
+    result = await _render_and_extract_result(
+        "<select style='appearance:none;position:absolute;left:100px;top:100px;width:240px;"
+        "height:40px'><option>One</option></select>"
+        "<input type='text' value='A value far too long to fit in this narrow field at all' "
+        "style='position:absolute;left:100px;top:200px;width:120px;height:40px'>"
+    )
+
+    assert not any(s.custom_geom is not None and s.line is not None for s in result.slide.shapes)
+    field = next(
+        s.text
+        for s in result.slide.shapes
+        if s.text and "too long" in s.text.paragraphs[0].runs[0].text
+    )
+    assert field.wrap == "none"
+
+    again = read_pptx(build_pptx([result.slide], faces=[]))[0]
+    assert any(s.text and s.text.wrap == "none" for s in again.shapes)

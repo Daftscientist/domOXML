@@ -250,6 +250,13 @@
     "reasons": [],
     "similarity": 0.996
   },
+  "select": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.957
+  },
   "skew": {
     "dropped": false,
     "inherent": false,
@@ -301,6 +308,13 @@
     ],
     "similarity": 0.994
   },
+  "table-bg": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.907
+  },
   "text-after-block": {
     "dropped": false,
     "inherent": false,
@@ -322,6 +336,13 @@
     "reasons": [],
     "similarity": 0.877
   },
+  "text-input": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.952
+  },
   "text-shadow": {
     "dropped": false,
     "inherent": false,
@@ -335,6 +356,13 @@
     "non_native": 0,
     "reasons": [],
     "similarity": 0.927
+  },
+  "textarea": {
+    "dropped": false,
+    "inherent": false,
+    "non_native": 0,
+    "reasons": [],
+    "similarity": 0.959
   },
   "vertical-text": {
     "dropped": false,

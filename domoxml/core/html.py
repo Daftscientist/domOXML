@@ -995,7 +995,8 @@ def _text_html(body: TextBody | None, warnings: list[ConversionWarning] | None =
             # Plain paragraph — close all open lists first.
             _close_all_lists()
             spacing_style = _para_spacing_style(paragraph)
-            div_style = f"{_TEXT_BASE_STYLE};text-align:{paragraph.align}"
+            base = "white-space:pre" if body.wrap == "none" else _TEXT_BASE_STYLE
+            div_style = f"{base};text-align:{paragraph.align}"
             if spacing_style:
                 div_style += ";" + spacing_style
             runs_html = "".join(_run_html(run) for run in paragraph.runs)

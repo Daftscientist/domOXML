@@ -1,0 +1,39 @@
+name: Inti six-slide main fidelity
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/inti-fidelity.yml"
+      - ".github/inti-fidelity/**"
+      - "tests/fixtures/inti_20261103/**"
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.13"
+      - name: Install domOXML from current branch (main plus test fixtures)
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+      - name: Install real Chromium
+        run: uv run playwright install --with-deps chromium
+      - name: Install PPTX rendering tools
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libreoffice-impress poppler-utils
+      - name: Render six Inti slides through domOXML
+        run: uv run python .github/inti-fidelity/run.py
+      - name: Upload exact-main render evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inti-main-20261103
+          path: inti-main-fidelity-results/
+          retention-days: 7

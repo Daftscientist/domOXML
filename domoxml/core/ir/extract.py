@@ -35,7 +35,7 @@ from domoxml.core.images import (
 )
 from domoxml.core.ir.blend import blended_shapes
 from domoxml.core.ir.connector_extract import extract_connector
-from domoxml.core.ir.controls import control_shapes, select_arrow
+from domoxml.core.ir.controls import control_shapes, disclosure_marker, select_arrow
 from domoxml.core.ir.effect_calibration import (
     BOX_SHADOW_BLUR_TO_DML,
     CUSTOM_GLOW_ALPHA_TO_DML,
@@ -773,6 +773,39 @@ def _blend_over_solids(
     if reason is not None or not isinstance(fill, SolidFill):
         return None
     return blended_shapes(styles["mixBlendMode"], _box(node), fill.color, contents)
+
+
+def _summary_indent_px(node: RenderedNode) -> float:
+    """How far a ``<summary>``'s text sits right of its box for the disclosure marker."""
+    if node.tag != "summary" or node.styles.get("listStyleType") not in (
+        "disclosure-open",
+        "disclosure-closed",
+    ):
+        return 0.0
+    return 1.06 * parse_length_px(node.styles.get("fontSize"))
+
+
+def _summary_marker(node: RenderedNode) -> ShapeNode | None:
+    """The disclosure triangle in front of a ``<summary>``, drawn the way Chrome does."""
+    indent = _summary_indent_px(node)
+    colour = parse_color(node.styles.get("color"))
+    if (
+        not indent
+        or colour is None
+        or node.styles.get("transform", "none") not in ("none", "")
+        or node.styles.get("domoxmlClippedByAncestor")
+    ):
+        return None
+    font_px = parse_length_px(node.styles.get("fontSize"))
+    line_px = parse_length_px(node.styles.get("lineHeight")) or 1.12 * font_px
+    return disclosure_marker(
+        node.styles.get("listStyleType") == "disclosure-open",
+        node.x + parse_length_px(node.styles.get("paddingLeft")),
+        node.y + parse_length_px(node.styles.get("paddingTop")),
+        font_px,
+        line_px,
+        colour,
+    )
 
 
 def _structural_raster_reason(node: RenderedNode) -> str | None:
@@ -3350,6 +3383,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             continue
         encoded_text = decode_text_body(node.styles.get("domoxmlTextPayload"))
         text = _text_body_from_decoded(node, encoded_text)
+        if text is not None and (indent := _summary_indent_px(node)):
+            left, top, right, bottom = text.margins
+            text = text.model_copy(
+                update={"margins": (left + px_to_emu(indent), top, right, bottom)}
+            )
         approximation_reasons = list(warn_msgs)
         if (
             text is not None
@@ -3591,6 +3629,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         )
         if arrow is not None:
             contents.append(identities.apply(fade_shape(arrow, faded), node, role="select-arrow"))
+        marker = _summary_marker(node)
+        if marker is not None:
+            contents.append(
+                identities.apply(fade_shape(marker, faded), node, role="summary-marker")
+            )
         if node.styles.get("domoxmlConsolidatedText") == "true" or encoded_text is not None:
             consumed |= _subtree(node.index, children) - {node.index}
         if side_rect_shapes and not approximation_reasons:

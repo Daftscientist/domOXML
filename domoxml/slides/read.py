@@ -688,19 +688,18 @@ def _native_reverse_coverage(slide_part: str, element: Element) -> CoverageItem:
 def _outline_survives_html(element: Element, properties: Element) -> bool:
     """Whether an outline drawn from a preset keeps all of the shape's paint in HTML.
 
-    Custom geometry reaches HTML as an SVG (solid fill and stroke) with any text laid over it, or,
-    for a gradient or picture fill with neither a stroke nor text, a clip over the element's own
-    background. A gradient or picture fill beside a stroke or text has no form there yet.
+    Custom geometry reaches HTML as an SVG (solid or gradient fill, and stroke) with any text laid
+    over it, or, for a picture fill with neither a stroke nor text, a clip over the element's own
+    background. A picture fill beside a stroke or text has no form there yet.
     """
     has_text = any((run.text or "").strip() for run in element.iterfind(".//a:t", _NS))
     outlined = properties.find("a:ln", _NS) is not None and (
         properties.find("a:ln/a:noFill", _NS) is None
     )
-    non_solid = any(
-        properties.find(f"a:{kind}", _NS) is not None
-        for kind in ("gradFill", "blipFill", "pattFill")
+    picture = any(
+        properties.find(f"a:{kind}", _NS) is not None for kind in ("blipFill", "pattFill")
     )
-    return not (non_solid and (outlined or has_text))
+    return not (picture and (outlined or has_text))
 
 
 def _preset_outline(geometry: Element, box: Box) -> tuple[CustomGeometry | None, bool]:

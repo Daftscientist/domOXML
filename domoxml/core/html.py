@@ -1322,6 +1322,67 @@ def _table_html(
     )
 
 
+def _outlined_polygon_preset(node: ShapeNode) -> ShapeNode:
+    """A stroked polygon preset as free-form geometry, so its outline is drawn.
+
+    A CSS ``clip-path`` also clips the element's border, so a star or arrow with a stroke would
+    lose it; as an SVG path the same silhouette keeps both.
+    """
+    if node.line is None or node.custom_geom is not None or node.corner_radius_emu:
+        return node
+    vertices = preset_vertices(node.geom, preset_defaults(node.geom))
+    if vertices is None or node.box.width <= 0 or node.box.height <= 0:
+        return node
+    points = [Point(x=round(x * node.box.width), y=round(y * node.box.height)) for x, y in vertices]
+    path = (MoveTo(to=points[0]), *(LineTo(to=point) for point in points[1:]), ClosePath())
+    geometry = CustomGeometry(width_emu=node.box.width, height_emu=node.box.height, path=path)
+    return node.model_copy(update={"geom": "rect", "custom_geom": geometry})
+
+
+def _svg_gradient(
+    fill: GradientFill, opacity: float, box: Box, geometry: CustomGeometry
+) -> tuple[str, str] | None:
+    """``(<defs>, fill attribute)`` painting ``fill`` on an outline's SVG, or ``None``.
+
+    The gradient is laid out in the SVG's own units the way CSS lays it over the box, so it only
+    applies where the path's units scale the box evenly (a stretched viewBox would skew it).
+    """
+    width_px, height_px = emu_to_px(box.width), emu_to_px(box.height)
+    if width_px <= 0 or height_px <= 0 or geometry.width_emu <= 0 or geometry.height_emu <= 0:
+        return None
+    scale_x, scale_y = geometry.width_emu / width_px, geometry.height_emu / height_px
+    if abs(scale_x - scale_y) > 1e-3 * scale_x:
+        return None
+    width, height = geometry.width_emu, geometry.height_emu
+    stops = "".join(
+        f'<stop offset="{_number(stop.pos)}" stop-color="rgb({stop.color.r},{stop.color.g},'
+        f'{stop.color.b})" stop-opacity="{_number(stop.color.a * opacity)}"/>'
+        for stop in fill.stops
+    )
+    identity = hashlib.sha1(
+        f"{fill.model_dump_json()}{width}{height}".encode(), usedforsecurity=False
+    ).hexdigest()[:10]
+    name = f"grad-{identity}"
+    if fill.radial:
+        paint = (
+            f'<radialGradient id="{name}" gradientUnits="userSpaceOnUse" cx="{_number(width / 2)}"'
+            f' cy="{_number(height / 2)}" r="{_number(math.hypot(width, height) / 2)}">{stops}'
+            "</radialGradient>"
+        )
+    else:
+        angle = math.radians(fill.angle_deg)
+        dx, dy = math.sin(angle), -math.cos(angle)
+        half = (abs(width * dx) + abs(height * dy)) / 2
+        centre_x, centre_y = width / 2, height / 2
+        paint = (
+            f'<linearGradient id="{name}" gradientUnits="userSpaceOnUse"'
+            f' x1="{_number(centre_x - dx * half)}" y1="{_number(centre_y - dy * half)}"'
+            f' x2="{_number(centre_x + dx * half)}" y2="{_number(centre_y + dy * half)}">'
+            f"{stops}</linearGradient>"
+        )
+    return f"<defs>{paint}</defs>", f'fill="url(#{name})"'
+
+
 def _text_layer_html(node: ShapeNode, warnings: list[ConversionWarning]) -> str:
     """The text of a free-form outline as its own layer over the outline's SVG.
 
@@ -1355,6 +1416,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
     """Serialize one slide node. :class:`ShapeNode`, :class:`MediaNode`, and
     :class:`TableNode` have HTML mappings; others warn and emit nothing."""
     if isinstance(node, ShapeNode):
+        node = _outlined_polygon_preset(node)
         if (
             isinstance(node.fill, PictureFill)
             and node.fill.svg_data is not None
@@ -1410,12 +1472,17 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
             vb_w = cg.width_emu
             vb_h = cg.height_emu
             d = commands_to_svg_d(cg.path)
+            gradient_defs = ""
             # Fill attribute
             if isinstance(node.fill, SolidFill):
                 fill_attr = (
                     f'fill="rgba({node.fill.color.r},{node.fill.color.g},'
                     f'{node.fill.color.b},{_number(node.fill.color.a * node.opacity)})"'
                 )
+            elif isinstance(node.fill, GradientFill) and (
+                paint := _svg_gradient(node.fill, node.opacity, node.box, cg)
+            ):
+                gradient_defs, fill_attr = paint
             else:
                 fill_attr = 'fill="none"'
             # Stroke attributes
@@ -1493,7 +1560,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                 f"{fallback_attrs}"
                 f' viewBox="0 0 {vb_w} {vb_h}"'
                 f' style="{escape(pos_style, quote=True)}">'
-                f"{fallback_layer}"
+                f"{fallback_layer}{gradient_defs}"
                 f'<path d="{escape(d, quote=True)}" {fill_attr}{stroke_attrs}'
                 f"{path_visibility}/>"
                 f"</svg>"

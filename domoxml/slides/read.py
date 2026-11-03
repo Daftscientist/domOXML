@@ -5,11 +5,13 @@ from __future__ import annotations
 import contextlib
 import copy
 import math
+import posixpath
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Literal, cast
 from xml.etree.ElementTree import Element
+from xml.sax.saxutils import escape
 
 from defusedxml import ElementTree
 from PIL import Image, ImageChops
@@ -55,6 +57,7 @@ from domoxml.core.ir.model import (
     Transform,
 )
 from domoxml.core.opc import OpcPackage, capture_payload
+from domoxml.core.opc.preservation import relationship_part_name
 from domoxml.slides.appearance_read import (
     DEFAULT_THEME_COLORS,
     ThemeColors,
@@ -1243,6 +1246,7 @@ def _slide(
     height: int,
     slide_index_by_part: dict[str, int],
     fallback_png: bytes | None = None,
+    with_inherited: bool = True,
 ) -> tuple[
     SlideIR,
     tuple[ConversionWarning, ...],
@@ -2140,7 +2144,21 @@ def _slide(
         SlideIR(
             width=width,
             height=height,
-            contents=tuple(contents),
+            contents=(
+                *(
+                    _inherited_shapes(
+                        package,
+                        slide_part,
+                        root,
+                        width=width,
+                        height=height,
+                        slide_index_by_part=slide_index_by_part,
+                    )
+                    if with_inherited
+                    else ()
+                ),
+                *contents,
+            ),
             transition=transition,
             background=background,
             renderer_fallback=renderer_fallback,
@@ -2151,6 +2169,103 @@ def _slide(
         tuple(preserved),
         tuple(coverage),
     )
+
+
+def _attr(value: str) -> str:
+    return escape(value, {'"': "&quot;"})
+
+
+def _is_placeholder(element: Element) -> bool:
+    return element.find(".//p:nvPr/p:ph", _NS) is not None
+
+
+def _renamed(node: Node, identity: str) -> Node:
+    """``node`` under a new id of its own, with no source identity to collide with the slide's."""
+    update: dict[str, object] = {"node_id": identity, "provenance": None}
+    if isinstance(node, GroupNode):
+        update["children"] = tuple(
+            _renamed(child, f"{identity}.{index}")  # type: ignore[misc]
+            for index, child in enumerate(node.children, start=1)
+        )
+    return node.model_copy(update=update)
+
+
+def _inherited_shapes(
+    package: OpcPackage,
+    slide_part: str,
+    slide: Element,
+    *,
+    width: int,
+    height: int,
+    slide_index_by_part: dict[str, int],
+) -> list[Node]:
+    """The shapes a slide shows from its layout and master (logos, bands, footers' art).
+
+    The master's non-placeholder shapes sit under the layout's, which sit under the slide's own;
+    ``showMasterSp="0"`` on a layout hides the master's, on the slide hides both. Each source part
+    is read as if it were a slide of its own (placeholders removed), so every shape kind the slide
+    reader maps is mapped here too, and the results carry no identity of their own.
+    """
+    layout_part = _related_part_by_type(package, slide_part, _SLIDE_LAYOUT_REL)
+    if layout_part is None or slide.get("showMasterSp") == "0":
+        return []
+    master_part = _related_part_by_type(package, layout_part, _SLIDE_MASTER_REL)
+    try:
+        layout_root = ElementTree.fromstring(package.read(layout_part))
+    except (KeyError, ElementTree.ParseError):
+        return []
+    sources = [layout_part]
+    if master_part is not None and layout_root.get("showMasterSp") != "0":
+        sources.insert(0, master_part)
+    shapes: list[Node] = []
+    for number, part in enumerate(sources):
+        try:
+            root = ElementTree.fromstring(package.read(part))
+        except (KeyError, ElementTree.ParseError):
+            continue
+        tree = root.find("p:cSld/p:spTree", _NS)
+        if tree is None:
+            continue
+        for child in list(tree):
+            if _is_placeholder(child):
+                tree.remove(child)
+        if not any(
+            _local_name(child) in {"sp", "pic", "grpSp", "cxnSp", "graphicFrame"} for child in tree
+        ):
+            continue
+        name = f"ppt/slides/__inherited_{slide_part.rsplit('/', 1)[-1]}_{number}.xml"
+        layout_target = posixpath.relpath(layout_part, "ppt/slides")
+        rels = "".join(
+            f'<Relationship Id="{_attr(r.id)}" Type="{_attr(r.type)}" Target="{_attr(r.target)}"'
+            + ("" if r.target_mode == "Internal" else ' TargetMode="External"')
+            + "/>"
+            for r in package.relationships(part)
+            if r.type != _SLIDE_LAYOUT_REL
+        )
+        rels += (
+            f'<Relationship Id="rIdInheritedLayout" Type="{_SLIDE_LAYOUT_REL}" '
+            f'Target="{_attr(layout_target)}"/>'
+        )
+        parts = {item: package.read(item) for item in package.parts}
+        parts[name] = ElementTree.tostring(root)
+        parts[relationship_part_name(name)] = (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f"{rels}</Relationships>"
+        ).encode()
+        read, _warnings, _preserved, _coverage = _slide(
+            OpcPackage(parts),
+            name,
+            width=width,
+            height=height,
+            slide_index_by_part=slide_index_by_part,
+            with_inherited=False,
+        )
+        kept = [node for node in read.contents if not isinstance(node, PreservedNode)]
+        shapes.extend(
+            _renamed(node, f"inherited-{number}-{index}") for index, node in enumerate(kept, 1)
+        )
+    return shapes
 
 
 def _theme_colors(package: OpcPackage, theme_part: str | None) -> ThemeColors:

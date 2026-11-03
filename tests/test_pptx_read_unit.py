@@ -2084,3 +2084,85 @@ def test_an_inherited_background_is_written_onto_the_rebuilt_slide() -> None:
     rebuilt = zipfile.ZipFile(BytesIO(build_pptx(list(result.slides), faces=[])))
 
     assert b"112233" in rebuilt.read("ppt/slides/slide1.xml")
+
+
+def _deck_with_decorations(master: str = "", layout: str = "", layout_attrs: str = "") -> bytes:
+    source = build_pptx(
+        [
+            SlideIR(
+                width=12_192_000,
+                height=6_858_000,
+                contents=(
+                    ShapeNode(
+                        box=Box(x=914_400, y=914_400, width=914_400, height=457_200),
+                        geom="rect",
+                        fill=SolidFill(color=Rgba(r=0, g=0, b=200)),
+                    ),
+                ),
+            )
+        ],
+        faces=[],
+    )
+    patched = BytesIO()
+    with zipfile.ZipFile(BytesIO(source)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            for part, extra in (
+                ("ppt/slideMasters/slideMaster1.xml", master),
+                ("ppt/slideLayouts/slideLayout1.xml", layout),
+            ):
+                if item.filename == part and extra:
+                    text = data.decode()
+                    cut = text.index("</p:spTree>")
+                    data = (text[:cut] + extra + text[cut:]).encode()
+            if item.filename == "ppt/slideLayouts/slideLayout1.xml" and layout_attrs:
+                data = (
+                    data.decode()
+                    .replace("<p:sldLayout ", f"<p:sldLayout {layout_attrs} ", 1)
+                    .encode()
+                )
+            zout.writestr(item, data)
+    return patched.getvalue()
+
+
+def _band(shape_id: int, colour: str, y: int) -> str:
+    return (
+        f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Deco"/><p:cNvSpPr/>'
+        '<p:nvPr userDrawn="1"/></p:nvSpPr><p:spPr><a:xfrm>'
+        f'<a:off x="0" y="{y}"/><a:ext cx="12192000" cy="457200"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+        f'<a:solidFill><a:srgbClr val="{colour}"/></a:solidFill></p:spPr></p:sp>'
+    )
+
+
+def _fills(deck: bytes) -> list[str]:
+    return [
+        f"{n.fill.color.r:02X}{n.fill.color.g:02X}{n.fill.color.b:02X}"
+        for n in read_pptx_result(deck).slides[0].contents
+        if isinstance(n, ShapeNode) and isinstance(n.fill, SolidFill)
+    ]
+
+
+def test_layout_and_master_art_sits_under_the_slides_own_shapes() -> None:
+    deck = _deck_with_decorations(
+        master=_band(90, "C00000", 0), layout=_band(91, "00C000", 457_200)
+    )
+
+    assert _fills(deck) == ["C00000", "00C000", "0000C8"]
+
+
+def test_show_master_shapes_off_hides_the_masters_art_from_a_layout_or_slide() -> None:
+    master, layout = _band(90, "C00000", 0), _band(91, "00C000", 457_200)
+
+    assert _fills(_deck_with_decorations(master, layout, 'showMasterSp="0"')) == [
+        "00C000",
+        "0000C8",
+    ]
+
+
+def test_inherited_art_rebuilds_into_the_output_slide() -> None:
+    deck = _deck_with_decorations(master=_band(90, "C00000", 0))
+
+    rebuilt = build_pptx(list(read_pptx_result(deck).slides), faces=[])
+
+    assert _fills(rebuilt) == ["C00000", "0000C8"]

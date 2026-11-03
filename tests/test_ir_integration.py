@@ -3865,10 +3865,10 @@ async def test_multiply_over_a_solid_shape_becomes_plain_shapes_in_the_blended_c
     assert any(item.representation.value == "decomposed" for item in result.coverage)
 
 
-async def test_multiply_over_a_picture_still_keeps_its_raster() -> None:
+async def test_multiply_over_a_radial_gradient_still_keeps_its_raster() -> None:
     result = await _render_and_extract_result(
         "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
-        "background:linear-gradient(#ffcc00,#cc00ff)'></div>"
+        "background:radial-gradient(#ffcc00,#cc00ff)'></div>"
         "<div style='position:absolute;left:300px;top:200px;width:300px;height:200px;"
         "background:#00ccff;mix-blend-mode:multiply'></div>"
     )
@@ -4078,3 +4078,54 @@ async def test_a_rotated_box_in_a_perspective_container_is_one_quad_with_no_extr
         if isinstance(s.fill, SolidFill) and (s.fill.color.r, s.fill.color.g) == (204, 34)
     )
     assert red.custom_geom is not None and red.transform is None
+
+
+async def test_multiply_over_a_gradient_becomes_a_gradient_patch_of_blended_stops() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:100px;width:400px;height:200px;"
+        "background:linear-gradient(90deg,#ffcc00,#ff3300)'></div>"
+        "<div style='position:absolute;left:300px;top:200px;width:300px;height:200px;"
+        "background:#00ccff;mix-blend-mode:multiply'></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+    fills = [
+        s.fill
+        for s in result.slide.shapes
+        if isinstance(s.fill, GradientFill) and s.box.x > 250 * 9525
+    ]
+    stops = fills[0].stops
+    # The patch covers the right half of the backdrop: it starts at the blended midpoint colour
+    # (yellow-orange x cyan has no red) and ends at the blended end colour.
+    assert stops[0].color.r == 0 and stops[-1].color.r == 0
+    assert stops[0].color.g > stops[-1].color.g
+
+
+async def test_darken_over_a_gradient_keeps_its_raster() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:100px;width:400px;height:200px;"
+        "background:linear-gradient(90deg,#ffcc00,#ff3300)'></div>"
+        "<div style='position:absolute;left:300px;top:200px;width:300px;height:200px;"
+        "background:#00ccff;mix-blend-mode:darken'></div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+
+
+async def test_a_hard_transition_in_the_backdrop_gradient_stays_hard_after_the_blend() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:100px;width:400px;height:200px;"
+        "background:linear-gradient(90deg,#ff0000 0%,#ff0000 50%,#ffff00 50%,#ffff00 100%)'></div>"
+        "<div style='position:absolute;left:100px;top:200px;width:400px;height:100px;"
+        "background:#00ffff;mix-blend-mode:multiply'></div>"
+    )
+
+    fills = [
+        s.fill
+        for s in result.slide.shapes
+        if isinstance(s.fill, GradientFill) and s.box.y > 150 * 9525
+    ]
+    stops = fills[0].stops
+    # Red x cyan is black, yellow x cyan is green: two stops at the midpoint, one of each.
+    middle = [(round(stop.pos, 2), (stop.color.r, stop.color.g, stop.color.b)) for stop in stops]
+    assert (0.5, (0, 0, 0)) in middle and (0.5, (0, 255, 0)) in middle

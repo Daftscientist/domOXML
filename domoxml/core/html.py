@@ -1322,6 +1322,35 @@ def _table_html(
     )
 
 
+def _text_layer_html(node: ShapeNode, warnings: list[ConversionWarning]) -> str:
+    """The text of a free-form outline as its own layer over the outline's SVG.
+
+    The SVG form of custom geometry has no text, so the shape's text sits in a transparent box
+    placed exactly over it; it follows the outline in z-order and extracts as a text shape.
+    """
+    styles = [
+        "position:absolute",
+        "box-sizing:border-box",
+        f"left:{_px(node.box.x)}",
+        f"top:{_px(node.box.y)}",
+        f"width:{_px(node.box.width)}",
+        f"height:{_px(node.box.height)}",
+    ]
+    if body_css := _text_body_css(node.text, warnings):
+        styles.append(body_css)
+    if (transform_css := _transform_css(node.transform)) is not None:
+        styles.append(f"transform:{transform_css}")
+    text_html = _text_html(node.text, warnings)
+    flipped = node.transform is not None and node.transform.flip_h
+    if text_html and flipped != (node.text is not None and node.text.mirror_x):
+        text_html = f'<div style="transform:scaleX(-1)">{text_html}</div>'
+    text_body_attr = ' data-domoxml-text-body="true"' if _plain_text_body(node.text) else ""
+    return (
+        f'<div class="domoxml-shape"{_text_payload_attrs(node)}{text_body_attr} '
+        f'style="{escape(";".join(styles), quote=True)}">{text_html}</div>'
+    )
+
+
 def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[ConversionWarning]) -> str:
     """Serialize one slide node. :class:`ShapeNode`, :class:`MediaNode`, and
     :class:`TableNode` have HTML mappings; others warn and emit nothing."""
@@ -1469,6 +1498,8 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                 f"{path_visibility}/>"
                 f"</svg>"
             )
+            if node.text is not None and node.portable_fallback is None:
+                inner += _text_layer_html(node, warnings)
             return inner
         # Merge text body CSS (flex anchor, columns) into the shape style.
         body_css = _text_body_css(node.text, warnings)

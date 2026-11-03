@@ -175,7 +175,7 @@ def _recolor_gradient(gradient: GradientFill, tone: Callable[[Rgba], Rgba]) -> G
     # Channel clamping bends the ramp between stops, so sample it finely before recolouring.
     positions = sorted({stop.pos for stop in gradient.stops} | {i / 16 for i in range(17)})
     stops = tuple(
-        GradientStop(pos=pos, color=tone(_sample(gradient.stops, pos))) for pos in positions
+        GradientStop(pos=pos, color=tone(sample_gradient(gradient.stops, pos))) for pos in positions
     )
     return gradient.model_copy(update={"stops": stops})
 
@@ -267,8 +267,10 @@ def lower_mask(fill: Fill | None, node: RenderedNode) -> tuple[Fill | None, str 
         folded = tuple(
             GradientStop(
                 pos=pos,
-                color=_sample(fill.stops, pos).model_copy(
-                    update={"a": _sample(fill.stops, pos).a * _sample(mask.stops, pos).a}
+                color=sample_gradient(fill.stops, pos).model_copy(
+                    update={
+                        "a": sample_gradient(fill.stops, pos).a * sample_gradient(mask.stops, pos).a
+                    }
                 ),
             )
             for pos in positions
@@ -288,7 +290,7 @@ def fill_only(node: RenderedNode) -> bool:
     return not node.text and not borders and styles.get("boxShadow", "none") in ("none", "")
 
 
-def _sample(stops: tuple[GradientStop, ...], position: float) -> Rgba:
+def sample_gradient(stops: tuple[GradientStop, ...], position: float) -> Rgba:
     """The gradient's colour at ``position``, interpolating in premultiplied alpha like CSS."""
     if position <= stops[0].pos:
         return stops[0].color

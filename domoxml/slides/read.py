@@ -828,13 +828,28 @@ def _group_reverse_coverage(
     )
 
 
+_EXACT_CONNECTORS = frozenset({"line", "straightConnector1", "bentConnector3", "curvedConnector3"})
+
+
 def _connector_reverse_coverage(slide_part: str, element: Element) -> CoverageItem:
+    geometry = element.find("p:spPr/a:prstGeom", _NS)
+    preset = geometry.get("prst", "line") if geometry is not None else "line"
+    adjusted = geometry is not None and any(
+        guide.get("name") != "adj1" for guide in geometry.findall("a:avLst/a:gd", _NS)
+    )
+    if preset in _EXACT_CONNECTORS and not adjusted:
+        return _native_reverse_coverage(slide_part, element)
+    reason = (
+        f"connector {preset!r} drawn as a single-elbow route; its adjust handle is not kept"
+        if adjusted
+        else f"connector {preset!r} drawn as a single-elbow route"
+    )
     return CoverageItem(
         element=_visual_label(slide_part, element),
         representation=Representation.APPROXIMATED,
         editability=Editability.SEMANTIC,
         source_retention=SourceRetention.LOST,
-        reason="connector routing and exact endpoints are approximated from its transform box",
+        reason=reason,
     )
 
 

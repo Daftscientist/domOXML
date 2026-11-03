@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from typing import Literal
 from xml.etree.ElementTree import Element
 
-from domoxml.core.ir.model import Connector, Line, Point, Rgba
+from domoxml.core.connector_geometry import connector_ends
+from domoxml.core.ir.model import Connector, Line, Rgba
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -28,7 +30,7 @@ def read_connector(element: Element, line_for: LineParser) -> Connector | None:
     transform = properties.find("a:xfrm", _NS) if properties is not None else None
     offset = transform.find("a:off", _NS) if transform is not None else None
     extent = transform.find("a:ext", _NS) if transform is not None else None
-    if properties is None or offset is None or extent is None:
+    if properties is None or transform is None or offset is None or extent is None:
         return None
     x = _int_attr(offset, "x")
     y = _int_attr(offset, "y")
@@ -41,10 +43,30 @@ def read_connector(element: Element, line_for: LineParser) -> Connector | None:
         kind = "bent"
     elif preset.startswith("curvedConnector"):
         kind = "curved"
+    rotation = _int_attr(transform, "rot")
+    start, end = connector_ends(
+        x,
+        y,
+        width,
+        height,
+        rotation,
+        transform.get("flipH") in ("1", "true"),
+        transform.get("flipV") in ("1", "true"),
+    )
+    # An elbow stored turned a quarter leaves its start vertically.
+    quarter_turned = (rotation % 10_800_000) == 5_400_000
+    elbow = 0.5
+    for guide in geometry.findall("a:avLst/a:gd", _NS) if geometry is not None else ():
+        formula = guide.get("fmla", "")
+        if kind != "straight" and guide.get("name") == "adj1" and formula.startswith("val "):
+            with contextlib.suppress(ValueError):
+                elbow = int(formula.removeprefix("val ")) / 100_000
     line = line_for(properties) or Line(color=Rgba(r=0, g=0, b=0), width_emu=9525)
     return Connector(
-        start=Point(x=x, y=y + height // 2),
-        end=Point(x=x + width, y=y + height // 2),
+        start=start,
+        end=end,
         kind=kind,
+        vertical_first=kind != "straight" and quarter_turned,
+        elbow=elbow,
         line=line,
     )

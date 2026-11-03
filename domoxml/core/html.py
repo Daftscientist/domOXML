@@ -1566,6 +1566,10 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
     return f'<div {metadata} style="{base}opacity:0;pointer-events:none;overflow:hidden"></div>'
 
 
+_ARROW_LENGTH = {"sm": 3, "med": 4, "lg": 6}
+_ARROW_WIDTH = {"sm": 2, "med": 3, "lg": 5}
+
+
 def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:
     """Serialize a ``p:cxnSp`` connector to an absolutely-positioned ``<svg>`` element.
 
@@ -1611,13 +1615,21 @@ def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:
     for end_name, arrow in (("head", line.head), ("tail", line.tail)):
         if arrow is None or arrow.type == "none":
             continue
-        mid = f"arr-{end_name}"
+        mid = (
+            f"arr-{end_name}-{line.color.r:02x}{line.color.g:02x}{line.color.b:02x}"
+            f"-{arrow.length}-{arrow.width}"
+        )
         marker_ids[end_name] = mid
         # Simple filled triangle — points chosen for a clean arrow shape.
         orient = "auto-start-reverse" if end_name == "head" else "auto"
+        # PowerPoint sizes a head in line widths; the id carries what makes two heads differ,
+        # because every SVG on a slide shares one id space.
+        length = _ARROW_LENGTH[arrow.length]
+        breadth = _ARROW_WIDTH[arrow.width]
         defs += (
-            f'<defs><marker id="{mid}" markerUnits="strokeWidth" '
-            f'markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="{orient}">'
+            f'<defs><marker id="{mid}" markerUnits="strokeWidth" viewBox="0 0 10 7" '
+            f'preserveAspectRatio="none" markerWidth="{length}" markerHeight="{breadth}" '
+            f'refX="10" refY="3.5" orient="{orient}">'
             f'<polygon points="0 0, 10 3.5, 0 7" fill="{color_css}"/>'
             f"</marker></defs>"
         )
@@ -1638,23 +1650,41 @@ def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:
             f' {stroke_attrs} fill="none"/>'
         )
     elif node.kind == "bent":
-        # Approximate with an L-shaped path: horizontal first, then vertical.
-        mid_x = lex
-        mid_y = lsy
-        d = (
-            f"M {_number(lsx)} {_number(lsy)}"
-            f" L {_number(mid_x)} {_number(mid_y)}"
-            f" L {_number(lex)} {_number(ley)}"
-        )
+        # Three segments with the middle one halfway between the ends, like bentConnector3.
+        if node.vertical_first:
+            mid = lsy + (ley - lsy) * node.elbow
+            points = [(lsx, lsy), (lsx, mid), (lex, mid), (lex, ley)]
+        else:
+            mid = lsx + (lex - lsx) * node.elbow
+            points = [(lsx, lsy), (mid, lsy), (mid, ley), (lex, ley)]
+        d = "M " + " L ".join(f"{_number(px)} {_number(py)}" for px, py in points)
         shape_el = f'<path d="{escape(d, quote=True)}" {stroke_attrs} fill="none"/>'
     else:
-        # curved: quadratic Bézier with control point at the midpoint offset.
-        cpx = (lsx + lex) / 2
-        cpy = (lsy + ley) / 2 - abs(lex - lsx) * 0.25
+        # curvedConnector3: two curves meeting at the middle, tangent to the leaving direction.
+        dx, dy = lex - lsx, ley - lsy
+        turn = node.elbow
+        if node.vertical_first:
+            across = lsy + dy * turn
+            way = [
+                (lsx, lsy + dy * turn / 2),
+                (lsx + dx / 4, across),
+                (lsx + dx / 2, across),
+                (lsx + 3 * dx / 4, across),
+                (lex, lsy + dy * (1 + turn) / 2),
+            ]
+        else:
+            across = lsx + dx * turn
+            way = [
+                (lsx + dx * turn / 2, lsy),
+                (across, lsy + dy / 4),
+                (across, lsy + dy / 2),
+                (across, lsy + 3 * dy / 4),
+                (lsx + dx * (1 + turn) / 2, ley),
+            ]
+        pt = [f"{_number(px)} {_number(py)}" for px, py in way]
         d = (
-            f"M {_number(lsx)} {_number(lsy)}"
-            f" Q {_number(cpx)} {_number(cpy)}"
-            f" {_number(lex)} {_number(ley)}"
+            f"M {_number(lsx)} {_number(lsy)} C {pt[0]}, {pt[1]}, {pt[2]}"
+            f" C {pt[3]}, {pt[4]}, {_number(lex)} {_number(ley)}"
         )
         shape_el = f'<path d="{escape(d, quote=True)}" {stroke_attrs} fill="none"/>'
 

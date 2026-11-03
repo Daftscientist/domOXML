@@ -23,6 +23,8 @@ from typing import Literal
 from PIL import Image
 from pydantic import BaseModel, ConfigDict
 
+from domoxml.core.chart_author import chart_payload, parse_chart_spec
+from domoxml.core.chart_picture import chart_picture
 from domoxml.core.crop import cover_crop
 from domoxml.core.drawingml.presets import match_polygon
 from domoxml.core.fillcrop import cover_crop_fractions, explicit_crop_fractions
@@ -807,6 +809,26 @@ def _summary_marker(node: RenderedNode) -> ShapeNode | None:
         font_px,
         line_px,
         colour,
+    )
+
+
+def _authored_chart(node: RenderedNode) -> PreservedNode | None:
+    """A ``data-chart`` block as a native chart frame, drawn in HTML as the SVG of its data."""
+    spec = parse_chart_spec(node.styles["domoxmlChart"])
+    if (
+        spec is None
+        or node.styles.get("domoxmlClippedByAncestor")
+        # The chart frame carries only a position and size, so a turned or flipped block is
+        # not one this path can place faithfully.
+        or node.styles.get("transform", "none") not in ("none", "")
+    ):
+        return None
+    box = _box(node)
+    payload = chart_payload(spec, box)
+    return PreservedNode(
+        box=box,
+        payload=payload,
+        fallback=chart_picture(payload, box, None),
     )
 
 
@@ -2841,6 +2863,14 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             if drawn_canvas is not None:
                 _emit_svg_shapes(drawn_canvas, node, identities, contents, coverage, _label(node))
                 consumed |= _subtree(node.index, children)
+                continue
+
+        if "domoxmlChart" in node.styles and node.tag != "svg":
+            authored = _authored_chart(node)
+            if authored is not None:
+                contents.append(identities.apply(authored, node))
+                consumed |= _subtree(node.index, children)
+                coverage.append(_native_coverage(_label(node)))
                 continue
 
         if node.tag in ("video", "audio", "iframe"):

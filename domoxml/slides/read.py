@@ -19,7 +19,7 @@ from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
 from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
 from domoxml.core.ir.gradient import drawingml_gradient_projection
-from domoxml.core.ir.group import group_html_roundtrip_error
+from domoxml.core.ir.group import group_html_roundtrip_error, group_pptx_write_error
 from domoxml.core.ir.model import (
     ArcTo,
     Box,
@@ -540,6 +540,7 @@ def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> Sh
             ),
             fill=picture,
             opacity=opacity,
+            transform=_xfrm_transform(transform),
         ),
         element,
         slide_part,
@@ -1200,7 +1201,12 @@ def _slide(
             if _local_name(element) == "grpSp"
         }
         has_unsupported_group = any(
-            group is None or bool(group_preserved) or group_html_roundtrip_error(group) is not None
+            group is None
+            or bool(group_preserved)
+            or group_pptx_write_error(group) is not None
+            # Source-only effects (preset shadows) are painted only by the slide raster, so a
+            # slide that has them keeps it for any group the structural HTML cannot carry.
+            or (bool(source_only_effect_visuals) and group_html_roundtrip_error(group) is not None)
             for group, _group_warns, group_preserved in group_results.values()
         )
         if (
@@ -1716,6 +1722,32 @@ def _slide(
                             element,
                             group,
                             has_preserved_children=bool(group_preserved),
+                        )
+                    )
+                    continue
+                if (
+                    group is not None
+                    and not group_preserved
+                    and group_pptx_write_error(group) is None
+                    and not source_only_effect_visuals
+                ):
+                    # Transformed, nested or connector-bearing groups have no structural HTML
+                    # projection, but every child is native: the serializer lays them out in a
+                    # wrapper that carries the group transform, so nothing needs a raster.
+                    contents.append(group)
+                    warnings.extend(group_warns)
+                    shapes = _group_output_count(group)
+                    coverage.append(
+                        _native_reverse_coverage(slide_part, element)
+                        if shapes <= 1
+                        else CoverageItem(
+                            element=_visual_label(slide_part, element),
+                            representation=Representation.DECOMPOSED,
+                            editability=Editability.COMPONENTS,
+                            source_retention=SourceRetention.LOST,
+                            output_count=shapes,
+                            reason=f"group flattened into positioned HTML children: "
+                            f"{group_roundtrip_error}",
                         )
                     )
                     continue

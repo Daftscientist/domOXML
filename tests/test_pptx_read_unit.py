@@ -1949,3 +1949,33 @@ def test_reverse_reads_nested_level() -> None:
     )
     para = _first_para(_para_deck(para_xml))
     assert para.level == 2
+
+
+def test_rotated_and_flipped_pictures_keep_their_transform_inside_a_group() -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    png = BytesIO()
+    Image.new("RGB", (4, 4), "#c20").save(png, "PNG")
+    picture = ShapeNode(
+        box=Box(x=0, y=0, width=500_000, height=500_000),
+        fill=PictureFill(data=png.getvalue(), ext="png"),
+        transform=Transform(rotation_deg=30, flip_h=True),
+    )
+    group = GroupNode(
+        box=Box(x=1_000_000, y=1_000_000, width=1_000_000, height=1_000_000),
+        child_box=Box(x=0, y=0, width=1_000_000, height=1_000_000),
+        children=(picture,),
+        transform=Transform(rotation_deg=10),
+    )
+
+    result = read_pptx_result(
+        build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(group,))], faces=[])
+    )
+
+    [read_group] = result.slides[0].contents
+    assert isinstance(read_group, GroupNode)
+    [child] = read_group.children
+    assert isinstance(child, ShapeNode)
+    assert child.transform == Transform(rotation_deg=30, flip_h=True)

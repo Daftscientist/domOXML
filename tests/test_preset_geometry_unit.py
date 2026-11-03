@@ -139,14 +139,50 @@ _WORDS = TextBody(
 )
 
 
-def test_a_preset_with_text_keeps_its_text_instead_of_an_svg_outline() -> None:
-    deck = _preset_deck("flowChartPunchedTape", fill=_BLUE, text=_WORDS)
+def test_a_preset_with_text_keeps_both_its_outline_and_its_text_in_html() -> None:
+    deck = _preset_deck(
+        "flowChartPunchedTape",
+        fill=_BLUE,
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+        text=_WORDS,
+    )
 
     result = read_pptx_result(deck)
 
     [shape] = result.slides[0].contents
+    assert isinstance(shape, ShapeNode) and shape.custom_geom is not None and shape.text
+    html = pptx_to_html(deck).slides[0].html
+    assert "Label" in html and "<svg" in html
+
+
+def test_a_gradient_preset_with_text_keeps_a_rectangle_for_now() -> None:
+    deck = _preset_deck("flowChartPunchedTape", fill=_GRADIENT, text=_WORDS)
+
+    [shape] = read_pptx_result(deck).slides[0].contents
+
     assert isinstance(shape, ShapeNode) and shape.custom_geom is None
-    assert "Label" in pptx_to_html(deck).slides[0].html
+
+
+@pytest.mark.integration
+async def test_a_preset_with_text_extracts_as_an_outline_beneath_its_text() -> None:
+    from domoxml.core.ir import extract_slide
+    from domoxml.core.render import BrowserSession
+
+    deck = _preset_deck(
+        "flowChartPunchedTape",
+        fill=_BLUE,
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+        text=_WORDS,
+    )
+    page = f"<body style='margin:0'>{pptx_to_html(deck).slides[0].html}</body>"
+    async with BrowserSession() as session:
+        rendered = await session.render(page, width=1280, height=720)
+
+    shapes = extract_slide(rendered).slide.shapes
+
+    outline = next(i for i, s in enumerate(shapes) if s.custom_geom is not None)
+    words = next(i for i, s in enumerate(shapes) if s.text)
+    assert outline < words
 
 
 def test_a_rotated_stroked_preset_keeps_its_rotation_in_html() -> None:

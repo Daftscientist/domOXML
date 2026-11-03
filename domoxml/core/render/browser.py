@@ -463,6 +463,33 @@ _SNAPSHOT_JS = """
         }
         window = merged;
       }
+      // A clip that turns with the element (both carry the same rotation) is a plain rectangle
+      // in the element's own frame, whatever the angle: where it sits relative to the element's
+      // layout box is what a native shape needs.
+      if (styles.domoxmlClippedByAncestor && !(window && windowExact) && effectiveLinear
+          && el instanceof HTMLElement && el.offsetWidth > 0 && el.offsetHeight > 0) {
+        const turning = [];
+        for (const ancestor of clippersOf(el)) {
+          const region = clipRegion(ancestor);
+          if (region && !region.coversSlide) turning.push([ancestor, region]);
+        }
+        if (turning.length === 1) {
+          const [ancestor, region] = turning[0];
+          const record = walked.get(ancestor);
+          const same = record && record.linear && ['a', 'b', 'c', 'd'].every(
+            (k) => Math.abs(record.linear[k] - effectiveLinear[k]) < 1e-6);
+          const rotating = Math.abs(region.inverse.b) > 1e-6 || Math.abs(region.inverse.c) > 1e-6;
+          if (same && rotating && region.clipX && region.clipY) {
+            const mine = region.inverse.transformPoint({
+              x: r.x + r.width / 2 - region.centre.x, y: r.y + r.height / 2 - region.centre.y,
+            });
+            const left = region.shift.x - region.half.x - (mine.x - el.offsetWidth / 2);
+            const top = region.shift.y - region.half.y - (mine.y - el.offsetHeight / 2);
+            styles.domoxmlLocalClipRect = [left, top, 2 * region.half.x, 2 * region.half.y,
+              region.radius].map((v) => Math.round(v * 100) / 100).join(',');
+          }
+        }
+      }
       if (styles.domoxmlClippedByAncestor && window && windowExact) {
         const parts = [window.left, window.top, window.right - window.left,
           window.bottom - window.top, window.radius];

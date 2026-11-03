@@ -3954,3 +3954,50 @@ async def test_a_block_summary_has_no_marker_and_no_indent() -> None:
         s for s in result.slide.shapes if s.text and s.text.paragraphs[0].runs[0].text == "Plain"
     )
     assert plain.text.paragraphs[0].indent_pt == 0  # type: ignore[union-attr]
+
+
+async def test_a_child_clipped_by_a_rotated_container_becomes_a_native_cropped_shape() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:300px;top:150px;width:300px;height:200px;"
+        "transform:rotate(12deg);overflow:hidden;background:#eee;border-radius:16px'>"
+        "<div style='position:absolute;left:-40px;top:20px;width:400px;height:90px;"
+        "background:#c20'></div></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+    cropped = next(
+        s
+        for s in result.slide.shapes
+        if isinstance(s.fill, SolidFill) and (s.fill.color.r, s.fill.color.g) == (204, 34)
+    )
+    assert cropped.custom_geom is not None and cropped.transform is not None
+    assert round(cropped.transform.rotation_deg) == 12
+    # The red bar is 400px wide but the container clips it to 300: the path stops at the edge.
+    xs = [c.to.x for c in cropped.custom_geom.path if isinstance(c, MoveTo | LineTo)]
+    assert max(xs) - min(xs) <= 300 * 9525 + 2
+
+
+async def test_a_child_with_its_own_extra_rotation_in_a_rotated_clip_keeps_its_raster() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:300px;top:150px;width:300px;height:200px;"
+        "transform:rotate(12deg);overflow:hidden;background:#eee'>"
+        "<div style='position:absolute;left:-40px;top:20px;width:400px;height:90px;"
+        "transform:rotate(20deg);background:#c20'></div></div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+
+
+async def test_uneven_corners_or_a_table_in_a_rotated_clip_keep_their_raster() -> None:
+    for child in (
+        "<div style='position:absolute;left:-40px;top:20px;width:400px;height:90px;"
+        "background:#c20;border-radius:40px 0 0 0'></div>",
+        "<table style='position:absolute;left:-40px;top:20px;font-size:20px'>"
+        "<tr><td>One</td><td>Two</td></tr><tr><td>Three</td><td>Four</td></tr></table>",
+    ):
+        result = await _render_and_extract_result(
+            "<div style='position:absolute;left:300px;top:150px;width:100px;height:100px;"
+            f"transform:rotate(12deg);overflow:hidden'>{child}</div>"
+        )
+
+        assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)

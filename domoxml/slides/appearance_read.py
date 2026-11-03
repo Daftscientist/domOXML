@@ -26,6 +26,7 @@ from domoxml.core.ir.model import (
     ThemeColorRef,
 )
 from domoxml.core.opc import OpcPackage
+from domoxml.slides.inherit import apply_color_transforms
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -109,15 +110,13 @@ def rgba(element: Element | None, colors: ThemeColors) -> Rgba | None:
     value = rgb_hex(element, colors) or ""
     if len(value) != 6:
         return None
+    red, green, blue = int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+    opacity = 1.0
     color_element = next(iter(element), None)
-    alpha = color_element.find("a:alpha", _NS) if color_element is not None else None
-    opacity = _int_attr(alpha, "val", 100_000) / 100_000 if alpha is not None else 1.0
-    return Rgba(
-        r=int(value[0:2], 16),
-        g=int(value[2:4], 16),
-        b=int(value[4:6], 16),
-        a=opacity,
-    )
+    if color_element is not None:
+        # lumMod/lumOff, tint, shade, satMod and alpha all adjust the base colour in order.
+        red, green, blue, opacity = apply_color_transforms(red, green, blue, 1.0, color_element)
+    return Rgba(r=red, g=green, b=blue, a=opacity)
 
 
 def gradient(element: Element, colors: ThemeColors) -> GradientFill | None:

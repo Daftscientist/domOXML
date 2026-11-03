@@ -995,10 +995,24 @@ def _ancestor_clip_window(node: RenderedNode) -> tuple[float, float, float, floa
     return (values[0], values[1], values[2], values[3], values[4]) if len(values) == 5 else None
 
 
+def _local_clip_window(node: RenderedNode) -> tuple[float, float, float, float, float] | None:
+    """The ancestor's clip as ``(left, top, width, height, radius)`` in the element's own frame.
+
+    Set when the element and the rotated ancestor that clips it turn together, so the clip is a
+    plain rectangle relative to the element however the pair is rotated on the slide.
+    """
+    raw = node.styles.get("domoxmlLocalClipRect")
+    if raw is None or not node.styles.get("domoxmlClippedByAncestor"):
+        return None
+    values = [float(value) for value in raw.split(",")]
+    return (values[0], values[1], values[2], values[3], values[4]) if len(values) == 5 else None
+
+
 def _cropped_geometry(
     node: RenderedNode,
-    window: tuple[float, float, float, float, float],
+    window: tuple[float, float, float, float, float] | None,
     existing: CustomGeometry | None,
+    local: tuple[float, float, float, float, float] | None = None,
 ) -> tuple[CustomGeometry | None, str | None]:
     """The element's shape cut to the ancestor's clip window, as a native free-form path.
 
@@ -1008,20 +1022,33 @@ def _cropped_geometry(
     """
     if (
         existing is not None
-        or node.styles.get("transform", "none") not in ("none", "")
+        or (local is None and node.styles.get("transform", "none") not in ("none", ""))
         or node.styles.get("clipPath", "none") not in ("none", "")
     ):
         return None, "clipped by an ancestor's overflow has no native mapping"
     if not fill_only(node) or node.text_runs:
         return None, "clipped by an ancestor's overflow has no native mapping"
-    x, y, width, height, radius = window
-    shape_radius = parse_radius_px(
-        node.styles.get("borderRadius"), shorter_side_px=min(node.width, node.height)
-    )
-    subject = rounded_box(node.width, node.height, shape_radius)
-    area = [(px - node.x, py - node.y) for px, py in ((x, y), (x + width, y + height))]
-    (left, top), (right, bottom) = area
-    frame = [(px + left, py + top) for px, py in rounded_box(right - left, bottom - top, radius)]
+    if local is not None:
+        layout_width = float(node.styles.get("domoxmlLayoutWidth") or node.width)
+        layout_height = float(node.styles.get("domoxmlLayoutHeight") or node.height)
+        left, top, width, height, radius = local
+        shape_radius = parse_radius_px(
+            node.styles.get("borderRadius"), shorter_side_px=min(layout_width, layout_height)
+        )
+        subject = rounded_box(layout_width, layout_height, shape_radius)
+        frame = [(px + left, py + top) for px, py in rounded_box(width, height, radius)]
+    else:
+        assert window is not None
+        x, y, width, height, radius = window
+        shape_radius = parse_radius_px(
+            node.styles.get("borderRadius"), shorter_side_px=min(node.width, node.height)
+        )
+        subject = rounded_box(node.width, node.height, shape_radius)
+        area = [(px - node.x, py - node.y) for px, py in ((x, y), (x + width, y + height))]
+        (left, top), (right, bottom) = area
+        frame = [
+            (px + left, py + top) for px, py in rounded_box(right - left, bottom - top, radius)
+        ]
     clipped = clip_polygon(subject, frame)
     if len(clipped) < 3:
         return None, "clipped by an ancestor's overflow hides the whole element"
@@ -2826,7 +2853,12 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         # clip), so it keeps exactly its visible pixels and nothing spills past the clipping box.
         # SVG keeps the raster: its custom geometry is built elsewhere and is not cropped here.
         ancestor_clip = None if node.tag == "svg" else _ancestor_clip_window(node)
-        if node.styles.get("domoxmlClippedByAncestor") and ancestor_clip is None:
+        local_clip = None if node.tag == "svg" else _local_clip_window(node)
+        if (
+            node.styles.get("domoxmlClippedByAncestor")
+            and ancestor_clip is None
+            and local_clip is None
+        ):
             label = _label(node)
             clip_reason = "clipped by an ancestor's overflow has no native mapping"
             clip_shape = _raster_shape(node, rendered)
@@ -3206,8 +3238,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
 
         if reason is None and _has_complex_transform(node.styles.get("transform")):
             clip_geometry, reason = _quad_geometry(node, fill, clip_geometry)
-        if reason is None and ancestor_clip is not None:
-            clip_geometry, reason = _cropped_geometry(node, ancestor_clip, clip_geometry)
+        if reason is None and (ancestor_clip is not None or local_clip is not None):
+            clip_geometry, reason = _cropped_geometry(
+                node, ancestor_clip, clip_geometry, local_clip
+            )
             polygon_matched = polygon_matched and clip_geometry is None
 
         if reason is not None:

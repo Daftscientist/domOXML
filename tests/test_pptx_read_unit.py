@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import zipfile
+from collections.abc import Sequence
 from io import BytesIO
 from xml.etree.ElementTree import Element
 
@@ -54,7 +55,13 @@ from domoxml.slides.read import (
     _slide_colors,
     _with_pptx_identity,
 )
-from domoxml.types import Editability, HtmlPresentation, Representation, SourceRetention
+from domoxml.types import (
+    CoverageItem,
+    Editability,
+    HtmlPresentation,
+    Representation,
+    SourceRetention,
+)
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -1014,7 +1021,7 @@ def test_preset_shadow_uses_full_slide_rasterized_fallback_and_re_emits() -> Non
     assert preserved.fallback is not None
     assert recovered_node.fallback.data == preserved.fallback.data
     assert recovered_node.fallback_representation == "rasterized"
-    [recovered_coverage] = recovered.coverage.items
+    [recovered_coverage] = _slide_items(recovered.coverage.items)
     assert recovered_coverage.representation is Representation.RASTERIZED
     assert recovered_coverage.editability is Editability.NONE
     assert recovered_coverage.source_retention is SourceRetention.ATTACHED
@@ -1059,7 +1066,7 @@ def test_preset_shadow_multi_visual_uses_slide_level_fallback() -> None:
         node for node in recovered_slide.contents if isinstance(node, PreservedNode)
     ]
     assert recovered_slide.renderer_fallback_owner_node_id == recovered_preserved.node_id
-    assert [item.representation for item in recovered.coverage.items] == [
+    assert [item.representation for item in _slide_items(recovered.coverage.items)] == [
         Representation.NATIVE,
         Representation.RASTERIZED,
     ]
@@ -1155,7 +1162,7 @@ def test_malformed_slide_fallback_marker_stays_source_owned() -> None:
     [preserved] = [node for node in recovered.slides[0].contents if isinstance(node, PreservedNode)]
     assert preserved.payload.kind == "AlternateContent"
     assert preserved.fallback_representation == "rasterized"
-    [coverage] = recovered.coverage.items
+    [coverage] = _slide_items(recovered.coverage.items)
     assert coverage.representation is Representation.RASTERIZED
     assert coverage.source_retention is SourceRetention.ATTACHED
 
@@ -1185,7 +1192,7 @@ def test_slide_fallback_with_extra_fallback_visual_stays_source_owned() -> None:
     [preserved] = [node for node in recovered.slides[0].contents if isinstance(node, PreservedNode)]
     assert preserved.payload.kind == "AlternateContent"
     assert preserved.fallback_representation == "rasterized"
-    [coverage] = recovered.coverage.items
+    [coverage] = _slide_items(recovered.coverage.items)
     assert coverage.representation is Representation.RASTERIZED
     assert coverage.source_retention is SourceRetention.ATTACHED
 
@@ -1207,7 +1214,7 @@ def test_legacy_node_level_full_slide_fallback_rejects_siblings() -> None:
         isinstance(node, PreservedNode) and node.fallback_representation == "rasterized"
         for node in unsafe_recovered.slides[0].contents
     )
-    assert [item.representation for item in unsafe_recovered.coverage.items] == [
+    assert [item.representation for item in _slide_items(unsafe_recovered.coverage.items)] == [
         Representation.APPROXIMATED,
         Representation.NATIVE,
     ]
@@ -1997,6 +2004,11 @@ def test_rotated_and_flipped_pictures_keep_their_transform_inside_a_group() -> N
     assert child.transform == Transform(rotation_deg=30, flip_h=True)
 
 
+def _slide_items(items: Sequence[CoverageItem]) -> list[CoverageItem]:
+    """Coverage of the slide's elements: the background a rebuilt slide now carries is not one."""
+    return [item for item in items if not item.element.endswith(":background")]
+
+
 def _deck_with_master_background(background_xml: str) -> bytes:
     source = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=())], faces=[])
     patched = BytesIO()
@@ -2032,3 +2044,43 @@ def test_a_background_reference_paints_the_theme_style_in_its_own_colour() -> No
 
     assert background is not None and isinstance(background.fill, SolidFill)
     assert background.fill.color == Rgba(r=170, g=0, b=0)
+
+
+def test_a_background_reference_keeps_the_theme_styles_own_colour_transforms() -> None:
+    source = _deck_with_master_background(
+        '<p:bg><p:bgRef idx="1001"><a:srgbClr val="AA0000"/></p:bgRef></p:bg>'
+    )
+    patched = BytesIO()
+    with zipfile.ZipFile(BytesIO(source)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "ppt/theme/theme1.xml":
+                text = data.decode()
+                head, marker, tail = text.partition("<a:bgFillStyleLst>")
+                data = (
+                    head
+                    + marker
+                    + tail.replace(
+                        '<a:schemeClr val="phClr"/>',
+                        '<a:schemeClr val="phClr"><a:alpha val="50000"/></a:schemeClr>',
+                        1,
+                    )
+                ).encode()
+            zout.writestr(item, data)
+
+    background = read_pptx_result(patched.getvalue()).slides[0].background
+
+    assert background is not None and isinstance(background.fill, SolidFill)
+    assert background.fill.color.a == 0.5
+
+
+def test_an_inherited_background_is_written_onto_the_rebuilt_slide() -> None:
+    deck = _deck_with_master_background(
+        '<p:bg><p:bgPr><a:solidFill><a:srgbClr val="112233"/></a:solidFill><a:effectLst/>'
+        "</p:bgPr></p:bg>"
+    )
+    result = read_pptx_result(deck)
+
+    rebuilt = zipfile.ZipFile(BytesIO(build_pptx(list(result.slides), faces=[])))
+
+    assert b"112233" in rebuilt.read("ppt/slides/slide1.xml")

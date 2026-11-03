@@ -1011,7 +1011,7 @@ class SlideBackground(BaseModel):
     model_config = _FROZEN
 
     fill: Fill
-    # Taken from the layout or master the slide sits on: shown, but the slide does not own it.
+    # Taken from the layout or master the slide sits on, not set on the slide itself.
     inherited: bool = False
 
 

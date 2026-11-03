@@ -378,11 +378,7 @@ def _slide(
 
     # Background picture fill: needs its own media part + rel.
     bg_blip_rid: str | None = None
-    if (
-        slide.background is not None
-        and not slide.background.inherited
-        and isinstance(slide.background.fill, PictureFill)
-    ):
+    if slide.background is not None and isinstance(slide.background.fill, PictureFill):
         pic = slide.background.fill
         bg_blip_rid = register_media(pic.data, pic.ext)
     slide_fallback_rid: str | None = None
@@ -803,11 +799,9 @@ def _slide(
             f"<mc:Fallback>{fallback_xml}</mc:Fallback>"
             "</mc:AlternateContent>"
         )
-    bg_xml = (
-        background_xml(slide.background, bg_blip_rid)
-        if slide.background is not None and not slide.background.inherited
-        else ""
-    )
+    # The output has its own master, so a background the slide only inherited from a source
+    # master is written onto the slide itself.
+    bg_xml = background_xml(slide.background, bg_blip_rid) if slide.background is not None else ""
     transition = transition_xml(slide.transition)
     slide_xml = (
         f"{t.XML_DECL}<p:sld {t.NS}><p:cSld>{bg_xml}<p:spTree>"

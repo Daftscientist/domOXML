@@ -1082,7 +1082,10 @@ def _background_reference_fill(
         for parent in style.iter():
             for child_index, child in enumerate(list(parent)):
                 if child.tag == f"{{{_A}}}schemeClr" and child.get("val") == "phClr":
-                    parent[child_index] = copy.deepcopy(colour)
+                    # The style's own colour transforms (alpha, tint...) apply to the reference's.
+                    replacement = copy.deepcopy(colour)
+                    replacement.extend(copy.deepcopy(transform) for transform in child)
+                    parent[child_index] = replacement
     holder = Element("holder")
     holder.append(style)
     return _fill(holder, package, theme_part, colors)

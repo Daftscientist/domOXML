@@ -98,3 +98,27 @@ def test_an_elbow_is_three_segments_and_follows_its_leaving_direction_in_html() 
 
     assert horizontal.count("L") == 3 and vertical.count("L") == 3
     assert horizontal != vertical
+
+
+@pytest.mark.parametrize("kind", ["bent", "curved"])
+def test_the_elbow_position_survives_pptx_and_moves_the_html_turn(kind: str) -> None:
+    connector = Connector(
+        start=Point(x=0, y=0),
+        end=Point(x=1_905_000, y=952_500),
+        kind=kind,  # type: ignore[arg-type]
+        elbow=0.25,
+        line=_LINE,
+    )
+    slide = SlideIR(width=12_192_000, height=6_858_000, contents=(connector,))
+
+    [read] = read_pptx_result(build_pptx([slide], faces=[])).slides[0].contents
+
+    assert isinstance(read, Connector) and read.elbow == 0.25
+    centred = connector.model_copy(update={"elbow": 0.5})
+    assert (
+        serialize_canvas([slide]).slides[0].html.split(' d="')[1].split('"')[0]
+        != serialize_canvas([slide.model_copy(update={"contents": (centred,)})])
+        .slides[0]
+        .html.split(' d="')[1]
+        .split('"')[0]
+    )

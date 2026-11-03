@@ -1652,31 +1652,34 @@ def _connector_html(node: Connector, warnings: list[ConversionWarning]) -> str:
     elif node.kind == "bent":
         # Three segments with the middle one halfway between the ends, like bentConnector3.
         if node.vertical_first:
-            mid = (lsy + ley) / 2
+            mid = lsy + (ley - lsy) * node.elbow
             points = [(lsx, lsy), (lsx, mid), (lex, mid), (lex, ley)]
         else:
-            mid = (lsx + lex) / 2
+            mid = lsx + (lex - lsx) * node.elbow
             points = [(lsx, lsy), (mid, lsy), (mid, ley), (lex, ley)]
         d = "M " + " L ".join(f"{_number(px)} {_number(py)}" for px, py in points)
         shape_el = f'<path d="{escape(d, quote=True)}" {stroke_attrs} fill="none"/>'
     else:
         # curvedConnector3: two curves meeting at the middle, tangent to the leaving direction.
         dx, dy = lex - lsx, ley - lsy
+        turn = node.elbow
         if node.vertical_first:
+            across = lsy + dy * turn
             way = [
-                (lsx, lsy + dy / 4),
-                (lsx + dx / 4, lsy + dy / 2),
-                (lsx + dx / 2, lsy + dy / 2),
-                (lsx + 3 * dx / 4, lsy + dy / 2),
-                (lex, lsy + 3 * dy / 4),
+                (lsx, lsy + dy * turn / 2),
+                (lsx + dx / 4, across),
+                (lsx + dx / 2, across),
+                (lsx + 3 * dx / 4, across),
+                (lex, lsy + dy * (1 + turn) / 2),
             ]
         else:
+            across = lsx + dx * turn
             way = [
-                (lsx + dx / 4, lsy),
-                (lsx + dx / 2, lsy + dy / 4),
-                (lsx + dx / 2, lsy + dy / 2),
-                (lsx + dx / 2, lsy + 3 * dy / 4),
-                (lsx + 3 * dx / 4, ley),
+                (lsx + dx * turn / 2, lsy),
+                (across, lsy + dy / 4),
+                (across, lsy + dy / 2),
+                (across, lsy + 3 * dy / 4),
+                (lsx + dx * (1 + turn) / 2, ley),
             ]
         pt = [f"{_number(px)} {_number(py)}" for px, py in way]
         d = (

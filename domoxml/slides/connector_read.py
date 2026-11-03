@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from typing import Literal
 from xml.etree.ElementTree import Element
@@ -54,11 +55,18 @@ def read_connector(element: Element, line_for: LineParser) -> Connector | None:
     )
     # An elbow stored turned a quarter leaves its start vertically.
     quarter_turned = (rotation % 10_800_000) == 5_400_000
+    elbow = 0.5
+    for guide in geometry.findall("a:avLst/a:gd", _NS) if geometry is not None else ():
+        formula = guide.get("fmla", "")
+        if kind != "straight" and guide.get("name") == "adj1" and formula.startswith("val "):
+            with contextlib.suppress(ValueError):
+                elbow = int(formula.removeprefix("val ")) / 100_000
     line = line_for(properties) or Line(color=Rgba(r=0, g=0, b=0), width_emu=9525)
     return Connector(
         start=start,
         end=end,
         kind=kind,
         vertical_first=kind != "straight" and quarter_turned,
+        elbow=elbow,
         line=line,
     )

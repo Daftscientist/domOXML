@@ -1467,17 +1467,30 @@ def test_reverse_coverage_records_retained_native_group_semantics() -> None:
     assert coverage.output_count == 1
 
 
-def test_reverse_coverage_reports_connector_geometry_approximation() -> None:
-    element = ElementTree.fromstring(
-        f'<p:cxnSp xmlns:p="{_P}"><p:nvCxnSpPr>'
-        '<p:cNvPr id="12" name="connector"/></p:nvCxnSpPr></p:cxnSp>'
+def test_reverse_coverage_is_exact_for_plain_connectors_and_approximate_for_other_routes() -> None:
+    def connector(preset: str, adjust: str = "") -> ElementTree.Element:
+        return ElementTree.fromstring(
+            f'<p:cxnSp xmlns:p="{_P}" xmlns:a="{_A}"><p:nvCxnSpPr>'
+            '<p:cNvPr id="12" name="connector"/></p:nvCxnSpPr>'
+            f'<p:spPr><a:prstGeom prst="{preset}"><a:avLst>{adjust}</a:avLst></a:prstGeom></p:spPr>'
+            "</p:cxnSp>"
+        )
+
+    plain = _connector_reverse_coverage("ppt/slides/slide1.xml", connector("bentConnector3"))
+    moved = _connector_reverse_coverage(
+        "ppt/slides/slide1.xml", connector("bentConnector3", '<a:gd name="adj1" fmla="val 25000"/>')
     )
+    extra = _connector_reverse_coverage(
+        "ppt/slides/slide1.xml", connector("bentConnector3", '<a:gd name="adj2" fmla="val 9"/>')
+    )
+    other = _connector_reverse_coverage("ppt/slides/slide1.xml", connector("bentConnector4"))
 
-    coverage = _connector_reverse_coverage("ppt/slides/slide1.xml", element)
-
-    assert coverage.representation is Representation.APPROXIMATED
-    assert coverage.editability is Editability.SEMANTIC
-    assert coverage.source_retention is SourceRetention.LOST
+    assert plain.representation is Representation.NATIVE
+    assert moved.representation is Representation.NATIVE
+    for approximate in (extra, other):
+        assert approximate.representation is Representation.APPROXIMATED
+        assert approximate.source_retention is SourceRetention.LOST
+        assert "connector" in approximate.reason
 
 
 def test_resolves_theme_system_and_preset_colors() -> None:

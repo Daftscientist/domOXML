@@ -840,6 +840,8 @@ class Connector(CanvasNode):
     kind: Literal["straight", "bent", "curved"] = "straight"
     # Whether an elbow or curve leaves ``start`` vertically rather than horizontally.
     vertical_first: bool = False
+    # Where an elbow or curve turns, as a fraction of the run from ``start`` (``adj1``).
+    elbow: float = 0.5
     line: Line
 
 

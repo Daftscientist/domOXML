@@ -295,6 +295,11 @@ def _connector_xml(conn: Connector, *, shape_id: int) -> str:
         + (' flipV="1"' if flip_v else "")
     )
     line = line_xml(conn.line)
+    guides = (
+        f'<a:avLst><a:gd name="adj1" fmla="val {round(conn.elbow * 100_000)}"/></a:avLst>'
+        if conn.kind != "straight" and conn.elbow != 0.5
+        else "<a:avLst/>"
+    )
     return (
         f"<p:cxnSp>"
         f"<p:nvCxnSpPr>"
@@ -304,7 +309,7 @@ def _connector_xml(conn: Connector, *, shape_id: int) -> str:
         f"</p:nvCxnSpPr>"
         f"<p:spPr>"
         f'<a:xfrm{attributes}><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
-        f'<a:prstGeom prst="{_CONNECTOR_PRESETS[conn.kind]}"><a:avLst/></a:prstGeom>'
+        f'<a:prstGeom prst="{_CONNECTOR_PRESETS[conn.kind]}">{guides}</a:prstGeom>'
         f"{line}"
         f"</p:spPr>"
         f"</p:cxnSp>"

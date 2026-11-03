@@ -51,14 +51,17 @@ def connector_box(
     width, height = (dy, dx) if vertical_first else (dx, dy)
     width, height = max(1, width), max(1, height)
     x, y = round(centre_x - width / 2), round(centre_y - height / 2)
+    best: tuple[int, bool, bool] | None = None
     for flip_h in (False, True):
         for flip_v in (False, True):
             placed = connector_ends(x, y, width, height, rotation, flip_h, flip_v)
-            if (
-                abs(placed[0].x - start.x) <= 1
-                and abs(placed[0].y - start.y) <= 1
-                and abs(placed[1].x - end.x) <= 1
-                and abs(placed[1].y - end.y) <= 1
-            ):
-                return x, y, width, height, rotation, flip_h, flip_v
-    return x, y, width, height, rotation, False, False
+            error = (
+                abs(placed[0].x - start.x)
+                + abs(placed[0].y - start.y)
+                + abs(placed[1].x - end.x)
+                + abs(placed[1].y - end.y)
+            )
+            if best is None or error < best[0]:
+                best = (error, flip_h, flip_v)
+    assert best is not None
+    return x, y, width, height, rotation, best[1], best[2]

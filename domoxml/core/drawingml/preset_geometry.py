@@ -344,7 +344,7 @@ def outline_leaves_box(geometry: CustomGeometry) -> bool:
                 ys.append(current[1])
         else:
             current = start
-    slack = 0.005
+    slack = 0.003  # sampling noise on curves that only touch the box
     return bool(xs) and (
         min(xs) < -slack * geometry.width_emu
         or max(xs) > (1 + slack) * geometry.width_emu

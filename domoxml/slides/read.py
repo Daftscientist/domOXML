@@ -715,7 +715,15 @@ def _outline_survives_html(element: Element, properties: Element) -> bool:
     )
     # Only a hatch pattern still has no form beside a stroke or text; a picture is layered.
     pattern = properties.find("a:pattFill", _NS) is not None
-    return not (pattern and (outlined or has_text))
+    # A layered picture cannot carry a native effect, so those keep the rectangle too.
+    effects = properties.find("a:effectLst", _NS)
+    has_effects = (effects is not None and len(effects) > 0) or (
+        properties.find("a:effectDag", _NS) is not None
+    )
+    picture_with_effects = properties.find("a:blipFill", _NS) is not None and has_effects
+    return not (pattern and (outlined or has_text)) and not (
+        picture_with_effects and (outlined or has_text)
+    )
 
 
 def _preset_outline(

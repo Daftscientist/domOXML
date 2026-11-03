@@ -398,3 +398,33 @@ def test_a_picture_outline_that_leaves_its_box_keeps_its_rectangle() -> None:
     assert isinstance(shape, ShapeNode) and shape.custom_geom is None
     [item] = result.coverage.items
     assert item.representation.value == "approximated"
+
+
+def test_a_picture_outline_with_a_native_effect_keeps_its_rectangle() -> None:
+    from domoxml.core.ir.model import Shadow
+
+    deck = _preset_deck(
+        "heart",
+        fill=_picture(),
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+        effects=(
+            Shadow(
+                color=Rgba(r=0, g=0, b=0, a=0.4),
+                blur_emu=50_000,
+                distance_emu=30_000,
+                direction_deg=45,
+            ),
+        ),
+    )
+
+    [shape] = read_pptx_result(deck).slides[0].contents
+
+    assert isinstance(shape, ShapeNode) and shape.custom_geom is None
+
+
+def test_a_callout_tip_that_barely_leaves_its_box_still_counts_as_leaving_it() -> None:
+    from domoxml.core.drawingml.preset_geometry import outline_leaves_box
+
+    tip, _ = preset_geometry("wedgeRectCallout", 2_000_000, 1_400_000)
+
+    assert tip is not None and outline_leaves_box(tip)

@@ -549,6 +549,28 @@ _SNAPSHOT_JS = """
         || (title ? title.textContent : null);
       if (alt && alt.trim()) styles.domoxmlAlt = alt.trim();
     }
+    const colCs = getComputedStyle(el);
+    if (colCs.columnCount !== 'auto' && parseInt(colCs.columnCount, 10) > 1
+        && colCs.columnFill !== 'auto' && el.offsetHeight > 0) {
+      // Balanced columns: how tall the tallest column actually is, so the text area can be
+      // shrunk to it (PowerPoint fills columns in order up to the box height).
+      try {
+        // A transformed element or ancestor distorts the measured rectangles.
+        for (let up = el; up && up.nodeType === 1; up = up.parentElement) {
+          if (getComputedStyle(up).transform !== 'none') throw new Error('transformed');
+        }
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        let bottom = -Infinity;
+        for (const r of range.getClientRects()) {
+          if (r.width > 0) bottom = Math.max(bottom, r.bottom);
+        }
+        const top = el.getBoundingClientRect().top + (parseFloat(colCs.paddingTop) || 0)
+          + (parseFloat(colCs.borderTopWidth) || 0);
+        // A fraction of the element's own height, so it holds in the shape's local coordinates.
+        if (bottom > top) styles.domoxmlColumnsHeight = String((bottom - top) / el.offsetHeight);
+      } catch (e) { /* keep the sequential fill */ }
+    }
     if (tag === 'svg' && el.getAttribute('preserveAspectRatio')) {
       styles.domoxmlSvgAspect = el.getAttribute('preserveAspectRatio');
     }

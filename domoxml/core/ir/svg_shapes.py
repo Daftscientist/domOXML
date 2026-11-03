@@ -40,6 +40,7 @@ from domoxml.core.ir.model import (
     TextRun,
 )
 from domoxml.core.ir.parse import parse_color
+from domoxml.core.svg_path import arc_to_cubics
 from domoxml.core.units import px_to_emu
 
 _SVG = "http://www.w3.org/2000/svg"
@@ -696,60 +697,11 @@ def _quad_to_cubic(p0: Pair, control: Pair, p1: Pair) -> list[Pair]:
 def _arc(
     p0: Pair, rx: float, ry: float, rotation: float, large: bool, sweep: bool, p1: Pair
 ) -> list[Segment]:
-    """An SVG elliptical arc as cubic segments (the endpoint-to-centre conversion of the spec)."""
-    if p0 == p1:
-        return []
-    rx, ry = abs(rx), abs(ry)
-    if rx == 0 or ry == 0:
-        return [("L", [p1])]
-    phi = math.radians(rotation % 360)
-    cp, sp = math.cos(phi), math.sin(phi)
-    dx, dy = (p0[0] - p1[0]) / 2, (p0[1] - p1[1]) / 2
-    x1, y1 = cp * dx + sp * dy, -sp * dx + cp * dy
-    lam = x1 * x1 / (rx * rx) + y1 * y1 / (ry * ry)
-    if lam > 1:
-        rx, ry = rx * math.sqrt(lam), ry * math.sqrt(lam)
-    numerator = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1
-    denominator = rx * rx * y1 * y1 + ry * ry * x1 * x1
-    factor = math.sqrt(max(0.0, numerator / denominator)) * (-1 if large == sweep else 1)
-    cx1, cy1 = factor * rx * y1 / ry, -factor * ry * x1 / rx
-    cx = cp * cx1 - sp * cy1 + (p0[0] + p1[0]) / 2
-    cy = sp * cx1 + cp * cy1 + (p0[1] + p1[1]) / 2
-
-    def angle(ux: float, uy: float, vx: float, vy: float) -> float:
-        value = math.atan2(ux * vy - uy * vx, ux * vx + uy * vy)
-        return value
-
-    theta = angle(1, 0, (x1 - cx1) / rx, (y1 - cy1) / ry)
-    delta = angle((x1 - cx1) / rx, (y1 - cy1) / ry, (-x1 - cx1) / rx, (-y1 - cy1) / ry)
-    if not sweep and delta > 0:
-        delta -= 2 * math.pi
-    elif sweep and delta < 0:
-        delta += 2 * math.pi
-    pieces = max(1, math.ceil(abs(delta) / (math.pi / 2) - 1e-9))
-    step = delta / pieces
-    k = 4 / 3 * math.tan(step / 4)
-    segments: list[Segment] = []
-
-    def at(t: float) -> Pair:
-        return (
-            cx + rx * math.cos(t) * cp - ry * math.sin(t) * sp,
-            cy + rx * math.cos(t) * sp + ry * math.sin(t) * cp,
-        )
-
-    def derivative(t: float) -> Pair:
-        return (
-            -rx * math.sin(t) * cp - ry * math.cos(t) * sp,
-            -rx * math.sin(t) * sp + ry * math.cos(t) * cp,
-        )
-
-    for piece in range(pieces):
-        t0, t1 = theta + piece * step, theta + (piece + 1) * step
-        a, b, da, db = at(t0), at(t1), derivative(t0), derivative(t1)
-        segments.append(
-            ("C", [(a[0] + k * da[0], a[1] + k * da[1]), (b[0] - k * db[0], b[1] - k * db[1]), b])
-        )
-    return segments
+    """An SVG elliptical arc as cubic segments."""
+    return [
+        ("L", points) if len(points) == 1 else ("C", points)
+        for points in arc_to_cubics(p0, rx, ry, rotation, large, sweep, p1)
+    ]
 
 
 # --------------------------------------------------------------------------- helpers

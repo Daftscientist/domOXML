@@ -14,6 +14,7 @@ from defusedxml import ElementTree
 from PIL import Image, ImageChops
 
 from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
+from domoxml.core.drawingml.preset_geometry import preset_geometry
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
@@ -428,6 +429,13 @@ def _shape(
         shape_effects = applied_effect_intent.effects
     custgeom_el = properties.find(f"{{{_A}}}custGeom")
     custom_geom = _custGeom(custgeom_el, box) if custgeom_el is not None else None
+    if (
+        custom_geom is None
+        and geometry is not None
+        and geom_name not in _valid_geom_kinds
+        and _outline_survives_html(element, properties)
+    ):
+        custom_geom, _complete = _preset_outline(geometry, box)
     return (
         _with_pptx_identity(
             ShapeNode(
@@ -677,6 +685,36 @@ def _native_reverse_coverage(slide_part: str, element: Element) -> CoverageItem:
     )
 
 
+def _outline_survives_html(element: Element, properties: Element) -> bool:
+    """Whether an outline drawn from a preset keeps all of the shape's paint in HTML.
+
+    Custom geometry reaches HTML as an SVG (solid fill and stroke only, no text) or, for a
+    gradient or picture fill without a stroke, a clip over the element's own background. Text
+    has no place in either, so a shape that carries text keeps its rectangle for now.
+    """
+    if any((run.text or "").strip() for run in element.iterfind(".//a:t", _NS)):
+        return False
+    outlined = properties.find("a:ln", _NS) is not None and (
+        properties.find("a:ln/a:noFill", _NS) is None
+    )
+    non_solid = any(
+        properties.find(f"a:{kind}", _NS) is not None
+        for kind in ("gradFill", "blipFill", "pattFill")
+    )
+    return not (outlined and non_solid)
+
+
+def _preset_outline(geometry: Element, box: Box) -> tuple[CustomGeometry | None, bool]:
+    """A preset the IR has no named geometry for, drawn from the standard's definition."""
+    adjusts: dict[str, float] = {}
+    for guide in geometry.findall("a:avLst/a:gd", _NS):
+        formula = guide.get("fmla", "")
+        if formula.startswith("val "):
+            with contextlib.suppress(ValueError):
+                adjusts[guide.get("name", "")] = float(formula.removeprefix("val "))
+    return preset_geometry(geometry.get("prst", "rect"), box.width, box.height, adjusts)
+
+
 def _shape_reverse_coverage(
     slide_part: str,
     element: Element,
@@ -690,8 +728,31 @@ def _shape_reverse_coverage(
         name = geometry.get("prst", "rect")
         valid_geometry = frozenset(GeometryKind.__args__)  # type: ignore[attr-defined]
         if name not in valid_geometry:
-            reasons.append(f"unsupported preset geometry {name!r} mapped to a rectangle")
-            retention = SourceRetention.LOST
+            transform = element.find("p:spPr/a:xfrm/a:ext", _NS)
+            properties = element.find("p:spPr", _NS)
+            outline, complete = (
+                _preset_outline(
+                    geometry,
+                    Box(
+                        x=0,
+                        y=0,
+                        width=_int_attr(transform, "cx"),
+                        height=_int_attr(transform, "cy"),
+                    ),
+                )
+                if transform is not None
+                and properties is not None
+                and _outline_survives_html(element, properties)
+                else (None, False)
+            )
+            if outline is None:
+                reasons.append(f"unsupported preset geometry {name!r} mapped to a rectangle")
+                retention = SourceRetention.LOST
+            elif not complete:
+                reasons.append(
+                    f"preset {name!r} outline drawn; its stroke-only or shaded parts dropped"
+                )
+                retention = SourceRetention.LOST
     if has_preserved_effects:
         reasons.append("shape has detached source-only effect fragments")
         if retention is SourceRetention.NOT_REQUIRED:

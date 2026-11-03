@@ -22,6 +22,7 @@ from domoxml.core.ir.geometry_payload import encode_custom_geometry
 from domoxml.core.ir.group import group_html_roundtrip_error
 from domoxml.core.ir.group_payload import encode_group_payload
 from domoxml.core.ir.model import (
+    ArcTo,
     AutoNumberBullet,
     Blur,
     Box,
@@ -45,6 +46,7 @@ from domoxml.core.ir.model import (
     PatternFill,
     PictureFill,
     Point,
+    QuadTo,
     Reflection,
     Rgba,
     Shadow,
@@ -260,17 +262,40 @@ def _path_px(geometry: CustomGeometry, box: Box) -> str | None:
     def px(point: Point) -> str:
         return f"{_number(point.x * scale_x)} {_number(point.y * scale_y)}"
 
+    current = (0.0, 0.0)  # in px, to find where an arc's ellipse sits
+    start_of_subpath = current
     for command in geometry.path:
         if isinstance(command, MoveTo):
             parts.append(f"M {px(command.to)}")
+            current = (command.to.x * scale_x, command.to.y * scale_y)
+            start_of_subpath = current
         elif isinstance(command, LineTo):
             parts.append(f"L {px(command.to)}")
+            current = (command.to.x * scale_x, command.to.y * scale_y)
         elif isinstance(command, CubicTo):
             parts.append(f"C {px(command.c1)} {px(command.c2)} {px(command.to)}")
-        elif isinstance(command, ClosePath):
-            parts.append("Z")
+            current = (command.to.x * scale_x, command.to.y * scale_y)
+        elif isinstance(command, QuadTo):
+            parts.append(f"Q {px(command.c1)} {px(command.to)}")
+            current = (command.to.x * scale_x, command.to.y * scale_y)
+        elif isinstance(command, ArcTo):
+            rx, ry = command.width_radius * scale_x, command.height_radius * scale_y
+            start = math.radians(command.start_angle / 60_000)
+            centre = (current[0] - rx * math.cos(start), current[1] - ry * math.sin(start))
+            remaining, angle = command.sweep_angle, command.start_angle
+            while remaining:
+                segment = max(-10_800_000, min(10_800_000, remaining))
+                angle += segment
+                end = math.radians(angle / 60_000)
+                current = (centre[0] + rx * math.cos(end), centre[1] + ry * math.sin(end))
+                parts.append(
+                    f"A {_number(rx)} {_number(ry)} 0 0 {int(command.sweep_angle >= 0)} "
+                    f"{_number(current[0])} {_number(current[1])}"
+                )
+                remaining -= segment
         else:
-            return None
+            parts.append("Z")
+            current = start_of_subpath
     return f"path('{' '.join(parts)}')" if parts else None
 
 
@@ -1345,6 +1370,9 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                 f"position:absolute;left:{left};top:{top};"
                 f"width:{w_px}px;height:{h_px}px;overflow:visible"
             )
+            transform_css = _transform_css(node.transform)
+            if transform_css is not None:
+                pos_style += f";transform:{transform_css}"
             effect_filter = (
                 _custom_geometry_filter(node, warnings) if node.portable_fallback is None else None
             )

@@ -68,8 +68,8 @@ class ParsedPath(NamedTuple):
 # Parser
 # ---------------------------------------------------------------------------
 
-_UNSUPPORTED = frozenset("SsTtAa")
-_COORD_CMDS = frozenset("MmLlHhVvCcQqZz")
+_UNSUPPORTED = frozenset("SsTt")
+_COORD_CMDS = frozenset("MmLlHhVvCcQqZzAa")
 
 
 def _pop(tokens: list[str], index: int) -> tuple[float, int]:
@@ -99,7 +99,8 @@ def parse_svg_path(d: str) -> ParsedPath:
     """
     tokens = _tokenise(d.strip())
     commands: list[PathCommand] = []
-    cx, cy = 0.0, 0.0  # current pen position
+    cx: float = 0.0  # current pen position
+    cy: float = 0.0
     subpath_x, subpath_y = 0.0, 0.0  # start of current subpath (for Z)
 
     i = 0
@@ -276,10 +277,111 @@ def parse_svg_path(d: str) -> ParsedPath:
             cy += dy
             continue
 
+        # --- A / a  (elliptical arc: rx ry rotation large sweep x y), as cubics ---
+        if cmd in ("A", "a"):
+            if not _has_coordinates(tokens, i, 7):
+                return _truncated(commands, cmd, 7)
+            rx, i = _pop(tokens, i)
+            ry, i = _pop(tokens, i)
+            rotation, i = _pop(tokens, i)
+            large, i = _pop(tokens, i)
+            sweep, i = _pop(tokens, i)
+            raw_x, i = _pop(tokens, i)
+            raw_y, i = _pop(tokens, i)
+            end_x: float = raw_x + (cx if cmd == "a" else 0.0)
+            end_y: float = raw_y + (cy if cmd == "a" else 0.0)
+            for points in arc_to_cubics(
+                (cx, cy), rx, ry, rotation, large != 0, sweep != 0, (end_x, end_y)
+            ):
+                if len(points) == 1:
+                    commands.append(LineTo(to=Point(x=round(points[0][0]), y=round(points[0][1]))))
+                else:
+                    c1, c2, end = points
+                    commands.append(
+                        CubicTo(
+                            c1=Point(x=round(c1[0]), y=round(c1[1])),
+                            c2=Point(x=round(c2[0]), y=round(c2[1])),
+                            to=Point(x=round(end[0]), y=round(end[1])),
+                        )
+                    )
+            cx, cy = float(end_x), float(end_y)
+            continue
+
         # Unknown command: break
         break
 
     return ParsedPath(commands, None)
+
+
+# ---------------------------------------------------------------------------
+# Arcs
+# ---------------------------------------------------------------------------
+
+
+def arc_to_cubics(
+    p0: tuple[float, float],
+    rx: float,
+    ry: float,
+    rotation: float,
+    large: bool,
+    sweep: bool,
+    p1: tuple[float, float],
+) -> list[list[tuple[float, float]]]:
+    """An SVG elliptical arc as cubic segments ``[c1, c2, end]`` (the spec's endpoint-to-centre
+    conversion). A zero radius is a straight line, returned as ``[end]``."""
+    if p0 == p1:
+        return []
+    rx, ry = abs(rx), abs(ry)
+    if rx == 0 or ry == 0:
+        return [[p1]]
+    phi = math.radians(rotation % 360)
+    cp, sp = math.cos(phi), math.sin(phi)
+    dx, dy = (p0[0] - p1[0]) / 2, (p0[1] - p1[1]) / 2
+    x1, y1 = cp * dx + sp * dy, -sp * dx + cp * dy
+    lam = x1 * x1 / (rx * rx) + y1 * y1 / (ry * ry)
+    if lam > 1:
+        rx, ry = rx * math.sqrt(lam), ry * math.sqrt(lam)
+    numerator = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1
+    denominator = rx * rx * y1 * y1 + ry * ry * x1 * x1
+    factor = math.sqrt(max(0.0, numerator / denominator)) * (-1 if large == sweep else 1)
+    cx1, cy1 = factor * rx * y1 / ry, -factor * ry * x1 / rx
+    cx = cp * cx1 - sp * cy1 + (p0[0] + p1[0]) / 2
+    cy = sp * cx1 + cp * cy1 + (p0[1] + p1[1]) / 2
+
+    def angle(ux: float, uy: float, vx: float, vy: float) -> float:
+        value = math.atan2(ux * vy - uy * vx, ux * vx + uy * vy)
+        return value
+
+    theta = angle(1, 0, (x1 - cx1) / rx, (y1 - cy1) / ry)
+    delta = angle((x1 - cx1) / rx, (y1 - cy1) / ry, (-x1 - cx1) / rx, (-y1 - cy1) / ry)
+    if not sweep and delta > 0:
+        delta -= 2 * math.pi
+    elif sweep and delta < 0:
+        delta += 2 * math.pi
+    pieces = max(1, math.ceil(abs(delta) / (math.pi / 2) - 1e-9))
+    step = delta / pieces
+    k = 4 / 3 * math.tan(step / 4)
+    segments: list[list[tuple[float, float]]] = []
+
+    def at(t: float) -> tuple[float, float]:
+        return (
+            cx + rx * math.cos(t) * cp - ry * math.sin(t) * sp,
+            cy + rx * math.cos(t) * sp + ry * math.sin(t) * cp,
+        )
+
+    def derivative(t: float) -> tuple[float, float]:
+        return (
+            -rx * math.sin(t) * cp - ry * math.cos(t) * sp,
+            -rx * math.sin(t) * sp + ry * math.cos(t) * cp,
+        )
+
+    for piece in range(pieces):
+        t0, t1 = theta + piece * step, theta + (piece + 1) * step
+        a, b, da, db = at(t0), at(t1), derivative(t0), derivative(t1)
+        segments.append(
+            [(a[0] + k * da[0], a[1] + k * da[1]), (b[0] - k * db[0], b[1] - k * db[1]), b]
+        )
+    return segments
 
 
 # ---------------------------------------------------------------------------

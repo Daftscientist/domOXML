@@ -134,10 +134,20 @@ def test_parse_quadratic_relative() -> None:
     assert cmd.to == Point(x=100, y=20)
 
 
-def test_bail_on_arc_command() -> None:
+def test_arc_command_becomes_cubic_segments_ending_at_the_target() -> None:
     parsed = parse_svg_path("M 0 0 A 50 50 0 0 1 100 0")
-    assert parsed.bail_reason is not None
-    assert "A" in parsed.bail_reason or "unsupported" in parsed.bail_reason.lower()
+
+    assert parsed.bail_reason is None
+    cubics = [c for c in parsed.commands if isinstance(c, CubicTo)]
+    assert len(cubics) == 2 and cubics[-1].to == Point(x=100, y=0)
+    assert min(c.c1.y for c in cubics) < 0  # a sweep of 1 bows toward negative y
+
+
+def test_relative_arc_with_a_zero_radius_is_a_straight_line() -> None:
+    parsed = parse_svg_path("M 10 10 a 0 5 0 0 1 30 0")
+
+    assert parsed.bail_reason is None
+    assert parsed.commands[-1] == LineTo(to=Point(x=40, y=10))
 
 
 def test_bail_on_smooth_cubic() -> None:

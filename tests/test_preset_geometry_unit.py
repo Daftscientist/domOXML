@@ -6,6 +6,8 @@ import io
 import re
 import zipfile
 
+import pytest
+
 from domoxml.core.drawingml.preset_geometry import preset_geometry, preset_names
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir.model import (
@@ -159,6 +161,7 @@ def test_a_rotated_stroked_preset_keeps_its_rotation_in_html() -> None:
     assert "rotate(30deg)" in html and "<svg" in html
 
 
+@pytest.mark.integration
 async def test_a_curved_preset_clip_survives_chrome_and_extracts_without_a_raster() -> None:
     from domoxml.core.ir import extract_slide
     from domoxml.core.ir.model import PictureFill

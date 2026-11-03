@@ -4037,3 +4037,44 @@ async def test_text_in_a_perspective_container_stays_raster_but_not_its_siblings
     pictures = [s for s in result.slide.shapes if isinstance(s.fill, PictureFill)]
     natives = [s for s in result.slide.shapes if s.custom_geom is not None]
     assert len(pictures) == 1 and len(natives) == 2
+
+
+_TINY_PNG = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+@pytest.mark.parametrize(
+    "child",
+    [
+        f"<img src='{_TINY_PNG}' style='position:absolute;left:20px;top:20px;width:150px;"
+        "height:60px'>",
+        "<span style='position:absolute;left:20px;top:20px'>Label</span>",
+    ],
+)
+async def test_images_and_rich_text_under_perspective_keep_their_raster(child: str) -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:300px;top:150px;width:300px;height:200px;"
+        f"transform:perspective(600px) rotateY(30deg);background:#eee'>{child}</div>"
+    )
+
+    assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+
+
+async def test_a_rotated_box_in_a_perspective_container_is_one_quad_with_no_extra_rotation() -> (
+    None
+):
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:300px;top:150px;width:300px;height:200px;"
+        "transform:perspective(600px) rotateY(30deg);background:#eee'>"
+        "<div style='position:absolute;left:60px;top:60px;width:100px;height:60px;"
+        "transform:rotate(20deg);background:#c20'></div></div>"
+    )
+
+    red = next(
+        s
+        for s in result.slide.shapes
+        if isinstance(s.fill, SolidFill) and (s.fill.color.r, s.fill.color.g) == (204, 34)
+    )
+    assert red.custom_geom is not None and red.transform is None

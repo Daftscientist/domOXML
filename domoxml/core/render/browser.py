@@ -405,7 +405,7 @@ _SNAPSHOT_JS = """
       }
     }
     if (!styles.domoxmlQuad && el instanceof HTMLElement && el.offsetWidth > 0
-        && el.offsetHeight > 0 && !(el instanceof HTMLImageElement)) {
+        && el.offsetHeight > 0) {
       // Under a 3D or perspective ancestor an element's corners cannot be derived from its own
       // style, so measure them: four zero-size probes at the border box corners are laid out
       // through every ancestor transform, and where each lands is where that corner is drawn.
@@ -419,6 +419,13 @@ _SNAPSHOT_JS = """
         }
       }
       if (projective) {
+        // Even an element that cannot host probes (an image) is marked, so it is never mistaken
+        // for an upright one.
+        styles.domoxmlProjected = 'true';
+        // The corners below already include the element's own transform.
+        styles.transform = 'none';
+      }
+      if (projective && !(el instanceof HTMLImageElement)) {
         const previous = el.style.position;
         if (computed.position === 'static') el.style.position = 'relative';
         const bl = parseFloat(computed.borderLeftWidth) || 0;
@@ -435,7 +442,6 @@ _SNAPSHOT_JS = """
         });
         el.style.position = previous;
         styles.domoxmlQuad = corners.flat().map((v) => Math.round(v * 100) / 100).join(',');
-        styles.domoxmlProjected = 'true';
       }
     }
     let effectiveLinear = inheritedLinear;

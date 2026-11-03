@@ -758,6 +758,8 @@ def _blend_over_solids(
         or styles.get("transform", "none") not in ("none", "")
         or styles.get("clipPath", "none") not in ("none", "")
         or styles.get("filter", "none") not in ("none", "")
+        or styles.get("maskImage", "none") not in ("none", "")
+        or styles.get("domoxmlClippedByAncestor")
         or opacity != 1.0
     ):
         return None

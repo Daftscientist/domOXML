@@ -3891,3 +3891,31 @@ async def test_screen_over_the_bare_canvas_keeps_its_own_colour() -> None:
     }
     assert (204, 102, 0) in colours  # outside the overlap the canvas blends as transparent
     assert (214, 163, 153) in colours  # 1 - (1 - a)(1 - b) per channel inside it
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "mask-image:linear-gradient(black,transparent)",
+        "",
+    ],
+)
+async def test_a_blended_box_that_is_masked_or_clipped_by_an_ancestor_keeps_its_raster(
+    extra: str,
+) -> None:
+    inner = (
+        "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
+        "background:#ffcc00'></div>"
+        "<div style='position:absolute;left:250px;top:200px;width:300px;height:200px;"
+        f"background:#00ccff;mix-blend-mode:multiply;{extra}'></div>"
+    )
+    html = (
+        inner
+        if extra
+        else f"<div style='position:absolute;left:0;top:0;width:400px;height:300px;"
+        f"overflow:hidden'>{inner}</div>"
+    )
+
+    result = await _render_and_extract_result(html)
+
+    assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)

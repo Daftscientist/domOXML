@@ -1405,16 +1405,49 @@ def _resolve_border_sides(
     approximation warning messages (e.g. ``double`` → ``solid``)."""
     warnings: list[str] = []
     sides: list[Line | None] = []
+    # A border image paints over the border colour, so a transparent one still has an outline.
+    stroke = _gradient_border(styles)
     for side in ("Top", "Right", "Bottom", "Left"):
+        colour = styles.get(f"border{side}Color")
+        if stroke is not None and stroke.stops:
+            colour = _rgba_css(stroke.stops[0].color)
         line, warn = parse_border_side(
-            styles.get(f"border{side}Width"),
-            styles.get(f"border{side}Style"),
-            styles.get(f"border{side}Color"),
+            styles.get(f"border{side}Width"), styles.get(f"border{side}Style"), colour
         )
         sides.append(line)
         if warn:
             warnings.append(warn)
     return (sides[0], sides[1], sides[2], sides[3]), warnings
+
+
+def _rgba_css(colour: Rgba) -> str:
+    return f"rgb({colour.r}, {colour.g}, {colour.b})"
+
+
+def _gradient_border(styles: dict[str, str]) -> GradientFill | None:
+    """The gradient of ``border-image: linear-gradient(...) 1`` on a square-cornered box.
+
+    Only the whole-box form maps to a gradient outline: the slice must cover the image
+    (``1``; ``100%`` leaves the edges empty), the border-image width, outset and repeat must be
+    the defaults, and every corner must be square because CSS ignores ``border-radius`` for
+    border images while an outline would follow it."""
+    source = styles.get("borderImageSource") or ""
+    if not source.startswith(("linear-gradient(", "repeating-")):
+        return None
+    if any(
+        parse_radius_px(styles.get(f"border{corner}Radius"), shorter_side_px=1.0) > 0
+        for corner in ("TopLeft", "TopRight", "BottomRight", "BottomLeft")
+    ):
+        return None
+    if styles.get("borderImageSlice", "").split() not in (["1"], ["1"] * 4):
+        return None
+    if styles.get("borderImageRepeat", "stretch").split() not in ([], ["stretch"], ["stretch"] * 2):
+        return None
+    if styles.get("borderImageWidth", "1").split() not in ([], ["1"], ["1"] * 4):
+        return None
+    if styles.get("borderImageOutset", "0").split() not in ([], ["0"], ["0"] * 4):
+        return None
+    return parse_gradient(source)
 
 
 def _make_side_rect(box: Box, fill: Fill) -> ShapeNode:
@@ -3125,6 +3158,11 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             uniform = len(present_sides) == 4 and all(s == present_sides[0] for s in present_sides)
             if uniform:
                 line = present_sides[0]
+                stroke = _gradient_border(node.styles)
+                if stroke is not None:
+                    line = line.model_copy(
+                        update={"gradient": stroke, "dash": "solid", "join": "miter"}
+                    )
             elif corner == 0:
                 # Per-side decomposition: the shape gets no a:ln; four thin solid rects carry
                 # each visible border, positioned flush to their respective edges.

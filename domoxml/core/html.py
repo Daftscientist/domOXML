@@ -1328,7 +1328,13 @@ def _outlined_polygon_preset(node: ShapeNode) -> ShapeNode:
     A CSS ``clip-path`` also clips the element's border, so a star or arrow with a stroke would
     lose it; as an SVG path the same silhouette keeps both.
     """
-    if node.line is None or node.custom_geom is not None or node.corner_radius_emu:
+    if (
+        node.line is None
+        or node.custom_geom is not None
+        or node.corner_radius_emu
+        # The SVG paints a solid or gradient fill; a picture or pattern keeps its clipped div.
+        or isinstance(node.fill, PictureFill | PatternFill)
+    ):
         return node
     vertices = preset_vertices(node.geom, preset_defaults(node.geom))
     if vertices is None or node.box.width <= 0 or node.box.height <= 0:
@@ -1360,7 +1366,7 @@ def _svg_gradient(
         for stop in fill.stops
     )
     identity = hashlib.sha1(
-        f"{fill.model_dump_json()}{width}{height}".encode(), usedforsecurity=False
+        f"{fill.model_dump_json()}{width}{height}{opacity}".encode(), usedforsecurity=False
     ).hexdigest()[:10]
     name = f"grad-{identity}"
     if fill.radial:

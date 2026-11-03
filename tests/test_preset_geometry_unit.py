@@ -295,3 +295,42 @@ def test_a_stroked_polygon_preset_is_an_svg_outline_so_its_stroke_is_drawn() -> 
 
     assert "<svg" in html and "stroke-width" in html and "clip-path" not in html
     assert "clip-path:polygon" in unstroked
+
+
+def test_a_picture_filled_stroked_polygon_keeps_its_clipped_div() -> None:
+    from domoxml.core.ir.model import PictureFill
+
+    picture = ShapeNode(
+        box=Box(x=100 * _UNIT, y=100 * _UNIT, width=200 * _UNIT, height=200 * _UNIT),
+        geom="star5",
+        fill=PictureFill(data=b"x", ext="png"),
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+    )
+
+    html = (
+        serialize_canvas([SlideIR(width=1280 * _UNIT, height=720 * _UNIT, contents=(picture,))])
+        .slides[0]
+        .html
+    )
+
+    assert "clip-path:polygon" in html and "<svg" not in html
+
+
+def test_gradients_that_differ_only_in_opacity_get_different_ids() -> None:
+    outline, _ = preset_geometry("heart", 200 * _UNIT, 200 * _UNIT)
+    box = Box(x=100 * _UNIT, y=100 * _UNIT, width=200 * _UNIT, height=200 * _UNIT)
+    line = Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050)
+    shapes = tuple(
+        ShapeNode(
+            box=box, geom="rect", custom_geom=outline, fill=_GRADIENT, line=line, opacity=opacity
+        )
+        for opacity in (1.0, 0.5)
+    )
+
+    html = (
+        serialize_canvas([SlideIR(width=1280 * _UNIT, height=720 * _UNIT, contents=shapes)])
+        .slides[0]
+        .html
+    )
+
+    assert len(set(re.findall(r'<linearGradient id="(grad-[0-9a-f]+)"', html))) == 2

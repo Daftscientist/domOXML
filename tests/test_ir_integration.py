@@ -3741,3 +3741,14 @@ async def test_sequentially_filled_columns_keep_the_full_text_area() -> None:
 
     body = next(s.text for s in result.slide.shapes if s.text and s.text.columns == 2)
     assert body.margins[3] == 0
+
+
+async def test_balanced_columns_under_a_transform_keep_the_full_text_area() -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:100px;width:520px;height:400px;"
+        "transform:rotate(30deg);columns:2;column-gap:20px;font:20px/28px Arial'>"
+        f"{_COLUMN_TEXT}</div>"
+    )
+
+    body = next(s.text for s in result.slide.shapes if s.text and s.text.columns == 2)
+    assert body.margins[3] == 0

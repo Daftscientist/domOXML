@@ -409,6 +409,13 @@ def _detect_columns(styles: dict[str, str]) -> tuple[int, int]:
     return columns, column_gap_emu
 
 
+def _balanced_height_known(node: RenderedNode) -> bool:
+    try:
+        return 0 < float(node.styles.get("domoxmlColumnsHeight") or 0) < 1
+    except ValueError:
+        return False
+
+
 def _text_body_margins(node: RenderedNode) -> tuple[int, int, int, int]:
     """Recover CSS container padding as DrawingML text-body insets."""
     styles = node.styles
@@ -423,11 +430,15 @@ def _text_body_margins(node: RenderedNode) -> tuple[int, int, int, int]:
     top = px_to_emu(parse_length_px(styles.get("paddingTop")))
     right = px_to_emu(parse_length_px(styles.get("paddingRight")))
     bottom = px_to_emu(parse_length_px(styles.get("paddingBottom")))
-    balanced = parse_length_px(styles.get("domoxmlColumnsHeight"))
-    if balanced > 0 and _detect_columns(styles)[0] > 1:
+    try:
+        balanced = float(styles.get("domoxmlColumnsHeight") or 0)
+    except ValueError:
+        balanced = 0.0
+    if 0 < balanced < 1 and _detect_columns(styles)[0] > 1:
         # PowerPoint fills one column to the bottom of the text area before starting the next, so
         # a text area only as tall as the tallest balanced column reproduces the balanced split.
-        bottom = max(bottom, px_to_emu(node.height - balanced) - top - px_to_emu(2.0))
+        height_emu = _box(node).height
+        bottom = max(bottom, int(height_emu * (1 - balanced)) - top - px_to_emu(2.0))
     return (left, top, right, bottom)
 
 
@@ -3230,7 +3241,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             text is not None
             and text.columns > 1
             and (node.styles.get("columnFill") or "balance") != "auto"
-            and not node.styles.get("domoxmlColumnsHeight")
+            and not _balanced_height_known(node)
         ):
             approximation_reasons.append(
                 "balanced CSS columns approximated as sequential PowerPoint columns"

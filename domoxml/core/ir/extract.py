@@ -1141,7 +1141,7 @@ def _quad_geometry(
     raw = node.styles.get("domoxmlQuad")
     if raw is None:
         return None, "skew/perspective/shear transform has no native mapping"
-    if not (is_leaf(node) and fill_only(node)) or isinstance(fill, GradientFill | PictureFill):
+    if not fill_only(node) or node.text_runs or isinstance(fill, GradientFill | PictureFill):
         return None, "skew/perspective of an element with content or a warped fill is raster"
     rounded = parse_radius_px(node.styles.get("borderRadius"), shorter_side_px=1.0) > 0
     if existing is not None or rounded or node.styles.get("clipPath", "none") not in ("none", ""):
@@ -3246,7 +3246,10 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
             preset_geom, clip_geometry, reason = _clip_geometry(node)
             polygon_matched = clip_geometry is None and reason is None
 
-        if reason is None and _has_complex_transform(node.styles.get("transform")):
+        if reason is None and (
+            _has_complex_transform(node.styles.get("transform"))
+            or node.styles.get("domoxmlProjected")
+        ):
             clip_geometry, reason = _quad_geometry(node, fill, clip_geometry)
         if reason is None and (ancestor_clip is not None or local_clip is not None):
             clip_geometry, reason = _cropped_geometry(

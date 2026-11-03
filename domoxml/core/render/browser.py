@@ -404,6 +404,46 @@ _SNAPSHOT_JS = """
         styles.domoxmlQuad = corners.flat().map((value) => Math.round(value * 100) / 100).join(',');
       }
     }
+    if (!styles.domoxmlQuad && el instanceof HTMLElement && el.offsetWidth > 0
+        && el.offsetHeight > 0) {
+      // Under a 3D or perspective ancestor an element's corners cannot be derived from its own
+      // style, so measure them: four zero-size probes at the border box corners are laid out
+      // through every ancestor transform, and where each lands is where that corner is drawn.
+      let projective = false;
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (cs.perspective !== 'none'
+            || (cs.transform !== 'none' && !new DOMMatrix(cs.transform).is2D)) {
+          projective = true;
+          break;
+        }
+      }
+      if (projective) {
+        // Even an element that cannot host probes (an image) is marked, so it is never mistaken
+        // for an upright one.
+        styles.domoxmlProjected = 'true';
+        // The corners below already include the element's own transform.
+        styles.transform = 'none';
+      }
+      if (projective && !(el instanceof HTMLImageElement)) {
+        const previous = el.style.position;
+        if (computed.position === 'static') el.style.position = 'relative';
+        const bl = parseFloat(computed.borderLeftWidth) || 0;
+        const bt = parseFloat(computed.borderTopWidth) || 0;
+        const w = el.offsetWidth, h = el.offsetHeight;
+        const corners = [[0, 0], [w, 0], [w, h], [0, h]].map(([x, y]) => {
+          const probe = document.createElement('span');
+          probe.style.cssText = 'position:absolute;width:0;height:0;margin:0;padding:0;border:0;'
+            + `left:${x - bl}px;top:${y - bt}px;visibility:hidden`;
+          el.appendChild(probe);
+          const at = probe.getBoundingClientRect();
+          el.removeChild(probe);
+          return [at.x, at.y];
+        });
+        el.style.position = previous;
+        styles.domoxmlQuad = corners.flat().map((v) => Math.round(v * 100) / 100).join(',');
+      }
+    }
     let effectiveLinear = inheritedLinear;
     if (computed.transform && computed.transform !== 'none') {
       const own = new DOMMatrix(computed.transform);
@@ -421,7 +461,7 @@ _SNAPSHOT_JS = """
       const upright = Math.abs(effectiveLinear.b) < 1e-6 && Math.abs(effectiveLinear.c) < 1e-6
         && effectiveLinear.a > 0 && effectiveLinear.d > 0;
       const ownNone = !computed.transform || computed.transform === 'none';
-      if (!(ownNone && upright)) {
+      if (!(ownNone && upright) && !styles.domoxmlProjected) {
         const identity = upright && Math.abs(effectiveLinear.a - 1) < 1e-6
           && Math.abs(effectiveLinear.d - 1) < 1e-6;
         styles.transform = identity ? 'none' : effectiveLinear.toString();

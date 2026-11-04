@@ -92,3 +92,62 @@ async def test_a_turned_data_chart_block_is_not_placed_upright() -> None:
         rendered = await session.render(page, width=1280, height=720)
 
     assert not any(isinstance(n, PreservedNode) for n in extract_slide(rendered).slide.contents)
+
+
+def test_the_chart_ships_an_embedded_workbook_its_series_refer_to() -> None:
+    import io
+    import zipfile
+    from xml.etree.ElementTree import fromstring
+
+    from domoxml.core.chart_author import chart_payload
+    from domoxml.core.ir.model import Box
+
+    spec = parse_chart_spec(json.dumps(_COLUMN))
+    assert spec is not None
+
+    payload = chart_payload(spec, Box(x=0, y=0, width=9_000_000, height=4_000_000))
+
+    chart = next(p for p in payload.parts if p.name.endswith(".xml"))
+    book = next(p for p in payload.parts if p.name.endswith(".xlsx"))
+    assert chart.relationships[0].target == book.name
+    xml = chart.data.decode()
+    assert "<c:externalData" in xml and "Sheet1!$B$2:$B$4" in xml and "Sheet1!$C$1" in xml
+    with zipfile.ZipFile(io.BytesIO(book.data)) as workbook:
+        sheet = fromstring(workbook.read("xl/worksheets/sheet1.xml"))
+    cells = {c.get("r"): "".join(c.itertext()) for c in sheet.iter() if c.tag.endswith("}c")}
+    assert cells["B1"] == "2025" and cells["A3"] == "Q2" and cells["C4"] == "18.0"
+
+
+def test_identical_specs_give_identical_workbook_bytes() -> None:
+    import time
+
+    from domoxml.core.chart_author import workbook_bytes
+
+    spec = parse_chart_spec(json.dumps(_COLUMN))
+    assert spec is not None
+
+    first = workbook_bytes(spec)
+    time.sleep(2.1)
+
+    assert workbook_bytes(spec) == first
+
+
+_ONE_SERIES = '"series":[{"values":[%s]}]'
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"type":"bar","categories":["a"],' + _ONE_SERIES % "1e999" + "}",
+        '{"type":"bar","categories":["a"],' + _ONE_SERIES % ("9" * 400) + "}",
+        '{"type":"bar","categories":["a"],' + _ONE_SERIES % "NaN" + "}",
+        json.dumps({"type": "bar", "categories": ["a"] * 1001, "series": [{"values": [1] * 1001}]}),
+        json.dumps({"type": "bar", "categories": ["a" * 256], "series": [{"values": [1]}]}),
+        json.dumps(
+            {"type": "bar", "categories": ["a"], "series": [{"name": "n" * 256, "values": [1]}]}
+        ),
+        json.dumps({"type": "bar", "categories": ["a"], "series": [{"values": [1]}] * 51}),
+    ],
+)
+def test_overflowing_non_finite_or_oversized_specs_are_not_charts(raw: str) -> None:
+    assert parse_chart_spec(raw) is None

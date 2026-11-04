@@ -57,8 +57,6 @@ def _smoothed(stops: tuple[GradientStop, ...]) -> tuple[GradientStop, ...]:
 
 def without_sampled_stops(fill: GradientFill) -> GradientFill:
     """``fill`` with the stops dropped that the writer sampled in (see :func:`_unsampled`)."""
-    if fill.radial:
-        return fill
     return fill.model_copy(update={"stops": _unsampled(fill.stops)})
 
 
@@ -108,8 +106,7 @@ def _straight(run: tuple[GradientStop, ...] | list[GradientStop]) -> bool:
 
 
 def _gradient_fill_xml(gradient: GradientFill) -> str:
-    chosen = gradient.stops if gradient.radial else _smoothed(gradient.stops)
-    stops = "".join(_gradient_stop_xml(stop) for stop in chosen)
+    stops = "".join(_gradient_stop_xml(stop) for stop in _smoothed(gradient.stops))
     if gradient.radial:
         path = (
             '<a:path path="circle">'
@@ -155,6 +152,6 @@ def parse_background(
     if properties is None:
         return None
     fill = fill_parser(properties)
-    if isinstance(fill, GradientFill) and not fill.radial:
+    if isinstance(fill, GradientFill):
         fill = without_sampled_stops(fill)
     return SlideBackground(fill=fill) if fill is not None else None

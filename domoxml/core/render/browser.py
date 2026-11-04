@@ -51,6 +51,7 @@ _SNAPSHOT_JS = """
     mixBlendMode: cs.mixBlendMode, backdropFilter: cs.backdropFilter,
     isolation: cs.isolation, willChange: cs.willChange, contain: cs.contain,
     perspective: cs.perspective, zIndex: cs.zIndex, position: cs.position,
+    scale: cs.scale, rotate: cs.rotate, translate: cs.translate,
     clipPath: cs.clipPath, transform: cs.transform, transformOrigin: cs.transformOrigin,
     borderTopWidth: cs.borderTopWidth, borderTopStyle: cs.borderTopStyle,
     borderTopColor: cs.borderTopColor,

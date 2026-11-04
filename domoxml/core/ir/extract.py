@@ -769,7 +769,16 @@ def _isolates_blending(styles: dict[str, str]) -> bool:
         or styles.get("mixBlendMode", "normal") != "normal"
         or any(
             styles.get(name, "none") not in ("none", "")
-            for name in ("filter", "transform", "perspective", "maskImage", "clipPath")
+            for name in (
+                "filter",
+                "transform",
+                "scale",
+                "rotate",
+                "translate",
+                "perspective",
+                "maskImage",
+                "clipPath",
+            )
         )
         or styles.get("backdropFilter", "none") not in ("none", "")
         or styles.get("position") in ("fixed", "sticky")

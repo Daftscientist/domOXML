@@ -1018,7 +1018,8 @@ class SlideBackground(BaseModel):
 class Animation(BaseModel):
     """An entrance effect on one top-level node (``p:timing`` entrance ``p:par``).
 
-    ``step`` 0 starts with the slide; step ``n`` starts on the n-th click. ``delay_ms`` is the
+    ``step`` 0 starts with the slide; the others start on clicks in step order (a gap in the
+    numbers closes up when written, as PowerPoint has no empty click). ``delay_ms`` is the
     wait after the step starts and ``duration_ms`` how long a fade takes (``appear`` is instant).
     """
 

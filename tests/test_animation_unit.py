@@ -121,3 +121,45 @@ async def test_data_animate_on_html_elements_becomes_pptx_timing() -> None:
     back = read_pptx_result(build_pptx([slide], faces=[])).slides[0].animations
     # PowerPoint plays by step, so the start-of-slide effect comes first.
     assert [(a.effect, a.step) for a in back] == [("appear", 0), ("fade", 1)]
+
+
+def test_a_gap_in_click_steps_closes_up_instead_of_skipping_a_click() -> None:
+    plan = (Animation(target="a", step=1), Animation(target="b", step=3))
+    deck = build_pptx([_slide(*plan)], faces=[])
+
+    back = read_pptx_result(deck).slides[0].animations
+
+    assert [a.step for a in back] == [1, 2]
+
+
+def _with_timing(xml_edit: tuple[bytes, bytes]) -> bytes:
+    deck = build_pptx([_slide(*_PLAN)], faces=[])
+    patched = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(deck)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "ppt/slides/slide1.xml":
+                data = data.replace(*xml_edit, 1)
+            zout.writestr(item, data)
+    return patched.getvalue()
+
+
+def test_timing_with_a_second_sequence_or_paragraph_targets_stays_preserved_source() -> None:
+    second = _with_timing(
+        (
+            b"</p:seq></p:childTnLst>",
+            b'</p:seq><p:seq concurrent="1" nextAc="seek"><p:cTn id="99" dur="indefinite"'
+            b' nodeType="interactiveSeq"><p:childTnLst/></p:cTn></p:seq></p:childTnLst>',
+        )
+    )
+    paragraph = _with_timing(
+        (
+            b'<p:spTgt spid="2"/>',
+            b'<p:spTgt spid="2"><p:txEl><p:pRg st="0" end="0"/></p:txEl></p:spTgt>',
+        )
+    )
+
+    for deck in (second, paragraph):
+        result = read_pptx_result(deck)
+        assert result.slides[0].animations == ()
+        assert any("p:timing" in w.message for w in result.warnings)

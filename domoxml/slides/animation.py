@@ -24,8 +24,17 @@ def read_animations(timing: Element, node_ids: dict[str, str]) -> tuple[Animatio
     ``node_ids`` maps a source shape id (``spid``) to the node id of the slide node it became: an
     effect on anything outside it (a placeholder, a group) is not one this can carry.
     """
-    sequence = timing.find("p:tnLst/p:par/p:cTn/p:childTnLst/p:seq/p:cTn/p:childTnLst", _NS)
-    if sequence is None:
+    tn_list = timing.find("p:tnLst", _NS)
+    roots = timing.findall("p:tnLst/p:par", _NS)
+    if tn_list is None or len(roots) != 1 or len(tn_list) != 1:
+        return None
+    branches = roots[0].findall("p:cTn/p:childTnLst/*", _NS)
+    main = branches[0] if len(branches) == 1 else None
+    # One main sequence and nothing beside it: an interactive (trigger) sequence would be lost.
+    if main is None or main.tag != f"{{{_P}}}seq":
+        return None
+    sequence = main.find("p:cTn/p:childTnLst", _NS)
+    if sequence is None or any(child.tag != f"{{{_P}}}par" for child in sequence):
         return None
     found: list[Animation] = []
     step = 0
@@ -38,6 +47,10 @@ def read_animations(timing: Element, node_ids: dict[str, str]) -> tuple[Animatio
             for effect in group.findall("p:cTn/p:childTnLst/p:par", _NS):
                 node = effect.find("p:cTn", _NS)
                 if node is None or node.get("presetClass") != "entr":
+                    return None
+                # A paragraph or character range animates part of a shape; the IR animates whole
+                # shapes, so such timing stays preserved source.
+                if any(len(tgt) for tgt in node.iterfind(".//p:spTgt", _NS)):
                     return None
                 name = _PRESETS.get(node.get("presetID", ""))
                 target = node_ids.get(_target(node) or "")

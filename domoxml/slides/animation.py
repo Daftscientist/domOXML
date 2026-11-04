@@ -20,9 +20,13 @@ _PRESETS = {
     ("entr", "10"): "fade",
     ("exit", "1"): "disappear",
     ("exit", "10"): "fade-out",
+    ("emph", "8"): "spin",
+    ("emph", "6"): "grow",
 }
-_PRESET_IDS = {"appear": 1, "fade": 10, "disappear": 1, "fade-out": 10}
+_PRESET_IDS = {"appear": 1, "fade": 10, "disappear": 1, "fade-out": 10, "spin": 8, "grow": 6}
 _FADES = ("fade", "fade-out")
+_TIMED = ("fade", "fade-out", "spin", "grow")
+_DEFAULT_AMOUNT = {"spin": 360.0, "grow": 150.0}
 
 
 def read_animations(timing: Element, node_ids: dict[str, str]) -> tuple[Animation, ...] | None:
@@ -53,7 +57,7 @@ def read_animations(timing: Element, node_ids: dict[str, str]) -> tuple[Animatio
             offset = _delay(group.find("p:cTn/p:stCondLst", _NS))
             for effect in group.findall("p:cTn/p:childTnLst/p:par", _NS):
                 node = effect.find("p:cTn", _NS)
-                if node is None or node.get("presetClass") not in ("entr", "exit"):
+                if node is None or node.get("presetClass") not in ("entr", "exit", "emph"):
                     return None
                 # A paragraph or character range animates part of a shape; the IR animates whole
                 # shapes, so such timing stays preserved source.
@@ -63,11 +67,15 @@ def read_animations(timing: Element, node_ids: dict[str, str]) -> tuple[Animatio
                 target = node_ids.get(_target(node) or "")
                 if name is None or target is None:
                     return None
-                duration = _duration(node) if name in _FADES else 1
+                duration = _duration(node) if name in _TIMED else 1
+                amount = _amount(node, name)
+                if amount is None:
+                    return None
                 found.append(
                     Animation(
                         target=target,
                         effect=name,  # type: ignore[arg-type]
+                        amount=amount,
                         step=step,
                         delay_ms=offset + _delay(node.find("p:stCondLst", _NS)),
                         duration_ms=duration,
@@ -92,8 +100,32 @@ def _target(node: Element) -> str | None:
     return target.get("spid") if target is not None else None
 
 
+def _amount(node: Element, name: str) -> float | None:
+    """The turn (degrees) or size (percent) of an emphasis effect; 0 for the others.
+
+    ``None`` when the behaviour is not the plain rotate or uniform scale the IR carries.
+    """
+    if name == "spin":
+        rotation = node.find(".//p:animRot", _NS)
+        try:
+            return int(rotation.get("by", "")) / 60_000 if rotation is not None else None
+        except ValueError:
+            return None
+    if name == "grow":
+        scale = node.find(".//p:animScale/p:by", _NS)
+        try:
+            if scale is None or scale.get("x") != scale.get("y"):
+                return None
+            return int(scale.get("x", "")) / 1000
+        except ValueError:
+            return None
+    return 0.0
+
+
 def _duration(node: Element) -> int:
-    for behaviour in node.findall(".//p:animEffect/p:cBhvr/p:cTn", _NS):
+    # The behaviour that takes the time: not the instant ``set`` that shows or hides the shape.
+    timed = (".//p:animEffect", ".//p:animRot", ".//p:animScale")
+    for behaviour in (cTn for path in timed for cTn in node.findall(f"{path}/p:cBhvr/p:cTn", _NS)):
         try:
             return max(1, int(behaviour.get("dur", "500")))
         except ValueError:
@@ -124,10 +156,30 @@ def timing_xml(animations: tuple[Animation, ...], shape_ids: dict[str, int]) -> 
             kind = "clickEffect" if step > 0 and position == 0 else "withEffect"
             leaving = animation.effect in ("disappear", "fade-out")
             fades = animation.effect in _FADES
+            target = f'<p:tgtEl><p:spTgt spid="{spid}"/></p:tgtEl>'
+            if animation.effect in ("spin", "grow"):
+                amount = animation.amount or _DEFAULT_AMOUNT[animation.effect]
+                behaviour_cTn = (
+                    f'<p:cTn id="{next_id()}" dur="{animation.duration_ms}" fill="hold"/>'
+                )
+                body = (
+                    f'<p:animRot by="{round(amount * 60_000)}"><p:cBhvr>{behaviour_cTn}{target}'
+                    "<p:attrNameLst><p:attrName>r</p:attrName></p:attrNameLst></p:cBhvr></p:animRot>"
+                    if animation.effect == "spin"
+                    else f"<p:animScale><p:cBhvr>{behaviour_cTn}{target}</p:cBhvr>"
+                    f'<p:by x="{round(amount * 1000)}" y="{round(amount * 1000)}"/></p:animScale>'
+                )
+                effects += (
+                    f'<p:par><p:cTn id="{next_id()}" presetID="{_PRESET_IDS[animation.effect]}" '
+                    f'presetClass="emph" presetSubtype="0" fill="hold" nodeType="{kind}">'
+                    f'<p:stCondLst><p:cond delay="{animation.delay_ms}"/></p:stCondLst>'
+                    f"<p:childTnLst>{body}</p:childTnLst></p:cTn></p:par>"
+                )
+                continue
             fade = (
                 f'<p:animEffect transition="{"out" if leaving else "in"}" filter="fade"><p:cBhvr>'
                 f'<p:cTn id="{next_id()}" dur="{animation.duration_ms}"/>'
-                f'<p:tgtEl><p:spTgt spid="{spid}"/></p:tgtEl></p:cBhvr></p:animEffect>'
+                f"{target}</p:cBhvr></p:animEffect>"
                 if fades
                 else ""
             )
@@ -137,7 +189,7 @@ def timing_xml(animations: tuple[Animation, ...], shape_ids: dict[str, int]) -> 
             visibility = (
                 f'<p:set><p:cBhvr><p:cTn id="{next_id()}" dur="1" fill="hold"><p:stCondLst>'
                 f'<p:cond delay="{hide_after if leaving else 0}"/></p:stCondLst></p:cTn>'
-                f'<p:tgtEl><p:spTgt spid="{spid}"/></p:tgtEl><p:attrNameLst>'
+                f"{target}<p:attrNameLst>"
                 "<p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr>"
                 f'<p:to><p:strVal val="{"hidden" if leaving else "visible"}"/></p:to></p:set>'
             )

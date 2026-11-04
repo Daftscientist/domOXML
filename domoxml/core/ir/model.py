@@ -1017,18 +1017,22 @@ class SlideBackground(BaseModel):
 
 
 class Animation(BaseModel):
-    """An entrance or exit effect on one top-level node (``p:timing`` entrance/exit ``p:par``).
+    """An entrance, exit or emphasis effect on one top-level node (a ``p:timing`` ``p:par``).
 
     ``step`` 0 starts with the slide; the others start on clicks in step order (a gap in the
     numbers closes up when written, as PowerPoint has no empty click). ``delay_ms`` is the
     wait after the step starts and ``duration_ms`` how long a fade takes (``appear`` and
-    ``disappear`` are instant). ``disappear`` and ``fade-out`` are the exit effects.
+    ``disappear`` are instant). ``disappear`` and ``fade-out`` are the exit effects; ``spin`` and
+    ``grow`` are emphasis effects that last ``duration_ms``, ``amount`` being the turn in degrees
+    and the size to reach in percent (0 takes the default of 360 and 150); a negative turn is
+    counter-clockwise.
     """
 
     model_config = _FROZEN
 
     target: str = Field(min_length=1, max_length=512)
-    effect: Literal["appear", "fade", "disappear", "fade-out"] = "fade"
+    effect: Literal["appear", "fade", "disappear", "fade-out", "spin", "grow"] = "fade"
+    amount: float = 0
     step: int = Field(default=0, ge=0)
     delay_ms: int = Field(default=0, ge=0)
     duration_ms: int = Field(default=500, ge=1)

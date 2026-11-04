@@ -135,6 +135,7 @@ def _animation_attrs(node: CanvasNode) -> list[tuple[str, str]]:
         ("data-animate-step", " ".join(str(a.step) for _, a in animations)),
         ("data-animate-delay", " ".join(str(a.delay_ms) for _, a in animations)),
         ("data-animate-duration", " ".join(str(a.duration_ms) for _, a in animations)),
+        ("data-animate-amount", " ".join(f"{a.amount:g}" for _, a in animations)),
         # Where each effect sits in the slide's own sequence, which the elements' order loses.
         ("data-animate-order", " ".join(str(position) for position, _ in animations)),
     ]

@@ -859,7 +859,7 @@ def _animations(
                 return default
 
         for index, effect in enumerate(effects):
-            if effect not in ("appear", "fade", "disappear", "fade-out"):
+            if effect not in ("appear", "fade", "disappear", "fade-out", "spin", "grow"):
                 continue
             # The slide-wide position the HTML recorded, else the order of the elements.
             position = number("domoxmlAnimateOrder", index, len(found) + 1_000_000)
@@ -869,6 +869,7 @@ def _animations(
                     Animation(
                         target=target,
                         effect=effect,  # type: ignore[arg-type]
+                        amount=float(number("domoxmlAnimateAmount", index, 0)),
                         step=max(0, number("domoxmlAnimateStep", index, 0)),
                         delay_ms=max(0, number("domoxmlAnimateDelay", index, 0)),
                         duration_ms=max(1, number("domoxmlAnimateDuration", index, 500)),

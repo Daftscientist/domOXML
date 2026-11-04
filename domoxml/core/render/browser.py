@@ -588,6 +588,7 @@ _SNAPSHOT_JS = """
       domoxmlAnimateDelay: 'data-animate-delay',
       domoxmlAnimateDuration: 'data-animate-duration',
       domoxmlAnimateOrder: 'data-animate-order',
+      domoxmlAnimateAmount: 'data-animate-amount',
       domoxmlRepresentation: 'data-domoxml-representation',
       domoxmlSlideFallback: 'data-domoxml-slide-fallback',
       domoxmlConnector: 'data-domoxml-connector',

@@ -9,7 +9,10 @@ import re
 from collections.abc import Mapping
 from contextvars import ContextVar
 from html import escape
+from io import BytesIO
 from urllib.parse import urlsplit
+
+from PIL import Image
 
 from domoxml.core.drawingml.preset_geometry import outline_bounds, outline_leaves_box
 from domoxml.core.drawingml.presets import preset_defaults, preset_vertices
@@ -432,6 +435,8 @@ def _shape_style(
             styles.append("background-repeat:no-repeat")
         else:
             styles.append("background-size:100% 100%")
+        if _enlarged_a_lot(node.fill, node.box.width, node.box.height):
+            styles.append("image-rendering:pixelated")
     elif isinstance(node.fill, PatternFill):
         # Map a:pattFill to CSS. The six round-trip presets become an exact
         # repeating-linear-gradient; all other presets fall back to an inline SVG tile and warn.
@@ -1274,6 +1279,29 @@ def _group_html(
     )
 
 
+# A picture drawn at least this many times larger than its own pixels keeps hard edges, as
+# PowerPoint draws it (measured for shape fills, pictures and table cells), instead of the
+# browser's smoothing; a modest enlargement stays smooth, as photographs want.
+_PIXEL_SCALE = 4.0
+
+
+def _enlarged_a_lot(fill: PictureFill, width_emu: int, height_emu: int) -> bool:
+    """Whether ``fill`` is drawn at several times its own pixel size in a ``width_emu`` box."""
+    if fill.svg_data is not None or fill.crop is not None:
+        return False
+    try:
+        with Image.open(BytesIO(fill.data)) as image:
+            pixels_w, pixels_h = image.size
+    except (OSError, Image.DecompressionBombError):
+        return False
+    if pixels_w < 1 or pixels_h < 1:
+        return False
+    return (
+        emu_to_px(width_emu) / pixels_w >= _PIXEL_SCALE
+        or emu_to_px(height_emu) / pixels_h >= _PIXEL_SCALE
+    )
+
+
 def _fill_css(fill: Fill | None, *, opacity: float = 1.0) -> str | None:
     """Return a CSS ``background-color`` / ``background-image`` value string, or ``None``."""
     if isinstance(fill, SolidFill):
@@ -1293,6 +1321,7 @@ def _border_side_css(line_val: object) -> str:
 
 def _table_html(
     node: TableNode,
+    assets: dict[str, HtmlAsset],
     warnings: list[ConversionWarning],
 ) -> str:
     """Serialize a :class:`TableNode` to a positioned ``<table>`` element.
@@ -1351,11 +1380,33 @@ def _table_html(
             if col_cursor >= n_cols:
                 break
 
+            # The height the cell spans: its own row and those it merges into.
+            spanned_height = sum(
+                spanned.height_emu for spanned in node.rows[row_idx : row_idx + cell.row_span]
+            )
+
             # Build cell style.
             cell_styles: list[str] = []
             fill_css = _fill_css(cell.fill)
             if fill_css is not None:
                 cell_styles.append(fill_css)
+            elif isinstance(cell.fill, PictureFill):
+                picture = _asset(cell.fill)
+                assets.setdefault(picture.path, picture)
+                cell_styles.append(f"background-image:url(../{picture.path})")
+                if cell.fill.crop is not None:
+                    crop = cell.fill.crop
+                    size, position = srcrect_to_background(
+                        (crop.left, crop.top, crop.right, crop.bottom)
+                    )
+                    cell_styles.append(f"background-size:{size}")
+                    cell_styles.append(f"background-position:{position}")
+                else:
+                    cell_styles.append("background-size:100% 100%")
+                cell_styles.append("background-repeat:no-repeat")
+                width = sum(node.col_widths_emu[col_cursor : col_cursor + max(1, cell.col_span)])
+                if _enlarged_a_lot(cell.fill, width, spanned_height):
+                    cell_styles.append("image-rendering:pixelated")
             # Padding from margins (order: top, right, bottom, left in IR tuple is (L,T,R,B)).
             mar_l, mar_t, mar_r, mar_b = cell.margins
             if any((mar_l, mar_t, mar_r, mar_b)):
@@ -1369,6 +1420,12 @@ def _table_html(
                 cell_styles.append(f"border-bottom:{_border_side_css(b.bottom)}")
 
             cell_styles.append(f"vertical-align:{cell.valign}")
+            if cell.text is not None and cell.text.vertical != "horz":
+                cell_styles.append(
+                    "writing-mode:vertical-rl"
+                    if cell.text.vertical == "vert"
+                    else "writing-mode:sideways-lr"
+                )
             td_style = escape(";".join(cell_styles), quote=True)
 
             # Span attributes.
@@ -1380,6 +1437,11 @@ def _table_html(
 
             # Cell content.
             inner = _text_html(cell.text, warnings)
+            room = spanned_height - mar_t - mar_b
+            if cell.text is not None and cell.text.vertical != "horz" and room > 0:
+                # Vertical text wraps within the cell's height (all the rows it spans), as
+                # PowerPoint draws it, instead of stretching the rows to fit its whole length.
+                inner = f'<div style="height:{_px(room)};overflow:hidden">{inner}</div>'
             cells_html += f'<td style="{td_style}"{span_attrs}>{inner}</td>'
 
             col_cursor += max(1, cell.col_span)
@@ -1795,7 +1857,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
     if isinstance(node, Connector):
         return _connector_html(node, warnings)
     if isinstance(node, TableNode):
-        return _table_html(node, warnings)
+        return _table_html(node, assets, warnings)
     payload = escape(encode_payload(node.payload), quote=True)
     base = (
         f"position:absolute;left:{_px(node.box.x)};top:{_px(node.box.y)};"

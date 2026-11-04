@@ -398,6 +398,14 @@ def _slide(
                 shapes.extend(iter_shapes(candidate.children))
         return shapes
 
+    # A picture in a table cell: its image relationship, found again by the fill's identity.
+    table_blip_rids: dict[int, str] = {}
+    for table in (node for node in slide.contents if isinstance(node, TableNode)):
+        for row in table.rows:
+            for cell in row.cells:
+                if isinstance(cell.fill, PictureFill):
+                    table_blip_rids[id(cell.fill)] = register_media(cell.fill.data, cell.fill.ext)
+
     for position, node in enumerate(slide.contents):
         if isinstance(node, ShapeNode) and isinstance(node.fill, PictureFill):
             blip_rids[position] = register_media(node.fill.data, node.fill.ext)
@@ -772,7 +780,7 @@ def _slide(
         elif isinstance(node, Connector):
             content_parts.append(_connector_xml(node, shape_id=shape_id))
         elif isinstance(node, TableNode):
-            content_parts.append(table_xml(node, shape_id=shape_id))
+            content_parts.append(table_xml(node, shape_id=shape_id, blip_rids=table_blip_rids))
         elif isinstance(node, MediaNode):
             if position in model_frames:
                 content_parts.append(

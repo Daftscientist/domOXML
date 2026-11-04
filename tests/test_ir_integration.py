@@ -4273,3 +4273,35 @@ async def test_gradient_text_that_wraps_or_nests_keeps_the_boxs_gradient(markup:
         if r.gradient is not None
     ]
     assert gradients and all(g.stops[-1].color.b > 200 for g in gradients)
+
+
+async def test_a_table_cell_with_a_background_image_becomes_a_picture_filled_cell() -> None:
+    import base64
+    import io as _io
+
+    from PIL import Image
+
+    buffer = _io.BytesIO()
+    Image.new("RGB", (8, 8), (200, 30, 30)).save(buffer, "PNG")
+    uri = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    result = await _render_and_extract_result(
+        "<table style='position:absolute;left:40px;top:40px;width:400px;border-collapse:collapse'>"
+        "<tr><td style='width:200px;height:80px'>a</td>"
+        f"<td style='background-image:url({uri});background-size:100% 100%'>b</td></tr></table>"
+    )
+
+    [table] = [n for n in result.slide.contents if isinstance(n, TableNode)]
+    assert isinstance(table.rows[0].cells[1].fill, PictureFill)
+
+
+async def test_a_table_cell_with_vertical_writing_mode_carries_its_text_direction() -> None:
+    result = await _render_and_extract_result(
+        "<table style='position:absolute;left:40px;top:40px;width:400px;border-collapse:collapse'>"
+        "<tr><td style='width:200px;height:120px;writing-mode:vertical-rl'>Vertical</td>"
+        "<td>plain</td></tr></table>"
+    )
+
+    [table] = [n for n in result.slide.contents if isinstance(n, TableNode)]
+    first, second = table.rows[0].cells
+    assert first.text is not None and first.text.vertical == "vert"
+    assert second.text is not None and second.text.vertical == "horz"

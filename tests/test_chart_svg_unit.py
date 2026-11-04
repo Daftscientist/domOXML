@@ -249,3 +249,28 @@ def test_entities_in_chart_xml_decline_instead_of_raising() -> None:
     )
 
     assert chart_to_svg(bomb, width_px=480, height_px=300) is None
+
+
+def test_a_series_colour_keeps_its_lightness_transform_and_resolves_roles_through_the_theme() -> (
+    None
+):
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    series = _series(0, [1, 2]).replace(
+        "</c:ser>",
+        f'<c:spPr><a:solidFill xmlns:a="{a}"><a:schemeClr val="tx2"><a:lumMod val="50000"/>'
+        '<a:lumOff val="50000"/></a:schemeClr></a:solidFill></c:spPr></c:ser>',
+    )
+    svg = chart_to_svg(
+        _chart(
+            '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+            + series
+            + "</c:barChart>"
+        ),
+        width_px=480,
+        height_px=300,
+        theme={"dk2": "08284F"},  # a deck that names its dark colour dk2, not tx2
+    )
+
+    assert svg is not None
+    # dk2 at half lightness plus half: a light blue, not the plain navy and not Office's grey-blue.
+    assert "#08284F" not in svg and "#44546A" not in svg and 'fill="#3' in svg

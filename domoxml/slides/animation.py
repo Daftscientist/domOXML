@@ -63,6 +63,13 @@ def read_animations(timing: Element, node_ids: dict[str, str]) -> tuple[Animatio
                 # shapes, so such timing stays preserved source.
                 if any(len(tgt) for tgt in node.iterfind(".//p:spTgt", _NS)):
                     return None
+                # Repeats and auto-reverse are not carried, so dropping them would change the show.
+                if any(
+                    timing.get(name) is not None
+                    for timing in node.iter(f"{{{_P}}}cTn")
+                    for name in ("autoRev", "repeatCount", "repeatDur", "accel", "decel")
+                ):
+                    return None
                 name = _PRESETS.get((node.get("presetClass", ""), node.get("presetID", "")))
                 target = node_ids.get(_target(node) or "")
                 if name is None or target is None:

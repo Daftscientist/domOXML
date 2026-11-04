@@ -837,6 +837,15 @@ def _authored_chart(node: RenderedNode) -> PreservedNode | None:
     )
 
 
+def _amount_at(raw: str, index: int) -> float:
+    """The ``index``th space-separated animation amount, fractions kept; 0 when missing."""
+    values = raw.split()
+    try:
+        return max(-100_000.0, min(100_000.0, float(values[index]))) if index < len(values) else 0
+    except ValueError:
+        return 0.0
+
+
 def _animations(
     rendered: RenderedSlide, identities: _IdentityAllocator, present: set[str]
 ) -> tuple[Animation, ...]:
@@ -869,7 +878,7 @@ def _animations(
                     Animation(
                         target=target,
                         effect=effect,  # type: ignore[arg-type]
-                        amount=float(number("domoxmlAnimateAmount", index, 0)),
+                        amount=_amount_at(node.styles.get("domoxmlAnimateAmount", ""), index),
                         step=max(0, number("domoxmlAnimateStep", index, 0)),
                         delay_ms=max(0, number("domoxmlAnimateDelay", index, 0)),
                         duration_ms=max(1, number("domoxmlAnimateDuration", index, 500)),

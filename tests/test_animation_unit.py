@@ -291,3 +291,28 @@ def test_an_emphasis_effect_the_ir_does_not_model_stays_preserved_source() -> No
 
     assert result.slides[0].animations == ()
     assert any("p:timing" in w.message for w in result.warnings)
+
+
+def test_a_repeating_or_reversing_emphasis_stays_preserved_source() -> None:
+    deck = build_pptx([_slide(Animation(target="a", effect="spin", step=1))], faces=[])
+    patched = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(deck)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "ppt/slides/slide1.xml":
+                data = data.replace(
+                    b'dur="500" fill="hold"/>', b'dur="500" fill="hold" autoRev="1"/>', 1
+                )
+            zout.writestr(item, data)
+
+    result = read_pptx_result(patched.getvalue())
+
+    assert result.slides[0].animations == ()
+    assert any("p:timing" in w.message for w in result.warnings)
+
+
+def test_a_fractional_amount_survives_the_html_round_trip() -> None:
+    from domoxml.core.ir.extract import _amount_at  # pyright: ignore[reportPrivateUsage]
+
+    assert _amount_at("0.5 90", 0) == 0.5 and _amount_at("0.5 90", 1) == 90
+    assert _amount_at("", 0) == 0 and _amount_at("x", 0) == 0

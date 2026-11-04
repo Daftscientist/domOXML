@@ -86,3 +86,23 @@ def test_authored_stops_off_the_sampling_grid_and_inside_the_ends_survive() -> N
     assert stops[0][0] == 25000 and stops[-1][0] == 75000  # nothing sampled past the ends
     assert back is not None and isinstance(back.fill, GradientFill)
     assert [round(s.pos, 2) for s in back.fill.stops] == [0.25, 0.3, 0.75]
+
+
+def test_a_radial_background_is_sampled_and_collapses_back_like_a_linear_one() -> None:
+    fill = GradientFill(
+        radial=True,
+        stops=(
+            GradientStop(pos=0, color=Rgba(r=250, g=30, b=200)),
+            GradientStop(pos=1, color=Rgba(r=10, g=240, b=40)),
+        ),
+    )
+    deck = build_pptx(
+        [SlideIR(width=12_192_000, height=6_858_000, background=SlideBackground(fill=fill))],
+        faces=[],
+    )
+
+    back = read_pptx_result(deck).slides[0].background
+
+    assert len(_stops(deck)) == 17
+    assert back is not None and isinstance(back.fill, GradientFill) and back.fill.radial
+    assert [s.color.hex for s in back.fill.stops] == ["FA1EC8", "0AF028"]

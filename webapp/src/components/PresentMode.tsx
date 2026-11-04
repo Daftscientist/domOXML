@@ -29,6 +29,7 @@ export function PresentMode(p: Props) {
   const slide = p.deck.slides[index];
   const preview = usePreview(slide?.html ?? "", {
     width: p.deck.width, height: p.deck.height, css: p.deck.css,
+    priority: 10, sessionKey: p.deck.id,
   });
 
   const go = useCallback(

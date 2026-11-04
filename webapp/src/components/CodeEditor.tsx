@@ -52,8 +52,11 @@ export function CodeEditor({ value, onChange, dark, language = "html", stateKey 
         edit
         editStateKey={stateKey}
         onEditChange={(event) => onChange(event.file.contents)}
-        onEditComplete={(event) => {
-          onChange(event.file.contents);
+        onEditComplete={() => {
+          // Completion also fires when the component unmounts (switching
+          // slides or decks). It must not write here: the live document has
+          // already streamed through onEditChange, and a stale completion
+          // would land in the successor document that now owns this slot.
           return "accept";
         }}
         style={{ height: "100%" }}

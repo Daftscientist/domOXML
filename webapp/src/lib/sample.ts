@@ -11,6 +11,7 @@ body { font-family: "Geist", "Inter", system-ui, sans-serif; }
 /** A small, real-feeling starter deck that shows off the type scale. */
 export function sampleDeck(): Deck {
   return {
+    id: id(),
     name: "Product Review",
     width: 1280,
     height: 720,

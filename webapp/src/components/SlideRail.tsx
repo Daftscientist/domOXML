@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Copy, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,11 +16,31 @@ interface Props {
   onDelete: (index: number) => void;
 }
 
-function Thumb({ deck, index }: { deck: Deck; index: number }) {
+function Thumb({ deck, index, selected }: { deck: Deck; index: number; selected: boolean }) {
   const slide = deck.slides[index];
-  const preview = usePreview(slide.html, { width: deck.width, height: deck.height, css: deck.css });
+  const box = useRef<HTMLDivElement>(null);
+  // Only render thumbnails once their card is on (or near) screen; a long
+  // deck then costs nothing for slides nobody has scrolled to yet.
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || seen) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setSeen(true);
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [seen]);
+  const preview = usePreview(slide.html, {
+    width: deck.width, height: deck.height, css: deck.css,
+    priority: selected ? 5 : 1, enabled: seen, sessionKey: deck.id,
+  });
   return (
     <div
+      ref={box}
       className="relative w-full overflow-hidden rounded-[4px] bg-white"
       style={{ aspectRatio: `${deck.width} / ${deck.height}` }}
     >
@@ -67,7 +88,7 @@ export function SlideRail(p: Props) {
                     index === p.selected && "ring-2 ring-primary ring-offset-1 ring-offset-background",
                   )}
                 >
-                  <Thumb deck={p.deck} index={index} />
+                  <Thumb deck={p.deck} index={index} selected={index === p.selected} />
                 </div>
                 <div className="mt-1.5 flex h-5 items-center justify-between">
                   {slide.transition ? (

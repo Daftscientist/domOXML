@@ -15,6 +15,7 @@ export function Stage(p: Props) {
   const slide = p.deck.slides[p.selected];
   const preview = usePreview(slide?.html ?? "", {
     width: p.deck.width, height: p.deck.height, css: p.deck.css,
+    priority: 10, sessionKey: p.deck.id,
   });
   const frame = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });

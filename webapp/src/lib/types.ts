@@ -19,6 +19,8 @@ export interface Slide {
 }
 
 export interface Deck {
+  /** Identity of this deck document; replaced wholesale on open/new. */
+  id: string;
   name: string;
   width: number;
   height: number;

@@ -146,6 +146,7 @@ ${slides}
         return;
       }
       setDeck({
+        id: newSlideId(),
         name: file.name.replace(/\.pptx$/i, ""),
         width: result.width,
         height: result.height,
@@ -170,6 +171,7 @@ ${slides}
 
   const newDeck = useCallback(() => {
     setDeck({
+      id: newSlideId(),
       name: "Untitled presentation",
       width: 1280,
       height: 720,

@@ -204,7 +204,7 @@ export function Inspector(p: Props) {
           <div className="flex min-h-40 flex-1 flex-col gap-1.5">
             <Label>Deck stylesheet</Label>
             <div className="min-h-40 flex-1 overflow-hidden rounded-lg border">
-              <CodeEditor value={p.deck.css} onChange={(css) => p.onDeckChange({ css })} dark={p.dark} language="css" stateKey="deck-css" />
+              <CodeEditor key={p.deck.id} value={p.deck.css} onChange={(css) => p.onDeckChange({ css })} dark={p.dark} language="css" stateKey={`css:${p.deck.id}`} />
             </div>
             <p className="text-xs leading-relaxed text-muted-foreground">
               Applied to every slide before its own markup, like a document stylesheet.

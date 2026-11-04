@@ -75,6 +75,7 @@ from domoxml.core.ir.lowering import (
     recolor_shape,
 )
 from domoxml.core.ir.model import (
+    Animation,
     AutoNumberBullet,
     Blur,
     Box,
@@ -656,6 +657,9 @@ class _IdentityAllocator:
         self._allocated: set[str] = set()
         self._automatic_bases: dict[int, str] = {}
 
+    def base_id(self, source: RenderedNode) -> str:
+        return self._base_id(source)
+
     def _base_id(self, source: RenderedNode) -> str:
         inherited = source.styles.get("domoxmlNodeId", "").strip()
         if inherited:
@@ -830,6 +834,37 @@ def _authored_chart(node: RenderedNode) -> PreservedNode | None:
         payload=payload,
         fallback=chart_picture(payload, box, None),
     )
+
+
+def _animations(
+    rendered: RenderedSlide, identities: _IdentityAllocator, present: set[str]
+) -> tuple[Animation, ...]:
+    """Entrance effects declared with ``data-animate`` on the elements that became slide nodes."""
+    found: list[Animation] = []
+    for node in rendered.nodes:
+        effect = node.styles.get("domoxmlAnimate")
+        if effect not in ("appear", "fade"):
+            continue
+        target = identities.base_id(node)
+        if target not in present:
+            continue
+
+        def number(key: str, default: int, node: RenderedNode = node) -> int:
+            try:
+                return int(float(node.styles.get(key, default)))
+            except ValueError:
+                return default
+
+        found.append(
+            Animation(
+                target=target,
+                effect="appear" if effect == "appear" else "fade",
+                step=max(0, number("domoxmlAnimateStep", 0)),
+                delay_ms=max(0, number("domoxmlAnimateDelay", 0)),
+                duration_ms=max(1, number("domoxmlAnimateDuration", 500)),
+            )
+        )
+    return tuple(found)
 
 
 def _structural_raster_reason(node: RenderedNode) -> str | None:
@@ -3799,6 +3834,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         width=width,
         height=height,
         contents=tuple(contents),
+        animations=_animations(rendered, identities, {n.node_id for n in contents if n.node_id}),
         transition=transition,
         background=background,
         renderer_fallback=renderer_fallback,

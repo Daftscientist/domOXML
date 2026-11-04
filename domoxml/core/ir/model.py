@@ -1015,6 +1015,23 @@ class SlideBackground(BaseModel):
     inherited: bool = False
 
 
+class Animation(BaseModel):
+    """An entrance effect on one top-level node (``p:timing`` entrance ``p:par``).
+
+    ``step`` 0 starts with the slide; the others start on clicks in step order (a gap in the
+    numbers closes up when written, as PowerPoint has no empty click). ``delay_ms`` is the
+    wait after the step starts and ``duration_ms`` how long a fade takes (``appear`` is instant).
+    """
+
+    model_config = _FROZEN
+
+    target: str = Field(min_length=1, max_length=512)
+    effect: Literal["appear", "fade"] = "fade"
+    step: int = Field(default=0, ge=0)
+    delay_ms: int = Field(default=0, ge=0)
+    duration_ms: int = Field(default=500, ge=1)
+
+
 class SlideIR(BaseModel):
     """A single slide as a canvas of positioned nodes, sized in EMUs.
 
@@ -1042,6 +1059,8 @@ class SlideIR(BaseModel):
     renderer_fallback_owner_node_id: str | None = Field(default=None, min_length=1, max_length=512)
     # Speaker notes as plain text, one line per paragraph; ``None`` means the slide has none.
     notes: str | None = None
+    # Entrance effects, in playing order; ``()`` means the slide has no animation.
+    animations: tuple[Animation, ...] = ()
 
     def __init__(
         self,
@@ -1056,6 +1075,7 @@ class SlideIR(BaseModel):
         renderer_fallback: PictureFill | None = None,
         renderer_fallback_owner_node_id: str | None = None,
         notes: str | None = None,
+        animations: tuple[Animation, ...] = (),
     ) -> None:
         if contents is not None and (shapes is not None or nodes is not None):
             raise ValueError("pass contents or legacy shapes/nodes, not both")
@@ -1071,6 +1091,7 @@ class SlideIR(BaseModel):
             renderer_fallback=renderer_fallback,
             renderer_fallback_owner_node_id=renderer_fallback_owner_node_id,
             notes=notes,
+            animations=animations,
         )
         object.__setattr__(self, "contents", _normalise_node_ids(self.contents))
 

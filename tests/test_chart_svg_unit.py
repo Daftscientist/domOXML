@@ -358,3 +358,19 @@ def test_an_automatic_value_axis_leaves_five_percent_above_the_tallest_value() -
     # 8 plus 5% is 8.4, so the axis runs 0 to 9 in unit steps (as Excel and PowerPoint draw it).
     assert ">9</text>" in svg and ">0</text>" in svg and ">8</text>" in svg
     assert ">10</text>" not in svg
+
+
+def test_a_narrow_horizontal_bar_chart_keeps_fewer_axis_labels_than_a_tall_column_chart() -> None:
+    bars = (
+        '<c:barChart><c:barDir val="bar"/><c:grouping val="clustered"/>'
+        + _series(0, [20000, 40000, 80000])
+        + "</c:barChart>"
+    )
+    columns = bars.replace('barDir val="bar"', 'barDir val="col"')
+
+    narrow = chart_to_svg(_chart(bars), width_px=260, height_px=600)
+    tall = chart_to_svg(_chart(columns), width_px=260, height_px=600)
+
+    assert narrow is not None and tall is not None
+    # Along 260 px the horizontal value axis fits about four labels; a 600 px column axis ten.
+    assert narrow.count("0</text>") < tall.count("0</text>")

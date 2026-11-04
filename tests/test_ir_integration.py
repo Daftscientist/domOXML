@@ -4155,3 +4155,29 @@ async def test_a_blended_box_on_a_plain_page_blends_with_the_page_colour(
     assert isinstance(shape.fill, SolidFill)
     colour = shape.fill.color
     assert (colour.r, colour.g, colour.b) == expected
+
+
+@pytest.mark.parametrize(
+    ("wrapper", "expected"),
+    [
+        ("", (135, 127, 155)),  # a plain wrapper is no group: the page is still the backdrop
+        ("isolation:isolate", (120, 128, 100)),
+        ("position:absolute;z-index:1", (120, 128, 100)),
+        ("will-change:transform", (120, 128, 100)),
+    ],
+)
+async def test_a_blend_inside_an_isolated_group_ignores_the_page_behind_it(
+    wrapper: str, expected: tuple[int, int, int]
+) -> None:
+    result = await _render_and_extract_result(
+        f"<div style='position:absolute;left:0;top:0;width:800px;height:600px;{wrapper}'>"
+        "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
+        "background:#788064;mix-blend-mode:difference'></div></div>"
+    )
+
+    colours = {
+        (s.fill.color.r, s.fill.color.g, s.fill.color.b)
+        for s in result.slide.shapes
+        if isinstance(s.fill, SolidFill)
+    }
+    assert expected in colours

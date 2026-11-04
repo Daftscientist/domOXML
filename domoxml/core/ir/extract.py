@@ -756,6 +756,34 @@ def _soft_edge_mask(node: RenderedNode) -> SoftEdge | None:
     )
 
 
+def _isolates_blending(styles: dict[str, str]) -> bool:
+    """Whether an element is a stacking context whose children cannot blend with what is outside.
+
+    A blend inside such a group sees only the group's own content, so the page behind it is not
+    a backdrop (a transparent group contributes nothing).
+    """
+    positioned = styles.get("position", "static") != "static"
+    return (
+        styles.get("isolation") == "isolate"
+        or styles.get("opacity", "1") != "1"
+        or styles.get("mixBlendMode", "normal") != "normal"
+        or any(
+            styles.get(name, "none") not in ("none", "")
+            for name in ("filter", "transform", "perspective", "maskImage", "clipPath")
+        )
+        or styles.get("backdropFilter", "none") not in ("none", "")
+        or styles.get("position") in ("fixed", "sticky")
+        or (positioned and styles.get("zIndex", "auto") != "auto")
+        or any(
+            token in styles.get("willChange", "")
+            for token in ("opacity", "transform", "filter", "perspective", "mask", "clip-path")
+        )
+        or any(
+            token in styles.get("contain", "") for token in ("paint", "layout", "strict", "content")
+        )
+    )
+
+
 def _blend_over_solids(
     node: RenderedNode,
     rendered: RenderedSlide,
@@ -780,9 +808,15 @@ def _blend_over_solids(
     fill, reason = _resolve_fill(node, rendered)
     if reason is not None or not isinstance(fill, SolidFill):
         return None
+    nodes = {n.index: n for n in rendered.nodes}
+    ancestor = nodes.get(node.parent)
+    isolated = False
+    while ancestor is not None and not isolated:
+        isolated = _isolates_blending(ancestor.styles) and "domoxmlSlideRoot" not in ancestor.styles
+        ancestor = nodes.get(ancestor.parent) if ancestor.parent != ancestor.index else None
     canvas = (
         background.fill.color
-        if background is not None and isinstance(background.fill, SolidFill)
+        if not isolated and background is not None and isinstance(background.fill, SolidFill)
         else None
     )
     return blended_shapes(styles["mixBlendMode"], _box(node), fill.color, contents, canvas)

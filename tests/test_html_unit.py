@@ -708,3 +708,22 @@ def test_a_css_line_height_number_is_an_em_multiple_so_powerpoint_percent_is_a_f
     assert percent is not None and percent.percent is not None
     assert abs(unitless.percent - 1.25) < 1e-9  # 1.5 em over PowerPoint's 1.2 em single
     assert abs(percent.percent - 1.25) < 1e-9
+
+
+def test_a_serif_or_mono_font_falls_back_to_its_own_kind_when_missing() -> None:
+    from domoxml.core.html import _css_font_family  # pyright: ignore[reportPrivateUsage]
+
+    assert _css_font_family("Lora") == "Lora,serif"
+    assert _css_font_family("Libre Franklin Serif") == "Libre Franklin Serif,serif"
+    assert _css_font_family("Roboto Mono") == "Roboto Mono,monospace"
+    assert _css_font_family("Some New Code") == "Some New Code,monospace"
+    assert _css_font_family("Roboto") == "Roboto,sans-serif"
+    assert _css_font_family("Open Sans") == "Open Sans,sans-serif"
+    assert _css_font_family("Noto Sans Serif Display") == "Noto Sans Serif Display,sans-serif"
+
+
+def test_only_the_word_serif_marks_a_serif_family() -> None:
+    from domoxml.core.html import _css_font_family  # pyright: ignore[reportPrivateUsage]
+
+    assert _css_font_family("Libre Serifa") == "Libre Serifa,sans-serif"
+    assert _css_font_family("Noto Serif Display") == "Noto Serif Display,serif"

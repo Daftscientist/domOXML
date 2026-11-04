@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import math
+import re
 from collections.abc import Mapping
 from contextvars import ContextVar
 from html import escape
@@ -853,12 +854,23 @@ _SERIF_FONTS = frozenset(
         "times new roman", "times", "georgia", "cambria", "garamond", "palatino",
         "palatino linotype", "book antiqua", "baskerville", "didot", "constantia", "minion pro",
         "century schoolbook", "bodoni mt", "hoefler text", "iowan old style", "charter",
+        "lora", "merriweather", "playfair display", "libre baskerville", "pt serif", "noto serif",
+        "source serif pro", "source serif 4", "crimson text", "crimson pro", "eb garamond",
+        "cormorant", "cormorant garamond", "roboto serif", "dm serif display", "dm serif text",
+        "spectral", "bitter", "domine", "vollkorn", "alegreya", "libre caslon text", "cardo",
+        "gelasio", "tinos", "liberation serif", "dejavu serif", "droid serif", "rockwell",
+        "sitka", "century", "bookman old style", "perpetua", "calisto mt", "goudy old style",
+        "plantin", "sabon", "caslon", "bembo", "abril fatface", "cinzel", "zilla slab",
     }
 )  # fmt: skip
 _MONO_FONTS = frozenset(
     {
         "courier new", "courier", "consolas", "menlo", "monaco", "lucida console",
         "andale mono", "source code pro", "fira code", "jetbrains mono", "sf mono",
+        "roboto mono", "ibm plex mono", "space mono", "dm mono", "inconsolata", "ubuntu mono",
+        "cascadia code", "cascadia mono", "liberation mono", "dejavu sans mono", "noto sans mono",
+        "fira mono", "courier prime", "pt mono", "anonymous pro", "hack", "droid sans mono",
+        "lucida sans typewriter", "ocr a extended",
     }
 )  # fmt: skip
 
@@ -870,9 +882,9 @@ def _css_font_family(family: str) -> str:
     lowered = family.lower()
     generic = (
         "serif"
-        if lowered in _SERIF_FONTS
+        if lowered in _SERIF_FONTS or (re.search(r"\bserif\b", lowered) and "sans" not in lowered)
         else "monospace"
-        if lowered in _MONO_FONTS
+        if lowered in _MONO_FONTS or lowered.endswith((" mono", " code", " typewriter"))
         else "sans-serif"
     )
     return f"{family},{generic}"

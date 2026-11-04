@@ -186,3 +186,16 @@ def test_exit_effects_hide_the_shape_and_read_back_as_exits() -> None:
     ]
     html = serialize_canvas([_slide(*plan)]).slides[0].html
     assert 'data-animate="fade-out"' in html and 'data-animate="disappear"' in html
+
+
+def test_a_shape_with_an_entrance_and_an_exit_stays_preserved_source() -> None:
+    plan = (
+        Animation(target="a", effect="appear", step=1),
+        Animation(target="a", effect="disappear", step=2),
+    )
+    deck = build_pptx([_slide(*plan)], faces=[])
+
+    result = read_pptx_result(deck)
+
+    assert result.slides[0].animations == ()
+    assert any("p:timing" in w.message for w in result.warnings)

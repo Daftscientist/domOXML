@@ -3876,7 +3876,7 @@ async def test_multiply_over_a_radial_gradient_still_keeps_its_raster() -> None:
     assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
 
 
-async def test_screen_over_the_bare_canvas_keeps_its_own_colour() -> None:
+async def test_screen_over_the_bare_page_blends_with_the_page_colour() -> None:
     result = await _render_and_extract_result(
         "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
         "background:#336699'></div>"
@@ -3889,7 +3889,7 @@ async def test_screen_over_the_bare_canvas_keeps_its_own_colour() -> None:
         for s in result.slide.shapes
         if isinstance(s.fill, SolidFill)
     }
-    assert (204, 102, 0) in colours  # outside the overlap the canvas blends as transparent
+    assert (255, 255, 255) in colours  # outside the overlap the page (white) is the backdrop
     assert (214, 163, 153) in colours  # 1 - (1 - a)(1 - b) per channel inside it
 
 
@@ -4137,3 +4137,47 @@ async def test_a_hard_transition_in_the_backdrop_gradient_stays_hard_after_the_b
     # Red x cyan is black, yellow x cyan is green: two stops at the midpoint, one of each.
     middle = [(round(stop.pos, 2), (stop.color.r, stop.color.g, stop.color.b)) for stop in stops]
     assert (0.5, (0, 0, 0)) in middle and (0.5, (0, 255, 0)) in middle
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [("difference", (135, 127, 155)), ("lighten", (255, 255, 255)), ("multiply", (120, 128, 100))],
+)
+async def test_a_blended_box_on_a_plain_page_blends_with_the_page_colour(
+    mode: str, expected: tuple[int, int, int]
+) -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
+        f"background:#788064;mix-blend-mode:{mode}'></div>"
+    )
+
+    [shape] = result.slide.shapes
+    assert isinstance(shape.fill, SolidFill)
+    colour = shape.fill.color
+    assert (colour.r, colour.g, colour.b) == expected
+
+
+@pytest.mark.parametrize(
+    ("wrapper", "expected"),
+    [
+        ("", (135, 127, 155)),  # a plain wrapper is no group: the page is still the backdrop
+        ("isolation:isolate", (120, 128, 100)),
+        ("position:absolute;z-index:1", (120, 128, 100)),
+        ("will-change:transform", (120, 128, 100)),
+    ],
+)
+async def test_a_blend_inside_an_isolated_group_ignores_the_page_behind_it(
+    wrapper: str, expected: tuple[int, int, int]
+) -> None:
+    result = await _render_and_extract_result(
+        f"<div style='position:absolute;left:0;top:0;width:800px;height:600px;{wrapper}'>"
+        "<div style='position:absolute;left:100px;top:100px;width:300px;height:200px;"
+        "background:#788064;mix-blend-mode:difference'></div></div>"
+    )
+
+    colours = {
+        (s.fill.color.r, s.fill.color.g, s.fill.color.b)
+        for s in result.slide.shapes
+        if isinstance(s.fill, SolidFill)
+    }
+    assert expected in colours

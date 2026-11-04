@@ -2,8 +2,8 @@
 
 PowerPoint has no blend mode that reaches the content beneath a shape, but when everything the
 element overlaps is an opaque solid rectangle the blend is a known colour per region. The element
-becomes plain shapes: its own box in its own colour (the canvas it sits on blends as transparent,
-as the browser does), with a patch in the blended colour wherever it crosses another shape.
+becomes plain shapes: its own box blended with the page colour, with a patch in the blended colour
+wherever it crosses another shape.
 """
 
 from __future__ import annotations
@@ -59,16 +59,22 @@ def blended_shapes(
     box: Box,
     source: Rgba,
     beneath: Sequence[Node],
+    canvas: Rgba | None = None,
 ) -> list[ShapeNode] | None:
     """The shapes that paint ``source`` blended over ``beneath``, or ``None`` if it can't be.
 
     ``beneath`` is everything already on the slide, in paint order. Anything that crosses ``box``
     must be an opaque, square, unrotated, solid shape with no text, outline or effects, or the
     result would not be what the browser shows.
+
+    ``canvas`` is the opaque colour of the slide the box sits on: where nothing else lies beneath,
+    the browser blends against it (difference over white inverts the source, lighten over white
+    is white). ``None`` leaves the source as it is, for a background that is not one colour.
     """
     if mode not in _CHANNEL or source.a != 1.0:
         return None
-    shapes = [ShapeNode(box=box, geom="rect", fill=SolidFill(color=source))]
+    base = blend_colour(mode, source, canvas) if canvas is not None else None
+    shapes = [ShapeNode(box=box, geom="rect", fill=SolidFill(color=base or source))]
     for node in beneath:
         if not isinstance(node, ShapeNode):
             if getattr(node, "box", None) is not None and _overlap(box, node.box) is not None:  # type: ignore[attr-defined]

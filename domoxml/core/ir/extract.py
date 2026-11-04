@@ -756,11 +756,40 @@ def _soft_edge_mask(node: RenderedNode) -> SoftEdge | None:
     )
 
 
+def _isolates_blending(styles: dict[str, str]) -> bool:
+    """Whether an element is a stacking context whose children cannot blend with what is outside.
+
+    A blend inside such a group sees only the group's own content, so the page behind it is not
+    a backdrop (a transparent group contributes nothing).
+    """
+    positioned = styles.get("position", "static") != "static"
+    return (
+        styles.get("isolation") == "isolate"
+        or styles.get("opacity", "1") != "1"
+        or styles.get("mixBlendMode", "normal") != "normal"
+        or any(
+            styles.get(name, "none") not in ("none", "")
+            for name in ("filter", "transform", "perspective", "maskImage", "clipPath")
+        )
+        or styles.get("backdropFilter", "none") not in ("none", "")
+        or styles.get("position") in ("fixed", "sticky")
+        or (positioned and styles.get("zIndex", "auto") != "auto")
+        or any(
+            token in styles.get("willChange", "")
+            for token in ("opacity", "transform", "filter", "perspective", "mask", "clip-path")
+        )
+        or any(
+            token in styles.get("contain", "") for token in ("paint", "layout", "strict", "content")
+        )
+    )
+
+
 def _blend_over_solids(
     node: RenderedNode,
     rendered: RenderedSlide,
     contents: list[Node],
     opacity: float,
+    background: SlideBackground | None = None,
 ) -> list[ShapeNode] | None:
     """A blended filled box as plain shapes in the colours it makes over what is beneath."""
     styles = node.styles
@@ -779,7 +808,18 @@ def _blend_over_solids(
     fill, reason = _resolve_fill(node, rendered)
     if reason is not None or not isinstance(fill, SolidFill):
         return None
-    return blended_shapes(styles["mixBlendMode"], _box(node), fill.color, contents)
+    nodes = {n.index: n for n in rendered.nodes}
+    ancestor = nodes.get(node.parent)
+    isolated = False
+    while ancestor is not None and not isolated:
+        isolated = _isolates_blending(ancestor.styles) and "domoxmlSlideRoot" not in ancestor.styles
+        ancestor = nodes.get(ancestor.parent) if ancestor.parent != ancestor.index else None
+    canvas = (
+        background.fill.color
+        if not isolated and background is not None and isinstance(background.fill, SolidFill)
+        else None
+    )
+    return blended_shapes(styles["mixBlendMode"], _box(node), fill.color, contents, canvas)
 
 
 def _summary_indent_px(node: RenderedNode) -> float:
@@ -3316,7 +3356,9 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         node = lower_drop_shadow(node)
         reason = _structural_raster_reason(node)
         if reason == "mix-blend-mode has no native mapping":
-            blended = _blend_over_solids(node, rendered, contents, effective_opacity(node))
+            blended = _blend_over_solids(
+                node, rendered, contents, effective_opacity(node), background
+            )
             if blended is not None:
                 for index, part in enumerate(blended):
                     contents.append(

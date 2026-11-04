@@ -49,6 +49,8 @@ _SNAPSHOT_JS = """
     maskRepeat: cs.maskRepeat, maskPosition: cs.maskPosition, maskSize: cs.maskSize,
     maskOrigin: cs.maskOrigin, maskClip: cs.maskClip, maskMode: cs.maskMode,
     mixBlendMode: cs.mixBlendMode, backdropFilter: cs.backdropFilter,
+    isolation: cs.isolation, willChange: cs.willChange, contain: cs.contain,
+    perspective: cs.perspective, zIndex: cs.zIndex, position: cs.position,
     clipPath: cs.clipPath, transform: cs.transform, transformOrigin: cs.transformOrigin,
     borderTopWidth: cs.borderTopWidth, borderTopStyle: cs.borderTopStyle,
     borderTopColor: cs.borderTopColor,

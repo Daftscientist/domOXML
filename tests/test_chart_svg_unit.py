@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 from io import BytesIO
 
 import pytest
@@ -374,3 +375,68 @@ def test_a_narrow_horizontal_bar_chart_keeps_fewer_axis_labels_than_a_tall_colum
     assert narrow is not None and tall is not None
     # Along 260 px the horizontal value axis fits about four labels; a 600 px column axis ten.
     assert narrow.count("0</text>") < tall.count("0</text>")
+
+
+def test_line_series_get_a_line_swatch_and_labels_below_when_the_chart_says_so() -> None:
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    labels = (
+        f'<c:dLbls><c:txPr><a:p xmlns:a="{a}"><a:pPr><a:defRPr sz="1000" b="1">'
+        '<a:solidFill><a:srgbClr val="112233"/></a:solidFill></a:defRPr></a:pPr></a:p></c:txPr>'
+        '<c:dLblPos val="b"/><c:showVal val="1"/></c:dLbls>'
+    )
+    series = _series(0, [3, 5]).replace("</c:ser>", labels + "</c:ser>")
+    legend = '<c:legend><c:legendPos val="r"/></c:legend>'
+
+    svg = _svg('<c:lineChart><c:grouping val="standard"/>' + series + "</c:lineChart>", legend)
+
+    assert "<circle" in svg and 'stroke-width="2"' in svg  # the line-and-marker legend key
+    assert 'fill="#112233" font-weight="700"' in svg  # the label's own colour and weight
+
+
+def test_a_legend_key_follows_the_series_type_even_when_two_series_share_a_colour() -> None:
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    same = f'<c:spPr><a:solidFill xmlns:a="{a}"><a:srgbClr val="112233"/></a:solidFill></c:spPr>'
+    bar = _series(0, [1, 2]).replace("</c:ser>", same + "</c:ser>")
+    line = _series(1, [2, 1]).replace("</c:ser>", same + "</c:ser>")
+    legend = '<c:legend><c:legendPos val="r"/></c:legend>'
+
+    svg = _svg(
+        '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+        + bar
+        + '</c:barChart><c:lineChart><c:grouping val="standard"/>'
+        + line
+        + "</c:lineChart>",
+        legend,
+    )
+
+    assert svg.count('width="10" height="10" fill="#112233"') == 1  # the bar's square key
+    assert svg.count("<circle") >= 1  # and the line's own key
+
+
+def test_an_inside_label_on_a_negative_column_sits_inside_the_bar() -> None:
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    labels = (
+        f'<c:dLbls><c:txPr><a:p xmlns:a="{a}"><a:pPr><a:defRPr sz="1000"/></a:pPr></a:p></c:txPr>'
+        '<c:dLblPos val="inEnd"/><c:showVal val="1"/></c:dLbls>'
+    )
+    series = _series(0, [4, -4]).replace("</c:ser>", labels + "</c:ser>")
+
+    svg = _svg(
+        '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>' + series + "</c:barChart>"
+    )
+
+    bars = [
+        (float(y), float(h))
+        for y, h in re.findall(
+            r'<rect x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)" fill="#4472C4"', svg
+        )
+    ]
+    labels_y = [
+        float(y)
+        for y in re.findall(
+            r'<text x="[\d.]+" y="([\d.]+)" text-anchor="middle"[^>]*>-?4</text>', svg
+        )
+    ]
+    (top_pos, h_pos), (top_neg, h_neg) = bars[0], bars[1]
+    assert top_pos <= labels_y[0] <= top_pos + h_pos  # the positive bar's label is inside it
+    assert top_neg <= labels_y[1] <= top_neg + h_neg  # and so is the negative one's

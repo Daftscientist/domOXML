@@ -784,7 +784,9 @@ def _blurred_reflection_layer(node: ShapeNode, assets: dict[str, HtmlAsset]) -> 
         }
     )
     child_style = _shape_style(reflected, assets, [])
-    body_css = _text_body_css(reflected.text, [])
+    body_css = _text_body_css(
+        reflected.text, [], reflected.line.width_emu if reflected.line is not None else 0
+    )
     if body_css:
         child_style += ";" + body_css
     distance_px = _number(emu_to_px(reflection.distance_emu))
@@ -986,11 +988,14 @@ def _bullet_list_style(paragraph: TextParagraph) -> str:
     return "disc"
 
 
-def _text_body_css(body: TextBody | None, warnings: list[ConversionWarning]) -> str:
+def _text_body_css(
+    body: TextBody | None, warnings: list[ConversionWarning], border_emu: int = 0
+) -> str:
     """Return inline CSS for text body container (vertical anchor, columns).
 
     Emits flex properties for non-top anchors; column CSS for multi-column bodies.
-    Returns an empty string when no special properties are needed.
+    Returns an empty string when no special properties are needed. The insets run from the box's
+    edge, so a CSS border on the same element (``border_emu``) is taken out of the padding.
     """
     if body is None:
         return ""
@@ -1008,7 +1013,7 @@ def _text_body_css(body: TextBody | None, warnings: list[ConversionWarning]) -> 
         styles.append("column-fill:auto")
         styles.append(f"column-gap:{_px(body.column_gap_emu)}")
     if any(body.margins):
-        left, top, right, bottom = body.margins
+        left, top, right, bottom = (max(0, margin - border_emu) for margin in body.margins)
         styles.append(f"padding:{_px(top)} {_px(right)} {_px(bottom)} {_px(left)}")
     return ";".join(styles)
 
@@ -1734,7 +1739,9 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
                 inner += _text_layer_html(node, warnings)
             return inner
         # Merge text body CSS (flex anchor, columns) into the shape style.
-        body_css = _text_body_css(node.text, warnings)
+        body_css = _text_body_css(
+            node.text, warnings, node.line.width_emu if node.line is not None else 0
+        )
         shape_style = _shape_style(node, assets, warnings)
         combined_style = (shape_style + ";" + body_css) if body_css else shape_style
         # Autofit metadata attribute when autofit != "normal" (the default).

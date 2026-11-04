@@ -7,6 +7,7 @@ from collections.abc import Callable
 from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml.identity import alt_text_attr, node_identity_xml
+from domoxml.core.drawingml.stroke import stroke_centred
 from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
 from domoxml.core.ir.gradient import drawingml_gradient_angle, drawingml_gradient_projection
 from domoxml.core.ir.model import (
@@ -628,6 +629,7 @@ def shape_xml(
     SVG part for vector preservation. ``hyperlink_rid`` resolves a run hyperlink to its
     slide-relationship id (also assigned by the package writer).
     """
+    node = stroke_centred(node)
     fill = _fill_xml(
         node.fill,
         opacity=node.opacity,

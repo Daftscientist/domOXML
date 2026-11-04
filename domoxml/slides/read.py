@@ -18,6 +18,7 @@ from PIL import Image, ImageChops
 
 from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
 from domoxml.core.drawingml.preset_geometry import preset_geometry
+from domoxml.core.drawingml.stroke import stroke_centred, stroke_outer
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
@@ -449,38 +450,42 @@ def _shape(
 
     return (
         _with_pptx_identity(
-            ShapeNode(
-                box=box,
-                geom=geom,
-                custom_geom=custom_geom,
-                fill=_shape_picture_role(_fill(properties, package, slide_part, colors), element),
-                line=_line(properties, colors),
-                effects=shape_effects,
-                effect_container=(
-                    applied_effect_intent.container
-                    if applied_effect_intent is not None
-                    else effect_container_kind(properties)
-                ),
-                effect_source_ref=(
-                    applied_effect_intent.source_ref
-                    if applied_effect_intent is not None
-                    else effect_source_ref(properties)
-                ),
-                native_effect_projection=(
-                    applied_effect_intent.native_projection
-                    if applied_effect_intent is not None
-                    else "complete"
-                ),
-                portable_fallback=portable_fallback,
-                corner_radius_emu=corner,
-                transform=_xfrm_transform(xfrm),
-                text=read_text_body(
-                    element,
-                    colors,
-                    hyperlink_for,
-                    ph_ctx=ph_ctx,
-                    theme_ctx=inherit_ctx.theme_ctx if inherit_ctx is not None else None,
-                ),
+            stroke_outer(
+                ShapeNode(
+                    box=box,
+                    geom=geom,
+                    custom_geom=custom_geom,
+                    fill=_shape_picture_role(
+                        _fill(properties, package, slide_part, colors), element
+                    ),
+                    line=_line(properties, colors),
+                    effects=shape_effects,
+                    effect_container=(
+                        applied_effect_intent.container
+                        if applied_effect_intent is not None
+                        else effect_container_kind(properties)
+                    ),
+                    effect_source_ref=(
+                        applied_effect_intent.source_ref
+                        if applied_effect_intent is not None
+                        else effect_source_ref(properties)
+                    ),
+                    native_effect_projection=(
+                        applied_effect_intent.native_projection
+                        if applied_effect_intent is not None
+                        else "complete"
+                    ),
+                    portable_fallback=portable_fallback,
+                    corner_radius_emu=corner,
+                    transform=_xfrm_transform(xfrm),
+                    text=read_text_body(
+                        element,
+                        colors,
+                        hyperlink_for,
+                        ph_ctx=ph_ctx,
+                        theme_ctx=inherit_ctx.theme_ctx if inherit_ctx is not None else None,
+                    ),
+                )
             ),
             element,
             slide_part,
@@ -1696,7 +1701,9 @@ def _slide(
                             continue
                         declared_effect_intent = _declared_effect_intent(native)
                         matching_subset_intent = (
-                            _matching_effect_intent(native, shape.effects, shape.box)
+                            _matching_effect_intent(
+                                native, shape.effects, stroke_centred(shape).box
+                            )
                             if (
                                 fallback_role == "portable-effect-fallback"
                                 and declared_effect_intent is not None

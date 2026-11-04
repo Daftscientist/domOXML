@@ -89,6 +89,7 @@ from domoxml.slides.appearance_read import (
 from domoxml.slides.appearance_read import (
     rgba as _rgba,
 )
+from domoxml.slides.background import without_sampled_stops
 from domoxml.slides.chart_read import chart_picture
 from domoxml.slides.connector_read import read_connector
 from domoxml.slides.diagram_read import diagram_shapes
@@ -1089,6 +1090,8 @@ def _slide_background(
             )
         if fill is None:
             return None
+        if isinstance(fill, GradientFill):
+            fill = without_sampled_stops(fill)
         return SlideBackground(fill=fill, inherited=level > 0)
     return None
 

@@ -2225,3 +2225,19 @@ def test_a_master_picture_with_a_directory_relative_target_still_resolves() -> N
         and n.node_id.startswith("inherited-")
         for n in contents
     )
+
+
+def test_a_zero_width_outline_is_a_one_pixel_hairline_not_nothing() -> None:
+    from xml.etree.ElementTree import fromstring
+
+    from domoxml.slides.appearance_read import line_element
+
+    ns = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+    zero = fromstring(
+        f'<a:ln {ns} w="0"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>'
+    )
+    missing = fromstring(f'<a:ln {ns}><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>')
+
+    for element in (zero, missing):
+        outline = line_element(element, {})
+        assert outline is not None and outline.width_emu == 9525

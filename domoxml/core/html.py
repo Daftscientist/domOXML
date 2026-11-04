@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import math
 from collections.abc import Mapping
@@ -1872,7 +1873,7 @@ def _media_html(
     )
     # Resolve the media source: embedded → shared asset; external → URL.
     src = ""
-    if node.media_data is not None:
+    if node.media_data is not None and node.kind != "model":
         digest = hashlib.sha256(node.media_data).hexdigest()[:16]
         asset = HtmlAsset(path=f"assets/{digest}.{node.media_ext}", data=node.media_data)
         assets.setdefault(asset.path, asset)
@@ -1886,6 +1887,19 @@ def _media_html(
                 message=f"{node.kind} play settings (p:{node.kind}Pr) preserved out-of-band; "
                 "not represented in HTML/CSS"
             )
+        )
+    if node.kind == "model" and node.media_data is not None:
+        # A 3-D model comes back as the viewer element it was authored as.
+        encoded = base64.b64encode(node.media_data).decode()
+        poster_attr = ""
+        if node.poster_fill is not None:
+            poster = _asset(node.poster_fill)
+            assets.setdefault(poster.path, poster)
+            poster_attr = f' poster="{escape(poster.path, quote=True)}"'
+        return (
+            f"<model-viewer camera-controls{_identity_attrs(node)} "
+            f'style="{escape(pos, quote=True)}" '
+            f'src="data:model/gltf-binary;base64,{encoded}"{poster_attr}></model-viewer>'
         )
     if node.kind == "web" and node.media_url is not None:
         # A Web Viewer frame is a live page; it comes back as the iframe it started as.

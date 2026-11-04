@@ -73,7 +73,18 @@ def default_poster(kind: str, width_px: float, height_px: float) -> PictureFill:
     image = Image.new("RGB", (width, height), (28, 28, 40))
     draw = ImageDraw.Draw(image)
     centre_x, centre_y, size = width / 2, height / 2, min(width, height) / 5
-    if kind == "audio":
+    if kind == "model":
+        # An isometric cube: the three visible faces in three tones.
+        top = [(centre_x, centre_y - size), (centre_x + size, centre_y - size / 2)]
+        top += [(centre_x, centre_y), (centre_x - size, centre_y - size / 2)]
+        left = [(centre_x - size, centre_y - size / 2), (centre_x, centre_y)]
+        left += [(centre_x, centre_y + size), (centre_x - size, centre_y + size / 2)]
+        right = [(centre_x, centre_y), (centre_x + size, centre_y - size / 2)]
+        right += [(centre_x + size, centre_y + size / 2), (centre_x, centre_y + size)]
+        draw.polygon(top, fill=(210, 214, 224))
+        draw.polygon(left, fill=(150, 156, 172))
+        draw.polygon(right, fill=(104, 110, 130))
+    elif kind == "audio":
         draw.polygon(
             [
                 (centre_x - size, centre_y - size / 2),

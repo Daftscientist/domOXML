@@ -1953,6 +1953,32 @@ def _backdrop_layer(node: RenderedNode, rendered: RenderedSlide) -> tuple[ShapeN
     return native, True
 
 
+def _model_node(
+    node: RenderedNode, rendered: RenderedSlide, box: Box, source: str
+) -> MediaNode | None:
+    """A ``<model-viewer>`` with an embedded GLB as a native 3-D model frame.
+
+    The poster is the author's ``poster`` image when it decodes, else a plain stand-in. A source
+    that is not an inline binary glTF stays out: PowerPoint embeds the model, it cannot link it.
+    """
+    if not source.startswith("data:"):
+        return None
+    mime = source[5:].split(";", 1)[0].split(",", 1)[0].lower()
+    data = decode_data_uri(source)
+    if mime not in ("model/gltf-binary", "model/gltf.binary") or data is None:
+        return None
+    if data[:4] != b"glTF":
+        return None
+    poster_source = node.styles.get("domoxmlPoster", "").strip()
+    image = _resolve_image_bytes(poster_source, rendered) if poster_source else None
+    poster = (
+        PictureFill(data=image[0], ext=image[1])
+        if image is not None
+        else default_poster("model", max(node.width, 16), max(node.height, 16))
+    )
+    return MediaNode(box=box, kind="model", media_data=data, media_ext="glb", poster_fill=poster)
+
+
 def _media_node(node: RenderedNode, rendered: RenderedSlide) -> MediaNode | None:
     """A ``<video>``, ``<audio>`` or YouTube/Vimeo ``<iframe>`` as a native media clip.
 
@@ -1964,6 +1990,8 @@ def _media_node(node: RenderedNode, rendered: RenderedSlide) -> MediaNode | None
         return None  # a clip would have to cut the clip's poster and its playing frame alike
     box = _box(node)
     source = node.src.strip()
+    if node.tag == "model-viewer":
+        return _model_node(node, rendered, box, source)
     if node.tag == "iframe":
         url = online_video_url(source)
         if url is not None:
@@ -2908,7 +2936,7 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 coverage.append(_native_coverage(_label(node)))
                 continue
 
-        if node.tag in ("video", "audio", "iframe"):
+        if node.tag in ("video", "audio", "iframe", "model-viewer"):
             media = _media_node(node, rendered)
             if media is not None:
                 contents.append(identities.apply(media, node))

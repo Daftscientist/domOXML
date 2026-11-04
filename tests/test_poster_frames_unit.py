@@ -11,14 +11,14 @@ from domoxml import Presentation
 from domoxml.types import Representation
 
 
-def _deck_with_3d_model() -> bytes:  # pyright: ignore
+def _deck_with_3d_model(glb: bytes | None = None) -> bytes:  # pyright: ignore
     """A slide holding a 3-D model frame whose ``mc:Fallback`` is its poster picture."""
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
     import native_lab  # pyright: ignore[reportMissingImports]
 
-    glb = native_lab._glb_triangle()  # type: ignore[attr-defined]
+    glb = glb or native_lab._glb_triangle()  # type: ignore[attr-defined]
     poster = native_lab._png(native_lab.Image.new("RGB", (400, 220), (30, 90, 200)))  # type: ignore[attr-defined]
     deck = native_lab.Presentation()
     slide = deck.slides.add_slide(deck.slide_layouts[6])
@@ -56,26 +56,33 @@ def _deck_with_3d_model() -> bytes:  # pyright: ignore
     return buffer.getvalue()
 
 
-def test_a_3d_model_frame_is_shown_as_the_poster_saved_with_it() -> None:
-    html = Presentation.from_pptx(_deck_with_3d_model())
+def test_a_3d_model_frame_reads_as_a_native_model_with_the_poster_saved_with_it() -> None:
+    from domoxml.core.ir.model import MediaNode
+    from domoxml.slides.read import read_pptx
 
-    layers = [i for i in html.coverage.items if i.representation is Representation.ELEMENT_LAYER]
-    assert len(layers) == 1 and "poster picture" in layers[0].reason
-    assert layers[0].source_retention.value == "attached"
-    assert all(i.representation is not Representation.FAILED for i in html.coverage.items)
-    assert "data-domoxml-preserved-payload" in html.slides[0].html
+    deck = _deck_with_3d_model()
+    [node] = [n for n in read_pptx(deck)[0].contents if isinstance(n, MediaNode)]
+    html = Presentation.from_pptx(deck)
+
+    assert node.kind == "model" and node.media_data is not None and node.poster_fill is not None
+    assert all(i.representation is Representation.NATIVE for i in html.coverage.items)
+    assert "<model-viewer" in html.slides[0].html
 
 
-def test_a_reexported_model_frame_keeps_the_prefix_its_choice_requires() -> None:
+def test_a_model_frame_that_is_not_binary_gltf_stays_preserved_source() -> None:
     from domoxml.core.ir.model import PreservedNode
     from domoxml.core.opc import rewrite_root_xml
     from domoxml.slides.read import read_pptx
 
-    slide = read_pptx(_deck_with_3d_model())[0]
+    deck = _deck_with_3d_model(glb=b"not a glb")
+    slide = read_pptx(deck)[0]
     node = next(n for n in slide.contents if isinstance(n, PreservedNode))
     xml = rewrite_root_xml(node, shape_id=9, allocate_shape_id=lambda: 10, relationship_ids={})
 
     assert 'Requires="am3d"' in xml and "xmlns:am3d=" in xml
+    html = Presentation.from_pptx(deck)
+    layers = [i for i in html.coverage.items if i.representation is Representation.ELEMENT_LAYER]
+    assert len(layers) == 1 and "poster picture" in layers[0].reason
 
 
 def test_a_cropped_poster_is_shown_cropped_and_a_dangling_one_does_not_abort() -> None:

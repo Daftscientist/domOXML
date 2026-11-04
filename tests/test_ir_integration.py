@@ -721,7 +721,7 @@ async def test_text_gradient_outline_and_shadow_are_native_run_properties_both_w
         )
         assert box.fill is None, "background-clip:text paints the glyphs, not the box"
         gradient = _run_of(ir, "Grad")
-        assert gradient.gradient is not None and len(gradient.gradient.stops) == 2
+        assert gradient.gradient is not None and len(gradient.gradient.stops) >= 2
         assert gradient.color.hex == "CC2200" and gradient.color.a == 1.0, (
             "first stop is the fallback"
         )

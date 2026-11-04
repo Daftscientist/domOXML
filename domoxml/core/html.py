@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Mapping
+from contextvars import ContextVar
 from html import escape
 from urllib.parse import urlsplit
 
@@ -23,6 +25,7 @@ from domoxml.core.ir.geometry_payload import encode_custom_geometry
 from domoxml.core.ir.group import group_html_roundtrip_error
 from domoxml.core.ir.group_payload import encode_group_payload
 from domoxml.core.ir.model import (
+    Animation,
     ArcTo,
     AutoNumberBullet,
     Blur,
@@ -113,11 +116,30 @@ def _px(value: int) -> str:
     return f"{rendered}px"
 
 
+# The slide being serialized: its entrance effects by the node they play on, so the element that
+# carries the node's identity also carries its animation.
+_ANIMATIONS: ContextVar[Mapping[str, Animation] | None] = ContextVar("_ANIMATIONS", default=None)
+
+
+def _animation_attrs(node: CanvasNode) -> list[tuple[str, str]]:
+    plan = _ANIMATIONS.get()
+    animation = plan.get(node.node_id) if plan is not None and node.node_id is not None else None
+    if animation is None:
+        return []
+    return [
+        ("data-animate", animation.effect),
+        ("data-animate-step", str(animation.step)),
+        ("data-animate-delay", str(animation.delay_ms)),
+        ("data-animate-duration", str(animation.duration_ms)),
+    ]
+
+
 def _identity_attrs(node: CanvasNode) -> str:
     """HTML data attributes that carry stable IR identity without affecting rendering."""
     attrs: list[tuple[str, str]] = []
     if node.node_id is not None:
         attrs.append(("data-domoxml-node-id", node.node_id))
+        attrs.extend(_animation_attrs(node))
     provenance = node.provenance
     if provenance is not None:
         attrs.extend(
@@ -1967,7 +1989,15 @@ def serialize_canvas(
     html_slides: list[HtmlSlide] = []
     emitted_warnings: list[ConversionWarning] = list(warnings)
     for slide in slides:
-        shapes = "".join(_node_html(node, assets, emitted_warnings) for node in slide.contents)
+        # An animation on a node serialises with that node; the first of several wins.
+        by_node: dict[str, Animation] = {}
+        for animation in slide.animations:
+            by_node.setdefault(animation.target, animation)
+        token = _ANIMATIONS.set(by_node)
+        try:
+            shapes = "".join(_node_html(node, assets, emitted_warnings) for node in slide.contents)
+        finally:
+            _ANIMATIONS.reset(token)
         shapes += _slide_renderer_fallback_html(slide, assets)
         width_px = round(emu_to_px(slide.width))
         height_px = round(emu_to_px(slide.height))

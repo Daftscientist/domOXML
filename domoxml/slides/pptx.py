@@ -45,6 +45,7 @@ from domoxml.core.opc import (
 )
 from domoxml.core.units import emu_to_px
 from domoxml.slides import _templates as t
+from domoxml.slides.animation import timing_xml
 from domoxml.slides.background import background_xml
 from domoxml.slides.media_read import WEB_VIEWER_ID
 from domoxml.slides.notes import (
@@ -655,8 +656,11 @@ def _slide(
         )
 
     content_parts: list[str] = []
+    animated_ids: dict[str, int] = {}
     for position, node in enumerate(slide.contents):
         shape_id = allocate_shape_id()
+        if node.node_id is not None:
+            animated_ids[node.node_id] = shape_id
         if isinstance(node, ShapeNode):
             blip_rid = blip_rids.get(position)
             if can_emit_picture(node) and blip_rid is not None:
@@ -807,7 +811,8 @@ def _slide(
         f"{t.XML_DECL}<p:sld {t.NS}><p:cSld>{bg_xml}<p:spTree>"
         '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
         f"{contents}</p:spTree></p:cSld>"
-        f"<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>{transition}</p:sld>"
+        f"<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>{transition}"
+        f"{timing_xml(slide.animations, animated_ids)}</p:sld>"
     )
     return (
         slide_xml,

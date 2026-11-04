@@ -25,6 +25,7 @@ from domoxml.core.ir.effect_projection import effect_list_position, project_nati
 from domoxml.core.ir.gradient import drawingml_gradient_projection
 from domoxml.core.ir.group import group_html_roundtrip_error, group_pptx_write_error
 from domoxml.core.ir.model import (
+    Animation,
     ArcTo,
     Box,
     CanvasNode,
@@ -59,6 +60,7 @@ from domoxml.core.ir.model import (
 from domoxml.core.opc import OpcPackage, capture_payload
 from domoxml.core.opc.preservation import relationship_part_name
 from domoxml.core.opc.reader import Relationship
+from domoxml.slides.animation import read_animations
 from domoxml.slides.appearance_read import (
     DEFAULT_THEME_COLORS,
     ThemeColors,
@@ -1327,6 +1329,9 @@ def _slide(
         )
         warnings.append(warn)
         preserved.append(frag)
+        timing_notice: tuple[ConversionWarning, PreservedFragment] | None = (warn, frag)
+    else:
+        timing_notice = None
 
     if tree is not None:
         tree_elements = tuple(tree)
@@ -2172,10 +2177,31 @@ def _slide(
                 reason="one slide-level renderer fallback above retained native contents",
             )
         )
+    animations: tuple[Animation, ...] = ()
+    if timing_el is not None and timing_notice is not None:
+        present = {n.node_id for n in contents if n.node_id}
+        shape_nodes: dict[str, str] = {}
+        for element in tree if tree is not None else ():
+            non_visual = element.find("./*/p:cNvPr", _NS)
+            metadata = element.find("./*/p:nvPr/p:extLst/p:ext/dx:node", _NS)
+            if non_visual is None or non_visual.get("id") is None:
+                continue
+            node_id = (metadata.get("id") if metadata is not None else None) or (
+                f"pptx-{non_visual.get('id')}"
+            )
+            if node_id in present:
+                shape_nodes[non_visual.get("id", "")] = node_id
+        mapped = read_animations(timing_el, shape_nodes)
+        if mapped is not None:
+            # Every effect is one the IR carries, so the timing is no longer opaque source.
+            animations = mapped
+            warnings.remove(timing_notice[0])
+            preserved.remove(timing_notice[1])
     return (
         SlideIR(
             width=width,
             height=height,
+            animations=animations,
             contents=(
                 *(
                     _inherited_shapes(

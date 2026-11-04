@@ -345,6 +345,7 @@ def test_slide_carries_extended_nodes_alongside_shapes() -> None:
         "renderer_fallback",
         "renderer_fallback_owner_node_id",
         "notes",
+        "animations",
     }
     assert SlideIR.model_validate(ordered.model_dump()) == ordered
     legacy_data = {

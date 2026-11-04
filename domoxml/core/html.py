@@ -1558,6 +1558,45 @@ def _stretched_over_outline(node: ShapeNode) -> ShapeNode:
     )
 
 
+_THICK_DASHED_BORDER_EMU = 8 * 9525  # 8 px
+
+
+def _dashed_rectangle(node: ShapeNode) -> ShapeNode | None:
+    """A plain rectangle with a dashed or dotted outline as the stroked path PowerPoint draws.
+
+    A CSS dashed border has its own dash lengths and square ends; a DrawingML dash is a multiple
+    of the line width with the line's cap, which only an SVG stroke can reproduce. The path runs
+    along the middle of the border band, as a DrawingML stroke is centred.
+    """
+    line = node.line
+    if (
+        line is None
+        or line.gradient is not None  # the SVG stroke paints one colour; a gradient keeps CSS
+        or node.geom != "rect"
+        or (line.dash == "solid" and not line.custom_dash)
+        # A thin dashed border is the same to the eye as CSS's, and keeps its CSS form; only a
+        # thick stroke or a round or square cap shows the difference.
+        or (line.cap == "flat" and line.width_emu < _THICK_DASHED_BORDER_EMU)
+        or node.box.width <= 0
+        or node.box.height <= 0
+    ):
+        return None
+    half = line.width_emu // 2
+    left, top = half, half
+    right, bottom = node.box.width - half, node.box.height - half
+    if right <= left or bottom <= top:
+        return None  # a border band too thick to run a path through keeps the CSS border
+    path = (
+        MoveTo(to=Point(x=left, y=top)),
+        LineTo(to=Point(x=right, y=top)),
+        LineTo(to=Point(x=right, y=bottom)),
+        LineTo(to=Point(x=left, y=bottom)),
+        ClosePath(),
+    )
+    geometry = CustomGeometry(width_emu=node.box.width, height_emu=node.box.height, path=path)
+    return node.model_copy(update={"custom_geom": geometry})
+
+
 def _outlined_polygon_preset(node: ShapeNode) -> ShapeNode:
     """A stroked polygon preset as free-form geometry, so its outline is drawn.
 
@@ -1572,6 +1611,9 @@ def _outlined_polygon_preset(node: ShapeNode) -> ShapeNode:
         or isinstance(node.fill, PictureFill | PatternFill)
     ):
         return node
+    dashed = _dashed_rectangle(node)
+    if dashed is not None:
+        return dashed
     vertices = preset_vertices(node.geom, preset_defaults(node.geom))
     if vertices is None or node.box.width <= 0 or node.box.height <= 0:
         return node

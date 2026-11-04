@@ -147,3 +147,55 @@ def test_shapes_thicker_than_their_stroke_round_trip_to_their_own_box(height: in
     [back] = read_pptx_result(_deck(shape)).slides[0].contents
 
     assert isinstance(back, ShapeNode) and back.box == shape.box
+
+
+def test_a_dashed_rectangle_is_drawn_as_a_stroked_path_with_its_dash_and_cap() -> None:
+    line = Line(color=Rgba(r=29, g=53, b=87), width_emu=12 * _PX, dash="dash", cap="round")
+    shape = _shape(box=Box(x=0, y=0, width=300 * _PX, height=40 * _PX), fill=None, line=line)
+
+    html = pptx_to_html(_deck(shape)).slides[0].html
+
+    assert 'stroke-dasharray="' in html and 'stroke-linecap="round"' in html
+    assert "dashed" not in html  # not a CSS border with the browser's own dash lengths
+
+
+def test_a_solid_or_too_thick_dashed_rectangle_keeps_its_css_border() -> None:
+    from domoxml.core.html import serialize_canvas
+
+    solid = _shape(fill=None)
+    thick = _shape(
+        box=Box(x=0, y=0, width=100 * _PX, height=20 * _PX),
+        fill=None,
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=24 * _PX, dash="dash"),
+    )
+
+    assert "border:24px solid" in pptx_to_html(_deck(solid)).slides[0].html
+    thin = _shape(fill=None, line=Line(color=Rgba(r=0, g=0, b=0), width_emu=3 * _PX, dash="dash"))
+    assert "dashed" in pptx_to_html(_deck(thin)).slides[0].html  # a thin one is just CSS
+    slide = SlideIR(width=1280 * _PX, height=720 * _PX, contents=(thick,))
+    html = serialize_canvas([slide]).slides[0].html
+    assert "stroke-dasharray" not in html and "dashed" in html
+
+
+def test_a_dashed_gradient_outline_stays_on_the_css_path() -> None:
+    from domoxml.core.ir.model import GradientFill, GradientStop
+
+    gradient = GradientFill(
+        angle_deg=90,
+        stops=(
+            GradientStop(pos=0, color=Rgba(r=250, g=30, b=200)),
+            GradientStop(pos=1, color=Rgba(r=10, g=240, b=40)),
+        ),
+    )
+    shape = _shape(
+        fill=None,
+        line=Line(
+            color=Rgba(r=250, g=30, b=200),
+            width_emu=12 * _PX,
+            dash="dash",
+            cap="round",
+            gradient=gradient,
+        ),
+    )
+
+    assert "stroke-dasharray" not in pptx_to_html(_deck(shape)).slides[0].html

@@ -19,6 +19,8 @@ from xml.sax.saxutils import escape
 
 from defusedxml import DefusedXmlException, ElementTree
 
+from domoxml.core.colour_transform import apply_color_transforms
+
 _C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _NS = {"c": _C, "a": _A}
@@ -101,6 +103,11 @@ def chart_to_svg(
     if chart is None or plot is None or width_px < 40 or height_px < 40:
         return None
     palette = {**_DEFAULT_SCHEME, **{k: v for k, v in (theme or {}).items() if _hex(v)}}
+    # A chart names colours by role (tx2, bg1) that the colour map points at the theme's dark and
+    # light slots, so a deck that gives only dk2 or lt1 still resolves them.
+    for role, slot in (("tx1", "dk1"), ("tx2", "dk2"), ("bg1", "lt1"), ("bg2", "lt2")):
+        if theme and _hex(theme.get(slot)) and not _hex(theme.get(role)):
+            palette[role] = theme[slot]
     groups: list[Group] = []
     index = 0
     for element in plot:
@@ -265,6 +272,14 @@ def _points(node: Element) -> dict[int, str]:
     return points
 
 
+def _transformed(base: str, element: Element) -> str:
+    """``base`` (six hex digits) with the colour's own ``lumMod``/``lumOff``/``tint`` applied."""
+    red, green, blue, _alpha = apply_color_transforms(
+        int(base[0:2], 16), int(base[2:4], 16), int(base[4:6], 16), 1.0, element
+    )
+    return f"{red:02X}{green:02X}{blue:02X}"
+
+
 def _series_color(ser: Element, palette: Mapping[str, str]) -> str | None:
     spec = ser.find("c:spPr", _NS)
     if spec is None:
@@ -275,10 +290,11 @@ def _series_color(ser: Element, palette: Mapping[str, str]) -> str | None:
             continue
         rgb = fill.find("a:srgbClr", _NS)
         if rgb is not None and _hex(rgb.get("val")):
-            return rgb.get("val", "")
+            return _transformed(rgb.get("val", ""), rgb)
         scheme = fill.find("a:schemeClr", _NS)
         if scheme is not None and scheme.get("val") in palette:
-            return _hex(palette[scheme.get("val", "")])
+            base = _hex(palette[scheme.get("val", "")])
+            return _transformed(base, scheme) if base else None
     return None
 
 

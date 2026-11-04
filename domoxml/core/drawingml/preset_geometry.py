@@ -292,20 +292,26 @@ def outline_bounds(geometry: CustomGeometry) -> tuple[float, float, float, float
     ys: list[float] = []
     current = (0.0, 0.0)
     start = current
+    pending = False
     for command in geometry.path:
         if isinstance(command, MoveTo):
+            # A move that nothing is drawn from paints nothing: it counts once a stroke leaves it.
             current = start = (float(command.to.x), float(command.to.y))
+            pending = True
+            continue
+        if pending and not isinstance(command, ClosePath):
             xs.append(current[0])
             ys.append(current[1])
-        elif isinstance(command, LineTo):
+            pending = False
+        if isinstance(command, LineTo):
             current = (float(command.to.x), float(command.to.y))
             xs.append(current[0])
             ys.append(current[1])
         elif isinstance(command, CubicTo | QuadTo):
-            # The curve, not its control points, is what is drawn: sample it.
+            # The curve, not its control points, is what is drawn: sample it finely.
             end = (float(command.to.x), float(command.to.y))
-            for step in range(1, 11):
-                t = step / 10
+            for step in range(1, 65):
+                t = step / 64
                 u = 1 - t
                 if isinstance(command, CubicTo):
                     x = (

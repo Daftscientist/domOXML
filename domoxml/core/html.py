@@ -1392,7 +1392,17 @@ def _picture_outline_layers(
     picture = node.model_copy(update={"line": None, "text": None})
     if not _fill_survives_as_polygon_clip(picture):
         return None
-    parts = [_node_html(_stretched_over_outline(picture), assets, warnings)]
+    stretched = _stretched_over_outline(picture)
+    picture_html = _node_html(stretched, assets, warnings)
+    if stretched.box != picture.box and picture.transform is not None:
+        # The outline and the text turn about the shape's own centre, so the larger picture box
+        # must too, or an asymmetric tail would swing away from its stroke.
+        pivot_x = picture.box.x + picture.box.width / 2 - stretched.box.x
+        pivot_y = picture.box.y + picture.box.height / 2 - stretched.box.y
+        picture_html = picture_html.replace(
+            'style="', f'style="transform-origin:{_px(round(pivot_x))} {_px(round(pivot_y))};', 1
+        )
+    parts = [picture_html]
     if node.line is not None:
         outline = node.model_copy(
             update={

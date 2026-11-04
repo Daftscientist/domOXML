@@ -15,6 +15,7 @@ from domoxml.core.ir.model import (
     ArcTo,
     Box,
     ClosePath,
+    CustomGeometry,
     GeometryKind,
     GradientFill,
     GradientStop,
@@ -22,6 +23,7 @@ from domoxml.core.ir.model import (
     LineTo,
     MoveTo,
     PictureFill,
+    Point,
     Rgba,
     ShapeNode,
     SlideIR,
@@ -450,3 +452,34 @@ def test_a_callout_tip_that_barely_leaves_its_box_still_counts_as_leaving_it() -
     tip, _ = preset_geometry("wedgeRectCallout", 2_000_000, 1_400_000)
 
     assert tip is not None and outline_leaves_box(tip)
+
+
+def test_a_move_with_nothing_drawn_from_it_does_not_widen_the_bounds() -> None:
+    from domoxml.core.drawingml.preset_geometry import outline_bounds
+
+    geometry = CustomGeometry(
+        width_emu=100,
+        height_emu=100,
+        path=(
+            MoveTo(to=Point(x=10, y=10)),
+            LineTo(to=Point(x=50, y=10)),
+            LineTo(to=Point(x=50, y=50)),
+            ClosePath(),
+            MoveTo(to=Point(x=500, y=500)),
+        ),
+    )
+
+    assert outline_bounds(geometry) == (10, 10, 50, 50)
+
+
+def test_a_turned_callout_picture_keeps_the_shape_centre_as_its_pivot() -> None:
+    deck = _preset_deck(
+        "wedgeRectCallout",
+        fill=_picture(),
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+        transform=Transform(rotation_deg=90),
+    )
+
+    html = pptx_to_html(deck).slides[0].html
+
+    assert "transform-origin:" in html and "rotate(90deg)" in html

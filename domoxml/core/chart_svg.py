@@ -74,6 +74,7 @@ class Series:
     line: bool = True
     marker: bool = False
     show_values: bool = False
+    label_px: float = 10.0
     format_code: str = "General"
     point_colors: dict[int, str] = field(default_factory=dict[int, str])
 
@@ -125,7 +126,14 @@ def chart_to_svg(
     kinds = {group.kind for group in groups}
     if kinds & {"pie", "doughnut", "radar", "scatter", "bubble", "stock"} and len(groups) > 1:
         return None
-    title = _title(chart.find("c:title", _NS))
+    title_node = chart.find("c:title", _NS)
+    title = _title(title_node)
+    if (
+        title_node is not None
+        and not title
+        and _val(chart.find("c:autoTitleDeleted", _NS), "0") != "1"
+    ):
+        title = "Chart Title"  # a title element with no text is PowerPoint's placeholder title
     everything = [series for group in groups for series in group.series]
     if (
         chart.find("c:title", _NS) is None
@@ -141,7 +149,22 @@ def chart_to_svg(
     canvas = _Canvas(width_px, height_px)
     canvas.accents = [_accent(palette, i) for i in range(6)]
     canvas.title = title
+    canvas.title_layout = _manual_layout(title_node)
+    canvas.title_px = _font_px(title_node, 16.0 * 96 / 72 if title_node is not None else 16.0)
     canvas.legend_pos = legend_pos
+    canvas.legend_layout = _manual_layout(legend)
+    canvas.legend_px = _font_px(legend, 12.0)
+    canvas.plot_layout = (
+        _manual_layout(plot)
+        if _val(plot.find("c:layout/c:manualLayout/c:layoutTarget", _NS), "inner") == "inner"
+        else None
+    )
+    canvas.grid = _has_gridlines(plot)
+    canvas.label_px = next((s.label_px for s in everything if s.show_values), 10.0)
+    axis_node = plot.find("c:valAx", _NS)
+    canvas.tick_px = _font_px(
+        axis_node if axis_node is not None else plot.find("c:catAx", _NS), 11.0
+    )
     canvas.axis_titles = _axis_titles(plot)
     first = groups[0]
     if first.kind in ("pie", "doughnut"):
@@ -194,6 +217,7 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 marker=marker_symbol not in ("none",)
                 and (kind == "scatter" or marker_symbol != "" or (kind == "line" and False)),
                 show_values=show,
+                label_px=_font_px(labels, 10.0),
                 format_code=(fmt.text or "General") if fmt is not None else "General",
                 point_colors={
                     int(_val(pt.find("c:idx", _NS), "0")): c
@@ -298,6 +322,51 @@ def _series_color(ser: Element, palette: Mapping[str, str]) -> str | None:
     return None
 
 
+def _manual_layout(node: Element | None) -> tuple[float, float, float, float] | None:
+    """``(x, y, w, h)`` as fractions of the chart for an edge-mode ``c:manualLayout``, else None."""
+    layout = node.find("c:layout/c:manualLayout", _NS) if node is not None else None
+    if layout is None:
+        return None
+
+    def fraction(tag: str) -> float | None:
+        try:
+            return float(_val(layout.find(f"c:{tag}", _NS), ""))
+        except ValueError:
+            return None
+
+    x, y = fraction("x"), fraction("y")
+    if x is None or y is None:
+        return None
+    if _val(layout.find("c:xMode", _NS), "factor") != "edge":
+        return None
+    if _val(layout.find("c:yMode", _NS), "factor") != "edge":
+        return None
+    return x, y, fraction("w") or 0.0, fraction("h") or 0.0
+
+
+def _font_px(node: Element | None, default: float) -> float:
+    """The font size, in CSS pixels, of the first run properties under ``node``."""
+    if node is not None:
+        for tag in ("defRPr", "rPr"):
+            for properties in node.iter(f"{{{_A}}}{tag}"):
+                try:
+                    return int(properties.get("sz", "")) / 100 * 96 / 72
+                except ValueError:
+                    continue
+    return default
+
+
+def _has_gridlines(plot: Element) -> bool:
+    """Whether the value axis draws major gridlines (a ``majorGridlines`` that is not no-line)."""
+    for axis in plot.iter(f"{{{_C}}}valAx"):
+        lines = axis.find("c:majorGridlines", _NS)
+        if lines is None:
+            continue
+        outline = lines.find("c:spPr/a:ln", _NS)
+        return not (outline is not None and outline.find("a:noFill", _NS) is not None)
+    return False
+
+
 def _title(node: Element | None) -> str:
     if node is None:
         return ""
@@ -390,6 +459,14 @@ class _Canvas:
         self.title = ""
         self.accents: list[str] = list(_ACCENTS)
         self.legend_pos: str | None = None
+        self.title_layout: tuple[float, float, float, float] | None = None
+        self.title_px = 16.0
+        self.legend_layout: tuple[float, float, float, float] | None = None
+        self.legend_px = 12.0
+        self.plot_layout: tuple[float, float, float, float] | None = None
+        self.grid = True
+        self.tick_px = 11.0
+        self.label_px = 10.0
         self.axis_titles: dict[str, str] = {}
         self.parts: list[str] = []
 
@@ -398,13 +475,22 @@ class _Canvas:
     def _frame(self, names: list[tuple[str, str]]) -> tuple[float, float, float, float]:
         """Draw title and legend; return the plot rectangle ``(x, y, w, h)`` that is left."""
         left, top, right, bottom = 12.0, 10.0, self.w - 12.0, self.h - 10.0
-        if self.title:
+        if self.title and self.title_layout is not None:
+            # Placed where the author put it, so it takes nothing from the plot's room.
+            x, y = self.title_layout[0] * self.w, self.title_layout[1] * self.h
+            self.parts.append(
+                f'<text x="{x:.1f}" y="{y + self.title_px * 0.8:.1f}" '
+                f'font-size="{self.title_px:.1f}" fill="#000000">{escape(self.title)}</text>'
+            )
+        elif self.title:
             self.parts.append(
                 f'<text x="{self.w / 2:.1f}" y="{top + 14:.1f}" text-anchor="middle" '
                 f'font-size="16" font-weight="700" fill="#404040">{escape(self.title)}</text>'
             )
             top += 28
-        if self.legend_pos and names:
+        if self.legend_pos and names and self.legend_layout is not None:
+            self._placed_legend(names)
+        elif self.legend_pos and names:
             top, right, bottom, left = self._legend(names, top, right, bottom, left)
         return left, top, max(10.0, right - left), max(10.0, bottom - top)
 
@@ -437,6 +523,15 @@ class _Canvas:
             else:
                 top += 26
         return top, right, bottom, left
+
+    def _placed_legend(self, names: list[tuple[str, str]]) -> None:
+        """A legend row where the author put it (``c:legend`` manual layout)."""
+        assert self.legend_layout is not None
+        x, y = self.legend_layout[0] * self.w, self.legend_layout[1] * self.h
+        size = round(self.legend_px)
+        for label, color in names:
+            self._swatch(x, y, label, color, size)
+            x += min(200.0, 24 + len(label) * self.legend_px * 0.58)
 
     def _swatch(self, x: float, y: float, label: str, color: str, size: int) -> None:
         self.parts.append(
@@ -484,6 +579,10 @@ class _Canvas:
             max(10.0, ph - bottom_gutter),
         )
         top = y0
+        if self.plot_layout is not None and self.plot_layout[2] > 0 and self.plot_layout[3] > 0:
+            # The author fixed the inner plot rectangle (the axes' own area).
+            left, top = self.plot_layout[0] * self.w, self.plot_layout[1] * self.h
+            plot_w, plot_h = self.plot_layout[2] * self.w, self.plot_layout[3] * self.h
         if horizontal:
             return self._horizontal(
                 groups,
@@ -501,13 +600,15 @@ class _Canvas:
 
         for tick in ticks:
             y = y_of(tick)
-            self.parts.append(
-                f'<line x1="{left:.1f}" y1="{y:.1f}" x2="{left + plot_w:.1f}" y2="{y:.1f}" '
-                f'stroke="{_GRID}" stroke-width="1"/>'
-            )
+            if self.grid:
+                self.parts.append(
+                    f'<line x1="{left:.1f}" y1="{y:.1f}" x2="{left + plot_w:.1f}" y2="{y:.1f}" '
+                    f'stroke="{_GRID}" stroke-width="1"/>'
+                )
             if not value_axis_hidden:
                 self.parts.append(
-                    f'<text x="{left - 6:.1f}" y="{y + 4:.1f}" text-anchor="end" font-size="11" '
+                    f'<text x="{left - 6:.1f}" y="{y + self.tick_px * 0.36:.1f}" '
+                    f'text-anchor="end" font-size="{self.tick_px:.1f}" '
                     f'fill="{_TEXT}">{escape(format_number(tick, code))}</text>'
                 )
         slot = plot_w / count
@@ -524,8 +625,10 @@ class _Canvas:
         for i in range(0, count, step):
             label = categories[i] if i < len(categories) else str(i + 1)
             self.parts.append(
-                f'<text x="{left + slot * (i + 0.5):.1f}" y="{top + plot_h + 16:.1f}" '
-                f'text-anchor="middle" font-size="11" fill="{_TEXT}">{escape(label)}</text>'
+                f'<text x="{left + slot * (i + 0.5):.1f}" '
+                f'y="{top + plot_h + 6 + self.tick_px:.1f}" '
+                f'text-anchor="middle" font-size="{self.tick_px:.1f}" fill="{_TEXT}">'
+                f"{escape(label)}</text>"
             )
         self._axis_titles(left, top, plot_w, plot_h, x_label, y_label)
         return self._wrap()
@@ -706,7 +809,8 @@ class _Canvas:
     def _label(self, x: float, y: float, value: float, code: str, percent: bool) -> None:
         text = format_number(value, "0%" if percent else code)
         self.parts.append(
-            f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="middle" font-size="10" fill="{_TEXT}">'
+            f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="middle" font-size="{self.label_px:.1f}" '
+            f'fill="{_TEXT}">'
             f"{escape(text)}</text>"
         )
 

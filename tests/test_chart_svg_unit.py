@@ -274,3 +274,47 @@ def test_a_series_colour_keeps_its_lightness_transform_and_resolves_roles_throug
     assert svg is not None
     # dk2 at half lightness plus half: a light blue, not the plain navy and not Office's grey-blue.
     assert "#08284F" not in svg and "#44546A" not in svg and 'fill="#3' in svg
+
+
+_BAR = (
+    '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+    + _series(0, [1, 2, 3])
+    + "</c:barChart>"
+)
+
+
+def test_gridlines_are_drawn_only_when_the_value_axis_has_visible_ones() -> None:
+    def axis(grid: str) -> str:
+        return f'<c:valAx><c:axId val="1"/>{grid}<c:delete val="0"/></c:valAx>'
+
+    visible = "<c:majorGridlines><c:spPr><a:ln><a:solidFill/></a:ln></c:spPr></c:majorGridlines>"
+    hidden = "<c:majorGridlines><c:spPr><a:ln><a:noFill/></a:ln></c:spPr></c:majorGridlines>"
+
+    assert "#D9D9D9" in _svg(_BAR + axis(visible))
+    assert "#D9D9D9" not in _svg(_BAR + axis(hidden))
+    assert "#D9D9D9" not in _svg(_BAR + axis(""))
+
+
+def test_a_title_element_without_text_shows_powerpoints_placeholder_at_its_own_position() -> None:
+    title = (
+        '<c:title><c:layout><c:manualLayout><c:xMode val="edge"/><c:yMode val="edge"/>'
+        '<c:x val="0.1"/><c:y val="0.05"/></c:manualLayout></c:layout>'
+        '<c:overlay val="0"/></c:title>'
+    )
+
+    svg = _svg(_BAR, title)
+
+    assert "Chart Title" in svg and 'x="48.0"' in svg  # 0.1 of the 480 px chart
+    assert "Chart Title" not in _svg(_BAR, title + '<c:autoTitleDeleted val="1"/>')
+
+
+def test_a_legend_with_a_manual_layout_sits_where_the_author_put_it() -> None:
+    legend = (
+        '<c:legend><c:legendPos val="b"/><c:layout><c:manualLayout><c:xMode val="edge"/>'
+        '<c:yMode val="edge"/><c:x val="0.5"/><c:y val="0.1"/></c:manualLayout></c:layout>'
+        "</c:legend>"
+    )
+
+    svg = _svg(_BAR, legend)
+
+    assert 'x="240.0" y="30.0"' in svg  # 0.5 and 0.1 of the 480 x 300 chart

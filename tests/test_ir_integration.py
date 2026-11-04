@@ -4101,7 +4101,7 @@ async def test_multiply_over_a_gradient_becomes_a_gradient_patch_of_blended_stop
     assert stops[0].color.g > stops[-1].color.g
 
 
-async def test_darken_over_a_gradient_keeps_its_raster() -> None:
+async def test_darken_over_a_gradient_becomes_a_gradient_with_a_stop_at_each_bend() -> None:
     result = await _render_and_extract_result(
         "<div style='position:absolute;left:100px;top:100px;width:400px;height:200px;"
         "background:linear-gradient(90deg,#ffcc00,#ff3300)'></div>"
@@ -4109,7 +4109,15 @@ async def test_darken_over_a_gradient_keeps_its_raster() -> None:
         "background:#00ccff;mix-blend-mode:darken'></div>"
     )
 
-    assert any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+    assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+    fills = [
+        s.fill
+        for s in result.slide.shapes
+        if isinstance(s.fill, GradientFill) and s.box.x > 250 * 9525
+    ]
+    # The green channel falls from 204 through the source's 204 at the start, then the blue
+    # channel of the backdrop (0) stays under 255: the bend where green passes 204 adds a stop.
+    assert fills and len(fills[0].stops) >= 2
 
 
 async def test_a_hard_transition_in_the_backdrop_gradient_stays_hard_after_the_blend() -> None:

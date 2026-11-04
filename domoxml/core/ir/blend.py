@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Sequence
+from itertools import pairwise
 
-from domoxml.core.ir.lowering import sample_gradient
+from domoxml.core.ir.lowering import mix_colors, sample_gradient
 from domoxml.core.ir.model import (
     Box,
     GradientFill,
@@ -105,9 +106,11 @@ def blended_shapes(
     return shapes
 
 
-# Over a gradient only these blends stay a gradient: they are affine in the backdrop colour, so
-# blending every stop blends every point between them. The others bend at the point the two swap.
+# Over a gradient these blends stay a gradient: they are affine in the backdrop colour, so
+# blending every stop blends every point between them. The others bend where a channel of the
+# backdrop passes the source's: still piecewise linear, so a stop at each bend keeps them exact.
 _AFFINE = frozenset({"multiply", "screen"})
+_BENDING = frozenset({"darken", "lighten", "difference"})
 
 
 def _blended_gradient(
@@ -119,7 +122,7 @@ def _blended_gradient(
     where the patch's corners project onto the gradient line, plus the colours at those ends.
     """
     if (
-        mode not in _AFFINE
+        mode not in _AFFINE | _BENDING
         or gradient.radial
         or any(stop.color.a != 1.0 for stop in gradient.stops)
         or backdrop.width <= 0
@@ -153,6 +156,8 @@ def _blended_gradient(
         *((stop.pos, stop.color) for stop in stops if start < stop.pos < end),
         (end, sample_gradient(stops, end - inside)),
     ]
+    if mode in _BENDING:
+        points = _with_bends(source, points)
     blended: list[GradientStop] = []
     for at, colour in points:
         mixed = blend_colour(mode, source, colour)
@@ -160,3 +165,24 @@ def _blended_gradient(
             return None
         blended.append(GradientStop(pos=(at - start) / (end - start), color=mixed))
     return gradient.model_copy(update={"stops": tuple(blended)})
+
+
+def _with_bends(source: Rgba, points: list[tuple[float, Rgba]]) -> list[tuple[float, Rgba]]:
+    """``points`` plus a point where a backdrop channel passes the source's between two of them."""
+    refined: list[tuple[float, Rgba]] = [points[0]]
+    for (at0, colour0), (at1, colour1) in pairwise(points):
+        crossings: list[float] = []
+        if at1 - at0 <= 1e-9:  # a hard transition has nothing between its two colours
+            refined.append((at1, colour1))
+            continue
+        for s, b0, b1 in (
+            (source.r, colour0.r, colour1.r),
+            (source.g, colour0.g, colour1.g),
+            (source.b, colour0.b, colour1.b),
+        ):
+            if (b0 - s) * (b1 - s) < 0:
+                crossings.append((s - b0) / (b1 - b0))
+        for t in sorted(set(crossings)):
+            refined.append((at0 + (at1 - at0) * t, mix_colors(colour0, colour1, t)))
+        refined.append((at1, colour1))
+    return refined

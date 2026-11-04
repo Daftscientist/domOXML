@@ -252,3 +252,67 @@ async def test_extraction_restores_the_slide_wide_effect_order() -> None:
     assert [a.effect for a in slide.animations] == ["appear", "appear", "fade-out"]
     targets = [a.target for a in slide.animations]
     assert targets[0] == targets[2] != targets[1]
+
+
+def test_spin_and_grow_emphasis_round_trip_with_their_amounts() -> None:
+    plan = (
+        Animation(target="a", effect="spin", step=1, amount=180, duration_ms=1500),
+        Animation(target="b", effect="grow", step=2, amount=125, duration_ms=800),
+        Animation(target="c", effect="spin", step=3),
+    )
+
+    deck = build_pptx([_slide(*plan)], faces=[])
+
+    with zipfile.ZipFile(io.BytesIO(deck)) as package:
+        xml = package.read("ppt/slides/slide1.xml").decode()
+    back = read_pptx_result(deck).slides[0].animations
+    assert xml.count('presetClass="emph"') == 3
+    assert 'animRot by="10800000"' in xml and 'by x="125000" y="125000"' in xml
+    assert [(a.effect, a.amount, a.duration_ms) for a in back] == [
+        ("spin", 180, 1500),
+        ("grow", 125, 800),
+        ("spin", 360, 500),
+    ]
+    html = serialize_canvas([_slide(*plan)]).slides[0].html
+    assert 'data-animate="spin"' in html and 'data-animate-amount="180"' in html
+
+
+def test_an_emphasis_effect_the_ir_does_not_model_stays_preserved_source() -> None:
+    deck = build_pptx([_slide(Animation(target="a", effect="grow", step=1, amount=125))], faces=[])
+    patched = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(deck)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "ppt/slides/slide1.xml":
+                data = data.replace(b'y="125000"', b'y="90000"', 1)  # a non-uniform scale
+            zout.writestr(item, data)
+
+    result = read_pptx_result(patched.getvalue())
+
+    assert result.slides[0].animations == ()
+    assert any("p:timing" in w.message for w in result.warnings)
+
+
+def test_a_repeating_or_reversing_emphasis_stays_preserved_source() -> None:
+    deck = build_pptx([_slide(Animation(target="a", effect="spin", step=1))], faces=[])
+    patched = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(deck)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "ppt/slides/slide1.xml":
+                data = data.replace(
+                    b'dur="500" fill="hold"/>', b'dur="500" fill="hold" autoRev="1"/>', 1
+                )
+            zout.writestr(item, data)
+
+    result = read_pptx_result(patched.getvalue())
+
+    assert result.slides[0].animations == ()
+    assert any("p:timing" in w.message for w in result.warnings)
+
+
+def test_a_fractional_amount_survives_the_html_round_trip() -> None:
+    from domoxml.core.ir.extract import _amount_at  # pyright: ignore[reportPrivateUsage]
+
+    assert _amount_at("0.5 90", 0) == 0.5 and _amount_at("0.5 90", 1) == 90
+    assert _amount_at("", 0) == 0 and _amount_at("x", 0) == 0

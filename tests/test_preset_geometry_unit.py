@@ -15,6 +15,7 @@ from domoxml.core.ir.model import (
     ArcTo,
     Box,
     ClosePath,
+    CustomGeometry,
     GeometryKind,
     GradientFill,
     GradientStop,
@@ -22,6 +23,7 @@ from domoxml.core.ir.model import (
     LineTo,
     MoveTo,
     PictureFill,
+    Point,
     Rgba,
     ShapeNode,
     SlideIR,
@@ -385,7 +387,7 @@ async def test_picture_stroke_and_text_layers_extract_to_native_shapes() -> None
     assert any(s.text for s in shapes)
 
 
-def test_a_picture_outline_that_leaves_its_box_keeps_its_rectangle() -> None:
+def test_a_picture_outline_that_leaves_its_box_is_read_as_its_outline() -> None:
     deck = _preset_deck(
         "wedgeRoundRectCallout",
         fill=_picture(),
@@ -395,9 +397,31 @@ def test_a_picture_outline_that_leaves_its_box_keeps_its_rectangle() -> None:
     result = read_pptx_result(deck)
 
     [shape] = result.slides[0].contents
-    assert isinstance(shape, ShapeNode) and shape.custom_geom is None
+    assert isinstance(shape, ShapeNode) and shape.custom_geom is not None
     [item] = result.coverage.items
-    assert item.representation.value == "approximated"
+    assert item.representation.value == "native"
+
+
+def test_the_picture_of_a_callout_is_laid_over_the_tail_too() -> None:
+    import re
+
+    deck = _preset_deck(
+        "wedgeRectCallout",
+        fill=_picture(),
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+    )
+    [shape] = read_pptx_result(deck).slides[0].contents
+    assert isinstance(shape, ShapeNode)
+
+    html = pptx_to_html(deck).slides[0].html
+
+    layer = next(
+        m for m in re.findall(r'<div class="domoxml-shape"[^>]*>', html) if "clip-path" in m
+    )
+    height = float(re.search(r"height:([\d.]+)px", layer).group(1))  # type: ignore[union-attr]
+    # Taller than the shape's own box, and a polygon clip that reaches the tail.
+    assert height > shape.box.height / 9525 + 1
+    assert "background-size:100% 100%" in layer
 
 
 def test_a_picture_outline_with_a_native_effect_keeps_its_rectangle() -> None:
@@ -428,3 +452,34 @@ def test_a_callout_tip_that_barely_leaves_its_box_still_counts_as_leaving_it() -
     tip, _ = preset_geometry("wedgeRectCallout", 2_000_000, 1_400_000)
 
     assert tip is not None and outline_leaves_box(tip)
+
+
+def test_a_move_with_nothing_drawn_from_it_does_not_widen_the_bounds() -> None:
+    from domoxml.core.drawingml.preset_geometry import outline_bounds
+
+    geometry = CustomGeometry(
+        width_emu=100,
+        height_emu=100,
+        path=(
+            MoveTo(to=Point(x=10, y=10)),
+            LineTo(to=Point(x=50, y=10)),
+            LineTo(to=Point(x=50, y=50)),
+            ClosePath(),
+            MoveTo(to=Point(x=500, y=500)),
+        ),
+    )
+
+    assert outline_bounds(geometry) == (10, 10, 50, 50)
+
+
+def test_a_turned_callout_picture_keeps_the_shape_centre_as_its_pivot() -> None:
+    deck = _preset_deck(
+        "wedgeRectCallout",
+        fill=_picture(),
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=19_050),
+        transform=Transform(rotation_deg=90),
+    )
+
+    html = pptx_to_html(deck).slides[0].html
+
+    assert "transform-origin:" in html and "rotate(90deg)" in html

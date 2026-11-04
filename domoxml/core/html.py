@@ -120,7 +120,7 @@ def _px(value: int) -> str:
 
 # The slide being serialized: its effects by the node they play on, so the element that carries
 # the node's identity also carries its animations (several are space-separated, in play order).
-_ANIMATIONS: ContextVar[Mapping[str, tuple[Animation, ...]] | None] = ContextVar(
+_ANIMATIONS: ContextVar[Mapping[str, tuple[tuple[int, Animation], ...]] | None] = ContextVar(
     "_ANIMATIONS", default=None
 )
 
@@ -131,10 +131,12 @@ def _animation_attrs(node: CanvasNode) -> list[tuple[str, str]]:
     if not animations:
         return []
     return [
-        ("data-animate", " ".join(a.effect for a in animations)),
-        ("data-animate-step", " ".join(str(a.step) for a in animations)),
-        ("data-animate-delay", " ".join(str(a.delay_ms) for a in animations)),
-        ("data-animate-duration", " ".join(str(a.duration_ms) for a in animations)),
+        ("data-animate", " ".join(a.effect for _, a in animations)),
+        ("data-animate-step", " ".join(str(a.step) for _, a in animations)),
+        ("data-animate-delay", " ".join(str(a.delay_ms) for _, a in animations)),
+        ("data-animate-duration", " ".join(str(a.duration_ms) for _, a in animations)),
+        # Where each effect sits in the slide's own sequence, which the elements' order loses.
+        ("data-animate-order", " ".join(str(position) for position, _ in animations)),
     ]
 
 
@@ -2072,9 +2074,9 @@ def serialize_canvas(
     emitted_warnings: list[ConversionWarning] = list(warnings)
     for slide in slides:
         # The animations on a node serialise with that node.
-        grouped: dict[str, list[Animation]] = {}
-        for animation in slide.animations:
-            grouped.setdefault(animation.target, []).append(animation)
+        grouped: dict[str, list[tuple[int, Animation]]] = {}
+        for position, animation in enumerate(slide.animations):
+            grouped.setdefault(animation.target, []).append((position, animation))
         by_node = {target: tuple(found) for target, found in grouped.items()}
         token = _ANIMATIONS.set(by_node)
         try:

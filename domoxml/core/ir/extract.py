@@ -841,7 +841,7 @@ def _animations(
     rendered: RenderedSlide, identities: _IdentityAllocator, present: set[str]
 ) -> tuple[Animation, ...]:
     """Entrance and exit effects declared with ``data-animate`` on elements that became nodes."""
-    found: list[Animation] = []
+    found: list[tuple[float, Animation]] = []
     for node in rendered.nodes:
         effects = node.styles.get("domoxmlAnimate", "").split()
         if not effects:
@@ -861,16 +861,21 @@ def _animations(
         for index, effect in enumerate(effects):
             if effect not in ("appear", "fade", "disappear", "fade-out"):
                 continue
+            # The slide-wide position the HTML recorded, else the order of the elements.
+            position = number("domoxmlAnimateOrder", index, len(found) + 1_000_000)
             found.append(
-                Animation(
-                    target=target,
-                    effect=effect,  # type: ignore[arg-type]
-                    step=max(0, number("domoxmlAnimateStep", index, 0)),
-                    delay_ms=max(0, number("domoxmlAnimateDelay", index, 0)),
-                    duration_ms=max(1, number("domoxmlAnimateDuration", index, 500)),
+                (
+                    position,
+                    Animation(
+                        target=target,
+                        effect=effect,  # type: ignore[arg-type]
+                        step=max(0, number("domoxmlAnimateStep", index, 0)),
+                        delay_ms=max(0, number("domoxmlAnimateDelay", index, 0)),
+                        duration_ms=max(1, number("domoxmlAnimateDuration", index, 500)),
+                    ),
                 )
             )
-    return tuple(found)
+    return tuple(animation for _, animation in sorted(found, key=lambda item: item[0]))
 
 
 def _structural_raster_reason(node: RenderedNode) -> str | None:

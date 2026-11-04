@@ -220,3 +220,35 @@ async def test_space_separated_data_animate_lists_become_several_effects_on_one_
         ("appear", 1, 1),
         ("fade-out", 2, 400),
     ]
+
+
+def test_the_slides_effect_order_survives_effects_interleaved_across_shapes() -> None:
+    plan = (
+        Animation(target="a", effect="appear", step=1),
+        Animation(target="b", effect="appear", step=1),
+        Animation(target="a", effect="fade-out", step=1),
+    )
+    html = serialize_canvas([_slide(*plan)]).slides[0].html
+
+    assert 'data-animate-order="0 2"' in html and 'data-animate-order="1"' in html
+
+
+@pytest.mark.integration
+async def test_extraction_restores_the_slide_wide_effect_order() -> None:
+    html = (
+        "<div data-animate='appear fade-out' data-animate-step='1 1' data-animate-order='0 2' "
+        "style='position:absolute;left:100px;top:100px;width:200px;height:100px;"
+        "background:#08f'></div>"
+        "<div data-animate='appear' data-animate-step='1' data-animate-order='1' "
+        "style='position:absolute;left:400px;top:100px;width:200px;height:100px;"
+        "background:#c20'></div>"
+    )
+    page = compose_page(html, css=None, theme=Theme(), width_px=1280, height_px=720)
+    async with BrowserSession() as session:
+        rendered = await session.render(page, width=1280, height=720)
+
+    slide = extract_slide(rendered).slide
+
+    assert [a.effect for a in slide.animations] == ["appear", "appear", "fade-out"]
+    targets = [a.target for a in slide.animations]
+    assert targets[0] == targets[2] != targets[1]

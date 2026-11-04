@@ -175,3 +175,27 @@ def test_a_solid_or_too_thick_dashed_rectangle_keeps_its_css_border() -> None:
     slide = SlideIR(width=1280 * _PX, height=720 * _PX, contents=(thick,))
     html = serialize_canvas([slide]).slides[0].html
     assert "stroke-dasharray" not in html and "dashed" in html
+
+
+def test_a_dashed_gradient_outline_stays_on_the_css_path() -> None:
+    from domoxml.core.ir.model import GradientFill, GradientStop
+
+    gradient = GradientFill(
+        angle_deg=90,
+        stops=(
+            GradientStop(pos=0, color=Rgba(r=250, g=30, b=200)),
+            GradientStop(pos=1, color=Rgba(r=10, g=240, b=40)),
+        ),
+    )
+    shape = _shape(
+        fill=None,
+        line=Line(
+            color=Rgba(r=250, g=30, b=200),
+            width_emu=12 * _PX,
+            dash="dash",
+            cap="round",
+            gradient=gradient,
+        ),
+    )
+
+    assert "stroke-dasharray" not in pptx_to_html(_deck(shape)).slides[0].html

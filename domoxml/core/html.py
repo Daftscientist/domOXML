@@ -1571,6 +1571,7 @@ def _dashed_rectangle(node: ShapeNode) -> ShapeNode | None:
     line = node.line
     if (
         line is None
+        or line.gradient is not None  # the SVG stroke paints one colour; a gradient keeps CSS
         or node.geom != "rect"
         or (line.dash == "solid" and not line.custom_dash)
         # A thin dashed border is the same to the eye as CSS's, and keeps its CSS form; only a

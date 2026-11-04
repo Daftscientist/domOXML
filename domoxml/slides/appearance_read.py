@@ -290,6 +290,9 @@ def _arrowhead(element: Element | None) -> Arrowhead | None:
     return Arrowhead(type=typed_arrow, width=width, length=length)
 
 
+_HAIRLINE_EMU = 9525  # one CSS pixel
+
+
 def line_element(element: Element, colors: ThemeColors) -> Line | None:
     """Parse one DrawingML line after its owner has located it."""
     solid = element.find("a:solidFill", _NS)
@@ -317,7 +320,8 @@ def line_element(element: Element, colors: ThemeColors) -> Line | None:
         join = "miter"
     return Line(
         color=color,
-        width_emu=max(1, _int_attr(element, "w", 1)),
+        # A zero or missing width is PowerPoint's hairline: it draws one device pixel, not nothing.
+        width_emu=_int_attr(element, "w", 0) or _HAIRLINE_EMU,
         dash=_DASH_FROM_OOXML.get(dash_value, "solid"),
         custom_dash=tuple(custom),
         cap=_CAP_FROM_OOXML.get(element.get("cap", "flat"), "flat"),

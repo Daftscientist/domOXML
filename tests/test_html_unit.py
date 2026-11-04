@@ -704,5 +704,7 @@ def test_a_css_line_height_number_is_an_em_multiple_so_powerpoint_percent_is_a_f
     unitless = parse_line_height("1.5")
     percent = parse_line_height("150%")
 
-    assert unitless is not None and unitless.percent == pytest.approx(1.25)  # 1.5 em / 1.2 em
-    assert percent is not None and percent.percent == pytest.approx(1.25)
+    assert unitless is not None and unitless.percent is not None
+    assert percent is not None and percent.percent is not None
+    assert abs(unitless.percent - 1.25) < 1e-9  # 1.5 em over PowerPoint's 1.2 em single
+    assert abs(percent.percent - 1.25) < 1e-9

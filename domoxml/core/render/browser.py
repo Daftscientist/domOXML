@@ -622,7 +622,13 @@ _SNAPSHOT_JS = """
     }
     if (tag === 'select' && (el.multiple || el.size > 1)) styles.domoxmlSelectList = 'true';
     if (tag === 'iframe' && el.hasAttribute('srcdoc')) styles.domoxmlSrcdoc = 'true';
-    if ((computed.backgroundClip || '').includes('text') && el.firstChild) {
+    let turned = false;
+    for (let up = el; up && up !== document.body; up = up.parentElement) {
+      const t = getComputedStyle(up);
+      if ((t.transform && t.transform !== 'none') || (t.rotate && t.rotate !== 'none')
+          || (t.scale && t.scale !== 'none')) turned = true;
+    }
+    if ((computed.backgroundClip || '').includes('text') && el.firstChild && !turned) {
       // Where the text sits inside the box its gradient is laid over: PowerPoint spans a text
       // gradient over the text itself, CSS over the whole box.
       const range = document.createRange();

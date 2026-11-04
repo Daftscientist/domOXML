@@ -4218,3 +4218,28 @@ async def test_a_gradient_over_one_line_of_text_is_laid_over_the_text_not_the_bo
     # "AB" fills about a fifth of the 900 px box, so its end sits about a fifth of the way along
     # red to blue (mostly red), not at the blue the box's end would give.
     assert last.r > 150 and last.b < 105
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "transform:scaleX(-1)",
+        "background-size:200px 100%;background-repeat:no-repeat",
+    ],
+)
+async def test_a_turned_or_sized_gradient_text_keeps_the_boxs_gradient(extra: str) -> None:
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:40px;top:40px;width:900px;height:200px;"
+        "font:900 100px Arial;background:linear-gradient(90deg,#ff0000,#0000ff);"
+        f"-webkit-background-clip:text;background-clip:text;color:transparent;{extra}'>AB</div>"
+    )
+
+    runs = [
+        r
+        for shape in result.slide.shapes
+        if shape.text is not None
+        for paragraph in shape.text.paragraphs
+        for r in paragraph.runs
+        if r.gradient is not None
+    ]
+    assert not runs or (runs[0].gradient is not None and runs[0].gradient.stops[-1].color.b > 200)

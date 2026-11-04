@@ -256,7 +256,10 @@ def _text_effects(
         gradient = parse_gradient(styles.get("backgroundImage"))
         if gradient is not None:
             gradient = _over_the_text(
-                gradient, styles.get("domoxmlTextRect"), parse_length_px(styles.get("fontSize"))
+                gradient,
+                styles.get("domoxmlTextRect"),
+                parse_length_px(styles.get("fontSize")),
+                styles,
             )
             first_stop = gradient.stops[0].color
     outline: TextOutline | None = None
@@ -268,7 +271,9 @@ def _text_effects(
     return gradient, outline, shadow, first_stop
 
 
-def _over_the_text(gradient: GradientFill, rect: str | None, font_px: float) -> GradientFill:
+def _over_the_text(
+    gradient: GradientFill, rect: str | None, font_px: float, styles: dict[str, str]
+) -> GradientFill:
     """The part of a straight gradient that lies under a single line of text.
 
     CSS lays a ``background-clip:text`` gradient over the element's box; PowerPoint lays a text
@@ -277,6 +282,10 @@ def _over_the_text(gradient: GradientFill, rect: str | None, font_px: float) -> 
     """
     if rect is None or gradient.radial:
         return gradient
+    if styles.get("backgroundSize", "auto") not in ("auto", "auto auto") or styles.get(
+        "backgroundPosition", "0% 0%"
+    ) not in ("0% 0%", "0px 0px"):
+        return gradient  # the gradient is not laid over the whole box to begin with
     try:
         left, top, width, height, box_w, box_h = (float(v) for v in rect.split(","))
     except ValueError:

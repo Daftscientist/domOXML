@@ -160,10 +160,11 @@ def chart_to_svg(
         else None
     )
     canvas.grid = _has_gridlines(plot)
-    canvas.label_px = next((s.label_px for s in everything if s.show_values), 10.0)
     axis_node = plot.find("c:valAx", _NS)
+    axis_node = axis_node if axis_node is not None else plot.find("c:catAx", _NS)
+    # The axis's own text properties, not those of an axis title nested in it.
     canvas.tick_px = _font_px(
-        axis_node if axis_node is not None else plot.find("c:catAx", _NS), 11.0
+        axis_node.find("c:txPr", _NS) if axis_node is not None else None, 11.0
     )
     canvas.axis_titles = _axis_titles(plot)
     first = groups[0]
@@ -217,7 +218,7 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 marker=marker_symbol not in ("none",)
                 and (kind == "scatter" or marker_symbol != "" or (kind == "line" and False)),
                 show_values=show,
-                label_px=_font_px(labels, 10.0),
+                label_px=_font_px(labels.find("c:txPr", _NS) if labels is not None else None, 10.0),
                 format_code=(fmt.text or "General") if fmt is not None else "General",
                 point_colors={
                     int(_val(pt.find("c:idx", _NS), "0")): c
@@ -466,7 +467,6 @@ class _Canvas:
         self.plot_layout: tuple[float, float, float, float] | None = None
         self.grid = True
         self.tick_px = 11.0
-        self.label_px = 10.0
         self.axis_titles: dict[str, str] = {}
         self.parts: list[str] = []
 
@@ -531,7 +531,10 @@ class _Canvas:
         size = round(self.legend_px)
         for label, color in names:
             self._swatch(x, y, label, color, size)
-            x += min(200.0, 24 + len(label) * self.legend_px * 0.58)
+            if self.legend_pos in ("r", "l"):
+                y += self.legend_px * 1.6  # a side legend stacks its entries
+            else:
+                x += min(200.0, 24 + len(label) * self.legend_px * 0.58)
 
     def _swatch(self, x: float, y: float, label: str, color: str, size: int) -> None:
         self.parts.append(
@@ -710,7 +713,9 @@ class _Canvas:
                         f'height="{max(0.0, y2 - y1):.1f}" fill="#{color}"/>'
                     )
                     if series.show_values:
-                        self._label(x + bar_w / 2, y1 - 4, amount, series.format_code, percent)
+                        self._label(
+                            x + bar_w / 2, y1 - 4, amount, series.format_code, percent, series
+                        )
             return
         for series in group.series:
             points = [
@@ -735,7 +740,9 @@ class _Canvas:
                     )
             if series.show_values:
                 for i, (x, y) in enumerate(points):
-                    self._label(x, y - 8, _at(series.values, i) or 0.0, series.format_code, False)
+                    self._label(
+                        x, y - 8, _at(series.values, i) or 0.0, series.format_code, False, series
+                    )
 
     def _stock(
         self,
@@ -806,10 +813,12 @@ class _Canvas:
             f'<path d="{d} Z" fill="#{series.color}" fill-opacity="0.8" stroke="#{series.color}"/>'
         )
 
-    def _label(self, x: float, y: float, value: float, code: str, percent: bool) -> None:
+    def _label(
+        self, x: float, y: float, value: float, code: str, percent: bool, series: Series
+    ) -> None:
         text = format_number(value, "0%" if percent else code)
         self.parts.append(
-            f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="middle" font-size="{self.label_px:.1f}" '
+            f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="middle" font-size="{series.label_px:.1f}" '
             f'fill="{_TEXT}">'
             f"{escape(text)}</text>"
         )

@@ -318,3 +318,31 @@ def test_a_legend_with_a_manual_layout_sits_where_the_author_put_it() -> None:
     svg = _svg(_BAR, legend)
 
     assert 'x="240.0" y="30.0"' in svg  # 0.5 and 0.1 of the 480 x 300 chart
+
+
+def test_tick_and_data_label_sizes_come_from_their_own_text_properties() -> None:
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    big = f'<c:txPr><a:p xmlns:a="{a}"><a:pPr><a:defRPr sz="3000"/></a:pPr></a:p></c:txPr>'
+    small = f'<c:txPr><a:p xmlns:a="{a}"><a:pPr><a:defRPr sz="825"/></a:pPr></a:p></c:txPr>'
+    title = (
+        f'<c:title><c:tx><c:rich><a:p xmlns:a="{a}"><a:pPr><a:defRPr sz="3000"/></a:pPr></a:p>'
+        "</c:rich></c:tx></c:title>"
+    )
+    axis = f'<c:valAx><c:axId val="1"/>{title}{small}</c:valAx>'
+    first = _series(0, [1, 2]).replace(
+        "</c:ser>", f'<c:dLbls>{big}<c:showVal val="1"/></c:dLbls></c:ser>'
+    )
+    second = _series(1, [2, 1]).replace(
+        "</c:ser>", f'<c:dLbls>{small}<c:showVal val="1"/></c:dLbls></c:ser>'
+    )
+
+    svg = _svg(
+        '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+        + first
+        + second
+        + "</c:barChart>"
+        + axis
+    )
+
+    assert 'font-size="11.0"' in svg  # 8.25 pt ticks, not the 30 pt axis title's size
+    assert 'font-size="40.0"' in svg and 'font-size="11.0" ' in svg  # per series, not the first

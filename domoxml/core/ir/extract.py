@@ -756,6 +756,14 @@ def _soft_edge_mask(node: RenderedNode) -> SoftEdge | None:
     )
 
 
+def _page_box(rendered: RenderedSlide) -> Box:
+    """The slide's own box: its root element's, else the whole render."""
+    root = next((n for n in rendered.nodes if "domoxmlSlideRoot" in n.styles), None)
+    if root is not None:
+        return _box(root)
+    return Box(x=0, y=0, width=px_to_emu(rendered.width), height=px_to_emu(rendered.height))
+
+
 def _isolates_blending(styles: dict[str, str]) -> bool:
     """Whether an element is a stacking context whose children cannot blend with what is outside.
 
@@ -828,7 +836,17 @@ def _blend_over_solids(
         if not isolated and background is not None and isinstance(background.fill, SolidFill)
         else None
     )
-    return blended_shapes(styles["mixBlendMode"], _box(node), fill.color, contents, canvas)
+    page_gradient = (
+        (
+            background.fill,
+            _page_box(rendered),
+        )
+        if not isolated and background is not None and isinstance(background.fill, GradientFill)
+        else None
+    )
+    return blended_shapes(
+        styles["mixBlendMode"], _box(node), fill.color, contents, canvas, page_gradient
+    )
 
 
 def _summary_indent_px(node: RenderedNode) -> float:

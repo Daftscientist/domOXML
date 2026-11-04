@@ -60,6 +60,7 @@ def blended_shapes(
     source: Rgba,
     beneath: Sequence[Node],
     canvas: Rgba | None = None,
+    page_gradient: tuple[GradientFill, Box] | None = None,
 ) -> list[ShapeNode] | None:
     """The shapes that paint ``source`` blended over ``beneath``, or ``None`` if it can't be.
 
@@ -69,12 +70,18 @@ def blended_shapes(
 
     ``canvas`` is the opaque colour of the slide the box sits on: where nothing else lies beneath,
     the browser blends against it (difference over white inverts the source, lighten over white
-    is white). ``None`` leaves the source as it is, for a background that is not one colour.
+    is white). ``None`` leaves the source as it is. A page that is a linear gradient is given as
+    ``page_gradient`` (the gradient and the slide's box), and the base is then a gradient too.
     """
     if mode not in _CHANNEL or source.a != 1.0:
         return None
     base = blend_colour(mode, source, canvas) if canvas is not None else None
-    shapes = [ShapeNode(box=box, geom="rect", fill=SolidFill(color=base or source))]
+    base_fill: SolidFill | GradientFill = SolidFill(color=base or source)
+    if page_gradient is not None:
+        patch = _blended_gradient(mode, source, page_gradient[0], page_gradient[1], box)
+        if patch is not None:
+            base_fill = patch
+    shapes = [ShapeNode(box=box, geom="rect", fill=base_fill)]
     for node in beneath:
         if not isinstance(node, ShapeNode):
             if getattr(node, "box", None) is not None and _overlap(box, node.box) is not None:  # type: ignore[attr-defined]

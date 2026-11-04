@@ -4183,3 +4183,16 @@ async def test_a_blend_inside_an_isolated_group_ignores_the_page_behind_it(
         if isinstance(s.fill, SolidFill)
     }
     assert expected in colours
+
+
+async def test_a_blend_over_a_gradient_page_becomes_a_gradient_of_blended_stops() -> None:
+    result = await _render_and_extract_result(
+        "<div class='domoxml-slide' style='position:relative;width:1280px;height:720px;"
+        "background:linear-gradient(90deg,#fa1ec8,#0af028)'>"
+        "<div style='position:absolute;left:300px;top:100px;width:400px;height:200px;"
+        "background:#788064;mix-blend-mode:difference'></div></div>"
+    )
+
+    assert not any(isinstance(s.fill, PictureFill) for s in result.slide.shapes)
+    gradients = [s.fill for s in result.slide.shapes if isinstance(s.fill, GradientFill)]
+    assert gradients and len(gradients[0].stops) >= 2

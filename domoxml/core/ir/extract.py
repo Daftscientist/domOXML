@@ -761,6 +761,7 @@ def _blend_over_solids(
     rendered: RenderedSlide,
     contents: list[Node],
     opacity: float,
+    background: SlideBackground | None = None,
 ) -> list[ShapeNode] | None:
     """A blended filled box as plain shapes in the colours it makes over what is beneath."""
     styles = node.styles
@@ -779,7 +780,12 @@ def _blend_over_solids(
     fill, reason = _resolve_fill(node, rendered)
     if reason is not None or not isinstance(fill, SolidFill):
         return None
-    return blended_shapes(styles["mixBlendMode"], _box(node), fill.color, contents)
+    canvas = (
+        background.fill.color
+        if background is not None and isinstance(background.fill, SolidFill)
+        else None
+    )
+    return blended_shapes(styles["mixBlendMode"], _box(node), fill.color, contents, canvas)
 
 
 def _summary_indent_px(node: RenderedNode) -> float:
@@ -3316,7 +3322,9 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
         node = lower_drop_shadow(node)
         reason = _structural_raster_reason(node)
         if reason == "mix-blend-mode has no native mapping":
-            blended = _blend_over_solids(node, rendered, contents, effective_opacity(node))
+            blended = _blend_over_solids(
+                node, rendered, contents, effective_opacity(node), background
+            )
             if blended is not None:
                 for index, part in enumerate(blended):
                     contents.append(

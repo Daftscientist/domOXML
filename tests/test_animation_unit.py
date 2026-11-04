@@ -90,7 +90,7 @@ def test_timing_with_other_effects_stays_preserved_source() -> None:
         for item in zin.infolist():
             data = zin.read(item.filename)
             if item.filename == "ppt/slides/slide1.xml":
-                data = data.replace(b'presetClass="entr"', b'presetClass="exit"', 1)
+                data = data.replace(b'presetClass="entr"', b'presetClass="emph"', 1)
             zout.writestr(item, data)
 
     result = read_pptx_result(patched.getvalue())
@@ -163,3 +163,26 @@ def test_timing_with_a_second_sequence_or_paragraph_targets_stays_preserved_sour
         result = read_pptx_result(deck)
         assert result.slides[0].animations == ()
         assert any("p:timing" in w.message for w in result.warnings)
+
+
+def test_exit_effects_hide_the_shape_and_read_back_as_exits() -> None:
+    plan = (
+        Animation(target="a", effect="disappear", step=1),
+        Animation(target="b", effect="fade-out", step=1, delay_ms=200, duration_ms=600),
+        Animation(target="c", effect="fade", step=0),
+    )
+
+    deck = build_pptx([_slide(*plan)], faces=[])
+
+    with zipfile.ZipFile(io.BytesIO(deck)) as package:
+        xml = package.read("ppt/slides/slide1.xml").decode()
+    back = read_pptx_result(deck).slides[0].animations
+    assert xml.count('presetClass="exit"') == 2 and 'val="hidden"' in xml
+    assert 'transition="out" filter="fade"' in xml
+    assert [(a.effect, a.step, a.delay_ms, a.duration_ms) for a in back] == [
+        ("fade", 0, 0, 500),
+        ("disappear", 1, 0, 1),
+        ("fade-out", 1, 200, 600),
+    ]
+    html = serialize_canvas([_slide(*plan)]).slides[0].html
+    assert 'data-animate="fade-out"' in html and 'data-animate="disappear"' in html

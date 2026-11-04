@@ -458,9 +458,9 @@ def _text_body_margins(node: RenderedNode) -> tuple[int, int, int, int]:
         return (0, 0, 0, 0)
 
     def edge(side: str) -> int:
-        # A form field's text sits inside its border as well as its padding.
+        # Content sits inside the border as well as the padding.
         padding = parse_length_px(styles.get(f"padding{side}"))
-        if "domoxmlField" in styles:
+        if styles.get(f"border{side}Style", "none") not in ("none", "hidden"):
             padding += parse_length_px(styles.get(f"border{side}Width"))
         return px_to_emu(padding)
 
@@ -1250,8 +1250,9 @@ def _outline_shape(
     """The CSS ``outline`` as an unfilled ring just outside the box, or ``None``.
 
     An outline sits outside the border box (pushed further out by ``outline-offset``) and follows
-    its rounding; a line is centred on its path, so the ring is inflated by the offset plus half
-    the width. Outlines on custom outlines are not drawn.
+    its rounding. The ring's box is its outer edge (the offset plus the whole width out from the
+    border box), like any bordered shape's: the writer centres the stroke inside it.
+    Outlines on custom outlines are not drawn.
     """
     if custom is not None or geom not in ("rect", "roundRect"):
         return None
@@ -1262,7 +1263,7 @@ def _outline_shape(
     )
     if line is None:
         return None
-    reach = px_to_emu(parse_length_px(node.styles.get("outlineOffset"))) + line.width_emu // 2
+    reach = px_to_emu(parse_length_px(node.styles.get("outlineOffset"))) + line.width_emu
     ring = Box(
         x=box.x - reach, y=box.y - reach, width=box.width + 2 * reach, height=box.height + 2 * reach
     )

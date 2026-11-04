@@ -3274,9 +3274,9 @@ async def test_outline_is_a_ring_just_outside_the_box_and_round_trips() -> None:
 
     ring = next(s for s in ir.shapes if s.line is not None and s.fill is None)
     assert ring.line is not None and ring.line.color.hex == "CC2200"
-    # The ring is inflated by offset (4px) plus half the 6px width, so it sits outside the box.
-    assert ring.box.x == px_to_emu(100) - px_to_emu(7)
-    assert ring.box.width == px_to_emu(200) + 2 * px_to_emu(7)
+    # The ring's box is its outer edge: the offset (4px) plus the whole 6px width out from the box.
+    assert ring.box.x == px_to_emu(100) - px_to_emu(10)
+    assert ring.box.width == px_to_emu(200) + 2 * px_to_emu(10)
     assert ring.geom == "roundRect" and ring.corner_radius_emu > px_to_emu(20)
     assert ring.provenance is not None and ring.provenance.role == "outline"
 
@@ -3351,8 +3351,8 @@ async def test_outline_follows_the_css_box_not_the_text_slack_box() -> None:
     )
 
     ring = next(s for s in ir.shapes if s.line is not None and s.fill is None)
-    assert ring.box.x == px_to_emu(100) - px_to_emu(2)
-    assert ring.box.width == px_to_emu(200) + 2 * px_to_emu(2)
+    assert ring.box.x == px_to_emu(100) - px_to_emu(4)
+    assert ring.box.width == px_to_emu(200) + 2 * px_to_emu(4)
 
 
 def test_custom_outline_in_a_small_coordinate_space_is_scaled_to_its_box_in_html() -> None:

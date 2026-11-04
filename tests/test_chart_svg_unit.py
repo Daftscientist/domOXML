@@ -274,3 +274,75 @@ def test_a_series_colour_keeps_its_lightness_transform_and_resolves_roles_throug
     assert svg is not None
     # dk2 at half lightness plus half: a light blue, not the plain navy and not Office's grey-blue.
     assert "#08284F" not in svg and "#44546A" not in svg and 'fill="#3' in svg
+
+
+_BAR = (
+    '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+    + _series(0, [1, 2, 3])
+    + "</c:barChart>"
+)
+
+
+def test_gridlines_are_drawn_only_when_the_value_axis_has_visible_ones() -> None:
+    def axis(grid: str) -> str:
+        return f'<c:valAx><c:axId val="1"/>{grid}<c:delete val="0"/></c:valAx>'
+
+    visible = "<c:majorGridlines><c:spPr><a:ln><a:solidFill/></a:ln></c:spPr></c:majorGridlines>"
+    hidden = "<c:majorGridlines><c:spPr><a:ln><a:noFill/></a:ln></c:spPr></c:majorGridlines>"
+
+    assert "#D9D9D9" in _svg(_BAR + axis(visible))
+    assert "#D9D9D9" not in _svg(_BAR + axis(hidden))
+    assert "#D9D9D9" not in _svg(_BAR + axis(""))
+
+
+def test_a_title_element_without_text_shows_powerpoints_placeholder_at_its_own_position() -> None:
+    title = (
+        '<c:title><c:layout><c:manualLayout><c:xMode val="edge"/><c:yMode val="edge"/>'
+        '<c:x val="0.1"/><c:y val="0.05"/></c:manualLayout></c:layout>'
+        '<c:overlay val="0"/></c:title>'
+    )
+
+    svg = _svg(_BAR, title)
+
+    assert "Chart Title" in svg and 'x="48.0"' in svg  # 0.1 of the 480 px chart
+    assert "Chart Title" not in _svg(_BAR, title + '<c:autoTitleDeleted val="1"/>')
+
+
+def test_a_legend_with_a_manual_layout_sits_where_the_author_put_it() -> None:
+    legend = (
+        '<c:legend><c:legendPos val="b"/><c:layout><c:manualLayout><c:xMode val="edge"/>'
+        '<c:yMode val="edge"/><c:x val="0.5"/><c:y val="0.1"/></c:manualLayout></c:layout>'
+        "</c:legend>"
+    )
+
+    svg = _svg(_BAR, legend)
+
+    assert 'x="240.0" y="30.0"' in svg  # 0.5 and 0.1 of the 480 x 300 chart
+
+
+def test_tick_and_data_label_sizes_come_from_their_own_text_properties() -> None:
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    big = f'<c:txPr><a:p xmlns:a="{a}"><a:pPr><a:defRPr sz="3000"/></a:pPr></a:p></c:txPr>'
+    small = f'<c:txPr><a:p xmlns:a="{a}"><a:pPr><a:defRPr sz="825"/></a:pPr></a:p></c:txPr>'
+    title = (
+        f'<c:title><c:tx><c:rich><a:p xmlns:a="{a}"><a:pPr><a:defRPr sz="3000"/></a:pPr></a:p>'
+        "</c:rich></c:tx></c:title>"
+    )
+    axis = f'<c:valAx><c:axId val="1"/>{title}{small}</c:valAx>'
+    first = _series(0, [1, 2]).replace(
+        "</c:ser>", f'<c:dLbls>{big}<c:showVal val="1"/></c:dLbls></c:ser>'
+    )
+    second = _series(1, [2, 1]).replace(
+        "</c:ser>", f'<c:dLbls>{small}<c:showVal val="1"/></c:dLbls></c:ser>'
+    )
+
+    svg = _svg(
+        '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+        + first
+        + second
+        + "</c:barChart>"
+        + axis
+    )
+
+    assert 'font-size="11.0"' in svg  # 8.25 pt ticks, not the 30 pt axis title's size
+    assert 'font-size="40.0"' in svg and 'font-size="11.0" ' in svg  # per series, not the first

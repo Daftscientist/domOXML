@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import zipfile
 
+import pytest
 from PIL import Image
 
 from domoxml.core.chart_author import parse_chart_spec, workbook_bytes
@@ -77,6 +78,7 @@ def test_an_embedded_workbook_reads_as_its_preview_with_the_object_attached() ->
     assert item.source_retention.value == "attached"
 
 
+@pytest.mark.integration
 def test_the_embedded_object_survives_pptx_to_html_to_pptx() -> None:
     html = pptx_to_html(ole_deck())
 

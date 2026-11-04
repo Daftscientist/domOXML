@@ -622,6 +622,18 @@ _SNAPSHOT_JS = """
     }
     if (tag === 'select' && (el.multiple || el.size > 1)) styles.domoxmlSelectList = 'true';
     if (tag === 'iframe' && el.hasAttribute('srcdoc')) styles.domoxmlSrcdoc = 'true';
+    if ((computed.backgroundClip || '').includes('text') && el.firstChild) {
+      // Where the text sits inside the box its gradient is laid over: PowerPoint spans a text
+      // gradient over the text itself, CSS over the whole box.
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const text = range.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      if (text.width > 0 && box.width > 0) {
+        styles.domoxmlTextRect = [text.left - box.left, text.top - box.top, text.width,
+          text.height, box.width, box.height].map((v) => v.toFixed(2)).join(',');
+      }
+    }
     if (tag === 'model-viewer' && el.getAttribute('poster')) {
       styles.domoxmlPoster = el.getAttribute('poster');
     }

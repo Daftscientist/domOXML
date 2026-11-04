@@ -96,6 +96,25 @@ export async function takumiBridge(requestJson) {
           if (drawable.type === "fill" && drawable.role === "background" &&
               drawable.shape?.type === "rect" && colorOf(drawable.paint)) {
             steps.push({ type: "fill", bounds: node.bounds, color: colorOf(drawable.paint) });
+          } else if (drawable.type === "image" && drawable.image?.src) {
+            // An <img> (or replaced element) at its painted box. The source
+            // is resolved to bytes after the loop; Python maps it to a
+            // native PowerPoint picture instead of rasterising the slide.
+            const rect = drawable.rect;
+            steps.push({
+              type: "image",
+              bounds: {
+                x: node.bounds.x + rect.x, y: node.bounds.y + rect.y,
+                width: rect.width, height: rect.height
+              },
+              src: drawable.image.src
+            });
+          } else if (drawable.type === "fill" && drawable.role === "background" &&
+                     drawable.paint?.type === "image" && drawable.paint.image?.src &&
+                     drawable.shape?.type === "rect") {
+            // A CSS background image on a rectangular box: same mapping,
+            // at the box's bounds.
+            steps.push({ type: "image", bounds: node.bounds, src: drawable.paint.image.src });
           } else if (drawable.type === "glyphs" && drawable.role === "text" &&
                      node.type === "text" && colorOf(drawable.paint) && drawable.run) {
             const run = drawable.run;
@@ -118,6 +137,43 @@ export async function takumiBridge(requestJson) {
               reason: (drawable.role || "paint") + ": " + drawable.type
             });
           }
+        }
+      }
+      // Resolve image steps to bytes so Python can embed them as native
+      // pictures. data: URIs carry the bytes already; http(s) sources are
+      // fetched with the unpatched fetch. Anything unresolvable degrades
+      // to an unsupported step, which fails the slide closed to a raster
+      // exactly like any other unmapped paint.
+      const IMAGE_EXTS = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/bmp": "bmp", "image/x-ms-bmp": "bmp" };
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        if (step.type !== "image") continue;
+        const fail = (reason) => { steps[i] = { type: "unsupported", reason }; };
+        const src = step.src;
+        delete step.src;
+        if (src.startsWith("data:")) {
+          const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(src);
+          const ext = match ? IMAGE_EXTS[(match[1] || "").toLowerCase()] : undefined;
+          if (!match || !ext) { fail("image: unsupported data URI"); continue; }
+          step.ext = ext;
+          step.data = match[2].replace(/\s+/g, "");
+        } else if (/^https?:\/\//i.test(src)) {
+          try {
+            const response = await originalFetch(src);
+            if (!response.ok) throw new Error("HTTP " + response.status);
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            if (bytes.length === 0 || bytes.length > 16 * 1024 * 1024) {
+              throw new Error("image size out of range");
+            }
+            const ext = IMAGE_EXTS[(response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase()];
+            if (!ext) throw new Error("unsupported content type");
+            step.ext = ext;
+            step.data = toBase64(bytes);
+          } catch {
+            fail("image: could not fetch " + (() => { try { return new URL(src).host; } catch { return "external image"; } })());
+          }
+        } else {
+          fail("image: unsupported source");
         }
       }
       stage = "raster";

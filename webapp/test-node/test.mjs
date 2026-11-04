@@ -56,6 +56,38 @@ console.log(
 );
 stamp("convert done");
 
+// 2b. A slide with an <img> must export with a native picture, not a
+// full-slide raster: the bridge resolves the data URI to bytes and Python
+// embeds it as a real <p:pic> alongside the native text.
+const IMG_HTML =
+  '<div style="width:1280px;height:720px;background:#3653C7;position:relative">' +
+  '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" ' +
+  'style="position:absolute;left:100px;top:80px;width:320px;height:200px">' +
+  '<p style="position:absolute;left:100px;top:320px;color:#ffffff;font-family:Inter;font-size:32px">Caption</p></div>';
+const imgConverted = JSON.parse(
+  await api.get("convert")(
+    JSON.stringify({ fragments: [IMG_HTML], width: 1280, height: 720, transitions: [null] })
+  )
+);
+const imgPptx = Buffer.from(imgConverted.pptx_b64, "base64");
+// PPTX is a zip: media parts and the picture element show up as plain names
+// and text in the archive directory / slide XML (stored or deflated, so
+// scan via the zip listing through Python-free heuristics: use the raw
+// buffer for the media filename, which lives in the central directory).
+const hasMedia = imgPptx.includes("ppt/media/");
+console.log(
+  "image slide: coverage:", imgConverted.coverage.length,
+  "native:", imgConverted.coverage.filter((c) => c.representation === "native").length,
+  "| warnings:", JSON.stringify(imgConverted.warnings),
+  "| media part:", hasMedia
+);
+const rasterWarnings = imgConverted.warnings.filter((w) => w.message.includes("raster"));
+if (!hasMedia || rasterWarnings.length > 0 ||
+    imgConverted.coverage.some((c) => c.representation !== "native")) {
+  throw new Error("image slide did not export natively");
+}
+stamp("image convert done");
+
 // 3. Read the deck back: size, transition and HTML must survive.
 const deck = JSON.parse(
   await api.get("read_deck")(new Uint8Array(Buffer.from(converted.pptx_b64, "base64")))

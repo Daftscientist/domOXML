@@ -3,6 +3,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePreview } from "@/lib/usePreview";
+import { PreviewSurface } from "./PreviewSurface";
 import type { Deck } from "@/lib/types";
 
 interface Props {
@@ -13,12 +14,13 @@ interface Props {
 
 export function Stage(p: Props) {
   const slide = p.deck.slides[p.selected];
+  const frame = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const preview = usePreview(slide?.html ?? "", {
     width: p.deck.width, height: p.deck.height, css: p.deck.css,
     priority: 10, sessionKey: p.deck.id,
+    targetWidth: Math.round(box.w * (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1)),
   });
-  const frame = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
   // Size the slide box explicitly from the measured frame: the largest
   // deck-aspect rectangle that fits, so the slide is never distorted.
@@ -56,13 +58,12 @@ export function Stage(p: Props) {
           className="slide-shadow relative shrink-0 overflow-hidden rounded-[2px] bg-white"
           style={{ width: box.w || undefined, height: box.h || undefined }}
         >
-          {preview.url ? (
-            <img
-              key={preview.url}
-              src={preview.url}
+          {preview.bitmap || preview.url ? (
+            <PreviewSurface
+              bitmap={preview.bitmap}
+              url={preview.url}
               alt={`Slide ${p.selected + 1} preview`}
               className="h-full w-full"
-              draggable={false}
             />
           ) : preview.error ? (
             <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -73,7 +74,7 @@ export function Stage(p: Props) {
           ) : (
             <Skeleton className="h-full w-full rounded-none" />
           )}
-          {preview.loading && preview.url && (
+          {preview.loading && (preview.bitmap || preview.url) && (
             <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white">
               <Loader2 className="h-3 w-3 animate-spin" /> Rendering
             </div>

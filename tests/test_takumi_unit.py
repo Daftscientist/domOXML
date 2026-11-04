@@ -90,6 +90,73 @@ def test_text_is_native_and_remains_editable() -> None:
     assert result.coverage[0].editability is Editability.SEMANTIC
 
 
+def test_image_step_is_a_native_picture() -> None:
+    import base64
+
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
+        "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+    slide = TakumiRenderedSlide(
+        png=b"image",
+        width=1280,
+        height=720,
+        steps=(
+            {
+                "type": "fill",
+                "bounds": {"x": 0, "y": 0, "width": 1280, "height": 720},
+                "color": [54, 83, 199, 255],
+            },
+            {
+                "type": "image",
+                "bounds": {"x": 100, "y": 80, "width": 320, "height": 200},
+                "ext": "png",
+                "data": base64.b64encode(png).decode("ascii"),
+            },
+            {
+                "type": "text",
+                "text": "Caption",
+                "x": 100,
+                "y": 300,
+                "width": 240,
+                "height": 38,
+                "fontSize": 32,
+                "fontFamily": "Geist",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "color": [255, 255, 255, 255],
+            },
+        ),
+    )
+    result = extract_takumi(slide)
+    assert len(result.slide.shapes) == 3
+    picture = result.slide.shapes[1].fill
+    assert isinstance(picture, PictureFill)
+    assert picture.data == png
+    assert picture.ext == "png"
+    assert all(item.representation is Representation.NATIVE for item in result.coverage)
+    assert not result.warnings
+
+
+def test_image_step_with_bad_data_fails_closed() -> None:
+    slide = TakumiRenderedSlide(
+        png=b"image",
+        width=1280,
+        height=720,
+        steps=(
+            {
+                "type": "image",
+                "bounds": {"x": 0, "y": 0, "width": 10, "height": 10},
+                "ext": "png",
+                "data": "!!!not-base64!!!",
+            },
+        ),
+    )
+    result = extract_takumi(slide)
+    assert len(result.slide.shapes) == 1
+    assert result.coverage[0].representation is Representation.RASTERIZED
+
+
 def test_unsupported_effect_never_crops_a_composited_region() -> None:
     """The already extracted native fill must not be doubled below a raster crop."""
     slide = TakumiRenderedSlide(

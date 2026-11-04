@@ -78,6 +78,20 @@ try {
       if (drawable.type === "fill" && drawable.role === "background" &&
           drawable.shape?.type === "rect" && colorOf(drawable.paint)) {
         steps.push({ type: "fill", bounds: node.bounds, color: colorOf(drawable.paint) });
+      } else if (drawable.type === "image" && drawable.image?.src) {
+        const rect = drawable.rect;
+        steps.push({
+          type: "image",
+          bounds: {
+            x: node.bounds.x + rect.x, y: node.bounds.y + rect.y,
+            width: rect.width, height: rect.height
+          },
+          src: drawable.image.src
+        });
+      } else if (drawable.type === "fill" && drawable.role === "background" &&
+                 drawable.paint?.type === "image" && drawable.paint.image?.src &&
+                 drawable.shape?.type === "rect") {
+        steps.push({ type: "image", bounds: node.bounds, src: drawable.paint.image.src });
       } else if (drawable.type === "glyphs" && drawable.role === "text" &&
                  node.type === "text" && colorOf(drawable.paint) && drawable.run) {
         const run = drawable.run;
@@ -100,6 +114,39 @@ try {
           reason: (drawable.role || "paint") + ": " + drawable.type
         });
       }
+    }
+  }
+  // Resolve image steps to bytes (see the in-page bridge for the contract).
+  const IMAGE_EXTS = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/bmp": "bmp", "image/x-ms-bmp": "bmp" };
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (step.type !== "image") continue;
+    const fail = (reason) => { steps[i] = { type: "unsupported", reason }; };
+    const src = step.src;
+    delete step.src;
+    if (src.startsWith("data:")) {
+      const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(src);
+      const ext = match ? IMAGE_EXTS[(match[1] || "").toLowerCase()] : undefined;
+      if (!match || !ext) { fail("image: unsupported data URI"); continue; }
+      step.ext = ext;
+      step.data = match[2].replace(/\s+/g, "");
+    } else if (/^https?:\/\//i.test(src)) {
+      try {
+        const response = await fetch(src);
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.length === 0 || bytes.length > 16 * 1024 * 1024) {
+          throw new Error("image size out of range");
+        }
+        const ext = IMAGE_EXTS[(response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase()];
+        if (!ext) throw new Error("unsupported content type");
+        step.ext = ext;
+        step.data = Buffer.from(bytes).toString("base64");
+      } catch {
+        fail("image: could not fetch " + (() => { try { return new URL(src).host; } catch { return "external image"; } })());
+      }
+    } else {
+      fail("image: unsupported source");
     }
   }
   stage = "raster";

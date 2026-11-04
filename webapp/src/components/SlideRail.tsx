@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePreview } from "@/lib/usePreview";
+import { PreviewSurface } from "./PreviewSurface";
 import type { Deck } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +38,7 @@ function Thumb({ deck, index, selected }: { deck: Deck; index: number; selected:
   const preview = usePreview(slide.html, {
     width: deck.width, height: deck.height, css: deck.css,
     priority: selected ? 5 : 1, enabled: seen, sessionKey: deck.id,
+    targetWidth: 384,
   });
   return (
     <div
@@ -44,8 +46,8 @@ function Thumb({ deck, index, selected }: { deck: Deck; index: number; selected:
       className="relative w-full overflow-hidden rounded-[4px] bg-white"
       style={{ aspectRatio: `${deck.width} / ${deck.height}` }}
     >
-      {preview.url ? (
-        <img src={preview.url} alt={`Slide ${index + 1}`} className="h-full w-full object-cover" draggable={false} />
+      {preview.bitmap || preview.url ? (
+        <PreviewSurface bitmap={preview.bitmap} url={preview.url} alt={`Slide ${index + 1}`} className="h-full w-full object-cover" />
       ) : (
         <Skeleton className="h-full w-full rounded-none" />
       )}

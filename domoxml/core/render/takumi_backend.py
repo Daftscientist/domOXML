@@ -277,6 +277,25 @@ def extract_takumi(slide: TakumiRenderedSlide) -> ExtractResult:
                         ),
                     )
                 )
+            elif kind == "image":
+                # The bridge resolves the image source to bytes (data: URIs
+                # inline; http(s) fetched host-side). The picture becomes a
+                # native PowerPoint picture at its painted box, like the
+                # Chromium path's <img> handling.
+                ext = str(step.get("ext", "")).lower().lstrip(".")
+                if ext == "jpeg":
+                    ext = "jpg"
+                if ext not in {"png", "jpg", "gif", "bmp"}:
+                    raise ValueError(f"unsupported image extension: {ext or 'none'}")
+                data = base64.b64decode(str(step["data"]), validate=True)
+                if not data:
+                    raise ValueError("empty image data")
+                contents.append(
+                    ShapeNode(
+                        box=_box(step["bounds"]),
+                        fill=PictureFill(data=data, ext=ext, raster_role="takumi-image"),
+                    )
+                )
             else:
                 reason = str(step.get("reason", kind or "unrecognized operation"))
                 break

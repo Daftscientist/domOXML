@@ -567,7 +567,23 @@ class _Canvas:
             return self._wrap()
         low, high = self._extent(groups)
         percent = any(g.grouping == "percentStacked" for g in groups)
-        ticks = _nice_ticks(low, high)
+        # Excel leaves 5% above the tallest value and spaces its gridlines about 27 px apart (a
+        # horizontal value axis runs along the width and needs room for its labels: about 70 px).
+        if horizontal:
+            room, spacing = (
+                self.plot_layout[2] * self.w if self.plot_layout is not None else pw,
+                70.0,
+            )
+        else:
+            x_title = self.axis_titles.get("x", "")
+            room, spacing = (
+                self.plot_layout[3] * self.h
+                if self.plot_layout is not None
+                else max(10.0, ph - (24 + (16 if x_title else 0))),
+                27.0,
+            )
+        padded = high if percent or high <= 0 else high + 0.05 * (high - low)
+        ticks = _nice_ticks(low, padded, max(4, min(10, int(room / spacing))))
         low, high = ticks[0], ticks[-1]
         code = "0%" if percent else axis_format
         gutter = (

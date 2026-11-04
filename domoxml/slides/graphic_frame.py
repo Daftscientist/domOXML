@@ -196,7 +196,9 @@ def parse_table(
         column_index = 0
         for cell in row.findall("a:tc", _NS):
             column = column_index
-            column_index += max(1, _int_attr(cell, "gridSpan", 1))
+            # A cell merged into the one to its left sits in a slot that cell's span already counts.
+            if cell.get("hMerge") != "1":
+                column_index += max(1, _int_attr(cell, "gridSpan", 1))
             if cell.get("hMerge") == "1" or cell.get("vMerge") == "1":
                 continue
             resolved = (

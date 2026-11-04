@@ -97,3 +97,58 @@ def test_banding_alternates_body_rows_and_the_last_row_region_needs_its_flag() -
     assert total_off is not None and total_off.bold is False
     assert total_on is not None and total_on.bold and total_on.fill is not None
     assert total_on.fill.hex == "000000"
+
+
+def test_a_regions_own_boundary_line_applies_wherever_the_region_sits() -> None:
+    header = _cell(_DARK1_NEUTRAL, 0)  # Dark Style 1 draws a white line under the header
+    total = _cell(_DARK1_NEUTRAL, 4, flags={**_FLAGS, "lastRow": True})
+
+    assert header is not None and header.borders is not None and header.borders.bottom is not None
+    assert header.borders.bottom.color.hex == "FFFFFF"
+    assert total is not None and total.borders is not None and total.borders.top is not None
+    assert total.borders.top.color.hex == "FFFFFF"
+
+
+def test_a_cell_merged_into_its_neighbour_does_not_shift_the_columns_after_it() -> None:
+    import io
+    import zipfile
+
+    from domoxml.core.ir.model import (
+        Box,
+        SlideIR,
+        SolidFill,
+        TableCell,
+        TableNode,
+        TableRow,
+    )
+    from domoxml.slides.pptx import build_pptx
+    from domoxml.slides.read import read_pptx_result
+
+    px = 9525
+    table = TableNode(
+        box=Box(x=0, y=0, width=400 * px, height=100 * px),
+        col_widths_emu=(100 * px,) * 4,
+        rows=(
+            TableRow(height_emu=50 * px, cells=(TableCell(col_span=2), TableCell(), TableCell())),
+            TableRow(height_emu=50 * px, cells=(TableCell(),) * 4),
+        ),
+        style_id=_MEDIUM2_NEUTRAL,
+        last_col=True,
+    )
+    source = build_pptx([SlideIR(width=1280 * px, height=720 * px, contents=(table,))], faces=[])
+    # The writer says "no fill" for a cell without one, which would hide the style: drop it.
+    patched = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(source)) as zin, zipfile.ZipFile(patched, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "ppt/slides/slide1.xml":
+                data = data.replace(b"<a:noFill/>", b"")
+            zout.writestr(item, data)
+
+    [back] = read_pptx_result(patched.getvalue()).slides[0].contents
+
+    assert isinstance(back, TableNode)
+    last = back.rows[0].cells[-1]
+    assert (
+        isinstance(last.fill, SolidFill) and last.fill.color.hex == "000000"
+    )  # last-column region

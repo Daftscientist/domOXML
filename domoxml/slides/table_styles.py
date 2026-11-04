@@ -456,6 +456,16 @@ def resolve_cell_style(
     bottom = edges.get("bottom") if row == rows - 1 else edges.get("inside_h")
     left = edges.get("left") if column == 0 else edges.get("inside_v")
     right = edges.get("right") if column == columns - 1 else edges.get("inside_v")
+    # A header's bottom line, a total row's top line and a first or last column's inner line
+    # belong to the region itself, wherever it sits in the table.
+    if first_row and style.first_row.bottom is not None:
+        bottom = style.first_row.bottom
+    if last_row and style.last_row.top is not None:
+        top = style.last_row.top
+    if first_col and style.first_col.right is not None:
+        right = style.first_col.right
+    if last_col and style.last_col.left is not None:
+        left = style.last_col.left
 
     def line(ref: str | None) -> Line | None:
         colour = _colour(ref, colors) if ref else None

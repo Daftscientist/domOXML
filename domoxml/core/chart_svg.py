@@ -490,13 +490,12 @@ class _Canvas:
         self.plot_layout: tuple[float, float, float, float] | None = None
         self.grid = True
         self.tick_px = 11.0
-        self.line_swatches: set[str] = set()
         self.axis_titles: dict[str, str] = {}
         self.parts: list[str] = []
 
     # frame -------------------------------------------------------------------------------
 
-    def _frame(self, names: list[tuple[str, str]]) -> tuple[float, float, float, float]:
+    def _frame(self, names: list[tuple[str, str, bool]]) -> tuple[float, float, float, float]:
         """Draw title and legend; return the plot rectangle ``(x, y, w, h)`` that is left."""
         left, top, right, bottom = 12.0, 10.0, self.w - 12.0, self.h - 10.0
         if self.title and self.title_layout is not None:
@@ -519,17 +518,22 @@ class _Canvas:
         return left, top, max(10.0, right - left), max(10.0, bottom - top)
 
     def _legend(
-        self, names: list[tuple[str, str]], top: float, right: float, bottom: float, left: float
+        self,
+        names: list[tuple[str, str, bool]],
+        top: float,
+        right: float,
+        bottom: float,
+        left: float,
     ) -> tuple[float, float, float, float]:
         position = self.legend_pos or "r"
         size = 12
-        entry_widths = [min(200.0, 30 + len(label) * 6.8) for label, _ in names]
+        entry_widths = [min(200.0, 30 + len(label) * 6.8) for label, _, _ in names]
         if position in ("r", "l"):
             width = max(entry_widths) + 8
             x = right - width if position == "r" else left
             y = top + 8
-            for (label, color), _w in zip(names, entry_widths, strict=True):
-                self._swatch(x, y, label, color, size)
+            for (label, color, line), _w in zip(names, entry_widths, strict=True):
+                self._swatch(x, y, label, color, size, line)
                 y += 20
             if position == "r":
                 right -= width + 8
@@ -539,8 +543,8 @@ class _Canvas:
             total = sum(entry_widths)
             x = max(left, (left + right - total) / 2)
             y = bottom - 16 if position == "b" else top + 4
-            for (label, color), width in zip(names, entry_widths, strict=True):
-                self._swatch(x, y, label, color, size)
+            for (label, color, line), width in zip(names, entry_widths, strict=True):
+                self._swatch(x, y, label, color, size, line)
                 x += width
             if position == "b":
                 bottom -= 26
@@ -548,20 +552,22 @@ class _Canvas:
                 top += 26
         return top, right, bottom, left
 
-    def _placed_legend(self, names: list[tuple[str, str]]) -> None:
+    def _placed_legend(self, names: list[tuple[str, str, bool]]) -> None:
         """A legend row where the author put it (``c:legend`` manual layout)."""
         assert self.legend_layout is not None
         x, y = self.legend_layout[0] * self.w, self.legend_layout[1] * self.h
         size = round(self.legend_px)
-        for label, color in names:
-            self._swatch(x, y, label, color, size)
+        for label, color, line in names:
+            self._swatch(x, y, label, color, size, line)
             if self.legend_pos in ("r", "l"):
                 y += self.legend_px * 1.6  # a side legend stacks its entries
             else:
                 x += min(200.0, 24 + len(label) * self.legend_px * 0.58)
 
-    def _swatch(self, x: float, y: float, label: str, color: str, size: int) -> None:
-        if color in self.line_swatches:
+    def _swatch(
+        self, x: float, y: float, label: str, color: str, size: int, line: bool = False
+    ) -> None:
+        if line:
             # A line series is keyed by a short line with its marker, as PowerPoint draws it.
             mark = (
                 f'<line x1="{x - 2:.1f}" y1="{y + 5:.1f}" x2="{x + 12:.1f}" y2="{y + 5:.1f}" '
@@ -585,10 +591,7 @@ class _Canvas:
     # cartesian ---------------------------------------------------------------------------
 
     def cartesian(self, groups: list[Group], axis_format: str, value_axis_hidden: bool) -> str:
-        names = [(s.name, s.color) for g in groups for s in g.series]
-        self.line_swatches = {
-            s.color for g in groups if g.kind == "line" for s in g.series if s.line
-        }
+        names = [(s.name, s.color, g.kind == "line" and s.line) for g in groups for s in g.series]
         horizontal = groups[0].horizontal and groups[0].kind == "bar"
         x0, y0, pw, ph = self._frame(names)
         categories: list[str] = []
@@ -765,16 +768,18 @@ class _Canvas:
                         f'height="{max(0.0, y2 - y1):.1f}" fill="#{color}"/>'
                     )
                     if series.show_values:
-                        inside = series.label_pos in ("inEnd", "ctr", "inBase") and amount >= 0
                         height = max(0.0, y2 - y1)
-                        at = y1 - 4
-                        if inside:
-                            size = series.label_px
-                            at = {
-                                "inEnd": y1 + size + 3,
-                                "ctr": y1 + height / 2 + size * 0.35,
-                                "inBase": y2 - 4,
-                            }[series.label_pos]
+                        size = series.label_px
+                        negative = amount < 0
+                        # Positions run from the bar's far end ("end") back to the zero line
+                        # ("base"); a negative bar hangs down, so its ends swap.
+                        end_y, base_y = (y2, y1) if negative else (y1, y2)
+                        step = -1 if negative else 1
+                        at = {
+                            "inEnd": end_y + step * (size + 3) if not negative else end_y - 4,
+                            "ctr": y1 + height / 2 + size * 0.35,
+                            "inBase": base_y - 4 if not negative else base_y + size + 3,
+                        }.get(series.label_pos, end_y + (size + 3 if negative else -4))
                         self._label(x + bar_w / 2, at, amount, series.format_code, percent, series)
             return
         for series in group.series:
@@ -991,7 +996,7 @@ class _Canvas:
     # scatter -----------------------------------------------------------------------------
 
     def scatter(self, group: Group, axis_format: str) -> str:
-        names = [(s.name, s.color) for s in group.series]
+        names = [(s.name, s.color, False) for s in group.series]
         x0, y0, pw, ph = self._frame(names)
         xs = [x for s in group.series for x in (s.xs or [])]
         ys = [v for s in group.series for v in s.values if v is not None]
@@ -1060,6 +1065,7 @@ class _Canvas:
             (
                 first.categories[i] if i < len(first.categories) else str(i + 1),
                 first.point_colors.get(i, self.accents[i % len(self.accents)]),
+                False,
             )
             for i in range(len(first.values))
         ]
@@ -1099,7 +1105,7 @@ class _Canvas:
             angle += sweep
 
     def radar(self, group: Group) -> str:
-        names = [(s.name, s.color) for s in group.series]
+        names = [(s.name, s.color, False) for s in group.series]
         x0, y0, pw, ph = self._frame(names)
         count = max((len(s.values) for s in group.series), default=0)
         peak = max((v for s in group.series for v in s.values if v is not None), default=1.0)

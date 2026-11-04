@@ -1,0 +1,44 @@
+name: Retrieve authentic PowerPoint UI reference
+
+on:
+  push:
+    branches:
+      - test/inti-six-slide-main-fidelity-20261103
+    paths:
+      - '.github/workflows/real-powerpoint-reference.yml'
+
+jobs:
+  download-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download October 2026 original Microsoft 365 PowerPoint screenshot
+        run: |
+          mkdir -p reference
+          curl --fail --location --retry 3 -o reference/powerpoint-2026.png \
+            'https://raw.githubusercontent.com/ChristopherVR/ooxml/main/viewers/pptx/docs/public/assets/ribbon-parity/home/powerpoint.png'
+          file reference/powerpoint-2026.png
+      - name: Download Microsoft Windows PowerPoint reference (optional)
+        continue-on-error: true
+        run: |
+          curl --fail --location --retry 2 -o reference/microsoft-windows-powerpoint.webp \
+            'https://cdn-dynmedia-1.microsoft.com/is/image/microsoftcorp/MSFT-Windows-apps-panel-4-tabbed-feature-image-3?wid=2200'
+          file reference/microsoft-windows-powerpoint.webp
+      - name: Inspect dimensions
+        run: |
+          python - <<'PY'
+          import struct
+          from pathlib import Path
+          for f in Path('reference').iterdir():
+              data = f.read_bytes()
+              if data[:8] == b'\\x89PNG\\r\\n\\x1a\\n':
+                  width,height=struct.unpack('>II',data[16:24])
+                  print(f.name, width,height)
+              else:
+                  print(f.name, 'bytes', len(data))
+          PY
+      - name: Upload real reference images
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-powerpoint-windows-2026
+          path: reference/
+          retention-days: 5

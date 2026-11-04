@@ -720,3 +720,10 @@ def test_a_serif_or_mono_font_falls_back_to_its_own_kind_when_missing() -> None:
     assert _css_font_family("Roboto") == "Roboto,sans-serif"
     assert _css_font_family("Open Sans") == "Open Sans,sans-serif"
     assert _css_font_family("Noto Sans Serif Display") == "Noto Sans Serif Display,sans-serif"
+
+
+def test_only_the_word_serif_marks_a_serif_family() -> None:
+    from domoxml.core.html import _css_font_family  # pyright: ignore[reportPrivateUsage]
+
+    assert _css_font_family("Libre Serifa") == "Libre Serifa,sans-serif"
+    assert _css_font_family("Noto Serif Display") == "Noto Serif Display,serif"

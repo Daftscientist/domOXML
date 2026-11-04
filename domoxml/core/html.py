@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import math
+import re
 from collections.abc import Mapping
 from contextvars import ContextVar
 from html import escape
@@ -881,7 +882,7 @@ def _css_font_family(family: str) -> str:
     lowered = family.lower()
     generic = (
         "serif"
-        if lowered in _SERIF_FONTS or (" serif" in lowered and "sans" not in lowered)
+        if lowered in _SERIF_FONTS or (re.search(r"\bserif\b", lowered) and "sans" not in lowered)
         else "monospace"
         if lowered in _MONO_FONTS or lowered.endswith((" mono", " code", " typewriter"))
         else "sans-serif"

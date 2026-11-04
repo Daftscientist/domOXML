@@ -4164,6 +4164,8 @@ async def test_a_blended_box_on_a_plain_page_blends_with_the_page_colour(
         ("isolation:isolate", (120, 128, 100)),
         ("position:absolute;z-index:1", (120, 128, 100)),
         ("will-change:transform", (120, 128, 100)),
+        ("scale:1", (120, 128, 100)),
+        ("rotate:0deg", (120, 128, 100)),
     ],
 )
 async def test_a_blend_inside_an_isolated_group_ignores_the_page_behind_it(

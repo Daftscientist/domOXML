@@ -42,6 +42,10 @@ _XLSX_CT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _CHART_CT = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
 _PALETTE = ("4472C4", "ED7D31", "A5A5A5", "FFC000", "5B9BD5", "70AD47")
 _TYPES = ("bar", "column", "line", "pie")
+# Bounds well inside a worksheet's limits, so a spec can never make an unwritable workbook.
+_MAX_CATEGORIES = 1000
+_MAX_SERIES = 50
+_MAX_LABEL = 255
 
 
 @dataclass(frozen=True)
@@ -81,6 +85,12 @@ def parse_chart_spec(raw: str) -> ChartSpec | None:
         or not series
     ):
         return None
+    if (
+        len(cast("list[object]", categories)) > _MAX_CATEGORIES
+        or len(cast("list[object]", series)) > _MAX_SERIES
+        or any(len(str(c)) > _MAX_LABEL for c in cast("list[object]", categories))
+    ):
+        return None
     parsed: list[SeriesSpec] = []
     for item in cast("list[object]", series):
         if not isinstance(item, dict):
@@ -103,6 +113,8 @@ def parse_chart_spec(raw: str) -> ChartSpec | None:
                 return None
             numbers.append(number)
         name = fields.get("name")
+        if name is not None and len(str(name)) > _MAX_LABEL:
+            return None
         colour = fields.get("color")
         parsed.append(
             SeriesSpec(
@@ -241,7 +253,10 @@ def workbook_bytes(spec: ChartSpec) -> bytes:
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
         for name, data in parts.items():
-            archive.writestr(name, data)
+            # A fixed timestamp, so identical specs give identical bytes (and identical names).
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, data)
     return out.getvalue()
 
 

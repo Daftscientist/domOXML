@@ -116,3 +116,17 @@ def test_the_chart_ships_an_embedded_workbook_its_series_refer_to() -> None:
         sheet = fromstring(workbook.read("xl/worksheets/sheet1.xml"))
     cells = {c.get("r"): "".join(c.itertext()) for c in sheet.iter() if c.tag.endswith("}c")}
     assert cells["B1"] == "2025" and cells["A3"] == "Q2" and cells["C4"] == "18.0"
+
+
+def test_identical_specs_give_identical_workbook_bytes() -> None:
+    import time
+
+    from domoxml.core.chart_author import workbook_bytes
+
+    spec = parse_chart_spec(json.dumps(_COLUMN))
+    assert spec is not None
+
+    first = workbook_bytes(spec)
+    time.sleep(2.1)
+
+    assert workbook_bytes(spec) == first

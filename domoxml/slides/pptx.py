@@ -431,7 +431,9 @@ def _slide(
     for position, node in enumerate(slide.contents):
         if not isinstance(node, MediaNode):
             continue
-        if node.kind == "model" and node.media_data is not None:
+        if node.kind == "model":
+            if node.media_data is None:
+                raise ValueError("a 3-D model node needs its GLB bytes (media_data)")
             snapshot = node.poster_fill or default_poster(
                 "model", emu_to_px(node.box.width), emu_to_px(node.box.height)
             )
@@ -551,6 +553,9 @@ def _slide(
             preserved_parts[part.name] = part
 
     for web_rid, extension, relationship_type in web_parts:
+        existing_part = preserved_parts.get(extension.name)
+        if existing_part is not None and existing_part != extension:
+            raise ValueError(f"conflicting preserved OPC part: {extension.name}")
         preserved_parts[extension.name] = extension
         preserved_rels.append(
             (
@@ -904,13 +909,35 @@ _MODEL_LIGHTS = (
 )
 
 
+def _saved_view(xml: str | None) -> str | None:
+    """The saved camera/transform/lights if every element is a model view part, else ``None``."""
+    if not xml:
+        return None
+    wrapper = (
+        f'<v xmlns:am3d="{_MODEL_NS}" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+        f">{xml}</v>"
+    )
+    try:
+        root = ElementTree.fromstring(wrapper)
+    except ElementTree.ParseError:
+        return None
+    allowed = {"camera", "trans", "ambientLight", "ptLight", "dirLight", "spotLight"}
+    names = [child.tag for child in root]
+    if not names or any(
+        not name.startswith(f"{{{_MODEL_NS}}}") or name.rpartition("}")[2] not in allowed
+        for name in names
+    ):
+        return None
+    return xml
+
+
 def _model_xml(
     node: MediaNode, shape_id: int, fallback_id: int, model_rid: str, image_rid: str
 ) -> str:
     """A 3-D model frame: the model part, with its poster as the picture older readers draw."""
     width, height = node.box.width, node.box.height
     # What PowerPoint saved (camera, transform, lights) wins over the neutral defaults.
-    view = node.play_settings_xml or _MODEL_VIEW + _MODEL_LIGHTS
+    view = _saved_view(node.play_settings_xml) or _MODEL_VIEW + _MODEL_LIGHTS
     transform = (
         f'<p:xfrm><a:off x="{node.box.x}" y="{node.box.y}"/><a:ext cx="{width}" cy="{height}"/>'
         "</p:xfrm>"

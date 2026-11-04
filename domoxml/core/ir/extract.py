@@ -162,6 +162,7 @@ from domoxml.core.media import (
     MEDIA_CONTENT_TYPES,
     MEDIA_TYPES,
     default_poster,
+    is_glb,
     online_video_url,
     web_page_url,
 )
@@ -1967,8 +1968,10 @@ def _model_node(
     data = decode_data_uri(source)
     if mime not in ("model/gltf-binary", "model/gltf.binary") or data is None:
         return None
-    if data[:4] != b"glTF":
+    if not is_glb(data):
         return None
+    if node.styles.get("transform", "none") not in ("", "none"):
+        return None  # the model frame carries no turn: the raster keeps the look
     poster_source = node.styles.get("domoxmlPoster", "").strip()
     image = _resolve_image_bytes(poster_source, rendered) if poster_source else None
     poster = (
@@ -2937,7 +2940,12 @@ def extract_slide(rendered: RenderedSlide) -> ExtractResult:
                 continue
 
         if node.tag in ("video", "audio", "iframe", "model-viewer"):
-            media = _media_node(node, rendered)
+            # A model frame has no alpha: a translucent viewer keeps its raster.
+            media = (
+                None
+                if node.tag == "model-viewer" and effective_opacity(node) < 1
+                else _media_node(node, rendered)
+            )
             if media is not None:
                 contents.append(identities.apply(media, node))
                 consumed |= _subtree(node.index, children)

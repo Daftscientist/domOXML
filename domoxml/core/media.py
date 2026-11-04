@@ -45,6 +45,16 @@ _ONLINE_VIDEO = re.compile(
 )
 
 
+def is_glb(data: bytes) -> bool:
+    """Whether ``data`` is a binary glTF 2 container whose header length matches its size."""
+    return (
+        len(data) >= 20
+        and data[:4] == b"glTF"
+        and int.from_bytes(data[4:8], "little") == 2
+        and int.from_bytes(data[8:12], "little") == len(data)
+    )
+
+
 def online_video_url(source: str) -> str | None:
     """``source`` if it is a YouTube or Vimeo embed player URL, else ``None``."""
     return source if _ONLINE_VIDEO.match(source.strip()) else None

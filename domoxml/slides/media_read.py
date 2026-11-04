@@ -9,6 +9,7 @@ from xml.etree import ElementTree
 from xml.etree.ElementTree import Element
 
 from domoxml.core.ir.model import Box, MediaNode, PictureFill
+from domoxml.core.media import is_glb
 from domoxml.core.opc import OpcPackage
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -191,13 +192,16 @@ def read_model_frame(
         data = package.read(package.related_part(slide_part, model.get(_EMBED, "")))
     except (KeyError, ValueError):
         return None
-    if data[:4] != b"glTF":
+    if not is_glb(data):
         return None
     poster: PictureFill | None = None
-    blip = model.find("am3d:raster/am3d:blip", _MODEL_NAMES)
-    if blip is None:  # no render saved with the model: the fallback picture is its poster
-        blip = alternate.find("mc:Fallback/p:pic/p:blipFill/a:blip", _MODEL_NAMES)
-    if blip is not None:
+    # The render saved with the model, else the picture older readers draw in its place.
+    for blip in (
+        model.find("am3d:raster/am3d:blip", _MODEL_NAMES),
+        alternate.find("mc:Fallback/p:pic/p:blipFill/a:blip", _MODEL_NAMES),
+    ):
+        if blip is None or poster is not None:
+            continue
         try:
             image_part = package.related_part(slide_part, blip.get(_EMBED, ""))
             suffix = PurePosixPath(image_part).suffix.lower().lstrip(".")
@@ -205,7 +209,7 @@ def read_model_frame(
             if ext == "png" or ext == "jpeg" or ext == "gif":
                 poster = PictureFill(data=package.read(image_part), ext=ext)
         except (KeyError, ValueError):
-            poster = None
+            continue
     ElementTree.register_namespace("am3d", _MODEL_NS)
     ElementTree.register_namespace("a", _A)
     view = "".join(

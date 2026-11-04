@@ -1896,6 +1896,8 @@ def _media_html(
             poster = _asset(node.poster_fill)
             assets.setdefault(poster.path, poster)
             poster_attr = f' poster="{escape(poster.path, quote=True)}"'
+            # An undefined element ignores ``poster``: paint it so the page shows the model's look.
+            pos += f";background:url({poster.path}) center/cover no-repeat"
         return (
             f"<model-viewer camera-controls{_identity_attrs(node)} "
             f'style="{escape(pos, quote=True)}" '

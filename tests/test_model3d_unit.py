@@ -96,3 +96,63 @@ def test_a_saved_camera_survives_a_round_trip() -> None:
 
     assert isinstance(read, MediaNode) and read.play_settings_xml is not None
     assert 'z="3"' in read.play_settings_xml
+
+
+def test_a_truncated_or_wrong_version_glb_is_not_a_model() -> None:
+    from domoxml.core.media import is_glb
+
+    assert is_glb(_glb()) and not is_glb(_glb()[:-4])
+    assert not is_glb(b"glTF" + struct.pack("<II", 1, 20) + bytes(8))
+
+
+def test_a_model_node_without_its_glb_is_rejected_and_foreign_view_xml_is_ignored() -> None:
+    from domoxml.core.ir.model import Box, SlideIR
+
+    box = Box(x=0, y=0, width=3_000_000, height=2_000_000)
+
+    with pytest.raises(ValueError, match="GLB"):
+        build_pptx(
+            [
+                SlideIR(
+                    width=12_192_000,
+                    height=6_858_000,
+                    contents=(MediaNode(box=box, kind="model"),),
+                )
+            ],
+            faces=[],
+        )
+    node = MediaNode(
+        box=box, kind="model", media_data=_glb(), media_ext="glb", play_settings_xml="<evil/>"
+    )
+    deck = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(node,))], faces=[])
+    with zipfile.ZipFile(io.BytesIO(deck)) as package:
+        assert "<evil" not in package.read("ppt/slides/slide1.xml").decode()
+
+
+@pytest.mark.integration
+async def test_a_translucent_or_turned_model_viewer_keeps_its_raster() -> None:
+    source = "data:model/gltf-binary;base64," + base64.b64encode(_glb()).decode()
+    base = f'<model-viewer src="{source}" style="position:absolute;left:60px;top:40px;'
+    for extra in ("opacity:0.5", "transform:rotate(10deg)"):
+        result = await _slide(
+            f'{base}width:500px;height:320px;display:block;{extra}"></model-viewer>'
+        )
+        assert not any(isinstance(n, MediaNode) for n in result.slide.contents)
+
+
+def test_the_exported_viewer_paints_its_poster_without_a_registered_element() -> None:
+    from domoxml.core.ir.model import Box, SlideIR
+    from domoxml.core.media import default_poster
+
+    node = MediaNode(
+        box=Box(x=0, y=0, width=3_000_000, height=2_000_000),
+        kind="model",
+        media_data=_glb(),
+        media_ext="glb",
+        poster_fill=default_poster("model", 320, 200),
+    )
+    deck = build_pptx([SlideIR(width=12_192_000, height=6_858_000, contents=(node,))], faces=[])
+
+    html = pptx_to_html(deck).slides[0].html
+
+    assert "<model-viewer" in html and "background:url(assets/" in html

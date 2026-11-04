@@ -1,2 +1,4 @@
 node_modules/
+dist/
+shots/
 public/py/*.zip

@@ -1,0 +1,13 @@
+{
+  "bundle": "domoxml-bundle-58934094.zip",
+  "sha256": "589340948848e9b44a9bbf4dee6c6b2ba5ef0eada39d98943af5ba6b65a5d78d",
+  "files": 99,
+  "bytes": 393199,
+  "pyodide": "0.29.3",
+  "packages_eager": [
+    "pydantic",
+    "lxml",
+    "pillow",
+    "fonttools"
+  ]
+}

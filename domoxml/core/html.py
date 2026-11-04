@@ -26,6 +26,7 @@ from domoxml.core.ir.geometry_payload import encode_custom_geometry
 from domoxml.core.ir.group import group_html_roundtrip_error
 from domoxml.core.ir.group_payload import encode_group_payload
 from domoxml.core.ir.model import (
+    SINGLE_LINE_EM,
     Animation,
     ArcTo,
     AutoNumberBullet,
@@ -957,7 +958,7 @@ def _para_spacing_style(paragraph: TextParagraph, *, include_indentation: bool =
     if paragraph.line_spacing is not None:
         ls = paragraph.line_spacing
         if ls.percent is not None:
-            styles.append(f"line-height:{_number(ls.percent)}")
+            styles.append(f"line-height:{_number(ls.percent * SINGLE_LINE_EM)}")
         elif ls.points is not None:
             styles.append(f"line-height:{_number(ls.points)}pt")
     if paragraph.space_before_pt:

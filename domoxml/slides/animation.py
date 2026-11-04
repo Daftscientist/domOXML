@@ -73,10 +73,6 @@ def read_animations(timing: Element, node_ids: dict[str, str]) -> tuple[Animatio
                         duration_ms=duration,
                     )
                 )
-    # The IR and its HTML carry one effect per shape: an entrance and an exit on the same shape
-    # would lose one, so such timing stays preserved source.
-    if len({animation.target for animation in found}) != len(found):
-        return None
     return tuple(found) if found else None
 
 

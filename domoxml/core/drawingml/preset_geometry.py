@@ -282,10 +282,11 @@ def _arc_end(current: Point, radius_x: float, radius_y: float, start: float, swe
     )
 
 
-def outline_leaves_box(geometry: CustomGeometry) -> bool:
-    """Whether the outline leaves its own box (a callout's tail, a cloud's lowest bubble).
+def outline_bounds(geometry: CustomGeometry) -> tuple[float, float, float, float] | None:
+    """``(left, top, right, bottom)`` of the drawn outline in path units, or ``None`` if empty.
 
-    A picture only paints inside its element's box, so a clip cannot reveal it out there.
+    The curve, not its control points, is what is drawn, so curves are sampled. A callout's tail
+    or a cloud's lowest bubble puts the right or bottom edge past the shape's own box.
     """
     xs: list[float] = []
     ys: list[float] = []
@@ -344,8 +345,17 @@ def outline_leaves_box(geometry: CustomGeometry) -> bool:
                 ys.append(current[1])
         else:
             current = start
+    return (min(xs), min(ys), max(xs), max(ys)) if xs else None
+
+
+def outline_leaves_box(geometry: CustomGeometry) -> bool:
+    """Whether the outline leaves its own box (a callout's tail, a cloud's lowest bubble)."""
+    bounds = outline_bounds(geometry)
+    if bounds is None:
+        return False
+    xs, ys = (bounds[0], bounds[2]), (bounds[1], bounds[3])
     slack = 0.003  # sampling noise on curves that only touch the box
-    return bool(xs) and (
+    return (
         min(xs) < -slack * geometry.width_emu
         or max(xs) > (1 + slack) * geometry.width_emu
         or min(ys) < -slack * geometry.height_emu

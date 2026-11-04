@@ -10,7 +10,7 @@ from contextvars import ContextVar
 from html import escape
 from urllib.parse import urlsplit
 
-from domoxml.core.drawingml.preset_geometry import outline_leaves_box
+from domoxml.core.drawingml.preset_geometry import outline_bounds, outline_leaves_box
 from domoxml.core.drawingml.presets import preset_defaults, preset_vertices
 from domoxml.core.fillcrop import srcrect_to_background
 from domoxml.core.fontsread import ReverseFontFace, font_asset_name, font_face_css
@@ -48,6 +48,7 @@ from domoxml.core.ir.model import (
     MediaNode,
     MoveTo,
     Node,
+    PathCommand,
     PatternFill,
     PictureFill,
     Point,
@@ -1389,9 +1390,9 @@ def _picture_outline_layers(
     ):
         return None
     picture = node.model_copy(update={"line": None, "text": None})
-    if not _fill_survives_as_polygon_clip(picture) or outline_leaves_box(node.custom_geom):
+    if not _fill_survives_as_polygon_clip(picture):
         return None
-    parts = [_node_html(picture, assets, warnings)]
+    parts = [_node_html(_stretched_over_outline(picture), assets, warnings)]
     if node.line is not None:
         outline = node.model_copy(
             update={
@@ -1407,6 +1408,59 @@ def _picture_outline_layers(
     if node.text is not None:
         parts.append(_text_layer_html(node, warnings))
     return "".join(parts)
+
+
+def _stretched_over_outline(node: ShapeNode) -> ShapeNode:
+    """``node`` boxed to its outline's own bounds, so a picture reaches a callout's tail.
+
+    PowerPoint stretches a picture over everything the outline draws, not just the shape's box.
+    The geometry is re-based on the larger box so the clip stays where it was.
+    """
+    geometry = node.custom_geom
+    bounds = outline_bounds(geometry) if geometry is not None else None
+    if geometry is None or bounds is None or not outline_leaves_box(geometry):
+        return node
+    left, top, right, bottom = bounds
+    scale_x = node.box.width / geometry.width_emu
+    scale_y = node.box.height / geometry.height_emu
+
+    def shift(point: Point) -> Point:
+        return Point(x=round(point.x - left), y=round(point.y - top))
+
+    path: list[PathCommand] = []
+    for command in geometry.path:
+        if isinstance(command, MoveTo | LineTo):
+            path.append(command.model_copy(update={"to": shift(command.to)}))
+        elif isinstance(command, CubicTo):
+            path.append(
+                command.model_copy(
+                    update={
+                        "c1": shift(command.c1),
+                        "c2": shift(command.c2),
+                        "to": shift(command.to),
+                    }
+                )
+            )
+        elif isinstance(command, QuadTo):
+            path.append(
+                command.model_copy(update={"c1": shift(command.c1), "to": shift(command.to)})
+            )
+        else:
+            path.append(command)
+    width, height = max(1, round(right - left)), max(1, round(bottom - top))
+    return node.model_copy(
+        update={
+            "box": Box(
+                x=round(node.box.x + left * scale_x),
+                y=round(node.box.y + top * scale_y),
+                width=max(1, round(width * scale_x)),
+                height=max(1, round(height * scale_y)),
+            ),
+            "custom_geom": geometry.model_copy(
+                update={"width_emu": width, "height_emu": height, "path": tuple(path)}
+            ),
+        }
+    )
 
 
 def _outlined_polygon_preset(node: ShapeNode) -> ShapeNode:

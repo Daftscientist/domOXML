@@ -17,7 +17,7 @@ from defusedxml import ElementTree
 from PIL import Image, ImageChops
 
 from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
-from domoxml.core.drawingml.preset_geometry import outline_leaves_box, preset_geometry
+from domoxml.core.drawingml.preset_geometry import preset_geometry
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
 from domoxml.core.ir.effect_payload import EffectPayload, decode_effect_payload
@@ -745,8 +745,6 @@ def _preset_outline(
     outline, complete = preset_geometry(
         geometry.get("prst", "rect"), box.width, box.height, adjusts
     )
-    if outline is not None and picture_beside_paint and outline_leaves_box(outline):
-        return None, False
     return outline, complete
 
 

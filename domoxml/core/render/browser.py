@@ -623,21 +623,27 @@ _SNAPSHOT_JS = """
     if (tag === 'select' && (el.multiple || el.size > 1)) styles.domoxmlSelectList = 'true';
     if (tag === 'iframe' && el.hasAttribute('srcdoc')) styles.domoxmlSrcdoc = 'true';
     let turned = false;
-    for (let up = el; up && up !== document.body; up = up.parentElement) {
+    for (let up = el; up; up = up.parentElement) {
       const t = getComputedStyle(up);
       if ((t.transform && t.transform !== 'none') || (t.rotate && t.rotate !== 'none')
           || (t.scale && t.scale !== 'none')) turned = true;
     }
-    if ((computed.backgroundClip || '').includes('text') && el.firstChild && !turned) {
-      // Where the text sits inside the box its gradient is laid over: PowerPoint spans a text
-      // gradient over the text itself, CSS over the whole box.
+    const onlyText = [...el.childNodes].every((n) => n.nodeType === 3);
+    if ((computed.backgroundClip || '').includes('text') && el.firstChild && !turned
+        && onlyText) {
+      // Where the text sits inside the box its gradient is laid over (the padding box): PowerPoint
+      // spans a text gradient over the text itself, CSS over the whole box. The last number is how
+      // many lines the text takes.
       const range = document.createRange();
       range.selectNodeContents(el);
       const text = range.getBoundingClientRect();
       const box = el.getBoundingClientRect();
-      if (text.width > 0 && box.width > 0) {
-        styles.domoxmlTextRect = [text.left - box.left, text.top - box.top, text.width,
-          text.height, box.width, box.height].map((v) => v.toFixed(2)).join(',');
+      const lines = new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+      if (text.width > 0 && el.clientWidth > 0) {
+        styles.domoxmlTextRect = [
+          text.left - (box.left + el.clientLeft), text.top - (box.top + el.clientTop),
+          text.width, text.height, el.clientWidth, el.clientHeight, lines,
+        ].map((v) => v.toFixed(2)).join(',');
       }
     }
     if (tag === 'model-viewer' && el.getAttribute('poster')) {

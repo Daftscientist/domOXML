@@ -287,9 +287,11 @@ def _over_the_text(
     ) not in ("0% 0%", "0px 0px"):
         return gradient  # the gradient is not laid over the whole box to begin with
     try:
-        left, top, width, height, box_w, box_h = (float(v) for v in rect.split(","))
+        left, top, width, height, box_w, box_h, lines = (float(v) for v in rect.split(","))
     except ValueError:
         return gradient
+    if lines != 1:
+        return gradient  # wrapped text: each line would need its own span
     angle = gradient.angle_deg % 360
     if height > 1.8 * font_px:
         return gradient  # several lines: each would need its own span

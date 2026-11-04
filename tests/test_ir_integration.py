@@ -4243,3 +4243,33 @@ async def test_a_turned_or_sized_gradient_text_keeps_the_boxs_gradient(extra: st
         if r.gradient is not None
     ]
     assert not runs or (runs[0].gradient is not None and runs[0].gradient.stops[-1].color.b > 200)
+
+
+@pytest.mark.parametrize(
+    "markup",
+    [
+        # Two wrapped lines with a tight line-height measure under 1.8 font sizes.
+        "<div style='width:260px;line-height:0.8;font:900 40px Arial;{clip}'>AB CD EF GH</div>",
+        # A child element means the element's text rectangle is not any one run's.
+        "<div style='width:900px;font:900 40px Arial;{clip}'>"
+        "AB<span style='{clip}'>CD</span></div>",
+    ],
+)
+async def test_gradient_text_that_wraps_or_nests_keeps_the_boxs_gradient(markup: str) -> None:
+    clip = (
+        "background:linear-gradient(90deg,#ff0000,#0000ff);-webkit-background-clip:text;"
+        "background-clip:text;color:transparent"
+    )
+    result = await _render_and_extract_result(
+        "<div style='position:absolute;left:40px;top:40px'>" + markup.format(clip=clip) + "</div>"
+    )
+
+    gradients = [
+        r.gradient
+        for shape in result.slide.shapes
+        if shape.text is not None
+        for paragraph in shape.text.paragraphs
+        for r in paragraph.runs
+        if r.gradient is not None
+    ]
+    assert gradients and all(g.stops[-1].color.b > 200 for g in gradients)

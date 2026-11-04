@@ -396,7 +396,8 @@ def _custgeom_xml(cg: CustomGeometry) -> str:
 def _geometry_xml(node: ShapeNode) -> str:
     if node.custom_geom is not None:
         return _custgeom_xml(node.custom_geom)
-    if node.geom == "roundRect" and node.corner_radius_emu > 0:
+    if node.geom == "roundRect":
+        # An explicit zero too: without a guide PowerPoint draws its default rounded corners.
         shorter = max(1, min(node.box.width, node.box.height))
         adj = min(50000, round(node.corner_radius_emu / shorter * 100000))
         return (

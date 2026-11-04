@@ -129,3 +129,21 @@ def test_a_bordered_shapes_html_padding_leaves_the_border_out() -> None:
     assert (
         "border:24px solid" in html and "padding:6px 6px 6px 6px" in html
     )  # 30 from the edge less the 24 px border
+
+
+def test_a_corner_radius_the_inset_uses_up_is_written_as_an_explicit_zero() -> None:
+    shape = _shape(geom="roundRect", corner_radius_emu=4 * _PX)  # less than half the 24 px stroke
+
+    with zipfile.ZipFile(io.BytesIO(_deck(shape))) as package:
+        xml = package.read("ppt/slides/slide1.xml").decode()
+
+    assert 'prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 0"/>' in xml
+
+
+@pytest.mark.parametrize("height", [26, 40, 60, 72, 90])
+def test_shapes_thicker_than_their_stroke_round_trip_to_their_own_box(height: int) -> None:
+    shape = _shape(box=Box(x=100 * _PX, y=60 * _PX, width=500 * _PX, height=height * _PX))
+
+    [back] = read_pptx_result(_deck(shape)).slides[0].contents
+
+    assert isinstance(back, ShapeNode) and back.box == shape.box

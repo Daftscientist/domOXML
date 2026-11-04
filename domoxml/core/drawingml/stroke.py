@@ -11,13 +11,15 @@ from __future__ import annotations
 
 from domoxml.core.ir.model import Box, ShapeNode
 
-# A shape thinner than its stroke has no band to inset: lines and rules keep their box. The two
-# directions test the box on their own side of the inset, so they agree on which shapes move.
-_IR_SPANS = 3
-_FILE_SPANS = 2
 
+def _half(node: ShapeNode, *, writing: bool) -> int:
+    """Half the stroke width when ``node`` is a plain preset shape whose box moves, else 0.
 
-def _half(node: ShapeNode, spans: int) -> int:
+    A shape no thicker than its own stroke has no band to inset, so the writer leaves it alone. A
+    box cannot tell a reader whether it was inset, so the reader moves every box that has room:
+    the two agree for every shape thicker than its stroke, and differ only for the degenerate
+    ones that are all border.
+    """
     line = node.line
     if (
         line is None
@@ -26,7 +28,7 @@ def _half(node: ShapeNode, spans: int) -> int:
         or node.side_lines is not None
     ):
         return 0
-    if min(node.box.width, node.box.height) < spans * line.width_emu:
+    if writing and min(node.box.width, node.box.height) <= line.width_emu:
         return 0
     return line.width_emu // 2
 
@@ -54,23 +56,13 @@ def _grown(node: ShapeNode, delta: int) -> ShapeNode:
     return node.model_copy(update=update)
 
 
-def outer_box(box: Box, line_width_emu: int) -> Box:
-    """The CSS box of a plain preset shape read from a file with this stroke width."""
-    if line_width_emu <= 0 or min(box.width, box.height) < _FILE_SPANS * line_width_emu:
-        return box
-    half = line_width_emu // 2
-    return Box(
-        x=box.x - half, y=box.y - half, width=box.width + 2 * half, height=box.height + 2 * half
-    )
-
-
 def stroke_centred(node: ShapeNode) -> ShapeNode:
     """``node`` as the file needs it: the box inset so the stroke covers the CSS border band."""
-    half = _half(node, _IR_SPANS)
+    half = _half(node, writing=True)
     return _grown(node, -half) if half else node
 
 
 def stroke_outer(node: ShapeNode) -> ShapeNode:
     """A shape read from a file, boxed the CSS way: out to the outer edge of its stroke."""
-    half = _half(node, _FILE_SPANS)
+    half = _half(node, writing=False)
     return _grown(node, half) if half else node

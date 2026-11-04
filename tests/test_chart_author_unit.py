@@ -130,3 +130,24 @@ def test_identical_specs_give_identical_workbook_bytes() -> None:
     time.sleep(2.1)
 
     assert workbook_bytes(spec) == first
+
+
+_ONE_SERIES = '"series":[{"values":[%s]}]'
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"type":"bar","categories":["a"],' + _ONE_SERIES % "1e999" + "}",
+        '{"type":"bar","categories":["a"],' + _ONE_SERIES % ("9" * 400) + "}",
+        '{"type":"bar","categories":["a"],' + _ONE_SERIES % "NaN" + "}",
+        json.dumps({"type": "bar", "categories": ["a"] * 1001, "series": [{"values": [1] * 1001}]}),
+        json.dumps({"type": "bar", "categories": ["a" * 256], "series": [{"values": [1]}]}),
+        json.dumps(
+            {"type": "bar", "categories": ["a"], "series": [{"name": "n" * 256, "values": [1]}]}
+        ),
+        json.dumps({"type": "bar", "categories": ["a"], "series": [{"values": [1]}] * 51}),
+    ],
+)
+def test_overflowing_non_finite_or_oversized_specs_are_not_charts(raw: str) -> None:
+    assert parse_chart_spec(raw) is None

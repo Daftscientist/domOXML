@@ -86,8 +86,12 @@ def _solid_fill(color: Rgba, *, opacity: float = 1.0) -> str:
     return f"<a:solidFill>{_srgb(color, opacity=opacity)}</a:solidFill>"
 
 
-def _gradient_fill(gradient: GradientFill, *, opacity: float, box: Box | None = None) -> str:
-    projected = drawingml_gradient_projection(gradient, box=box)
+def _gradient_fill(
+    gradient: GradientFill, *, opacity: float, box: Box | None = None, subdivide: bool = False
+) -> str:
+    projected = drawingml_gradient_projection(
+        gradient, box=box, subdivide=True if subdivide else None
+    )
     stops = "".join(
         f'<a:gs pos="{round(stop.pos * 100000)}">{_srgb(stop.color, opacity=opacity)}</a:gs>'
         for stop in projected.stops
@@ -207,7 +211,7 @@ def line_xml(line: Line | None) -> str:
     dash = _DASH_TO_OOXML.get(line.dash, "solid")
     join_tag = _JOIN_OOXML_TAG.get(line.join, "<a:round/>")
     fill_xml = (
-        _gradient_fill(line.gradient, opacity=1.0)
+        _gradient_fill(line.gradient, opacity=1.0, subdivide=True)
         if line.gradient is not None
         else _solid_fill(line.color)
     )
@@ -457,7 +461,8 @@ def _run(run: TextRun, hyperlink_rid: HyperlinkRid) -> str:
         else ""
     )
     fill = (
-        _gradient_fill(run.gradient, opacity=1.0)  # each stop already carries its own alpha
+        # Each stop already carries its own alpha.
+        _gradient_fill(run.gradient, opacity=1.0, subdivide=True)
         if run.gradient is not None
         else _solid_fill(run.color)
     )

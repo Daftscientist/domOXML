@@ -54,7 +54,11 @@ def test_gradient_stops_keep_their_own_alpha_instead_of_the_fallback_colours() -
     xml = _run(run, lambda _: None)
 
     pattern = r'<a:gs pos="(\d+)"><a:srgbClr val="\w+">(?:<a:alpha val="(\d+)"/>)?'
-    assert re.findall(pattern, xml) == [("0", "0"), ("100000", "")], "the blue stop stays opaque"
+    stops = re.findall(pattern, xml)
+    # Subdivided like a fill's, each stop keeping its own alpha: transparent to opaque blue.
+    assert stops[0] == ("0", "0") and stops[-1] == ("100000", ""), "the blue stop stays opaque"
+    alphas = [int(alpha or "100000") for _, alpha in stops]
+    assert alphas == sorted(alphas) and len(set(alphas)) > 2
 
 
 def test_an_explicit_run_fill_beats_an_inherited_gradient() -> None:

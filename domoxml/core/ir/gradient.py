@@ -99,9 +99,18 @@ def drawingml_gradient_projection(
     gradient: GradientFill,
     *,
     box: Box | None,
+    subdivide: bool | None = None,
 ) -> GradientFill:
-    """Return the gradient a DrawingML write/read cycle exposes to the IR reader."""
-    source_stops = _subdivide_srgb_stops(gradient) if box is not None else gradient.stops
+    """Return the gradient a DrawingML write/read cycle exposes to the IR reader.
+
+    Stops are subdivided when there is a box to paint (a fill) or when asked to: a line or a run
+    of text has no box but PowerPoint draws its gradient the same way (measured).
+    """
+    source_stops = (
+        _subdivide_srgb_stops(gradient)
+        if (box is not None if subdivide is None else subdivide)
+        else gradient.stops
+    )
     stops = tuple(
         stop.model_copy(
             update={

@@ -12,7 +12,15 @@ import sys
 if "/bundle" not in sys.path:
     sys.path.insert(0, "/bundle")
 
-from domoxml.web import aconvert, apreview, aread_deck, environment  # noqa: E402
+from domoxml.web import (  # noqa: E402
+    aconvert,
+    aconvert_captured,
+    apreview,
+    aread_deck,
+    capture_pages,
+    capture_plan,
+    environment,
+)
 
 
 async def convert(payload_json: str) -> str:
@@ -49,8 +57,50 @@ async def preview_b64(payload_json: str) -> str:
     return base64.b64encode(await preview(payload_json)).decode("ascii")
 
 
+def capture_pages_fn(payload_json: str) -> str:
+    """{fragments, width, height, css?} -> {pages, snapshot_js, resources_js, recorder_js}"""
+    payload = json.loads(payload_json)
+    return json.dumps(
+        capture_pages(
+            payload["fragments"],
+            width=int(payload["width"]),
+            height=int(payload["height"]),
+            css=payload.get("css"),
+        )
+    )
+
+
+def capture_plan_fn(payload_json: str) -> str:
+    """{raw, width, height} -> {isolated, backdrops} raster planning."""
+    payload = json.loads(payload_json)
+    return json.dumps(
+        capture_plan(
+            payload["raw"],
+            width=int(payload["width"]),
+            height=int(payload["height"]),
+        )
+    )
+
+
+async def convert_captured(payload_json: str) -> str:
+    """{fragments, captures, width, height, css?, transitions?} -> convert result."""
+    payload = json.loads(payload_json)
+    result = await aconvert_captured(
+        payload["fragments"],
+        payload["captures"],
+        width=int(payload["width"]),
+        height=int(payload["height"]),
+        css=payload.get("css"),
+        transitions=payload.get("transitions"),
+    )
+    return json.dumps(result)
+
+
 domoxml_api = {
     "convert": convert,
+    "convert_captured": convert_captured,
+    "capture_pages": capture_pages_fn,
+    "capture_plan": capture_plan_fn,
     "read_deck": read_deck,
     "preview": preview,
     "preview_b64": preview_b64,

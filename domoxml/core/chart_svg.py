@@ -74,6 +74,9 @@ class Series:
     line: bool = True
     marker: bool = False
     show_values: bool = False
+    label_pos: str = ""
+    label_color: str = ""
+    label_bold: bool = False
     label_px: float = 10.0
     format_code: str = "General"
     point_colors: dict[int, str] = field(default_factory=dict[int, str])
@@ -218,6 +221,9 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 marker=marker_symbol not in ("none",)
                 and (kind == "scatter" or marker_symbol != "" or (kind == "line" and False)),
                 show_values=show,
+                label_pos=_val(labels.find("c:dLblPos", _NS), "") if labels is not None else "",
+                label_color=_label_style(labels, palette)[0],
+                label_bold=_label_style(labels, palette)[1],
                 label_px=_font_px(labels.find("c:txPr", _NS) if labels is not None else None, 10.0),
                 format_code=(fmt.text or "General") if fmt is not None else "General",
                 point_colors={
@@ -303,6 +309,23 @@ def _transformed(base: str, element: Element) -> str:
         int(base[0:2], 16), int(base[2:4], 16), int(base[4:6], 16), 1.0, element
     )
     return f"{red:02X}{green:02X}{blue:02X}"
+
+
+def _label_style(labels: Element | None, palette: Mapping[str, str]) -> tuple[str, bool]:
+    """The ``(colour, bold)`` of a series' data labels, from their own ``txPr``."""
+    properties = labels.find("c:txPr//a:defRPr", _NS) if labels is not None else None
+    if properties is None:
+        return "", False
+    colour = ""
+    fill = properties.find("a:solidFill", _NS)
+    if fill is not None:
+        rgb = fill.find("a:srgbClr", _NS)
+        scheme = fill.find("a:schemeClr", _NS)
+        if rgb is not None and _hex(rgb.get("val")):
+            colour = _transformed(rgb.get("val", ""), rgb)
+        elif scheme is not None and _hex(palette.get(scheme.get("val", ""))):
+            colour = _transformed(palette[scheme.get("val", "")], scheme)
+    return colour, properties.get("b") == "1"
 
 
 def _series_color(ser: Element, palette: Mapping[str, str]) -> str | None:
@@ -467,6 +490,7 @@ class _Canvas:
         self.plot_layout: tuple[float, float, float, float] | None = None
         self.grid = True
         self.tick_px = 11.0
+        self.line_swatches: set[str] = set()
         self.axis_titles: dict[str, str] = {}
         self.parts: list[str] = []
 
@@ -537,8 +561,17 @@ class _Canvas:
                 x += min(200.0, 24 + len(label) * self.legend_px * 0.58)
 
     def _swatch(self, x: float, y: float, label: str, color: str, size: int) -> None:
+        if color in self.line_swatches:
+            # A line series is keyed by a short line with its marker, as PowerPoint draws it.
+            mark = (
+                f'<line x1="{x - 2:.1f}" y1="{y + 5:.1f}" x2="{x + 12:.1f}" y2="{y + 5:.1f}" '
+                f'stroke="#{color}" stroke-width="2"/>'
+                f'<circle cx="{x + 5:.1f}" cy="{y + 5:.1f}" r="2.6" fill="#{color}"/>'
+            )
+        else:
+            mark = f'<rect x="{x:.1f}" y="{y:.1f}" width="10" height="10" fill="#{color}"/>'
         self.parts.append(
-            f'<rect x="{x:.1f}" y="{y:.1f}" width="10" height="10" fill="#{color}"/>'
+            f"{mark}"
             f'<text x="{x + 15:.1f}" y="{y + 9.5:.1f}" font-size="{size}" fill="{_TEXT}">'
             f"{escape(label)}</text>"
         )
@@ -553,6 +586,9 @@ class _Canvas:
 
     def cartesian(self, groups: list[Group], axis_format: str, value_axis_hidden: bool) -> str:
         names = [(s.name, s.color) for g in groups for s in g.series]
+        self.line_swatches = {
+            s.color for g in groups if g.kind == "line" for s in g.series if s.line
+        }
         horizontal = groups[0].horizontal and groups[0].kind == "bar"
         x0, y0, pw, ph = self._frame(names)
         categories: list[str] = []
@@ -729,9 +765,17 @@ class _Canvas:
                         f'height="{max(0.0, y2 - y1):.1f}" fill="#{color}"/>'
                     )
                     if series.show_values:
-                        self._label(
-                            x + bar_w / 2, y1 - 4, amount, series.format_code, percent, series
-                        )
+                        inside = series.label_pos in ("inEnd", "ctr", "inBase") and amount >= 0
+                        height = max(0.0, y2 - y1)
+                        at = y1 - 4
+                        if inside:
+                            size = series.label_px
+                            at = {
+                                "inEnd": y1 + size + 3,
+                                "ctr": y1 + height / 2 + size * 0.35,
+                                "inBase": y2 - 4,
+                            }[series.label_pos]
+                        self._label(x + bar_w / 2, at, amount, series.format_code, percent, series)
             return
         for series in group.series:
             points = [
@@ -757,7 +801,13 @@ class _Canvas:
             if series.show_values:
                 for i, (x, y) in enumerate(points):
                     self._label(
-                        x, y - 8, _at(series.values, i) or 0.0, series.format_code, False, series
+                        x,
+                        y,
+                        _at(series.values, i) or 0.0,
+                        series.format_code,
+                        False,
+                        series,
+                        line_point=True,
                     )
 
     def _stock(
@@ -830,13 +880,36 @@ class _Canvas:
         )
 
     def _label(
-        self, x: float, y: float, value: float, code: str, percent: bool, series: Series
+        self,
+        x: float,
+        y: float,
+        value: float,
+        code: str,
+        percent: bool,
+        series: Series,
+        *,
+        line_point: bool = False,
     ) -> None:
         text = format_number(value, "0%" if percent else code)
+        anchor = "middle"
+        if line_point:
+            # ``y`` is the data point; the label sits where ``dLblPos`` says (above by default).
+            size = series.label_px
+            if series.label_pos == "b":
+                y += size + 4
+            elif series.label_pos == "r":
+                x, y, anchor = x + 8, y + size * 0.35, "start"
+            elif series.label_pos == "l":
+                x, y, anchor = x - 8, y + size * 0.35, "end"
+            elif series.label_pos == "ctr":
+                y += size * 0.35
+            else:
+                y -= 8
+        fill = f"#{series.label_color}" if series.label_color else _TEXT
+        weight = ' font-weight="700"' if series.label_bold else ""
         self.parts.append(
-            f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="middle" font-size="{series.label_px:.1f}" '
-            f'fill="{_TEXT}">'
-            f"{escape(text)}</text>"
+            f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="{anchor}" '
+            f'font-size="{series.label_px:.1f}" fill="{fill}"{weight}>{escape(text)}</text>'
         )
 
     def _axis_titles(

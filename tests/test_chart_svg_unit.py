@@ -346,3 +346,15 @@ def test_tick_and_data_label_sizes_come_from_their_own_text_properties() -> None
 
     assert 'font-size="11.0"' in svg  # 8.25 pt ticks, not the 30 pt axis title's size
     assert 'font-size="40.0"' in svg and 'font-size="11.0" ' in svg  # per series, not the first
+
+
+def test_an_automatic_value_axis_leaves_five_percent_above_the_tallest_value() -> None:
+    svg = _svg(
+        '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+        + _series(0, [1.6, 2.2, 3.5, 5.8, 8])
+        + "</c:barChart>"
+    )
+
+    # 8 plus 5% is 8.4, so the axis runs 0 to 9 in unit steps (as Excel and PowerPoint draw it).
+    assert ">9</text>" in svg and ">0</text>" in svg and ">8</text>" in svg
+    assert ">10</text>" not in svg

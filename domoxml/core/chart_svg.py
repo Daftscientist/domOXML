@@ -567,7 +567,10 @@ class _Canvas:
             return self._wrap()
         low, high = self._extent(groups)
         percent = any(g.grouping == "percentStacked" for g in groups)
-        ticks = _nice_ticks(low, high)
+        # Excel leaves 5% above the tallest value and spaces its gridlines about 27 px apart.
+        room = self.plot_layout[3] * self.h if self.plot_layout is not None else ph
+        padded = high if percent or high <= 0 else high + 0.05 * (high - low)
+        ticks = _nice_ticks(low, padded, max(4, min(10, int(room / 27))))
         low, high = ticks[0], ticks[-1]
         code = "0%" if percent else axis_format
         gutter = (

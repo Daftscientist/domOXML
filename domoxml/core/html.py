@@ -118,21 +118,23 @@ def _px(value: int) -> str:
     return f"{rendered}px"
 
 
-# The slide being serialized: its entrance effects by the node they play on, so the element that
-# carries the node's identity also carries its animation.
-_ANIMATIONS: ContextVar[Mapping[str, Animation] | None] = ContextVar("_ANIMATIONS", default=None)
+# The slide being serialized: its effects by the node they play on, so the element that carries
+# the node's identity also carries its animations (several are space-separated, in play order).
+_ANIMATIONS: ContextVar[Mapping[str, tuple[Animation, ...]] | None] = ContextVar(
+    "_ANIMATIONS", default=None
+)
 
 
 def _animation_attrs(node: CanvasNode) -> list[tuple[str, str]]:
     plan = _ANIMATIONS.get()
-    animation = plan.get(node.node_id) if plan is not None and node.node_id is not None else None
-    if animation is None:
+    animations = plan.get(node.node_id) if plan is not None and node.node_id is not None else None
+    if not animations:
         return []
     return [
-        ("data-animate", animation.effect),
-        ("data-animate-step", str(animation.step)),
-        ("data-animate-delay", str(animation.delay_ms)),
-        ("data-animate-duration", str(animation.duration_ms)),
+        ("data-animate", " ".join(a.effect for a in animations)),
+        ("data-animate-step", " ".join(str(a.step) for a in animations)),
+        ("data-animate-delay", " ".join(str(a.delay_ms) for a in animations)),
+        ("data-animate-duration", " ".join(str(a.duration_ms) for a in animations)),
     ]
 
 
@@ -2069,10 +2071,11 @@ def serialize_canvas(
     html_slides: list[HtmlSlide] = []
     emitted_warnings: list[ConversionWarning] = list(warnings)
     for slide in slides:
-        # An animation on a node serialises with that node; the first of several wins.
-        by_node: dict[str, Animation] = {}
+        # The animations on a node serialise with that node.
+        grouped: dict[str, list[Animation]] = {}
         for animation in slide.animations:
-            by_node.setdefault(animation.target, animation)
+            grouped.setdefault(animation.target, []).append(animation)
+        by_node = {target: tuple(found) for target, found in grouped.items()}
         token = _ANIMATIONS.set(by_node)
         try:
             shapes = "".join(_node_html(node, assets, emitted_warnings) for node in slide.contents)

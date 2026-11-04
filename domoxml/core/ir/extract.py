@@ -843,28 +843,33 @@ def _animations(
     """Entrance and exit effects declared with ``data-animate`` on elements that became nodes."""
     found: list[Animation] = []
     for node in rendered.nodes:
-        effect = node.styles.get("domoxmlAnimate")
-        if effect not in ("appear", "fade", "disappear", "fade-out"):
+        effects = node.styles.get("domoxmlAnimate", "").split()
+        if not effects:
             continue
         target = identities.base_id(node)
         if target not in present:
             continue
 
-        def number(key: str, default: int, node: RenderedNode = node) -> int:
+        # Several effects on one element are space-separated lists, one value per effect.
+        def number(key: str, index: int, default: int, node: RenderedNode = node) -> int:
+            values = node.styles.get(key, "").split()
             try:
-                return int(float(node.styles.get(key, default)))
+                return int(float(values[index])) if index < len(values) else default
             except ValueError:
                 return default
 
-        found.append(
-            Animation(
-                target=target,
-                effect=effect,  # type: ignore[arg-type]
-                step=max(0, number("domoxmlAnimateStep", 0)),
-                delay_ms=max(0, number("domoxmlAnimateDelay", 0)),
-                duration_ms=max(1, number("domoxmlAnimateDuration", 500)),
+        for index, effect in enumerate(effects):
+            if effect not in ("appear", "fade", "disappear", "fade-out"):
+                continue
+            found.append(
+                Animation(
+                    target=target,
+                    effect=effect,  # type: ignore[arg-type]
+                    step=max(0, number("domoxmlAnimateStep", index, 0)),
+                    delay_ms=max(0, number("domoxmlAnimateDelay", index, 0)),
+                    duration_ms=max(1, number("domoxmlAnimateDuration", index, 500)),
+                )
             )
-        )
     return tuple(found)
 
 

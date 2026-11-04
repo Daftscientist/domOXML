@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import re
 import zipfile
 
 from PIL import Image
@@ -116,3 +117,36 @@ def test_a_shape_filled_with_a_tiny_picture_keeps_hard_edges_too() -> None:
     deck = build_pptx([SlideIR(width=1280 * _PX, height=720 * _PX, contents=(shape,))], faces=[])
 
     assert "image-rendering:pixelated" in pptx_to_html(deck).slides[0].html
+
+
+def test_a_cropped_cell_picture_shows_its_cropped_window() -> None:
+    from domoxml.core.ir.model import SrcRect
+
+    picture = _png(300, 200).model_copy(
+        update={"crop": SrcRect(left=0.25, right=0.25, top=0.0, bottom=0.0)}
+    )
+
+    html = _cell_html(picture)
+
+    assert "background-size:200%" in html and "background-position" in html
+
+
+def test_vertical_text_in_a_merged_cell_is_held_to_the_height_of_the_rows_it_spans() -> None:
+    from domoxml.core.ir.model import TextBody, TextParagraph, TextRun
+
+    run = TextRun(text="Vertical text", font_family="Arial", size_pt=12.0)
+    body = TextBody(paragraphs=(TextParagraph(runs=(run,)),), vertical="vert")
+    table = TableNode(
+        box=Box(x=0, y=0, width=300 * _PX, height=150 * _PX),
+        col_widths_emu=(100 * _PX, 200 * _PX),
+        rows=(
+            TableRow(height_emu=50 * _PX, cells=(TableCell(text=body, row_span=2), TableCell())),
+            TableRow(height_emu=100 * _PX, cells=(TableCell(),)),
+        ),
+    )
+    deck = build_pptx([SlideIR(width=1280 * _PX, height=720 * _PX, contents=(table,))], faces=[])
+
+    html = pptx_to_html(deck).slides[0].html
+
+    # 50 + 100 px less the cell's own padding, not the first row alone.
+    assert re.search(r"height:14\d(\.\d+)?px;overflow:hidden", html)

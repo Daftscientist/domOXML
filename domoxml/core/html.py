@@ -1292,7 +1292,7 @@ def _enlarged_a_lot(fill: PictureFill, width_emu: int, height_emu: int) -> bool:
     try:
         with Image.open(BytesIO(fill.data)) as image:
             pixels_w, pixels_h = image.size
-    except OSError:
+    except (OSError, Image.DecompressionBombError):
         return False
     if pixels_w < 1 or pixels_h < 1:
         return False
@@ -1380,6 +1380,11 @@ def _table_html(
             if col_cursor >= n_cols:
                 break
 
+            # The height the cell spans: its own row and those it merges into.
+            spanned_height = sum(
+                spanned.height_emu for spanned in node.rows[row_idx : row_idx + cell.row_span]
+            )
+
             # Build cell style.
             cell_styles: list[str] = []
             fill_css = _fill_css(cell.fill)
@@ -1388,12 +1393,19 @@ def _table_html(
             elif isinstance(cell.fill, PictureFill):
                 picture = _asset(cell.fill)
                 assets.setdefault(picture.path, picture)
-                cell_styles.append(
-                    f"background-image:url(../{picture.path});background-size:100% 100%;"
-                    "background-repeat:no-repeat"
-                )
+                cell_styles.append(f"background-image:url(../{picture.path})")
+                if cell.fill.crop is not None:
+                    crop = cell.fill.crop
+                    size, position = srcrect_to_background(
+                        (crop.left, crop.top, crop.right, crop.bottom)
+                    )
+                    cell_styles.append(f"background-size:{size}")
+                    cell_styles.append(f"background-position:{position}")
+                else:
+                    cell_styles.append("background-size:100% 100%")
+                cell_styles.append("background-repeat:no-repeat")
                 width = sum(node.col_widths_emu[col_cursor : col_cursor + max(1, cell.col_span)])
-                if _enlarged_a_lot(cell.fill, width, row.height_emu * max(1, cell.row_span)):
+                if _enlarged_a_lot(cell.fill, width, spanned_height):
                     cell_styles.append("image-rendering:pixelated")
             # Padding from margins (order: top, right, bottom, left in IR tuple is (L,T,R,B)).
             mar_l, mar_t, mar_r, mar_b = cell.margins
@@ -1425,10 +1437,10 @@ def _table_html(
 
             # Cell content.
             inner = _text_html(cell.text, warnings)
-            if cell.text is not None and cell.text.vertical != "horz" and cell.row_span == 1:
-                # Vertical text wraps within the row's height, as PowerPoint draws it, instead of
-                # stretching the row to fit its whole length.
-                room = max(0, row.height_emu - mar_t - mar_b)
+            room = spanned_height - mar_t - mar_b
+            if cell.text is not None and cell.text.vertical != "horz" and room > 0:
+                # Vertical text wraps within the cell's height (all the rows it spans), as
+                # PowerPoint draws it, instead of stretching the rows to fit its whole length.
                 inner = f'<div style="height:{_px(room)};overflow:hidden">{inner}</div>'
             cells_html += f'<td style="{td_style}"{span_attrs}>{inner}</td>'
 

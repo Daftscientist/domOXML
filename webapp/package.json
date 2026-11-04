@@ -1,0 +1,1 @@
+{"dependencies":{"pyodide":"0.29.3","takumi-js":"2.19.0","takumi-paint":"0.5.0"},"name":"domoxml-webapp","private":true,"scripts":{"test:node":"node test-node/test.mjs"},"type":"module","version":"0.1.0"}

@@ -10,6 +10,7 @@ from typing import Literal, Self
 from domoxml.core.fonts import resolve_faces
 from domoxml.core.html import serialize_canvas
 from domoxml.core.ir import extract_slide
+from domoxml.core.ir.model import SlideTransition
 from domoxml.core.render import BrowserSession, RenderedSlide, compose_page
 from domoxml.core.render.takumi_backend import TakumiRenderedSlide, TakumiSession, extract_takumi
 from domoxml.core.units import pixels
@@ -47,10 +48,16 @@ class Presentation:
         size: SizeSpec = SlideSize.WIDE_16_9,
         css: str | None = None,
         render_engine: Literal["chromium", "takumi"] = "chromium",
+        transitions: Sequence[SlideTransition | None] | None = None,
     ) -> None:
         if render_engine not in ("chromium", "takumi"):
             raise ValueError(f"unsupported render_engine: {render_engine}")
         self.render_engine = render_engine
+        # Per-slide transitions, aligned with ``slides`` order; ``None`` entries
+        # (or a shorter sequence) leave that slide without a transition. Applied
+        # to the extracted IR before the deck is built, so they round-trip
+        # through PPTX exactly like transitions read from an existing deck.
+        self.transitions: tuple[SlideTransition | None, ...] = tuple(transitions or ())
         self.theme: Theme = theme or Theme()
         self.size: SizeSpec = size
         self.css: str | None = css
@@ -110,6 +117,18 @@ class Presentation:
                 coverage.extend(extracted.coverage)
                 warnings.extend(extracted.warnings)
             slide_irs = [extracted.slide for extracted in extracts]
+            if self.transitions:
+                # ``indices`` renders a subset; transitions stay aligned with the
+                # full deck order, so map through the rendered positions.
+                positions = (
+                    sorted(indices) if indices is not None else list(range(len(self.slides)))
+                )
+                slide_irs = [
+                    ir.model_copy(update={"transition": self.transitions[pos]})
+                    if pos < len(self.transitions) and self.transitions[pos] is not None
+                    else ir
+                    for pos, ir in zip(positions, slide_irs, strict=True)
+                ]
 
             if OutputFormat.HTML in formats:
                 html = serialize_canvas(slide_irs)

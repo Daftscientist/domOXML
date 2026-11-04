@@ -73,6 +73,7 @@ from domoxml.core.ir.lowering import (
     lower_mask,
     mark_leaves,
     recolor_shape,
+    sample_gradient,
 )
 from domoxml.core.ir.model import (
     Animation,
@@ -90,6 +91,7 @@ from domoxml.core.ir.model import (
     Geometry,
     Glow,
     GradientFill,
+    GradientStop,
     GroupNode,
     Hyperlink,
     Line,
@@ -253,6 +255,12 @@ def _text_effects(
     if "text" in (styles.get("backgroundClip") or ""):
         gradient = parse_gradient(styles.get("backgroundImage"))
         if gradient is not None:
+            gradient = _over_the_text(
+                gradient,
+                styles.get("domoxmlTextRect"),
+                parse_length_px(styles.get("fontSize")),
+                styles,
+            )
             first_stop = gradient.stops[0].color
     outline: TextOutline | None = None
     stroke_px = parse_length_px(styles.get("webkitTextStrokeWidth"))
@@ -261,6 +269,52 @@ def _text_effects(
         outline = TextOutline(width_pt=px_to_pt(stroke_px), color=stroke_color)
     shadow = next((s for s in parse_shadows(styles.get("textShadow")) if not s.inset), None)
     return gradient, outline, shadow, first_stop
+
+
+def _over_the_text(
+    gradient: GradientFill, rect: str | None, font_px: float, styles: dict[str, str]
+) -> GradientFill:
+    """The part of a straight gradient that lies under a single line of text.
+
+    CSS lays a ``background-clip:text`` gradient over the element's box; PowerPoint lays a text
+    gradient over the text. For a gradient along an axis the text's share of the box becomes the
+    whole gradient (its ends sampled at the text's edges). Anything else keeps the box's.
+    """
+    if rect is None or gradient.radial:
+        return gradient
+    if styles.get("backgroundSize", "auto") not in ("auto", "auto auto") or styles.get(
+        "backgroundPosition", "0% 0%"
+    ) not in ("0% 0%", "0px 0px"):
+        return gradient  # the gradient is not laid over the whole box to begin with
+    try:
+        left, top, width, height, box_w, box_h, lines = (float(v) for v in rect.split(","))
+    except ValueError:
+        return gradient
+    if lines != 1:
+        return gradient  # wrapped text: each line would need its own span
+    angle = gradient.angle_deg % 360
+    if height > 1.8 * font_px:
+        return gradient  # several lines: each would need its own span
+    if angle in (90.0, 270.0) and box_w > 0 and width < box_w - 0.5:
+        low, high = left / box_w, (left + width) / box_w
+    elif angle in (0.0, 180.0) and box_h > 0 and height < box_h - 0.5:
+        low, high = top / box_h, (top + height) / box_h
+    else:
+        return gradient
+    if angle in (270.0, 0.0):  # the gradient runs against the axis
+        low, high = 1 - high, 1 - low
+    if high - low < 1e-3:
+        return gradient
+    inner = [
+        GradientStop(pos=(stop.pos - low) / (high - low), color=stop.color)
+        for stop in gradient.stops
+        if low + 1e-6 < stop.pos < high - 1e-6
+    ]
+    ends = (
+        GradientStop(pos=0.0, color=sample_gradient(gradient.stops, low)),
+        GradientStop(pos=1.0, color=sample_gradient(gradient.stops, high)),
+    )
+    return gradient.model_copy(update={"stops": (ends[0], *inner, ends[1])})
 
 
 _UNDERLINE_TOKENS: dict[str, str] = {
@@ -486,10 +540,17 @@ def _text_body_from_decoded(node: RenderedNode, encoded: TextBody | None) -> Tex
     if not source:
         return None
     paragraphs: list[list[TextRun]] = [[]]
+    # A gradient run that is all of the element's text knows where that text sits in the box.
+    text_rect = node.styles.get("domoxmlTextRect") if len(source) == 1 else None
     for fragment in source:
         pieces = fragment.text.split("\n")
         for index, piece in enumerate(pieces):
-            run = _text_run(piece, fragment.styles)
+            run_styles = (
+                {**fragment.styles, "domoxmlTextRect": text_rect}
+                if text_rect is not None and len(pieces) == 1
+                else fragment.styles
+            )
+            run = _text_run(piece, run_styles)
             if run is not None:
                 paragraphs[-1].append(run)
             if index < len(pieces) - 1:

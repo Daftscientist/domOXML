@@ -14,6 +14,7 @@ from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 
 from domoxml.core.ir.model import (
+    SINGLE_LINE_EM,
     Blur,
     FillOverlay,
     FillOverlayBlend,
@@ -210,7 +211,7 @@ def parse_line_height(value: str | None) -> LineSpacing | None:
     # Percentage form: "160%"
     pct = _PERCENT_RE.match(v)
     if pct:
-        return LineSpacing(percent=float(pct.group(1)) / 100.0)
+        return LineSpacing(percent=float(pct.group(1)) / 100.0 / SINGLE_LINE_EM)
     # px form: "24px"
     px = _LENGTH_RE.match(v)
     if px:
@@ -220,7 +221,7 @@ def parse_line_height(value: str | None) -> LineSpacing | None:
     try:
         factor = float(v)
         if factor > 0:
-            return LineSpacing(percent=factor)
+            return LineSpacing(percent=factor / SINGLE_LINE_EM)
     except ValueError:
         pass
     return None

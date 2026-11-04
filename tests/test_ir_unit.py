@@ -355,14 +355,14 @@ def test_parse_line_height_normal_returns_none() -> None:
 def test_parse_line_height_unitless_factor() -> None:
     ls = parse_line_height("1.6")
     assert ls is not None
-    assert ls.percent == 1.6
+    assert ls.percent is not None and abs(ls.percent - 1.6 / 1.2) < 1e-9  # em over 1.2 em single
     assert ls.points is None
 
 
 def test_parse_line_height_percent() -> None:
     ls = parse_line_height("150%")
     assert ls is not None
-    assert ls.percent == 1.5
+    assert ls.percent is not None and abs(ls.percent - 1.5 / 1.2) < 1e-9
 
 
 def test_parse_line_height_px() -> None:
@@ -523,7 +523,7 @@ def test_extract_paragraph_spacing() -> None:
 
 
 def test_extract_line_height_unitless() -> None:
-    """line-height:1.6 (non-normal) → LineSpacing(percent=1.6)."""
+    """line-height:1.6 (non-normal) → LineSpacing(percent=1.6 / 1.2)."""
     node = RenderedNode(
         tag="p",
         x=0,
@@ -542,4 +542,5 @@ def test_extract_line_height_unitless() -> None:
     assert ir.shapes[0].text is not None
     ls = ir.shapes[0].text.paragraphs[0].line_spacing
     assert ls is not None
-    assert isinstance(ls, LineSpacing) and ls.percent == 1.6
+    assert isinstance(ls, LineSpacing) and ls.percent is not None
+    assert abs(ls.percent - 1.6 / 1.2) < 1e-9

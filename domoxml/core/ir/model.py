@@ -442,6 +442,12 @@ class TextRun(BaseModel):
     shadow: Shadow | None = None
 
 
+# PowerPoint's single line spacing is about 1.2 times the font size for any font (measured in real
+# PowerPoint: Arial at 100% / 114% / 150% gives 1.195 / 1.376 / 1.795, Calibri 1.2), so a
+# percentage there is that fraction of 1.2 em; a CSS ``line-height`` number is plain em.
+SINGLE_LINE_EM = 1.2
+
+
 class LineSpacing(BaseModel):
     """Paragraph line spacing (``a:lnSpc``). Exactly one variant is set: ``percent`` (a multiple,
     ``1.0`` = single) maps ``a:spcPct``; ``points`` maps ``a:spcPts`` (a fixed leading)."""

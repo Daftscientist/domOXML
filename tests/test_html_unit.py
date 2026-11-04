@@ -661,15 +661,15 @@ def test_html_plain_para_closes_open_lists() -> None:
 
 
 def test_html_line_spacing_emits_line_height() -> None:
-    """line_spacing(percent=1.6) → line-height:1.6 in div/li style."""
+    """line_spacing(percent=1.5) → line-height:1.8 (PowerPoint's single line is 1.2 em)."""
     slide = _list_slide(
         TextParagraph(
             runs=(_run("x"),),
-            line_spacing=LineSpacing(percent=1.6),
+            line_spacing=LineSpacing(percent=1.5),
         )
     )
     html = serialize_canvas([slide]).slides[0].html
-    assert "line-height:1.6" in html
+    assert "line-height:1.8" in html
 
 
 def test_html_space_before_after_emits_margins() -> None:
@@ -694,3 +694,17 @@ def test_every_font_family_names_the_generic_family_a_browser_falls_back_to() ->
     assert _css_font_family("Consolas") == "Consolas,monospace"
     assert _css_font_family("Courier New") == "Courier New,monospace"
     assert _css_font_family("sans-serif") == "sans-serif"
+
+
+def test_a_css_line_height_number_is_an_em_multiple_so_powerpoint_percent_is_a_fraction_of_it() -> (
+    None
+):
+    from domoxml.core.ir.parse import parse_line_height
+
+    unitless = parse_line_height("1.5")
+    percent = parse_line_height("150%")
+
+    assert unitless is not None and unitless.percent is not None
+    assert percent is not None and percent.percent is not None
+    assert abs(unitless.percent - 1.25) < 1e-9  # 1.5 em over PowerPoint's 1.2 em single
+    assert abs(percent.percent - 1.25) < 1e-9

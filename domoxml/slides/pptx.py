@@ -426,9 +426,32 @@ def _slide(
             f'Target="../notesSlides/notesSlide{slide_number}.xml"/>'
         )
     web_frames: dict[int, str] = {}
-    web_parts: list[tuple[str, PreservationPart]] = []
+    web_parts: list[tuple[str, PreservationPart, str]] = []
+    model_frames: dict[int, tuple[str, str]] = {}
     for position, node in enumerate(slide.contents):
         if not isinstance(node, MediaNode):
+            continue
+        if node.kind == "model":
+            if node.media_data is None:
+                raise ValueError("a 3-D model node needs its GLB bytes (media_data)")
+            snapshot = node.poster_fill or default_poster(
+                "model", emu_to_px(node.box.width), emu_to_px(node.box.height)
+            )
+            image_rid = register_media(snapshot.data, snapshot.ext)
+            model_rid = f"rId{next_rid}"
+            next_rid += 1
+            web_parts.append(
+                (
+                    model_rid,
+                    PreservationPart(
+                        name=f"ppt/slides/udata/model{slide_number}_{position}.glb",
+                        content_type=_MODEL_CT,
+                        data=node.media_data,
+                    ),
+                    _MODEL_REL,
+                )
+            )
+            model_frames[position] = (model_rid, image_rid)
             continue
         if node.kind == "web" and node.media_url is not None:
             snapshot = node.poster_fill or default_poster(
@@ -442,7 +465,7 @@ def _slide(
                 next_rid,
             )
             next_rid += 1
-            web_parts.append((rid, extension))
+            web_parts.append((rid, extension, _WEB_REL))
             web_frames[position] = rid
             continue
         poster = node.poster_fill or default_poster(
@@ -529,10 +552,16 @@ def _slide(
                 raise ValueError(f"conflicting preserved OPC part: {part.name}")
             preserved_parts[part.name] = part
 
-    for web_rid, extension in web_parts:
+    for web_rid, extension, relationship_type in web_parts:
+        existing_part = preserved_parts.get(extension.name)
+        if existing_part is not None and existing_part != extension:
+            raise ValueError(f"conflicting preserved OPC part: {extension.name}")
         preserved_parts[extension.name] = extension
         preserved_rels.append(
-            (web_rid, PreservationRelationship(id=web_rid, type=_WEB_REL, target=extension.name))
+            (
+                web_rid,
+                PreservationRelationship(id=web_rid, type=relationship_type, target=extension.name),
+            )
         )
 
     def _hyperlink_rid(link: Hyperlink) -> str | None:
@@ -745,7 +774,11 @@ def _slide(
         elif isinstance(node, TableNode):
             content_parts.append(table_xml(node, shape_id=shape_id))
         elif isinstance(node, MediaNode):
-            if position in web_frames:
+            if position in model_frames:
+                content_parts.append(
+                    _model_xml(node, shape_id, allocate_shape_id(), *model_frames[position])
+                )
+            elif position in web_frames:
                 content_parts.append(_web_viewer_xml(node, shape_id, web_frames[position]))
             elif position in media_links:
                 content_parts.append(_media_xml(node, shape_id, *media_links[position]))
@@ -851,6 +884,85 @@ def _web_extension(
         ),
     )
     return part, f"rId{rid_number}"
+
+
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+_MODEL_NS = "http://schemas.microsoft.com/office/drawing/2017/model3d"
+_MODEL_REL = "http://schemas.microsoft.com/office/2017/06/relationships/model3d"
+_MODEL_CT = "model/gltf.binary"
+# A camera on the model's +z axis looking at the origin, with a neutral key light: what
+# PowerPoint writes for a freshly inserted model when the source says nothing of its own.
+_MODEL_VIEW = (
+    '<am3d:camera><am3d:pos x="0" y="0" z="81469201"/><am3d:up dx="0" dy="36000000" dz="0"/>'
+    '<am3d:lookAt x="0" y="0" z="0"/><am3d:perspective fov="2700000"/></am3d:camera>'
+    '<am3d:trans><am3d:meterPerModelUnit n="999" d="1000000"/>'
+    '<am3d:preTrans dx="0" dy="0" dz="0"/><am3d:scale><am3d:sx n="1000000" d="1000000"/>'
+    '<am3d:sy n="1000000" d="1000000"/><am3d:sz n="1000000" d="1000000"/></am3d:scale>'
+    '<am3d:rot ax="0" ay="0" az="0"/><am3d:postTrans dx="0" dy="0" dz="0"/></am3d:trans>'
+)
+_MODEL_LIGHTS = (
+    '<am3d:ambientLight><am3d:clr><a:scrgbClr r="50000" g="50000" b="50000"/></am3d:clr>'
+    '<am3d:illuminance n="500000" d="1000000"/></am3d:ambientLight>'
+    '<am3d:ptLight rad="0"><am3d:clr><a:scrgbClr r="100000" g="100000" b="100000"/></am3d:clr>'
+    '<am3d:intensity n="9765625" d="1000000"/><am3d:pos x="21959998" y="70920001" '
+    'z="16344003"/></am3d:ptLight>'
+)
+
+
+def _saved_view(xml: str | None) -> str | None:
+    """The saved camera/transform/lights if every element is a model view part, else ``None``."""
+    if not xml:
+        return None
+    wrapper = (
+        f'<v xmlns:am3d="{_MODEL_NS}" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+        f">{xml}</v>"
+    )
+    try:
+        root = ElementTree.fromstring(wrapper)
+    except ElementTree.ParseError:
+        return None
+    allowed = {"camera", "trans", "ambientLight", "ptLight", "dirLight", "spotLight"}
+    names = [child.tag for child in root]
+    if not names or any(
+        not name.startswith(f"{{{_MODEL_NS}}}") or name.rpartition("}")[2] not in allowed
+        for name in names
+    ):
+        return None
+    return xml
+
+
+def _model_xml(
+    node: MediaNode, shape_id: int, fallback_id: int, model_rid: str, image_rid: str
+) -> str:
+    """A 3-D model frame: the model part, with its poster as the picture older readers draw."""
+    width, height = node.box.width, node.box.height
+    # What PowerPoint saved (camera, transform, lights) wins over the neutral defaults.
+    view = _saved_view(node.play_settings_xml) or _MODEL_VIEW + _MODEL_LIGHTS
+    transform = (
+        f'<p:xfrm><a:off x="{node.box.x}" y="{node.box.y}"/><a:ext cx="{width}" cy="{height}"/>'
+        "</p:xfrm>"
+    )
+    name = f'name="3D Model {shape_id}"{alt_text_attr(node)}'
+    return (
+        f'<mc:AlternateContent xmlns:mc="{_MC}">'
+        f'<mc:Choice xmlns:am3d="{_MODEL_NS}" Requires="am3d">'
+        f'<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="{shape_id}" {name}/>'
+        '<p:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></p:cNvGraphicFramePr>'
+        f"<p:nvPr>{node_identity_xml(node)}</p:nvPr></p:nvGraphicFramePr>{transform}"
+        f'<a:graphic><a:graphicData uri="{_MODEL_NS}"><am3d:model3d r:embed="{model_rid}">'
+        f'<am3d:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{width}" cy="{height}"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></am3d:spPr>'
+        f'{view}<am3d:raster rName="Office3DRenderer" rVer="16.0.8326"><am3d:blip '
+        f'r:embed="{image_rid}"/></am3d:raster>'
+        f'<am3d:objViewport viewportSz="{min(width, height)}"/>'
+        "</am3d:model3d></a:graphicData></a:graphic></p:graphicFrame></mc:Choice><mc:Fallback>"
+        f'<p:pic><p:nvPicPr><p:cNvPr id="{fallback_id}" {name}/><p:cNvPicPr>'
+        '<a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill>'
+        f'<a:blip r:embed="{image_rid}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+        f"<p:spPr>{transform.replace('p:xfrm', 'a:xfrm')}"
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic></mc:Fallback>'
+        "</mc:AlternateContent>"
+    )
 
 
 def _web_viewer_xml(node: MediaNode, shape_id: int, rid: str) -> str:

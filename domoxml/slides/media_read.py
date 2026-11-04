@@ -9,6 +9,7 @@ from xml.etree import ElementTree
 from xml.etree.ElementTree import Element
 
 from domoxml.core.ir.model import Box, MediaNode, PictureFill
+from domoxml.core.media import is_glb
 from domoxml.core.opc import OpcPackage
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -159,3 +160,76 @@ def read_web_viewer(element: Element, package: OpcPackage, slide_part: str) -> M
 
 
 _EMBED_ID = f"{{{_R}}}id"
+
+
+_MODEL_NS = "http://schemas.microsoft.com/office/drawing/2017/model3d"
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+_MODEL_NAMES = {"am3d": _MODEL_NS, "a": _A, "p": _P, "mc": _MC}
+# What decides how the model is seen: kept verbatim so a re-save shows it the same way.
+_VIEW_PARTS = frozenset({"camera", "trans", "ambientLight", "ptLight", "dirLight", "spotLight"})
+
+
+def read_model_frame(
+    alternate: Element, package: OpcPackage, slide_part: str
+) -> tuple[MediaNode, Element] | None:
+    """A 3-D model ``mc:AlternateContent``: the GLB, its poster and its camera and lights.
+
+    Also returns the ``p:graphicFrame`` that owns the shape identity. A model whose part is
+    missing or is not binary glTF is not modelled here and stays preserved source.
+    """
+    frame = alternate.find("mc:Choice/p:graphicFrame", _MODEL_NAMES)
+    model = (
+        frame.find("a:graphic/a:graphicData/am3d:model3d", _MODEL_NAMES)
+        if frame is not None
+        else None
+    )
+    transform = frame.find("p:xfrm", _MODEL_NAMES) if frame is not None else None
+    offset = transform.find("a:off", _MODEL_NAMES) if transform is not None else None
+    extent = transform.find("a:ext", _MODEL_NAMES) if transform is not None else None
+    if frame is None or model is None or offset is None or extent is None:
+        return None
+    try:
+        data = package.read(package.related_part(slide_part, model.get(_EMBED, "")))
+    except (KeyError, ValueError):
+        return None
+    if not is_glb(data):
+        return None
+    poster: PictureFill | None = None
+    # The render saved with the model, else the picture older readers draw in its place.
+    for blip in (
+        model.find("am3d:raster/am3d:blip", _MODEL_NAMES),
+        alternate.find("mc:Fallback/p:pic/p:blipFill/a:blip", _MODEL_NAMES),
+    ):
+        if blip is None or poster is not None:
+            continue
+        try:
+            image_part = package.related_part(slide_part, blip.get(_EMBED, ""))
+            suffix = PurePosixPath(image_part).suffix.lower().lstrip(".")
+            ext = "jpeg" if suffix == "jpg" else suffix
+            if ext == "png" or ext == "jpeg" or ext == "gif":
+                poster = PictureFill(data=package.read(image_part), ext=ext)
+        except (KeyError, ValueError):
+            continue
+    ElementTree.register_namespace("am3d", _MODEL_NS)
+    ElementTree.register_namespace("a", _A)
+    view = "".join(
+        ElementTree.tostring(child, encoding="unicode")
+        for child in model
+        if child.tag.rpartition("}")[2] in _VIEW_PARTS
+    )
+    return (
+        MediaNode(
+            box=Box(
+                x=_int_attr(offset, "x"),
+                y=_int_attr(offset, "y"),
+                width=_int_attr(extent, "cx"),
+                height=_int_attr(extent, "cy"),
+            ),
+            kind="model",
+            media_data=data,
+            media_ext="glb",
+            poster_fill=poster,
+            play_settings_xml=view or None,
+        ),
+        frame,
+    )

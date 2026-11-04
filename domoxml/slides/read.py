@@ -103,7 +103,7 @@ from domoxml.slides.inherit import (
     inherit_xfrm,
     parse_theme_fonts,
 )
-from domoxml.slides.media_read import read_media, read_web_viewer
+from domoxml.slides.media_read import read_media, read_model_frame, read_web_viewer
 from domoxml.slides.notes import read_notes
 from domoxml.slides.text_read import read_text_body, read_text_run
 from domoxml.slides.transition import parse_transition
@@ -1433,6 +1433,12 @@ def _slide(
             if kind in {"nvGrpSpPr", "grpSpPr"}:
                 continue
             if kind == "AlternateContent":
+                model_frame = read_model_frame(element, package, slide_part)
+                if model_frame is not None:
+                    model_node, model_owner = model_frame
+                    contents.append(_with_pptx_identity(model_node, model_owner, slide_part))
+                    coverage.append(_native_reverse_coverage(slide_part, model_owner))
+                    continue
                 choice = next((child for child in element if _local_name(child) == "Choice"), None)
                 fallback_branch = next(
                     (child for child in element if _local_name(child) == "Fallback"), None

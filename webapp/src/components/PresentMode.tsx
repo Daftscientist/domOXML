@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { usePreview } from "@/lib/usePreview";
 import { PreviewSurface } from "./PreviewSurface";
 import type { Deck } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -28,11 +27,6 @@ export function PresentMode(p: Props) {
   const [index, setIndex] = useState(p.startAt);
   const [enteredAt, setEnteredAt] = useState(0);
   const slide = p.deck.slides[index];
-  const preview = usePreview(slide?.html ?? "", {
-    width: p.deck.width, height: p.deck.height, css: p.deck.css,
-    priority: 10, sessionKey: p.deck.id,
-    targetWidth: typeof window !== "undefined" ? window.innerWidth * (window.devicePixelRatio || 1) : p.deck.width,
-  });
 
   const go = useCallback(
     (next: number) => {
@@ -71,16 +65,16 @@ export function PresentMode(p: Props) {
           else go(index + 1);
         }}
       >
-        {(preview.bitmap || preview.url) && (
-          <PreviewSurface
-            key={`${slide.id}-${enteredAt}`}
-            bitmap={preview.bitmap}
-            url={preview.url}
-            alt={`Slide ${index + 1}`}
-            className={cn("max-h-full max-w-full object-contain", animation)}
-            style={{ "--pt-dur": `${duration}ms` } as React.CSSProperties}
-          />
-        )}
+        <PreviewSurface
+          key={`${slide.id}-${enteredAt}`}
+          html={slide.html}
+          css={p.deck.css}
+          width={p.deck.width}
+          height={p.deck.height}
+          alt={`Slide ${index + 1}`}
+          className={cn("h-full w-full", animation)}
+          style={{ "--pt-dur": `${duration}ms` } as React.CSSProperties}
+        />
       </div>
       <div className="flex h-12 items-center justify-between px-4 text-neutral-400">
         <span className="text-xs tabular-nums">

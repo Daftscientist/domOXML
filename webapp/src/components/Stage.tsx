@@ -1,8 +1,6 @@
 import { useRef, useState, useEffect } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { usePreview } from "@/lib/usePreview";
 import { PreviewSurface } from "./PreviewSurface";
 import type { Deck } from "@/lib/types";
 
@@ -16,11 +14,6 @@ export function Stage(p: Props) {
   const slide = p.deck.slides[p.selected];
   const frame = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-  const preview = usePreview(slide?.html ?? "", {
-    width: p.deck.width, height: p.deck.height, css: p.deck.css,
-    priority: 10, sessionKey: p.deck.id,
-    targetWidth: Math.round(box.w * (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1)),
-  });
 
   // Size the slide box explicitly from the measured frame: the largest
   // deck-aspect rectangle that fits, so the slide is never distorted.
@@ -58,27 +51,15 @@ export function Stage(p: Props) {
           className="slide-shadow relative shrink-0 overflow-hidden rounded-[2px] bg-white"
           style={{ width: box.w || undefined, height: box.h || undefined }}
         >
-          {preview.bitmap || preview.url ? (
-            <PreviewSurface
-              bitmap={preview.bitmap}
-              url={preview.url}
-              alt={`Slide ${p.selected + 1} preview`}
-              className="h-full w-full"
-            />
-          ) : preview.error ? (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              <p className="text-sm font-medium">This slide could not be rendered</p>
-              <p className="max-w-md text-xs leading-relaxed text-muted-foreground">{preview.error}</p>
-            </div>
-          ) : (
-            <Skeleton className="h-full w-full rounded-none" />
-          )}
-          {preview.loading && (preview.bitmap || preview.url) && (
-            <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white">
-              <Loader2 className="h-3 w-3 animate-spin" /> Rendering
-            </div>
-          )}
+          <PreviewSurface
+            key={slide.id}
+            html={slide.html}
+            css={p.deck.css}
+            width={p.deck.width}
+            height={p.deck.height}
+            alt={`Slide ${p.selected + 1} preview`}
+            className="h-full w-full"
+          />
         </div>
       </div>
       <div className="flex h-11 shrink-0 items-center justify-center gap-2 border-t bg-background px-3">
@@ -105,7 +86,7 @@ export function Stage(p: Props) {
           {p.deck.width} × {p.deck.height} · {fit}%
         </span>
         <span className="ml-1 hidden text-xs text-muted-foreground md:inline">
-          Rendered by Takumi
+          Rendered live by your browser
         </span>
       </div>
     </div>

@@ -1,6 +1,6 @@
 // JS replica of domoxml.core.render.page.compose_page with the default
-// Theme, so the preview worker paints exactly the document the Python
-// export path renders. Keep in sync with page.py: framework reset, :root
+// Theme, so iframe previews show exactly the document the Python export
+// path renders. Keep in sync with page.py: framework reset, :root
 // theme tokens (Palette/Fonts defaults from domoxml.types), the fixed-size
 // frame, then the deck stylesheet in its own <style> element.
 

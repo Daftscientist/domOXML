@@ -3,7 +3,6 @@ import { Copy, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { usePreview } from "@/lib/usePreview";
 import { PreviewSurface } from "./PreviewSurface";
 import type { Deck } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -17,7 +16,7 @@ interface Props {
   onDelete: (index: number) => void;
 }
 
-function Thumb({ deck, index, selected }: { deck: Deck; index: number; selected: boolean }) {
+function Thumb({ deck, index }: { deck: Deck; index: number }) {
   const slide = deck.slides[index];
   const box = useRef<HTMLDivElement>(null);
   // Only render thumbnails once their card is on (or near) screen; a long
@@ -35,19 +34,21 @@ function Thumb({ deck, index, selected }: { deck: Deck; index: number; selected:
     observer.observe(el);
     return () => observer.disconnect();
   }, [seen]);
-  const preview = usePreview(slide.html, {
-    width: deck.width, height: deck.height, css: deck.css,
-    priority: selected ? 5 : 1, enabled: seen, sessionKey: deck.id,
-    targetWidth: 384,
-  });
   return (
     <div
       ref={box}
       className="relative w-full overflow-hidden rounded-[4px] bg-white"
       style={{ aspectRatio: `${deck.width} / ${deck.height}` }}
     >
-      {preview.bitmap || preview.url ? (
-        <PreviewSurface bitmap={preview.bitmap} url={preview.url} alt={`Slide ${index + 1}`} className="h-full w-full object-cover" />
+      {seen ? (
+        <PreviewSurface
+          html={slide.html}
+          css={deck.css}
+          width={deck.width}
+          height={deck.height}
+          alt={`Slide ${index + 1}`}
+          className="h-full w-full"
+        />
       ) : (
         <Skeleton className="h-full w-full rounded-none" />
       )}
@@ -90,7 +91,7 @@ export function SlideRail(p: Props) {
                     index === p.selected && "ring-2 ring-primary ring-offset-1 ring-offset-background",
                   )}
                 >
-                  <Thumb deck={p.deck} index={index} selected={index === p.selected} />
+                  <Thumb deck={p.deck} index={index} />
                 </div>
                 <div className="mt-1.5 flex h-5 items-center justify-between">
                   {slide.transition ? (

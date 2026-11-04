@@ -73,3 +73,16 @@ def test_a_gradient_with_a_real_bend_keeps_the_stop_at_the_bend() -> None:
 
     assert back is not None and isinstance(back.fill, GradientFill)
     assert [round(s.pos, 2) for s in back.fill.stops] == [0, 0.25, 1]
+
+
+def test_authored_stops_off_the_sampling_grid_and_inside_the_ends_survive() -> None:
+    red, blue = Rgba(r=255, g=0, b=0), Rgba(r=0, g=0, b=255)
+    middle = Rgba(r=255 - round(255 * 0.3), g=0, b=round(255 * 0.3))
+    deck = _deck((0.25, red), (0.3, middle), (0.75, blue))
+
+    stops = _stops(deck)
+    back = read_pptx_result(deck).slides[0].background
+
+    assert stops[0][0] == 25000 and stops[-1][0] == 75000  # nothing sampled past the ends
+    assert back is not None and isinstance(back.fill, GradientFill)
+    assert [round(s.pos, 2) for s in back.fill.stops] == [0.25, 0.3, 0.75]

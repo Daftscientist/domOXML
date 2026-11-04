@@ -44,11 +44,13 @@ _BACKGROUND_STEPS = 16
 
 
 def _smoothed(stops: tuple[GradientStop, ...]) -> tuple[GradientStop, ...]:
-    """``stops`` plus a sampled stop at every 1/16 that no stop already sits on."""
+    """``stops`` plus a sampled stop at every 1/16 between its ends that no stop sits on."""
+    first, last = min(stop.pos for stop in stops), max(stop.pos for stop in stops)
     extra = [
         GradientStop(pos=k / _BACKGROUND_STEPS, color=sample_gradient(stops, k / _BACKGROUND_STEPS))
         for k in range(1, _BACKGROUND_STEPS)
-        if all(abs(stop.pos - k / _BACKGROUND_STEPS) > 1e-6 for stop in stops)
+        if first < k / _BACKGROUND_STEPS < last
+        and all(abs(stop.pos - k / _BACKGROUND_STEPS) > 1e-6 for stop in stops)
     ]
     return tuple(sorted((*stops, *extra), key=lambda stop: stop.pos))
 
@@ -91,6 +93,9 @@ def _straight(run: tuple[GradientStop, ...] | list[GradientStop]) -> bool:
     for stop in run[1:-1]:
         if stop.pos <= first.pos or stop.pos >= last.pos:
             return False
+        steps = stop.pos * _BACKGROUND_STEPS
+        if abs(steps - round(steps)) > 1e-6:
+            return False  # a position the writer never samples is the author's own
         t = (stop.pos - first.pos) / span
         for a, b, c in (
             (first.color.r, last.color.r, stop.color.r),

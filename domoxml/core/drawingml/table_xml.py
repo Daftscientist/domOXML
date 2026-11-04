@@ -22,6 +22,7 @@ every cell slot covered by a multi-span origin cell.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml.identity import alt_text_attr, node_identity_xml
@@ -85,6 +86,8 @@ def _tc_pr_xml(
     borders: SideLines | None,
     margins: tuple[int, int, int, int],
     valign: str = "top",
+    blip_rid: str | None = None,
+    vertical: str = "horz",
 ) -> str:
     """Emit ``<a:tcPr>`` with margins, borders, and fill.
 
@@ -101,6 +104,8 @@ def _tc_pr_xml(
         attrs += f' marT="{mar_t}"'
     if mar_b:
         attrs += f' marB="{mar_b}"'
+    if vertical != "horz":
+        attrs += f' vert="{vertical}"'
     if valign != "top":
         attrs += f' anchor="{"ctr" if valign == "middle" else "b"}"'
 
@@ -111,7 +116,7 @@ def _tc_pr_xml(
     ln_b = _tc_border_xml("lnB", borders.bottom if borders else None)
 
     # Cell fill.
-    fill_xml = _fill_xml(fill, opacity=1.0, blip_rid=None)
+    fill_xml = _fill_xml(fill, opacity=1.0, blip_rid=blip_rid)
 
     return f"<a:tcPr{attrs}>{ln_l}{ln_r}{ln_t}{ln_b}{fill_xml}</a:tcPr>"
 
@@ -191,10 +196,11 @@ def _build_full_grid(
     return grid, occupied
 
 
-def table_xml(node: TableNode, *, shape_id: int) -> str:
+def table_xml(node: TableNode, *, shape_id: int, blip_rids: Mapping[int, str] | None = None) -> str:
     """Build the ``<p:graphicFrame>`` wrapping a DrawingML ``<a:tbl>`` for one table node.
 
-    ``shape_id`` must be unique within the slide (the caller assigns it).
+    ``shape_id`` must be unique within the slide (the caller assigns it). ``blip_rids`` maps a
+    picture-filled cell's fill (by identity) to the slide relationship that holds its image.
     """
     n_cols = len(node.col_widths_emu)
 
@@ -252,7 +258,14 @@ def table_xml(node: TableNode, *, shape_id: int) -> str:
                 span_attrs += f' rowSpan="{cell.row_span}"'
 
             tx = _tx_body_xml(cell.text, _no_hyperlink_rid)
-            tc_pr = _tc_pr_xml(cell.fill, cell.borders, cell.margins, cell.valign)
+            tc_pr = _tc_pr_xml(
+                cell.fill,
+                cell.borders,
+                cell.margins,
+                cell.valign,
+                (blip_rids or {}).get(id(cell.fill)),
+                cell.text.vertical if cell.text is not None else "horz",
+            )
             cells_xml += f"<a:tc{span_attrs}>{tx}{tc_pr}</a:tc>"
 
         rows_xml += f'<a:tr h="{row.height_emu}">{cells_xml}</a:tr>'

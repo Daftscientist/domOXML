@@ -92,6 +92,14 @@ def _has_child(primary: Element | None, fallback: Element | None, tag: str) -> b
     )
 
 
+_CELL_DIRECTION: dict[str, Literal["vert", "vert270"]] = {
+    "vert": "vert",
+    "eaVert": "vert",
+    "wordArtVert": "vert",
+    "vert270": "vert270",
+}
+
+
 def _text_body(
     cell: Element,
     text_run_for: TextRunParser,
@@ -263,15 +271,22 @@ def parse_table(
                 if properties is not None
                 else style_borders
             )
+            cell_text = _text_body(
+                cell,
+                text_run_for,
+                default_color=style_text_color,
+                default_bold=style_bold,
+                default_font_family=default_font_family,
+            )
+            # The cell's own text direction lives on its tcPr, not on a bodyPr.
+            direction = _CELL_DIRECTION.get(
+                properties.get("vert", "") if properties is not None else ""
+            )
+            if cell_text is not None and direction is not None:
+                cell_text = cell_text.model_copy(update={"vertical": direction})
             cells.append(
                 TableCell(
-                    text=_text_body(
-                        cell,
-                        text_run_for,
-                        default_color=style_text_color,
-                        default_bold=style_bold,
-                        default_font_family=default_font_family,
-                    ),
+                    text=cell_text,
                     fill=fill,
                     borders=borders,
                     margins=margins,

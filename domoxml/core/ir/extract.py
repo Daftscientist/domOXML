@@ -840,11 +840,11 @@ def _authored_chart(node: RenderedNode) -> PreservedNode | None:
 def _animations(
     rendered: RenderedSlide, identities: _IdentityAllocator, present: set[str]
 ) -> tuple[Animation, ...]:
-    """Entrance effects declared with ``data-animate`` on the elements that became slide nodes."""
+    """Entrance and exit effects declared with ``data-animate`` on elements that became nodes."""
     found: list[Animation] = []
     for node in rendered.nodes:
         effect = node.styles.get("domoxmlAnimate")
-        if effect not in ("appear", "fade"):
+        if effect not in ("appear", "fade", "disappear", "fade-out"):
             continue
         target = identities.base_id(node)
         if target not in present:
@@ -859,7 +859,7 @@ def _animations(
         found.append(
             Animation(
                 target=target,
-                effect="appear" if effect == "appear" else "fade",
+                effect=effect,  # type: ignore[arg-type]
                 step=max(0, number("domoxmlAnimateStep", 0)),
                 delay_ms=max(0, number("domoxmlAnimateDelay", 0)),
                 duration_ms=max(1, number("domoxmlAnimateDuration", 500)),

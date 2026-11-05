@@ -288,7 +288,8 @@ _BAR = (
 
 def test_gridlines_are_drawn_only_when_the_value_axis_has_visible_ones() -> None:
     def axis(grid: str) -> str:
-        return f'<c:valAx><c:axId val="1"/>{grid}<c:delete val="0"/></c:valAx>'
+        no_axis_line = "<c:spPr><a:ln><a:noFill/></a:ln></c:spPr>"
+        return f'<c:valAx><c:axId val="1"/>{grid}<c:delete val="0"/>{no_axis_line}</c:valAx>'
 
     visible = "<c:majorGridlines><c:spPr><a:ln><a:solidFill/></a:ln></c:spPr></c:majorGridlines>"
     hidden = "<c:majorGridlines><c:spPr><a:ln><a:noFill/></a:ln></c:spPr></c:majorGridlines>"
@@ -779,3 +780,32 @@ def test_a_bare_smooth_element_means_smooth_and_scatter_lines_take_series_style(
     assert " C" in bare
     assert 'stroke-width="4"' in scatter and "stroke-dasharray" in scatter
     assert "<polygon" not in scatter and "<circle" not in scatter  # symbol none draws no marker
+
+
+def test_axes_draw_a_black_line_with_outward_tick_marks_unless_styled_away() -> None:
+    def chart(cat: str, val: str) -> str:
+        return _svg(
+            _BAR
+            + f'<c:catAx><c:axId val="1"/>{cat}</c:catAx>'
+            + f'<c:valAx><c:axId val="2"/>{val}</c:valAx>'
+        )
+
+    def lines(svg: str) -> list[tuple[float, float, float, float]]:
+        return [
+            tuple(float(v) for v in m)
+            for m in re.findall(
+                r'<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)" stroke="#000000"',
+                svg,
+            )
+        ]
+
+    out = '<c:majorTickMark val="out"/>'
+    drawn = lines(chart(out, out))
+    plain = lines(chart('<c:majorTickMark val="none"/>', '<c:majorTickMark val="none"/>'))
+    gone = lines(chart("<c:spPr><a:ln><a:noFill/></a:ln></c:spPr>", '<c:delete val="1"/>'))
+
+    assert len(plain) == 2  # a category axis line and a value axis line, no ticks
+    assert len(drawn) > len(plain) + 3  # tick marks between the 3 categories and on the values
+    assert not gone
+    short_verticals = [ln for ln in drawn if ln[0] == ln[2] and ln[3] - ln[1] <= 5]
+    assert len(short_verticals) == 4 and all(ln[3] - ln[1] == 4.0 for ln in short_verticals)  # down

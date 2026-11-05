@@ -94,6 +94,14 @@ class Series:
 
 
 @dataclass
+class AxisStyle:
+    """How an axis draws itself: its line as ``(colour, width px)`` (None: no line), its ticks."""
+
+    line: tuple[str, float] | None = ("BFBFBF", 1.0)
+    tick: str = "none"  # out, in, cross or none
+
+
+@dataclass
 class Group:
     kind: str
     grouping: str
@@ -185,6 +193,8 @@ def chart_to_svg(
     canvas.categories_reversed = (
         _val(plot.find("c:catAx/c:scaling/c:orientation", _NS), "minMax") == "maxMin"
     )
+    canvas.category_axis = _axis_style(plot.find("c:catAx", _NS), palette)
+    canvas.value_axis = _axis_style(plot.find("c:valAx", _NS), palette)
     canvas.grid = _has_gridlines(plot)
     if groups[0].kind in ("scatter", "bubble"):
         x_axis, y_axis = _scatter_axes(plot)
@@ -433,6 +443,20 @@ def _fill_hex_of(holder: Element, palette: Mapping[str, str]) -> str:
     if scheme is not None and _hex(palette.get(scheme.get("val", ""))):
         return _transformed(palette[scheme.get("val", "")], scheme)
     return ""
+
+
+def _axis_style(axis: Element | None, palette: Mapping[str, str]) -> AxisStyle:
+    """An axis's line and tick marks; with no line of its own PowerPoint draws a black one."""
+    if axis is None:
+        return AxisStyle()
+    if _boolean(axis.find("c:delete", _NS), False):
+        return AxisStyle(line=None)
+    tick = _val(axis.find("c:majorTickMark", _NS), "cross")
+    outline = axis.find("c:spPr/a:ln", _NS)
+    if outline is not None and outline.find("a:noFill", _NS) is not None:
+        return AxisStyle(line=None, tick=tick)
+    colour, width = _line_style(axis.find("c:spPr", _NS), palette)
+    return AxisStyle(line=(colour or "000000", width or 1.0), tick=tick)
 
 
 def _marker_px(marker: Element | None) -> float:
@@ -767,6 +791,8 @@ class _Canvas:
         self.plot_layout: tuple[float, float, float, float] | None = None
         self.grid = True
         self.grid_x = False
+        self.category_axis = AxisStyle()
+        self.value_axis = AxisStyle()
         self.categories_reversed = False  # the category axis runs maxMin (first at the top)
         self.grid_color = ""
         self.grid_px = 1.0
@@ -865,6 +891,42 @@ class _Canvas:
             f'stroke-width="{series.line_px:g}"{_dash_attr(series.dash, series.line_px)} '
             'stroke-linejoin="round" stroke-linecap="round"/>'
         )
+
+    def _axis(
+        self,
+        line: tuple[float, float, float, float],
+        style: AxisStyle,
+        ticks: list[float],
+        outward: int,
+    ) -> None:
+        """An axis line from ``(x1, y1)`` to ``(x2, y2)`` with its tick marks.
+
+        ``ticks`` are positions along the axis; ``outward`` is the side the ticks point to: +1
+        for below or right of it, -1 for above or left.
+        """
+        if style.line is None:
+            return
+        colour, width = style.line
+        x1, y1, x2, y2 = line
+        stroke = f'stroke="#{colour}" stroke-width="{width:g}"'
+        self.parts.append(
+            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" {stroke}/>'
+        )
+        if style.tick == "none":
+            return
+        length = 4.0
+        # Offsets across the axis: inwards (against ``outward``) to outwards.
+        low = -length * outward if style.tick in ("in", "cross") else 0.0
+        high = length * outward if style.tick in ("out", "cross") else 0.0
+        horizontal_axis = y1 == y2
+        for t in ticks:
+            if horizontal_axis:
+                a, b = (t, y1 + low), (t, y1 + high)
+            else:
+                a, b = (x1 + low, t), (x1 + high, t)
+            self.parts.append(
+                f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" {stroke}/>'
+            )
 
     def _marker(self, series: Series, x: float, y: float) -> str:
         symbol = series.marker_symbol or _AUTO_MARKERS[series.position % len(_AUTO_MARKERS)]
@@ -998,10 +1060,16 @@ class _Canvas:
         for group in groups:
             self._draw_group(group, slot, left, y_of, low, high, clustered, count)
         axis_y = y_of(max(low, min(0.0, high)))
-        self.parts.append(
-            f'<line x1="{left:.1f}" y1="{axis_y:.1f}" x2="{left + plot_w:.1f}" y2="{axis_y:.1f}" '
-            f'stroke="#BFBFBF" stroke-width="1"/>'
+        self._axis(
+            (left, axis_y, left + plot_w, axis_y),
+            self.category_axis,
+            [left + slot * i for i in range(count + 1)],
+            +1,
         )
+        if not value_axis_hidden:
+            self._axis(
+                (left, top, left, top + plot_h), self.value_axis, [y_of(t) for t in ticks], -1
+            )
         step = max(1, math.ceil(count * 40 / plot_w)) if plot_w else 1
         for i in range(0, count, step):
             label = categories[i] if i < len(categories) else str(i + 1)
@@ -1336,6 +1404,18 @@ class _Canvas:
                 f'text-anchor="end" font-size="{self.category_px:.1f}" '
                 f'fill="#{self.category_color}">{escape(label)}</text>'
             )
+        self._axis(
+            (left, top, left, top + plot_h),
+            self.category_axis,
+            [top + slot * i for i in range(count + 1)],
+            -1,
+        )
+        self._axis(
+            (left, top + plot_h, left + plot_w, top + plot_h),
+            self.value_axis,
+            [left + (t - low) / (high - low) * plot_w for t in ticks],
+            +1,
+        )
         self._axis_titles(left, top, plot_w, plot_h, x_label, y_label)
         return self._wrap()
 

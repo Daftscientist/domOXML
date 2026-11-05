@@ -21,6 +21,7 @@ from domoxml.core.ir.model import (
     TextParagraph,
     TextRun,
 )
+from domoxml.slides.table_styles import is_builtin, resolve_cell_style
 
 TABLE_URI = "http://schemas.openxmlformats.org/drawingml/2006/table"
 DIAGRAM_URI = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
@@ -39,9 +40,7 @@ _ANCHOR: dict[str, Literal["top", "middle", "bottom"]] = {
     "ctr": "middle",
     "b": "bottom",
 }
-_POWERPOINT_DEFAULT_TABLE_STYLE = "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"
 _DEFAULT_CELL_MARGINS = (91_440, 45_720, 91_440, 45_720)
-_DEFAULT_TABLE_BORDER_WIDTH = 12_700
 _DEFAULT_TABLE_FONT_SIZE_PT = 18.0
 
 type FillParser = Callable[[Element], Fill | None]
@@ -146,63 +145,6 @@ def _text_body(
     return TextBody(paragraphs=tuple(paragraphs)) if paragraphs else None
 
 
-def _theme_color(colors: Mapping[str, str], slot: str) -> Rgba | None:
-    value = colors.get(slot, "")
-    if len(value) != 6:
-        return None
-    try:
-        return Rgba(r=int(value[:2], 16), g=int(value[2:4], 16), b=int(value[4:], 16))
-    except ValueError:
-        return None
-
-
-def _tint(color: Rgba, amount: float) -> Rgba:
-    def to_linear(channel: int) -> float:
-        value = channel / 255
-        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
-
-    def to_srgb(channel: float) -> int:
-        value = channel * 12.92 if channel <= 0.0031308 else 1.055 * channel ** (1 / 2.4) - 0.055
-        return round(max(0.0, min(1.0, value)) * 255)
-
-    return Rgba(
-        r=to_srgb(to_linear(color.r) * amount + (1 - amount)),
-        g=to_srgb(to_linear(color.g) * amount + (1 - amount)),
-        b=to_srgb(to_linear(color.b) * amount + (1 - amount)),
-        a=color.a,
-    )
-
-
-def _default_table_style(
-    table: Element,
-    row_index: int,
-    colors: Mapping[str, str],
-) -> tuple[SolidFill | None, SideLines | None, Rgba | None, bool]:
-    properties = table.find("a:tblPr", _NS)
-    style_id = (
-        properties.findtext("a:tableStyleId", default="", namespaces=_NS)
-        if properties is not None
-        else ""
-    )
-    if style_id.upper() != _POWERPOINT_DEFAULT_TABLE_STYLE:
-        return None, None, None, False
-
-    accent = _theme_color(colors, "accent1")
-    light = _theme_color(colors, "lt1") or Rgba(r=255, g=255, b=255)
-    if accent is None:
-        return None, None, None, False
-
-    first_row = properties is not None and properties.get("firstRow") == "1"
-    band_rows = properties is not None and properties.get("bandRow") == "1"
-    is_header = first_row and row_index == 0
-    body_index = row_index - (1 if first_row else 0)
-    is_band = band_rows and body_index >= 0 and body_index % 2 == 0
-    fill = SolidFill(color=accent if is_header else _tint(accent, 0.4 if is_band else 0.2))
-    border = Line(color=light, width_emu=_DEFAULT_TABLE_BORDER_WIDTH)
-    borders = SideLines(left=border, right=border, top=border, bottom=border)
-    return fill, borders, light if is_header else None, is_header
-
-
 def _borders(
     properties: Element, line_for: LineParser, defaults: SideLines | None = None
 ) -> SideLines | None:
@@ -244,14 +186,40 @@ def parse_table(
         return None
 
     rows: list[TableRow] = []
-    for row_index, row in enumerate(table.findall("a:tr", _NS)):
-        style_fill, style_borders, style_text_color, style_bold = _default_table_style(
-            table, row_index, theme_colors or {}
-        )
+    row_elements = table.findall("a:tr", _NS)
+    flags = {
+        name: table_properties is not None and table_properties.get(name) in {"1", "true"}
+        for name in ("firstRow", "lastRow", "firstCol", "lastCol", "bandRow", "bandCol")
+    }
+    for row_index, row in enumerate(row_elements):
         cells: list[TableCell] = []
+        column_index = 0
         for cell in row.findall("a:tc", _NS):
+            column = column_index
+            # A cell merged into the one to its left sits in a slot that cell's span already counts.
+            if cell.get("hMerge") != "1":
+                column_index += max(1, _int_attr(cell, "gridSpan", 1))
             if cell.get("hMerge") == "1" or cell.get("vMerge") == "1":
                 continue
+            resolved = (
+                resolve_cell_style(
+                    style_id,
+                    row=row_index,
+                    column=column,
+                    rows=len(row_elements),
+                    columns=len(column_widths),
+                    flags=flags,
+                    colors=theme_colors or {},
+                    column_span=max(1, _int_attr(cell, "gridSpan", 1)),
+                    row_span=max(1, _int_attr(cell, "rowSpan", 1)),
+                )
+                if style_id
+                else None
+            )
+            style_fill = SolidFill(color=resolved.fill) if resolved and resolved.fill else None
+            style_borders = resolved.borders if resolved else None
+            style_text_color = resolved.text if resolved else None
+            style_bold = resolved.bold if resolved else False
             properties = cell.find("a:tcPr", _NS)
             margins = _DEFAULT_CELL_MARGINS
             if properties is not None:
@@ -322,11 +290,7 @@ def parse_table(
         last_col=enabled("lastCol"),
         band_row=enabled("bandRow"),
         band_col=enabled("bandCol"),
-        header_bold_inherited=(
-            bool(style_id)
-            and style_id.upper() == _POWERPOINT_DEFAULT_TABLE_STYLE
-            and enabled("firstRow")
-        ),
+        header_bold_inherited=(bool(style_id) and is_builtin(style_id) and enabled("firstRow")),
     )
 
 

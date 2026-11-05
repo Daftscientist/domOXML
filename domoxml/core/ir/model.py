@@ -18,7 +18,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-_FROZEN = ConfigDict(frozen=True)
+# Bytes (images, media, fonts) travel as base64 in JSON so the IR round-trips through hosts that
+# exchange JSON, such as a browser app driving domOXML under Pyodide.
+_FROZEN = ConfigDict(frozen=True, ser_json_bytes="base64", val_json_bytes="base64")
 
 
 class Rgba(BaseModel):
@@ -709,7 +711,7 @@ class PreservationRelationship(BaseModel):
 class PreservationPart(BaseModel):
     """One dependent OPC part plus the relationships it owns."""
 
-    model_config = ConfigDict(frozen=True, ser_json_bytes="base64", val_json_bytes="base64")
+    model_config = _FROZEN
 
     name: str = Field(min_length=1, max_length=1024)
     content_type: str = Field(min_length=1, max_length=1024)
@@ -720,7 +722,7 @@ class PreservationPart(BaseModel):
 class PreservationPayload(BaseModel):
     """Opaque source content attached to its owning canvas node for lossless re-emission."""
 
-    model_config = ConfigDict(frozen=True, ser_json_bytes="base64", val_json_bytes="base64")
+    model_config = _FROZEN
 
     source_format: Literal["pptx"] = "pptx"
     kind: str = Field(min_length=1, max_length=128)

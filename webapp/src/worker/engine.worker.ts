@@ -1,7 +1,7 @@
 // Engine worker: Pyodide + the domOXML bundle + the Takumi bridge, all off
 // the UI thread. The UI never waits on this file to draw itself; it boots,
 // reports status, then answers preview / convert / readDeck requests.
-import { installTakumiBridge } from "../../bridge/takumi-bridge.mjs";
+import { installTakumiBridge, takumiBridge } from "../../bridge/takumi-bridge.mjs";
 
 type BootMessage = { type: "boot"; pyBase: string; pyodideIndexURL: string };
 
@@ -75,6 +75,20 @@ self.onmessage = async (event: MessageEvent) => {
       reply(true, copy, undefined, [copy.buffer as ArrayBuffer]);
     } else if (type === "convert") {
       const text: string = await api.get("convert")(JSON.stringify(payload));
+      reply(true, JSON.parse(text));
+    } else if (type === "capturePages") {
+      const text: string = await api.get("capture_pages")(JSON.stringify(payload));
+      reply(true, JSON.parse(text));
+    } else if (type === "capturePlan") {
+      const text: string = await api.get("capture_plan")(JSON.stringify(payload));
+      reply(true, JSON.parse(text));
+    } else if (type === "convertCaptured") {
+      const text: string = await api.get("convert_captured")(JSON.stringify(payload));
+      reply(true, JSON.parse(text));
+    } else if (type === "takumiRaster") {
+      // Rasterise one page (a whole slide, or one staged isolated node)
+      // with Takumi, in this worker, without involving Python.
+      const text: string = await takumiBridge(JSON.stringify(payload));
       reply(true, JSON.parse(text));
     } else if (type === "readDeck") {
       const text: string = await api.get("read_deck")(payload);

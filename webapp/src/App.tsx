@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { engine } from "@/lib/engine";
+import { exportViaHostCapture } from "@/lib/hostCapture";
 import { downloadBytes, downloadText, slug } from "@/lib/download";
 import { blankSlideHtml, newSlideId, sampleDeck } from "@/lib/sample";
 import type { ConvertResult, Deck, SlideTransition } from "@/lib/types";
@@ -87,15 +88,23 @@ export default function App() {
   const exportPptx = useCallback(async () => {
     setExporting(true);
     try {
-      const result = await engine.convert(
-        deck.slides.map((s) => s.html),
-        {
-          width: deck.width,
-          height: deck.height,
-          css: deck.css,
-          transitions: deck.slides.map((s) => s.transition),
-        },
-      );
+      const fragments = deck.slides.map((s) => s.html);
+      const opts = {
+        width: deck.width,
+        height: deck.height,
+        css: deck.css,
+        transitions: deck.slides.map((s) => s.transition),
+      };
+      // Host capture first: the browser lays the slides out itself, so
+      // CSS Takumi cannot parse still converts. Any failure falls back
+      // to the Takumi conversion, so export never regresses below it.
+      let result: ConvertResult;
+      try {
+        result = await exportViaHostCapture({ fragments, ...opts });
+      } catch (captureError) {
+        console.warn("Host-capture export failed; falling back to Takumi", captureError);
+        result = await engine.convert(fragments, opts);
+      }
       downloadBytes(
         `${slug(deck.name)}.pptx`,
         result.pptx,

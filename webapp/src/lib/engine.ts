@@ -123,6 +123,84 @@ class EngineClient {
     return { pptx, coverage: raw.coverage, warnings: raw.warnings };
   }
 
+  /** Compose the slide pages for host capture + the capture payloads. */
+  async capturePages(
+    fragments: string[],
+    opts: { width: number; height: number; css?: string },
+  ): Promise<{
+    pages: string[];
+    snapshot_js: string;
+    resources_js: string;
+    recorder_js: string;
+  }> {
+    return this.call("capturePages", { fragments, ...opts });
+  }
+
+  /** Raster planning for one captured slide's raw snapshot. */
+  async capturePlan(
+    raw: unknown[],
+    opts: { width: number; height: number },
+  ): Promise<{
+    isolated: { index: number; bounds: [number, number, number, number] }[];
+    backdrops: { index: number; bounds: [number, number, number, number] }[];
+  }> {
+    return this.call("capturePlan", { raw, ...opts });
+  }
+
+  /** Convert host-captured slides (see lib/hostCapture.ts) to a deck. */
+  async convertCaptured(payload: {
+    fragments: string[];
+    captures: unknown[];
+    width: number;
+    height: number;
+    css?: string;
+    transitions?: (SlideTransition | null)[];
+  }): Promise<ConvertResult> {
+    const raw = await this.call<{
+      pptx_b64: string;
+      coverage: ConvertResult["coverage"];
+      warnings: ConvertResult["warnings"];
+    }>("convertCaptured", payload);
+    const bin = atob(raw.pptx_b64);
+    const pptx = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) pptx[i] = bin.charCodeAt(i);
+    return { pptx, coverage: raw.coverage, warnings: raw.warnings };
+  }
+
+  /**
+   * Rasterise one page with Takumi (whole slide or one staged node).
+   * Returns base64 PNG, or null when Takumi cannot render it — callers
+   * treat a missing raster as a degraded fallback, never a failure.
+   * The detailed variant also surfaces Takumi's error message, which
+   * names the offending CSS property when its parser rejects a value;
+   * host capture uses that to strip the property and retry.
+   */
+  async takumiRasterDetailed(
+    html: string,
+    width: number,
+    height: number,
+  ): Promise<{ png: string | null; message?: string }> {
+    try {
+      const result = await this.call<{ ok: boolean; png?: string; message?: string }>(
+        "takumiRaster",
+        {
+          html,
+          width: Math.max(1, Math.round(width)),
+          height: Math.max(1, Math.round(height)),
+        },
+      );
+      return result.ok && result.png
+        ? { png: result.png }
+        : { png: null, message: result.message };
+    } catch (error) {
+      return { png: null, message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  async takumiRaster(html: string, width: number, height: number): Promise<string | null> {
+    return (await this.takumiRasterDetailed(html, width, height)).png;
+  }
+
   async readDeck(data: Uint8Array): Promise<ReadDeckResult> {
     const raw = await this.call<{
       width_px: number; height_px: number; css: string;

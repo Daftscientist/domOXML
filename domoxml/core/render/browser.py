@@ -1054,12 +1054,12 @@ class RenderedBackdrop(BaseModel):
 
 
 class RenderedSlide(BaseModel):
-    """The render of one slide: its PNG, the captured layout tree, the resources Chromium
-    fetched (image/font bytes keyed by URL), and the device scale the PNG was taken at."""
+    """The render of one slide: its PNG (when requested), the captured layout tree, the resources
+    Chromium fetched (image/font bytes keyed by URL), and the device scale the PNG was taken at."""
 
     model_config = ConfigDict(frozen=True)
 
-    png: bytes
+    png: bytes | None = None
     width: int
     height: int
     scale: float = 1.0
@@ -1428,6 +1428,7 @@ class BrowserSession:
         height: int,
         raster_planner: RasterPlanner | None = None,
         backdrop_planner: RasterPlanner | None = None,
+        capture_png: bool = True,
     ) -> RenderedSlide:
         """Render ``html`` at ``width`` x ``height`` CSS px → PNG + captured layout + the
         image/font bytes the page fetched (so they can be embedded natively downstream).
@@ -1435,6 +1436,9 @@ class BrowserSession:
         ``raster_planner`` names the nodes that need pixels captured in isolation. It defaults
         to the extractor's own plan, so the code that consumes a raster is the code that decides
         one is needed. ``backdrop_planner`` does the same for blurred-backdrop layers.
+
+        ``capture_png=False`` skips the full-page screenshot when the caller only needs layout
+        (PPTX or normalized HTML): isolated rasters and backdrops are captured separately.
         """
         if self._browser is None:
             raise RuntimeError("BrowserSession must be entered via 'async with' before render()")
@@ -1475,7 +1479,7 @@ class BrowserSession:
             await page.route("**/*", _capture)
             await page.set_content(html, wait_until="load")
             await page.evaluate("() => document.fonts.ready.then(() => true)")
-            png = await page.screenshot(type="png")
+            png = await page.screenshot(type="png") if capture_png else None
             raw: list[dict[str, Any]] = await page.evaluate(_SNAPSHOT_JS)
             nodes = tuple(RenderedNode.model_validate(node) for node in raw)
             snapshot = RenderedSlide(

@@ -12,7 +12,7 @@
 import { engine } from "./engine";
 import type { ConvertResult, SlideTransition } from "./types";
 
-interface SlideCapture {
+export interface SlideCapture {
   raw: unknown[];
   resources: Record<string, string>;
   png_b64: string;
@@ -191,6 +191,61 @@ async function sharpBackdropPng(
   }
 }
 
+/** Capture one composed slide page: snapshot, resources, planned rasters. */
+async function captureSlide(
+  page: string,
+  scripts: { snapshot_js: string; resources_js: string; recorder_js: string },
+  width: number,
+  height: number,
+): Promise<SlideCapture> {
+  const handle = await openCapture(page, scripts.recorder_js, width, height);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = (handle.win as any).eval(scripts.snapshot_js)() as unknown[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resources = (handle.win as any).eval(scripts.resources_js)(handle.doc) as Record<
+      string,
+      string
+    >;
+    const rawByIndex = new Map<number, { x: number; y: number }>();
+    for (const node of raw as { index: number; x: number; y: number }[]) {
+      rawByIndex.set(node.index, { x: node.x, y: node.y });
+    }
+    const plan = await engine.capturePlan(raw, { width, height });
+
+    const backdrop_sharp: Record<number, string> = {};
+    for (const entry of plan.backdrops) {
+      const png = await sharpBackdropPng(handle, entry.index, width, height);
+      if (png) backdrop_sharp[entry.index] = png;
+    }
+    const rasters: Record<number, string> = {};
+    for (const entry of plan.isolated) {
+      const xy = rawByIndex.get(entry.index);
+      if (!xy) continue;
+      const staged = stageNodeHtml(handle, entry.index, entry.bounds, xy);
+      if (!staged) continue;
+      const png = await rasterWithRepair(staged, entry.bounds[2], entry.bounds[3]);
+      if (png) rasters[entry.index] = png;
+    }
+    const png_b64 = (await rasterWithRepair(page, width, height)) ?? "";
+    return { raw, resources, png_b64, rasters, backdrop_sharp };
+  } finally {
+    handle.iframe.remove();
+  }
+}
+
+/** Capture a single fragment (for IR derivation of the open slide). */
+export async function captureOneSlide(
+  fragment: string,
+  opts: { width: number; height: number; css?: string },
+): Promise<SlideCapture> {
+  const { pages, snapshot_js, resources_js, recorder_js } = await engine.capturePages(
+    [fragment],
+    opts,
+  );
+  return captureSlide(pages[0], { snapshot_js, resources_js, recorder_js }, opts.width, opts.height);
+}
+
 export async function exportViaHostCapture(deck: {
   fragments: string[];
   width: number;
@@ -199,46 +254,14 @@ export async function exportViaHostCapture(deck: {
   transitions?: (SlideTransition | null)[];
 }): Promise<ConvertResult> {
   const { width, height } = deck;
-  const { pages, snapshot_js, resources_js, recorder_js } = await engine.capturePages(
-    deck.fragments,
-    { width, height, css: deck.css },
-  );
+  const scripts = await engine.capturePages(deck.fragments, {
+    width,
+    height,
+    css: deck.css,
+  });
   const captures: SlideCapture[] = [];
-  for (const page of pages) {
-    const handle = await openCapture(page, recorder_js, width, height);
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw = (handle.win as any).eval(snapshot_js)() as unknown[];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const resources = (handle.win as any).eval(resources_js)(handle.doc) as Record<
-        string,
-        string
-      >;
-      const rawByIndex = new Map<number, { x: number; y: number }>();
-      for (const node of raw as { index: number; x: number; y: number }[]) {
-        rawByIndex.set(node.index, { x: node.x, y: node.y });
-      }
-      const plan = await engine.capturePlan(raw, { width, height });
-
-      const backdrop_sharp: Record<number, string> = {};
-      for (const entry of plan.backdrops) {
-        const png = await sharpBackdropPng(handle, entry.index, width, height);
-        if (png) backdrop_sharp[entry.index] = png;
-      }
-      const rasters: Record<number, string> = {};
-      for (const entry of plan.isolated) {
-        const xy = rawByIndex.get(entry.index);
-        if (!xy) continue;
-        const staged = stageNodeHtml(handle, entry.index, entry.bounds, xy);
-        if (!staged) continue;
-        const png = await rasterWithRepair(staged, entry.bounds[2], entry.bounds[3]);
-        if (png) rasters[entry.index] = png;
-      }
-      const png_b64 = (await rasterWithRepair(page, width, height)) ?? "";
-      captures.push({ raw, resources, png_b64, rasters, backdrop_sharp });
-    } finally {
-      handle.iframe.remove();
-    }
+  for (const page of scripts.pages) {
+    captures.push(await captureSlide(page, scripts, width, height));
   }
   return engine.convertCaptured({
     fragments: deck.fragments,

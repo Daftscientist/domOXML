@@ -4,7 +4,8 @@
 // boot, so the UI can be fully interactive (typing, arranging slides) while
 // the engine is still starting; previews simply resolve when it is ready.
 import type {
-  ConvertResult, EngineStatus, ReadDeckResult, SlideTransition,
+  ConversionWarning, ConvertResult, EngineStatus, ReadDeckResult, SlideIrResult,
+  SlideTransition,
 } from "./types";
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
@@ -199,6 +200,34 @@ class EngineClient {
 
   async takumiRaster(html: string, width: number, height: number): Promise<string | null> {
     return (await this.takumiRasterDetailed(html, width, height)).png;
+  }
+
+  /** Normalise one captured slide back to canonical domOXML HTML. */
+  async normalize(
+    capture: {
+      raw: unknown[];
+      resources: Record<string, string>;
+      png_b64: string;
+      rasters: Record<number, string>;
+      backdrop_sharp: Record<number, string>;
+    },
+    opts: { width: number; height: number },
+  ): Promise<{ html: string; css: string; warnings: ConversionWarning[] }> {
+    return this.call("normalize", { capture, ...opts });
+  }
+
+  /** Derive one slide's IR display tree from its host capture. */
+  async slideIr(
+    capture: {
+      raw: unknown[];
+      resources: Record<string, string>;
+      png_b64: string;
+      rasters: Record<number, string>;
+      backdrop_sharp: Record<number, string>;
+    },
+    opts: { width: number; height: number },
+  ): Promise<SlideIrResult> {
+    return this.call("slideIr", { capture, ...opts });
   }
 
   async readDeck(data: Uint8Array): Promise<ReadDeckResult> {

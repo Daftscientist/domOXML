@@ -14,6 +14,9 @@ interface Props {
   alt: string;
   className?: string;
   style?: CSSProperties;
+  /** Optional access to the preview iframe (the stage editor reads its
+   * document for hit-testing and live drag feedback). */
+  iframeRef?: (el: HTMLIFrameElement | null) => void;
 }
 
 /**
@@ -120,7 +123,10 @@ export function PreviewSurface(p: Props) {
           }}
         >
           <iframe
-            ref={iframeRef}
+            ref={(el) => {
+              iframeRef.current = el;
+              p.iframeRef?.(el);
+            }}
             title={p.alt}
             srcDoc={fallbackDoc ?? initialDoc}
             sandbox="allow-same-origin"

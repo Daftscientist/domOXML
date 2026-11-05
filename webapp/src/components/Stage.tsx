@@ -2,18 +2,24 @@ import { useRef, useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PreviewSurface } from "./PreviewSurface";
+import { StageEditor } from "./StageEditor";
+import type { SlideMutation } from "@/lib/fragmentEdit";
 import type { Deck } from "@/lib/types";
 
 interface Props {
   deck: Deck;
   selected: number;
   onSelect: (index: number) => void;
+  focusPath: number[] | null;
+  onFocusPath: (path: number[] | null) => void;
+  onMutate: (path: number[], mutation: SlideMutation) => void;
 }
 
 export function Stage(p: Props) {
   const slide = p.deck.slides[p.selected];
   const frame = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const [iframe, setIframe] = useState<HTMLIFrameElement | null>(null);
 
   // Size the slide box explicitly from the measured frame: the largest
   // deck-aspect rectangle that fits, so the slide is never distorted.
@@ -59,6 +65,16 @@ export function Stage(p: Props) {
             height={p.deck.height}
             alt={`Slide ${p.selected + 1} preview`}
             className="h-full w-full"
+            iframeRef={setIframe}
+          />
+          <StageEditor
+            iframe={iframe}
+            width={p.deck.width}
+            height={p.deck.height}
+            html={slide.html}
+            focusPath={p.focusPath}
+            onFocusPath={p.onFocusPath}
+            onMutate={p.onMutate}
           />
         </div>
       </div>

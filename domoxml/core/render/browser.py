@@ -7,16 +7,20 @@ import math
 import re
 from collections.abc import Callable, Collection
 from types import TracebackType
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import urlsplit
 
-from playwright.async_api import Browser, Page, Playwright, Route, async_playwright
 from pydantic import BaseModel, ConfigDict, Field
 
 from domoxml.core.images import apply_alpha_mask, crop_png, unrotate_region
 from domoxml.core.ir.parse import parse_shadows
 from domoxml.core.render.canvas_recorder import RECORDER_JS
 from domoxml.core.units import emu_to_px
+
+if TYPE_CHECKING:
+    # Playwright is needed only to capture HTML; importing it lazily lets PPTX reading, writing and
+    # serialisation run where it isn't installed (e.g. Pyodide in a browser worker).
+    from playwright.async_api import Browser, Page, Playwright, Route
 
 # Walks the rendered DOM and, per element, captures its box, direct text, ordered inline
 # text runs, the computed styles the extractor needs, and enough structure (index/parent)
@@ -1345,6 +1349,8 @@ class BrowserSession:
         self._browser: Browser | None = None
 
     async def __aenter__(self) -> Self:
+        from playwright.async_api import async_playwright
+
         self._playwright = await async_playwright().start()
         try:
             self._browser = await self._playwright.chromium.launch(headless=True)

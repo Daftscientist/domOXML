@@ -929,7 +929,7 @@ class _Canvas:
                         start, end = 0.0, amount
                     y1, y2 = y_of(max(start, end)), y_of(min(start, end))
                     own = series.point_colors.get(i)
-                    paint, opacity = (f"#{own}", 1.0) if own else self._paint(series)
+                    paint, opacity = (f"#{own}", "") if own else self._paint(series)
                     self.parts.append(
                         f'<rect x="{x:.1f}" y="{y1:.1f}" width="{bar_w:.1f}" '
                         f'height="{max(0.0, y2 - y1):.1f}" fill="{paint}"{opacity}/>'

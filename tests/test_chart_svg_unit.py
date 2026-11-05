@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from io import BytesIO
+from xml.etree.ElementTree import fromstring
 
 import pytest
 from pptx import Presentation as PptxPresentation
@@ -45,6 +46,7 @@ def _literal(tag: str, values: list[float]) -> str:
 def _svg(plot: str, extra: str = "") -> str:
     svg = chart_to_svg(_chart(plot, extra), width_px=480, height_px=300)
     assert svg is not None
+    fromstring(svg)  # every chart the tests draw must be well-formed SVG
     return svg
 
 
@@ -553,3 +555,19 @@ def test_series_gradients_transparency_and_gridline_styling_are_drawn() -> None:
     )
     assert 'stroke="#000000" stroke-width="2"' in gradient_area  # the chart's own gridlines
     assert 'fill="#00AA00" fill-opacity="0.5"' in alpha_columns
+
+
+def test_a_column_with_its_own_point_colour_stays_well_formed_svg() -> None:
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    point = (
+        '<c:dPt><c:idx val="1"/><c:spPr><a:solidFill xmlns:a="' + a + '">'
+        '<a:srgbClr val="FF0000"/></a:solidFill></c:spPr></c:dPt>'
+    )
+    series = _series(0, [1, 2, 3]).replace("</c:ser>", point + "</c:ser>")
+
+    svg = _svg(
+        '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>' + series + "</c:barChart>"
+    )
+
+    fromstring(svg)  # raises on malformed markup
+    assert 'fill="#FF0000"/>' in svg

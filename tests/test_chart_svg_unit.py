@@ -658,3 +658,56 @@ def test_scatter_gridlines_follow_the_axis_position_and_no_line_style() -> None:
 
     assert vertical(only_y) == 0 and vertical(only_x) > 0 and vertical(x_hidden) == 0
     assert "<line" in only_y and "<line" not in only_x.replace("<line", "", vertical(only_x))
+
+
+def _bars(orientation: str) -> str:
+    return _svg(
+        '<c:barChart><c:barDir val="bar"/><c:grouping val="clustered"/>'
+        + _series(0, [1, 2, 3])
+        + _series(1, [3, 2, 1])
+        + "</c:barChart>"
+        + f'<c:catAx><c:axId val="1"/><c:scaling><c:orientation val="{orientation}"/></c:scaling>'
+        + "</c:catAx>"
+    )
+
+
+def _label_order(svg: str) -> list[str]:
+    texts = [
+        (float(y), t) for y, t in re.findall(r'<text[^>]* y="([\d.]+)"[^>]*>(C\d)</text>', svg)
+    ]
+    return [t for _, t in sorted(texts)]
+
+
+def test_horizontal_bars_run_the_first_category_along_the_bottom() -> None:
+    assert _label_order(_bars("minMax")) == ["C2", "C1", "C0"]
+    assert _label_order(_bars("maxMin")) == ["C0", "C1", "C2"]
+
+
+def test_horizontal_bar_series_stack_upwards_within_a_cluster() -> None:
+    def first_cluster(svg: str) -> list[str]:
+        rects = re.findall(r'<rect x="[\d.]+" y="([\d.]+)"[^>]*fill="(#\w+)"', svg)
+        return [colour for _, colour in sorted((float(y), c) for y, c in rects)][:2]
+
+    upwards, downwards = first_cluster(_bars("minMax")), first_cluster(_bars("maxMin"))
+
+    assert upwards[0] != upwards[1] and upwards == downwards[::-1]
+
+
+def test_category_labels_take_the_category_axis_text_style_not_the_value_axis() -> None:
+    def axes(value_size: int) -> str:
+        return (
+            '<c:catAx><c:axId val="1"/><c:txPr><a:p><a:pPr><a:defRPr sz="900"/></a:pPr></a:p>'
+            "</c:txPr></c:catAx>"
+            f'<c:valAx><c:axId val="2"/><c:txPr><a:p><a:pPr><a:defRPr sz="{value_size}"/>'
+            "</a:pPr></a:p></c:txPr></c:valAx>"
+        )
+
+    svg = _svg(
+        '<c:barChart><c:barDir val="bar"/><c:grouping val="clustered"/>'
+        + _series(0, [1, 2])
+        + "</c:barChart>"
+        + axes(1800)
+    )
+
+    assert float(next(v for v in re.findall(r'font-size="([\d.]+)"[^>]*>C0</text>', svg))) == 12.0
+    assert float(next(v for v in re.findall(r'font-size="([\d.]+)"[^>]*>1</text>', svg))) == 24.0

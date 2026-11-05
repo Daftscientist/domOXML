@@ -224,7 +224,7 @@ def _with_luminance(data: bytes, blip: Element) -> tuple[bytes, str] | None:
             adjusted = Image.merge("RGBA", (*channels, alpha))
             buffer = BytesIO()
             adjusted.save(buffer, "PNG")
-    except OSError:
+    except (OSError, Image.DecompressionBombError):
         return None
     return buffer.getvalue(), "png"
 

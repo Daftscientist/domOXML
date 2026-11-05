@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 from xml.etree.ElementTree import fromstring
 
+import pytest
 from PIL import Image
 
 from domoxml.slides.appearance_read import _with_luminance  # pyright: ignore[reportPrivateUsage]
@@ -44,3 +45,12 @@ def test_alpha_is_left_alone_and_a_plain_blip_is_not_touched() -> None:
     plain = fromstring(f'<a:blip xmlns:a="{_A}"><a:lum/></a:blip>')
     assert _with_luminance(_png((1, 2, 3, 255)), plain) is None
     assert _with_luminance(_png((1, 2, 3, 255)), fromstring(f'<a:blip xmlns:a="{_A}"/>')) is None
+
+
+def test_an_image_pillow_refuses_to_decode_is_left_as_it_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1)  # a decompression bomb for any real image
+    blip = fromstring(f'<a:blip xmlns:a="{_A}"><a:lum bright="10000"/></a:blip>')
+
+    assert _with_luminance(_png((1, 2, 3, 255)), blip) is None

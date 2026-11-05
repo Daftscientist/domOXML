@@ -792,8 +792,8 @@ def test_axes_draw_a_black_line_with_outward_tick_marks_unless_styled_away() -> 
 
     def lines(svg: str) -> list[tuple[float, float, float, float]]:
         return [
-            tuple(float(v) for v in m)
-            for m in re.findall(
+            (float(a), float(b), float(c), float(d))
+            for a, b, c, d in re.findall(
                 r'<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)" stroke="#000000"',
                 svg,
             )

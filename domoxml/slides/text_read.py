@@ -133,10 +133,13 @@ def read_text_run(
             return found
         return fallback_rpr.find(tag, _NS) if fallback_rpr is not None else None
 
+    # Text that names no typeface anywhere in its chain is set in the theme's body font.
+    unnamed = "+mn-lt" if theme_ctx is not None else "sans-serif"
     if properties is None:
-        return TextRun(text=text, font_family="sans-serif", size_pt=12.0)
+        family = resolve_typeface(unnamed, theme_ctx) if theme_ctx is not None else unnamed
+        return TextRun(text=text, font_family=family, size_pt=12.0)
     latin = child("a:latin")
-    raw_typeface = latin.get("typeface", "sans-serif") if latin is not None else "sans-serif"
+    raw_typeface = latin.get("typeface", unnamed) if latin is not None else unnamed
     family = resolve_typeface(raw_typeface, theme_ctx) if theme_ctx is not None else raw_typeface
     raw_size = attribute("sz", "1200")
     size_pt = int(raw_size) / 100 if raw_size is not None else 12.0

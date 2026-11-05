@@ -7,6 +7,7 @@ from xml.etree.ElementTree import Element, fromstring
 
 from domoxml.core.drawingml.shape import _run  # pyright: ignore[reportPrivateUsage]
 from domoxml.core.ir.model import GradientFill, GradientStop, Rgba, TextRun
+from domoxml.slides.inherit import ThemeContext
 from domoxml.slides.text_read import read_text_run
 
 NS = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
@@ -80,3 +81,17 @@ def test_a_run_with_no_fill_reads_as_transparent_text() -> None:
     run = read(outline)
 
     assert run is not None and run.color.a == 0.0 and run.outline is not None
+
+
+def test_text_that_names_no_typeface_is_set_in_the_theme_body_font() -> None:
+    # PowerPoint sets such text in the theme's minor font; a bare ``sans-serif`` is far wider
+    # than Calibri, so every line of it wrapped at different words.
+    theme = ThemeContext(major_latin="Calibri Light", minor_latin="Calibri", colors={})
+    run = element("<a:r><a:rPr sz='1800'/><a:t>Text</a:t></a:r>")
+    bare = element("<a:r><a:t>Text</a:t></a:r>")
+
+    with_properties = read_text_run(run, {}, lambda _: None, theme_ctx=theme)
+    without_properties = read_text_run(bare, {}, lambda _: None, theme_ctx=theme)
+
+    assert with_properties is not None and with_properties.font_family == "Calibri"
+    assert without_properties is not None and without_properties.font_family == "Calibri"

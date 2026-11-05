@@ -705,18 +705,17 @@ def _axis_titles(plot: Element) -> dict[str, str]:
 def _axis_title_styles(
     plot: Element, palette: Mapping[str, str]
 ) -> dict[str, tuple[float, str, bool]]:
-    """Each axis title's ``(size px, colour, bold)``, keyed ``"x"`` or ``"y"`` as the titles are."""
+    """Each axis title's ``(size px, colour, bold)``, keyed by the title's text.
+
+    The text is the key because a horizontal bar chart draws its category title where the value
+    title would sit, so a title's axis position does not say which edge it is drawn on.
+    """
     styles: dict[str, tuple[float, str, bool]] = {}
     for axis in list(plot.findall("c:catAx", _NS)) + list(plot.findall("c:valAx", _NS)):
         node = axis.find("c:title", _NS)
         if node is None or not _title(node):
             continue
-        position = _val(axis.find("c:axPos", _NS), "")
-        styles["x" if position in ("b", "t") else "y"] = (
-            _font_px(node, 12.0),
-            _text_colour(node, palette),
-            _is_bold(node),
-        )
+        styles[_title(node)] = (_font_px(node, 12.0), _text_colour(node, palette), _is_bold(node))
     return styles
 
 
@@ -1343,20 +1342,20 @@ class _Canvas:
     def _axis_titles(
         self, left: float, top: float, pw: float, ph: float, x_label: str, y_label: str
     ) -> None:
-        def style(axis: str) -> str:
-            size, colour, bold = self.axis_title_style.get(axis, (12.0, "", False))
+        def style(label: str) -> str:
+            size, colour, bold = self.axis_title_style.get(label, (12.0, "", False))
             weight = ' font-weight="700"' if bold else ""
             return f'font-size="{size:.1f}" fill="{"#" + colour if colour else _TEXT}"{weight}'
 
         if x_label:
             self.parts.append(
                 f'<text x="{left + pw / 2:.1f}" y="{top + ph + 38:.1f}" text-anchor="middle" '
-                f"{style('x')}>{escape(x_label)}</text>"
+                f"{style(x_label)}>{escape(x_label)}</text>"
             )
         if y_label:
             self.parts.append(
                 f'<text transform="translate(12 {top + ph / 2:.1f}) rotate(-90)" '
-                f'text-anchor="middle" {style("y")}>{escape(y_label)}</text>'
+                f'text-anchor="middle" {style(y_label)}>{escape(y_label)}</text>'
             )
 
     def _horizontal(

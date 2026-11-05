@@ -881,3 +881,27 @@ def test_axis_titles_take_their_own_size_colour_and_weight() -> None:
 
     assert re.search(r'font-size="21\.3" fill="#AA0000" font-weight="700">Quarter<', svg)
     assert re.search(r'font-size="12\.0" fill="#00AA00">Revenue<', svg)
+
+
+def test_a_horizontal_bar_charts_axis_titles_keep_their_own_style() -> None:
+    def title(text: str, colour: str) -> str:
+        return (
+            '<c:title><c:tx><c:rich><a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+            f'<a:pPr><a:defRPr sz="1000"><a:solidFill><a:srgbClr val="{colour}"/></a:solidFill>'
+            f"</a:defRPr></a:pPr><a:r><a:t>{text}</a:t></a:r></a:p></c:rich></c:tx></c:title>"
+        )
+
+    svg = _svg(
+        '<c:barChart><c:barDir val="bar"/><c:grouping val="clustered"/>'
+        + _series(0, [1, 2, 3])
+        + "</c:barChart>"
+        + '<c:catAx><c:axId val="1"/><c:axPos val="l"/>'
+        + title("Quarter", "AA0000")
+        + '</c:catAx><c:valAx><c:axId val="2"/><c:axPos val="b"/>'
+        + title("Revenue", "00AA00")
+        + "</c:valAx>"
+    )
+
+    # Each title keeps the colour its own axis gave it, wherever the chart draws it.
+    assert re.search(r'fill="#AA0000"[^>]*>Quarter<', svg)
+    assert re.search(r'fill="#00AA00"[^>]*>Revenue<', svg)

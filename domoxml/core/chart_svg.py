@@ -84,7 +84,13 @@ class Series:
     label_px: float = 10.0
     format_code: str = "General"
     point_colors: dict[int, str] = field(default_factory=dict[int, str])
-    smooth: bool = False  # a scatter line drawn as a curve
+    smooth: bool = False  # a scatter or line series drawn as a curve
+    line_px: float = 1.5  # measured against PowerPoint: an unstyled line is about 1 pt
+    dash: str = ""  # an ``a:prstDash`` name
+    marker_symbol: str = ""  # empty: the automatic symbol for the series' position
+    marker_px: float = 6.7  # the automatic marker is 5 pt
+    marker_color: str = ""
+    position: int = 0  # the series' index among the chart's, for automatic markers
 
 
 @dataclass
@@ -253,11 +259,19 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 gradient_angle=_gradient_angle(ser.find("c:spPr", _NS)),
                 alpha=_solid_alpha(ser.find("c:spPr", _NS)),
                 # A scatter series with no ``c:smooth`` is smoothed (the schema default is true).
-                smooth=kind == "scatter"
+                smooth=kind in ("scatter", "line")
                 and _val(ser.find("c:smooth", _NS), "1") not in ("0", "false"),
                 line=not line_off and (kind != "scatter" or scatter_style != "marker"),
-                marker=marker_symbol not in ("none",)
-                and (kind == "scatter" or marker_symbol != "" or (kind == "line" and False)),
+                marker=marker_symbol != "none"
+                and (kind in ("scatter", "line") or marker_symbol != ""),
+                line_px=_line_style(ser.find("c:spPr", _NS), palette)[1] or 1.5,
+                dash=_val(ser.find("c:spPr/a:ln/a:prstDash", _NS), ""),
+                marker_symbol=marker_symbol,
+                marker_px=_marker_px(marker),
+                marker_color=_fill_hex(marker.find("c:spPr", _NS), palette)
+                if marker is not None
+                else "",
+                position=start + offset,
                 show_values=show,
                 label_pos=_val(labels.find("c:dLblPos", _NS), "") if labels is not None else "",
                 label_color=_label_style(labels, palette)[0],
@@ -410,6 +424,70 @@ def _fill_hex_of(holder: Element, palette: Mapping[str, str]) -> str:
     if scheme is not None and _hex(palette.get(scheme.get("val", ""))):
         return _transformed(palette[scheme.get("val", "")], scheme)
     return ""
+
+
+def _marker_px(marker: Element | None) -> float:
+    """The marker's size in px (``c:size`` is in points, 2 to 72), 5 pt when it names none."""
+    try:
+        return int(_val(marker.find("c:size", _NS), "5") if marker is not None else "5") * 96 / 72
+    except ValueError:
+        return 5 * 96 / 72
+
+
+_AUTO_MARKERS = ("diamond", "square", "triangle", "x", "star", "circle", "plus")
+_DASHES = {
+    "sysDash": (3, 1),
+    "sysDot": (1, 1),
+    "dash": (4, 3),
+    "lgDash": (8, 3),
+    "dashDot": (4, 3, 1, 3),
+    "lgDashDot": (8, 3, 1, 3),
+    "sysDashDot": (3, 1, 1, 1),
+    "sysDashDotDot": (3, 1, 1, 1, 1, 1),
+    "lgDashDotDot": (8, 3, 1, 3, 1, 3),
+}
+
+
+def _dash_attr(name: str, width: float) -> str:
+    """An SVG ``stroke-dasharray`` for an ``a:prstDash`` name (lengths in line widths)."""
+    lengths = _DASHES.get(name)
+    if lengths is None:
+        return ""
+    return f' stroke-dasharray="{" ".join(f"{n * width:.1f}" for n in lengths)}"'
+
+
+def _marker_svg(symbol: str, x: float, y: float, size: float, colour: str) -> str:
+    """One chart marker of ``size`` px centred on ``(x, y)`` (PowerPoint's symbol names)."""
+    r = size / 2
+    fill = f'fill="#{colour}"'
+    stroke = f'stroke="#{colour}" stroke-width="1.5" fill="none"'
+    if symbol == "square":
+        return (
+            f'<rect x="{x - r:.1f}" y="{y - r:.1f}" width="{size:.1f}" height="{size:.1f}" {fill}/>'
+        )
+    if symbol == "diamond":
+        t = r * 1.2
+        pts = f"{x:.1f},{y - t:.1f} {x + t:.1f},{y:.1f} {x:.1f},{y + t:.1f} {x - t:.1f},{y:.1f}"
+        return f'<polygon points="{pts}" {fill}/>'
+    if symbol == "triangle":
+        pts = f"{x:.1f},{y - r:.1f} {x + r:.1f},{y + r:.1f} {x - r:.1f},{y + r:.1f}"
+        return f'<polygon points="{pts}" {fill}/>'
+    if symbol in ("x", "plus", "star"):
+        lines: list[tuple[float, float, float, float]] = []
+        if symbol in ("x", "star"):
+            lines += [(x - r, y - r, x + r, y + r), (x - r, y + r, x + r, y - r)]
+        if symbol in ("plus", "star"):
+            lines += [(x - r, y, x + r, y), (x, y - r, x, y + r)]
+        body = "".join(
+            f'<line x1="{a:.1f}" y1="{b:.1f}" x2="{c:.1f}" y2="{d:.1f}"/>' for a, b, c, d in lines
+        )
+        return f"<g {stroke}>{body}</g>"
+    if symbol == "dash":
+        box = f'x="{x - r:.1f}" y="{y - r / 3:.1f}" width="{size:.1f}" height="{size / 1.5:.1f}"'
+        return f"<rect {box} {fill}/>"
+    if symbol == "dot":
+        r /= 2
+    return f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" {fill}/>'
 
 
 def _line_style(properties: Element | None, palette: Mapping[str, str]) -> tuple[str, float]:
@@ -763,6 +841,10 @@ class _Canvas:
             else:
                 x += min(200.0, 24 + len(label) * self.legend_px * 0.58)
 
+    def _marker(self, series: Series, x: float, y: float) -> str:
+        symbol = series.marker_symbol or _AUTO_MARKERS[series.position % len(_AUTO_MARKERS)]
+        return _marker_svg(symbol, x, y, series.marker_px, series.marker_color or series.color)
+
     def _swatch(
         self, x: float, y: float, label: str, color: str, size: int, line: bool = False
     ) -> None:
@@ -1009,18 +1091,22 @@ class _Canvas:
             if group.kind == "area":
                 self._area(group, series, left, slot, y_of, count, running_positive)
             elif len(points) > 1 and series.line:
-                path = " ".join(
-                    f"{'M' if k == 0 else 'L'}{x:.1f} {y:.1f}" for k, (x, y) in enumerate(points)
+                path = (
+                    _smooth_path(points)
+                    if series.smooth
+                    else " ".join(
+                        f"{'M' if k == 0 else 'L'}{x:.1f} {y:.1f}"
+                        for k, (x, y) in enumerate(points)
+                    )
                 )
                 self.parts.append(
-                    f'<path d="{path}" fill="none" stroke="#{series.color}" stroke-width="2.25" '
+                    f'<path d="{path}" fill="none" stroke="#{series.color}" '
+                    f'stroke-width="{series.line_px:g}"{_dash_attr(series.dash, series.line_px)} '
                     'stroke-linejoin="round" stroke-linecap="round"/>'
                 )
-            if group.kind == "line" or series.marker:
+            if series.marker:
                 for x, y in points:
-                    self.parts.append(
-                        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.5" fill="#{series.color}"/>'
-                    )
+                    self.parts.append(self._marker(series, x, y))
             if series.show_values:
                 for i, (x, y) in enumerate(points):
                     self._label(
@@ -1330,9 +1416,7 @@ class _Canvas:
                     )
             elif series.marker or not series.line:
                 for x, y in points:
-                    self.parts.append(
-                        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="#{series.color}"/>'
-                    )
+                    self.parts.append(self._marker(series, x, y))
         self._axis_titles(
             left, top, plot_w, plot_h, self.axis_titles.get("x", ""), self.axis_titles.get("y", "")
         )

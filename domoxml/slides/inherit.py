@@ -340,11 +340,16 @@ def resolve_run_rpr(
         return None
     styles = [own_list_style, *_lstStyle_chain(ctx), default_style]
     merged: Element | None = None
-    for style in styles:
-        lvl_ppr = style.find(lvl_tag, _NS) if style is not None else None
-        defRPr = lvl_ppr.find("a:defRPr", _NS) if lvl_ppr is not None else None
-        if defRPr is None:
-            continue
+    # Within one style a level's own properties come before its all-levels ``a:defPPr``.
+    defaults = [
+        run_properties
+        for style in styles
+        if style is not None
+        for tag in (lvl_tag, "a:defPPr")
+        if (paragraph := style.find(tag, _NS)) is not None
+        if (run_properties := paragraph.find("a:defRPr", _NS)) is not None
+    ]
+    for defRPr in defaults:
         if merged is None:
             merged = copy.deepcopy(defRPr)
             continue

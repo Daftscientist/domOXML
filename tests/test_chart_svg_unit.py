@@ -826,3 +826,24 @@ def test_a_horizontal_category_axis_sits_at_zero_when_values_are_negative() -> N
         abs(float(axis.group(1)) - b) < 1.0 for b in bars
     )  # on a bar's origin, not at the minimum of the scale
     assert float(axis.group(1)) > min(bars) + 5
+
+
+def _value_labels(grouping: str, height_px: float) -> list[str]:
+    svg = chart_to_svg(
+        _chart(
+            '<c:barChart><c:barDir val="col"/><c:grouping val="'
+            + grouping
+            + '"/>'
+            + _series(0, [120, 135, 148, 162])
+            + "</c:barChart>"
+        ),
+        width_px=480,
+        height_px=height_px,
+    )
+    assert svg is not None
+    return re.findall(r'text-anchor="end"[^>]*>([\d%]+)</text>', svg)
+
+
+def test_value_axis_steps_follow_the_label_height_and_are_coarser_for_percent() -> None:
+    assert _value_labels("clustered", 220) == [str(v) for v in range(0, 181, 20)]
+    assert _value_labels("percentStacked", 300) == [f"{v}%" for v in range(0, 101, 20)]

@@ -176,6 +176,9 @@ def chart_to_svg(
         if _val(plot.find("c:layout/c:manualLayout/c:layoutTarget", _NS), "inner") == "inner"
         else None
     )
+    canvas.categories_reversed = (
+        _val(plot.find("c:catAx/c:scaling/c:orientation", _NS), "minMax") == "maxMin"
+    )
     canvas.grid = _has_gridlines(plot)
     if groups[0].kind in ("scatter", "bubble"):
         x_axis, y_axis = _scatter_axes(plot)
@@ -673,6 +676,7 @@ class _Canvas:
         self.plot_layout: tuple[float, float, float, float] | None = None
         self.grid = True
         self.grid_x = False
+        self.categories_reversed = False  # the category axis runs maxMin (first at the top)
         self.grid_color = ""
         self.grid_px = 1.0
         self.defs: list[str] = []
@@ -816,7 +820,7 @@ class _Canvas:
         if horizontal:
             room, spacing = (
                 self.plot_layout[2] * self.w if self.plot_layout is not None else pw,
-                70.0,
+                50.0,
             )
         else:
             x_title = self.axis_titles.get("x", "")
@@ -1177,14 +1181,25 @@ class _Canvas:
         thickness = slot / (per + group.gap_width / 100)
         for tick in ticks:
             x = left + (tick - low) / (high - low) * plot_w
+            if self.grid:
+                self.parts.append(
+                    f'<line x1="{x:.1f}" y1="{top:.1f}" x2="{x:.1f}" y2="{top + plot_h:.1f}" '
+                    f'stroke="#{self.grid_color or "000000"}" stroke-width="{self.grid_px:g}"/>'
+                )
             self.parts.append(
-                f'<line x1="{x:.1f}" y1="{top:.1f}" x2="{x:.1f}" y2="{top + plot_h:.1f}" '
-                f'stroke="{_GRID}"/><text x="{x:.1f}" y="{top + plot_h + 16:.1f}" '
-                f'text-anchor="middle" font-size="11" fill="{_TEXT}">'
+                f'<text x="{x:.1f}" y="{top + plot_h + 16:.1f}" text-anchor="middle" '
+                f'font-size="{self.tick_px:.1f}" fill="#{self.tick_color}">'
                 f"{escape(format_number(tick, code))}</text>"
             )
         running_positive = [0.0] * count
         running_negative = [0.0] * count
+        # A horizontal bar chart runs its first category (and series) along the bottom, unless
+        # the category axis is reversed.
+        flip = not self.categories_reversed
+
+        def row(i: int) -> int:
+            return count - 1 - i if flip else i
+
         for s_index, series in enumerate(group.series):
             for i in range(count):
                 value = _at(series.values, i)
@@ -1199,9 +1214,9 @@ class _Canvas:
                     running[i] = end
                 y = (
                     top
-                    + slot * i
+                    + slot * row(i)
                     + (slot - thickness * per) / 2
-                    + (0 if stacked else s_index * thickness)
+                    + (0 if stacked else (per - 1 - s_index if flip else s_index) * thickness)
                 )
                 x1 = left + (min(start, end) - low) / (high - low) * plot_w
                 x2 = left + (max(start, end) - low) / (high - low) * plot_w
@@ -1212,8 +1227,9 @@ class _Canvas:
         for i in range(count):
             label = categories[i] if i < len(categories) else str(i + 1)
             self.parts.append(
-                f'<text x="{left - 6:.1f}" y="{top + slot * (i + 0.5) + 4:.1f}" text-anchor="end" '
-                f'font-size="11" fill="{_TEXT}">{escape(label)}</text>'
+                f'<text x="{left - 6:.1f}" y="{top + slot * (row(i) + 0.5) + 4:.1f}" '
+                f'text-anchor="end" font-size="{self.tick_px:.1f}" fill="#{self.tick_color}">'
+                f"{escape(label)}</text>"
             )
         self._axis_titles(left, top, plot_w, plot_h, x_label, y_label)
         return self._wrap()

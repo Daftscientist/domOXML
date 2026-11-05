@@ -95,7 +95,7 @@ from domoxml.types import (
 # Layout rules every emitted element needs. They are inlined on each element, never shipped in a
 # stylesheet, so a slide renders correctly wherever its markup lands.
 _SLIDE_BASE_STYLE = "position:relative;overflow:hidden;box-sizing:border-box"
-_TEXT_BASE_STYLE = "white-space:pre-wrap"
+_TEXT_BASE_STYLE = "white-space:pre-wrap;overflow-wrap:break-word"
 # CSS has no distinct rendering for the heavier OOXML dash presets, so they fold onto the
 # nearest CSS border-style (dashed/dotted). The keys cover the whole DashStyle literal.
 _CSS_DASH = {

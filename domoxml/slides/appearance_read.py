@@ -293,6 +293,15 @@ def _arrowhead(element: Element | None) -> Arrowhead | None:
 _HAIRLINE_EMU = 9525  # one CSS pixel
 
 
+_COMPOUND_FROM_OOXML: dict[str, Literal["sng", "dbl", "thickThin", "thinThick", "tri"]] = {
+    "sng": "sng",
+    "dbl": "dbl",
+    "thickThin": "thickThin",
+    "thinThick": "thinThick",
+    "tri": "tri",
+}
+
+
 def line_element(element: Element, colors: ThemeColors) -> Line | None:
     """Parse one DrawingML line after its owner has located it."""
     solid = element.find("a:solidFill", _NS)
@@ -326,6 +335,7 @@ def line_element(element: Element, colors: ThemeColors) -> Line | None:
         custom_dash=tuple(custom),
         cap=_CAP_FROM_OOXML.get(element.get("cap", "flat"), "flat"),
         join=join,
+        compound=_COMPOUND_FROM_OOXML.get(element.get("cmpd", "sng"), "sng"),
         gradient=gradient_fill,
         head=_arrowhead(element.find("a:headEnd", _NS)),
         tail=_arrowhead(element.find("a:tailEnd", _NS)),

@@ -466,6 +466,8 @@ def _shape_style(
     if node.line is not None:
         line = node.line
         border_style = _CSS_DASH.get(line.dash, "dashed")
+        if line.compound != "sng" and border_style == "solid":
+            border_style = "double"  # CSS splits the width into line, gap and line
         if line.gradient is not None:
             # Gradient stroke: emit border-image with a linear-gradient.
             # CSS border-image with slice=1 stretches the gradient across all four sides.
@@ -792,7 +794,10 @@ def _blurred_reflection_layer(node: ShapeNode, assets: dict[str, HtmlAsset]) -> 
     )
     child_style = _shape_style(reflected, assets, [])
     body_css = _text_body_css(
-        reflected.text, [], reflected.line.width_emu if reflected.line is not None else 0
+        reflected.text,
+        [],
+        reflected.line.width_emu if reflected.line is not None else 0,
+        reflected.box,
     )
     if body_css:
         child_style += ";" + body_css
@@ -1006,8 +1011,28 @@ def _bullet_list_style(paragraph: TextParagraph) -> str:
     return "disc"
 
 
+def _fit_insets(
+    before: int, after: int, border_emu: int, extent_emu: int | None
+) -> tuple[int, int]:
+    """Two opposite insets shrunk to what is left of ``extent_emu`` inside the borders.
+
+    CSS grows a box to hold its padding and border; PowerPoint lets the text overflow a shape
+    that is thinner than its insets and leaves the shape as drawn."""
+    before, after = max(0, before - border_emu), max(0, after - border_emu)
+    if extent_emu is None:
+        return before, after
+    room = max(0, extent_emu - 2 * border_emu)
+    if before + after <= room or before + after == 0:
+        return before, after
+    scale = room / (before + after)
+    return round(before * scale), round(after * scale)
+
+
 def _text_body_css(
-    body: TextBody | None, warnings: list[ConversionWarning], border_emu: int = 0
+    body: TextBody | None,
+    warnings: list[ConversionWarning],
+    border_emu: int = 0,
+    box: Box | None = None,
 ) -> str:
     """Return inline CSS for text body container (vertical anchor, columns).
 
@@ -1031,7 +1056,12 @@ def _text_body_css(
         styles.append("column-fill:auto")
         styles.append(f"column-gap:{_px(body.column_gap_emu)}")
     if any(body.margins):
-        left, top, right, bottom = (max(0, margin - border_emu) for margin in body.margins)
+        left, right = _fit_insets(
+            body.margins[0], body.margins[2], border_emu, box.width if box is not None else None
+        )
+        top, bottom = _fit_insets(
+            body.margins[1], body.margins[3], border_emu, box.height if box is not None else None
+        )
         styles.append(f"padding:{_px(top)} {_px(right)} {_px(bottom)} {_px(left)}")
     return ";".join(styles)
 
@@ -1681,7 +1711,7 @@ def _text_layer_html(node: ShapeNode, warnings: list[ConversionWarning]) -> str:
         f"width:{_px(node.box.width)}",
         f"height:{_px(node.box.height)}",
     ]
-    if body_css := _text_body_css(node.text, warnings):
+    if body_css := _text_body_css(node.text, warnings, 0, node.box):
         styles.append(body_css)
     if (transform_css := _transform_css(node.transform)) is not None:
         styles.append(f"transform:{transform_css}")
@@ -1857,7 +1887,7 @@ def _node_html(node: Node, assets: dict[str, HtmlAsset], warnings: list[Conversi
             return inner
         # Merge text body CSS (flex anchor, columns) into the shape style.
         body_css = _text_body_css(
-            node.text, warnings, node.line.width_emu if node.line is not None else 0
+            node.text, warnings, node.line.width_emu if node.line is not None else 0, node.box
         )
         shape_style = _shape_style(node, assets, warnings)
         combined_style = (shape_style + ";" + body_css) if body_css else shape_style

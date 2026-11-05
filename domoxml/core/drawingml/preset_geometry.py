@@ -211,6 +211,39 @@ def preset_geometry(
     )
 
 
+def preset_text_insets(
+    name: str, width_emu: int, height_emu: int, adjusts: Mapping[str, float] | None = None
+) -> tuple[int, int, int, int]:
+    """How far preset ``name``'s text rectangle sits in from the box edges, ``(l, t, r, b)`` EMU.
+
+    PowerPoint lays a shape's text out in this rectangle (an ellipse's inscribed square, a
+    triangle's lower middle) and then applies the body insets inside it. All zero for a preset
+    whose text fills the box, an unknown preset, or one whose formulas cannot be evaluated.
+    """
+    definition = next((child for child in _definitions() if child.tag == name), None)
+    rect = (
+        next((node for node in definition if _tag(node) == "rect"), None)
+        if definition is not None
+        else None
+    )
+    if definition is None or rect is None:
+        return (0, 0, 0, 0)
+    width_emu, height_emu = max(1, width_emu), max(1, height_emu)
+    env = _builtin(float(width_emu), float(height_emu))
+    try:
+        _guides(definition, env, adjusts or {})
+        left, top = _number(rect.get("l"), env), _number(rect.get("t"), env)
+        right, bottom = _number(rect.get("r"), env), _number(rect.get("b"), env)
+    except (_Unsupported, KeyError, ValueError, ZeroDivisionError):
+        return (0, 0, 0, 0)
+    return (
+        max(0, round(left)),
+        max(0, round(top)),
+        max(0, round(width_emu - right)),
+        max(0, round(height_emu - bottom)),
+    )
+
+
 def _has_shading(definition: Element) -> bool:
     return any(
         path.get("fill") in _SHADED - {"norm"}

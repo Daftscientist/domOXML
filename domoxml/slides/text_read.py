@@ -273,11 +273,12 @@ def read_text_body_properties(
         autofit,
         max(1, int(attribute("numCol", "1"))),
         max(0, int(attribute("spcCol", "0"))),
+        # An inset may be negative (it is measured inside the preset's text rectangle).
         (
-            max(0, int(attribute("lIns", "91440"))),
-            max(0, int(attribute("tIns", "45720"))),
-            max(0, int(attribute("rIns", "91440"))),
-            max(0, int(attribute("bIns", "45720"))),
+            int(attribute("lIns", "91440")),
+            int(attribute("tIns", "45720")),
+            int(attribute("rIns", "91440")),
+            int(attribute("bIns", "45720")),
         ),
     )
 

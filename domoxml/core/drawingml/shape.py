@@ -7,6 +7,7 @@ from collections.abc import Callable
 from xml.sax.saxutils import escape
 
 from domoxml.core.drawingml.identity import alt_text_attr, node_identity_xml
+from domoxml.core.drawingml.preset_geometry import preset_text_insets
 from domoxml.core.drawingml.stroke import stroke_centred
 from domoxml.core.ir.effect_projection import effect_list_position, project_native_effects
 from domoxml.core.ir.gradient import drawingml_gradient_angle, drawingml_gradient_projection
@@ -548,7 +549,22 @@ def _paragraph(
 _ANCHOR_TO_OOXML = {"top": "t", "middle": "ctr", "bottom": "b"}
 
 
-def _text_body(body: TextBody | None, hyperlink_rid: HyperlinkRid) -> str:
+def _text_insets(node: ShapeNode) -> tuple[int, int, int, int]:
+    """How far the shape's preset puts its text rectangle in from the box edges, in EMU."""
+    if node.custom_geom is not None or node.geom == "rect":
+        return (0, 0, 0, 0)
+    adjusts: dict[str, float] = {}
+    if node.geom == "roundRect":
+        shorter = max(1, min(node.box.width, node.box.height))
+        adjusts["adj"] = min(50000, round(node.corner_radius_emu / shorter * 100000))
+    return preset_text_insets(node.geom, node.box.width, node.box.height, adjusts)
+
+
+def _text_body(
+    body: TextBody | None,
+    hyperlink_rid: HyperlinkRid,
+    insets: tuple[int, int, int, int] = (0, 0, 0, 0),
+) -> str:
     if body is None:
         return ""
     # Vertical anchor: default "t" is the block-flow equivalent (text at the top).
@@ -561,7 +577,11 @@ def _text_body(body: TextBody | None, hyperlink_rid: HyperlinkRid) -> str:
         if body.column_gap_emu > 0:
             col_attrs += f' spcCol="{body.column_gap_emu}"'
 
-    left, top, right, bottom = body.margins
+    # PowerPoint applies the body insets inside the preset's text rectangle; the IR measures them
+    # from the box edge, so the rectangle's offsets come out (an inset may go negative).
+    left, top, right, bottom = (
+        margin - inset for margin, inset in zip(body.margins, insets, strict=True)
+    )
     if body.mirror_x:
         left, right = right, left  # the mirror turns the insets with the text
 
@@ -654,7 +674,7 @@ def shape_xml(
         f"<p:cNvSpPr/><p:nvPr>{node_identity_xml(node)}</p:nvPr></p:nvSpPr>"
         f"<p:spPr>{_xfrm_xml(node)}"
         f"{_geometry_xml(node)}{fill}{line_xml(node.line)}{_effects_xml(node)}</p:spPr>"
-        f"{_text_body(node.text, hyperlink_rid)}</p:sp>"
+        f"{_text_body(node.text, hyperlink_rid, _text_insets(node))}</p:sp>"
     )
 
 

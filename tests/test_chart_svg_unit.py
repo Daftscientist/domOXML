@@ -110,7 +110,7 @@ def test_lines_areas_pies_doughnuts_scatter_and_radar_all_draw() -> None:
         + _literal("yVal", [5, 9])
         + "</c:ser></c:scatterChart>"
     )
-    assert "<circle" in scatter
+    assert "<polygon" in scatter  # the automatic first marker is a diamond
 
 
 def _rich(text: str) -> str:
@@ -711,3 +711,71 @@ def test_category_labels_take_the_category_axis_text_style_not_the_value_axis() 
 
     assert float(next(v for v in re.findall(r'font-size="([\d.]+)"[^>]*>C0</text>', svg))) == 12.0
     assert float(next(v for v in re.findall(r'font-size="([\d.]+)"[^>]*>1</text>', svg))) == 24.0
+
+
+def _line(series_extra: str, *, count: int = 3) -> str:
+    return _svg(
+        '<c:lineChart><c:grouping val="standard"/>'
+        + _series(0, [1, 3, 2][:count]).replace("</c:ser>", series_extra + "</c:ser>")
+        + "</c:lineChart>"
+    )
+
+
+def test_line_series_are_smoothed_unless_smooth_is_off() -> None:
+    assert " C" in _line("")
+    assert " C" in _line('<c:smooth val="1"/>')
+    assert " C" not in _line('<c:smooth val="0"/>')
+
+
+def test_line_markers_follow_symbol_size_and_colour() -> None:
+    marker = (
+        '<c:marker><c:symbol val="square"/><c:size val="12"/>'
+        '<c:spPr><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></c:spPr></c:marker>'
+    )
+    svg = _line(marker)
+
+    assert svg.count("<rect x") >= 3 and 'fill="#FF0000"' in svg
+    assert 'width="16.0"' in svg  # 12 pt
+    assert "<circle" not in _line('<c:marker><c:symbol val="none"/></c:marker>')
+    assert "<polygon" in _line("")  # automatic markers start with a diamond
+
+
+def test_line_width_and_dash_come_from_the_series_outline() -> None:
+    styled = _line('<c:spPr><a:ln w="38100"><a:prstDash val="sysDash"/></a:ln></c:spPr>')
+    plain = _line("")
+
+    assert 'stroke-width="4"' in styled and 'stroke-dasharray="12.0 4.0"' in styled
+    assert "stroke-dasharray" not in plain and 'stroke-width="1.5"' in plain
+
+
+def test_a_line_chart_level_smooth_off_straightens_series_that_do_not_say() -> None:
+    def chart(chart_level: str, series_level: str) -> str:
+        return _svg(
+            '<c:lineChart><c:grouping val="standard"/>'
+            + _series(0, [1, 3, 2]).replace("</c:ser>", series_level + "</c:ser>")
+            + chart_level
+            + "</c:lineChart>"
+        )
+
+    assert " C" not in chart('<c:smooth val="0"/>', "")
+    assert " C" in chart('<c:smooth val="0"/>', '<c:smooth val="1"/>')  # the series wins
+
+
+def test_a_bare_smooth_element_means_smooth_and_scatter_lines_take_series_style() -> None:
+    bare = _svg(
+        '<c:lineChart><c:grouping val="standard"/><c:smooth val="0"/>'
+        + _series(0, [1, 3, 2]).replace("</c:ser>", "<c:smooth/></c:ser>")
+        + "</c:lineChart>"
+    )
+    scatter = _svg(
+        '<c:scatterChart><c:scatterStyle val="lineMarker"/><c:ser><c:idx val="0"/>'
+        '<c:spPr><a:ln w="38100"><a:prstDash val="dash"/></a:ln></c:spPr>'
+        '<c:marker><c:symbol val="none"/></c:marker>'
+        + _literal("xVal", [1, 2, 3])
+        + _literal("yVal", [5, 9, 4])
+        + "</c:ser></c:scatterChart>"
+    )
+
+    assert " C" in bare
+    assert 'stroke-width="4"' in scatter and "stroke-dasharray" in scatter
+    assert "<polygon" not in scatter and "<circle" not in scatter  # symbol none draws no marker

@@ -1404,8 +1404,9 @@ class _Canvas:
                 f'text-anchor="end" font-size="{self.category_px:.1f}" '
                 f'fill="#{self.category_color}">{escape(label)}</text>'
             )
+        zero_x = left + (max(low, min(0.0, high)) - low) / (high - low) * plot_w
         self._axis(
-            (left, top, left, top + plot_h),
+            (zero_x, top, zero_x, top + plot_h),
             self.category_axis,
             [top + slot * i for i in range(count + 1)],
             -1,

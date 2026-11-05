@@ -809,3 +809,20 @@ def test_axes_draw_a_black_line_with_outward_tick_marks_unless_styled_away() -> 
     assert not gone
     short_verticals = [ln for ln in drawn if ln[0] == ln[2] and ln[3] - ln[1] <= 5]
     assert len(short_verticals) == 4 and all(ln[3] - ln[1] == 4.0 for ln in short_verticals)  # down
+
+
+def test_a_horizontal_category_axis_sits_at_zero_when_values_are_negative() -> None:
+    svg = _svg(
+        '<c:barChart><c:barDir val="bar"/><c:grouping val="clustered"/>'
+        + _series(0, [-2, 3])
+        + "</c:barChart>"
+        + '<c:catAx><c:axId val="1"/><c:delete val="0"/><c:majorTickMark val="none"/></c:catAx>'
+    )
+    axis = re.search(r'<line x1="([\d.]+)" y1="[\d.]+" x2="\1" y2="[\d.]+" stroke="#000000"', svg)
+    bars = [float(x) for x in re.findall(r'<rect x="([\d.]+)"', svg)]
+
+    assert axis is not None
+    assert abs(float(axis.group(1)) - max(bars)) < 1.0 or any(
+        abs(float(axis.group(1)) - b) < 1.0 for b in bars
+    )  # on a bar's origin, not at the minimum of the scale
+    assert float(axis.group(1)) > min(bars) + 5

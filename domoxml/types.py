@@ -277,7 +277,7 @@ class ConversionWarning(BaseModel):
 class HtmlAsset(BaseModel):
     """One asset referenced by emitted HTML/CSS."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, ser_json_bytes="base64", val_json_bytes="base64")
 
     path: str
     data: bytes

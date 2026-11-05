@@ -95,3 +95,17 @@ def test_text_that_names_no_typeface_is_set_in_the_theme_body_font() -> None:
 
     assert with_properties is not None and with_properties.font_family == "Calibri"
     assert without_properties is not None and without_properties.font_family == "Calibri"
+
+
+def test_text_with_no_size_anywhere_in_its_chain_is_18pt_like_powerpoint() -> None:
+    plain = read_text_run(
+        element("<a:r><a:rPr/><a:t>Text</a:t></a:r>"), {}, lambda _: None, theme_ctx=None
+    )
+    bare = read_text_run(element("<a:r><a:t>Text</a:t></a:r>"), {}, lambda _: None)
+    sized = read_text_run(
+        element("<a:r><a:rPr sz='1400'/><a:t>Text</a:t></a:r>"), {}, lambda _: None
+    )
+
+    assert plain is not None and plain.size_pt == 18.0
+    assert bare is not None and bare.size_pt == 18.0
+    assert sized is not None and sized.size_pt == 14.0

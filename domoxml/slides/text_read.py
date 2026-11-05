@@ -106,6 +106,11 @@ def _text_shadow(effects: Element | None, colors: ThemeColors) -> Shadow | None:
 _FILL_CHOICES = ("noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill")
 
 
+# What PowerPoint sets text in when nothing in the chain (run, list style, master, presentation
+# default) names a size.
+_DEFAULT_SIZE_PT = 18.0
+
+
 def read_text_run(
     element: Element,
     colors: ThemeColors,
@@ -137,12 +142,12 @@ def read_text_run(
     unnamed = "+mn-lt" if theme_ctx is not None else "sans-serif"
     if properties is None:
         family = resolve_typeface(unnamed, theme_ctx) if theme_ctx is not None else unnamed
-        return TextRun(text=text, font_family=family, size_pt=12.0)
+        return TextRun(text=text, font_family=family, size_pt=_DEFAULT_SIZE_PT)
     latin = child("a:latin")
     raw_typeface = latin.get("typeface", unnamed) if latin is not None else unnamed
     family = resolve_typeface(raw_typeface, theme_ctx) if theme_ctx is not None else raw_typeface
-    raw_size = attribute("sz", "1200")
-    size_pt = int(raw_size) / 100 if raw_size is not None else 12.0
+    raw_size = attribute("sz", str(round(_DEFAULT_SIZE_PT * 100)))
+    size_pt = int(raw_size) / 100 if raw_size is not None else _DEFAULT_SIZE_PT
 
     # The fill is one choice (no fill, solid or gradient), so it comes from the run's own
     # properties when they make a choice and from the inherited ones only when they do not.

@@ -611,3 +611,50 @@ def test_bubbles_are_opaque_and_follow_the_bubble_scale() -> None:
 
     assert "fill-opacity" not in large
     assert abs(biggest(large) / biggest(small) - 2) < 0.05
+
+
+def _two_series_scatter(second_smooth: str, axes: str) -> str:
+    def ser(index: int, smooth: str) -> str:
+        return (
+            f'<c:ser><c:idx val="{index}"/>'
+            + _literal("xVal", [1, 2, 3])
+            + _literal("yVal", [1, 5, 2])
+            + smooth
+            + "</c:ser>"
+        )
+
+    return _svg(
+        '<c:scatterChart><c:scatterStyle val="lineMarker"/>'
+        + ser(0, '<c:smooth val="1"/>')
+        + ser(1, second_smooth)
+        + "</c:scatterChart>"
+        + axes
+    )
+
+
+def test_each_scatter_series_keeps_its_own_smoothing() -> None:
+    svg = _two_series_scatter('<c:smooth val="0"/>', "")
+
+    assert len(re.findall(r'<path d="M[^"]* C', svg)) == 1  # one curve, one polyline
+    assert len(re.findall(r'<path d="M[^"]*" fill="none"', svg)) == 2
+
+
+def test_scatter_gridlines_follow_the_axis_position_and_no_line_style() -> None:
+    grid = "<c:majorGridlines/>"
+    hidden = "<c:majorGridlines><c:spPr><a:ln><a:noFill/></a:ln></c:spPr></c:majorGridlines>"
+
+    def lines(y_grid: str, x_grid: str) -> str:  # the vertical axis listed first
+        return (
+            f'<c:valAx><c:axId val="2"/><c:axPos val="l"/>{y_grid}</c:valAx>'
+            f'<c:valAx><c:axId val="1"/><c:axPos val="b"/>{x_grid}</c:valAx>'
+        )
+
+    def vertical(svg: str) -> int:
+        return len(re.findall(r'<line x1="([\d.]+)"[^>]* x2="\1"', svg))
+
+    only_y = _two_series_scatter("", lines(grid, ""))
+    only_x = _two_series_scatter("", lines("", grid))
+    x_hidden = _two_series_scatter("", lines(grid, hidden))
+
+    assert vertical(only_y) == 0 and vertical(only_x) > 0 and vertical(x_hidden) == 0
+    assert "<line" in only_y and "<line" not in only_x.replace("<line", "", vertical(only_x))

@@ -84,6 +84,7 @@ class Series:
     label_px: float = 10.0
     format_code: str = "General"
     point_colors: dict[int, str] = field(default_factory=dict[int, str])
+    smooth: bool = False  # a scatter line drawn as a curve
 
 
 @dataclass
@@ -99,7 +100,6 @@ class Group:
     vary_colors: bool = True
     first_angle: int = 0
     bubble_scale: float = 1.0
-    smooth: bool = False
 
 
 def chart_to_svg(
@@ -177,7 +177,9 @@ def chart_to_svg(
         else None
     )
     canvas.grid = _has_gridlines(plot)
-    canvas.grid_x = _has_x_gridlines(plot)
+    if groups[0].kind in ("scatter", "bubble"):
+        x_axis, y_axis = _scatter_axes(plot)
+        canvas.grid, canvas.grid_x = _axis_gridlines(y_axis), _axis_gridlines(x_axis)
     grid_node = plot.find("c:valAx/c:majorGridlines/c:spPr", _NS)
     canvas.grid_color, line_width = _line_style(grid_node, palette)
     # Gridlines with no style of their own are PowerPoint's automatic ones: black hairlines.
@@ -243,6 +245,9 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 gradient=_gradient_stops(ser.find("c:spPr", _NS), palette),
                 gradient_angle=_gradient_angle(ser.find("c:spPr", _NS)),
                 alpha=_solid_alpha(ser.find("c:spPr", _NS)),
+                # A scatter series with no ``c:smooth`` is smoothed (the schema default is true).
+                smooth=kind == "scatter"
+                and _val(ser.find("c:smooth", _NS), "1") not in ("0", "false"),
                 line=not line_off and (kind != "scatter" or scatter_style != "marker"),
                 marker=marker_symbol not in ("none",)
                 and (kind == "scatter" or marker_symbol != "" or (kind == "line" and False)),
@@ -272,12 +277,6 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
         vary_colors=_val(element.find("c:varyColors", _NS), "1") not in ("0", "false"),
         first_angle=int(_val(element.find("c:firstSliceAng", _NS), "0")) % 360,
         bubble_scale=int(_val(element.find("c:bubbleScale", _NS), "100")) / 100,
-        # A scatter series with no ``c:smooth`` is smoothed (the schema default is true).
-        smooth=kind == "scatter"
-        and all(
-            _val(ser.find("c:smooth", _NS), "1") not in ("0", "false")
-            for ser in element.findall("c:ser", _NS)
-        ),
     )
 
 
@@ -526,10 +525,23 @@ def _font_px(node: Element | None, default: float) -> float:
     return default
 
 
-def _has_x_gridlines(plot: Element) -> bool:
-    """Whether a scatter or bubble chart's x axis (its first value axis) draws major gridlines."""
+def _scatter_axes(plot: Element) -> tuple[Element | None, Element | None]:
+    """The x and y value axes of a scatter or bubble chart, by ``c:axPos`` (else by order)."""
     axes = list(plot.iter(f"{{{_C}}}valAx"))
-    return len(axes) > 1 and axes[0].find("c:majorGridlines", _NS) is not None
+    horizontal = [a for a in axes if _val(a.find("c:axPos", _NS), "") in ("b", "t")]
+    vertical = [a for a in axes if _val(a.find("c:axPos", _NS), "") in ("l", "r")]
+    if len(axes) == 2 and not (horizontal and vertical):
+        return axes[0], axes[1]
+    return (horizontal[0] if horizontal else None), (vertical[0] if vertical else None)
+
+
+def _axis_gridlines(axis: Element | None) -> bool:
+    """Whether ``axis`` draws major gridlines (a ``majorGridlines`` that is not no-line)."""
+    lines = axis.find("c:majorGridlines", _NS) if axis is not None else None
+    if lines is None:
+        return False
+    outline = lines.find("c:spPr/a:ln", _NS)
+    return not (outline is not None and outline.find("a:noFill", _NS) is not None)
 
 
 def _smooth_path(points: list[tuple[float, float]]) -> str:
@@ -1220,7 +1232,11 @@ class _Canvas:
         x_low = _axis_floor(min(xs), max(xs))
         x_high = max(xs) + (0.1 if group.kind == "bubble" else 0.05) * (max(xs) - x_low)
         y_low, y_high = min(0.0, min(ys)), max(ys)
-        gutter = 8 + max(len(format_number(t, axis_format)) for t in (y_low, y_high)) * 6.5 + 6.5
+        gutter = (
+            8
+            + max(len(format_number(t, axis_format)) for t in (y_low, y_high)) * self.tick_px * 0.6
+            + self.tick_px * 0.6
+        )
         left, top = x0 + gutter, y0
         plot_w, plot_h = max(10.0, pw - gutter), max(10.0, ph - 24)
         x_ticks = _nice_ticks(x_low, x_high, max(4, min(10, int(plot_w / 70))))
@@ -1266,7 +1282,7 @@ class _Canvas:
             if group.kind != "bubble" and series.line and len(points) > 1:
                 d = (
                     _smooth_path(points)
-                    if group.smooth
+                    if series.smooth
                     else " ".join(
                         f"{'M' if k == 0 else 'L'}{x:.1f} {y:.1f}"
                         for k, (x, y) in enumerate(points)

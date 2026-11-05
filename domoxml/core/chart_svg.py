@@ -216,6 +216,7 @@ def chart_to_svg(
     canvas.category_px = _font_px(category_text, 11.0)
     canvas.category_color = _text_colour(category_text, palette) or "000000"
     canvas.axis_titles = _axis_titles(plot)
+    canvas.axis_title_style = _axis_title_styles(plot, palette)
     first = groups[0]
     if first.kind in ("pie", "doughnut"):
         return canvas.pie(first)
@@ -701,6 +702,24 @@ def _axis_titles(plot: Element) -> dict[str, str]:
     return titles
 
 
+def _axis_title_styles(
+    plot: Element, palette: Mapping[str, str]
+) -> dict[str, tuple[float, str, bool]]:
+    """Each axis title's ``(size px, colour, bold)``, keyed ``"x"`` or ``"y"`` as the titles are."""
+    styles: dict[str, tuple[float, str, bool]] = {}
+    for axis in list(plot.findall("c:catAx", _NS)) + list(plot.findall("c:valAx", _NS)):
+        node = axis.find("c:title", _NS)
+        if node is None or not _title(node):
+            continue
+        position = _val(axis.find("c:axPos", _NS), "")
+        styles["x" if position in ("b", "t") else "y"] = (
+            _font_px(node, 12.0),
+            _text_colour(node, palette),
+            _is_bold(node),
+        )
+    return styles
+
+
 def _axis_format(plot: Element) -> str:
     for axis in plot.findall("c:valAx", _NS):
         fmt = axis.find("c:numFmt", _NS)
@@ -781,6 +800,7 @@ class _Canvas:
         self.title_px = 16.0
         self.title_color = ""
         self.title_bold = False
+        self.axis_title_style: dict[str, tuple[float, str, bool]] = {}
         self.legend_color = ""
         self.tick_color = "000000"
         self.background = ""
@@ -1323,15 +1343,20 @@ class _Canvas:
     def _axis_titles(
         self, left: float, top: float, pw: float, ph: float, x_label: str, y_label: str
     ) -> None:
+        def style(axis: str) -> str:
+            size, colour, bold = self.axis_title_style.get(axis, (12.0, "", False))
+            weight = ' font-weight="700"' if bold else ""
+            return f'font-size="{size:.1f}" fill="{"#" + colour if colour else _TEXT}"{weight}'
+
         if x_label:
             self.parts.append(
                 f'<text x="{left + pw / 2:.1f}" y="{top + ph + 38:.1f}" text-anchor="middle" '
-                f'font-size="12" fill="{_TEXT}">{escape(x_label)}</text>'
+                f"{style('x')}>{escape(x_label)}</text>"
             )
         if y_label:
             self.parts.append(
                 f'<text transform="translate(12 {top + ph / 2:.1f}) rotate(-90)" '
-                f'text-anchor="middle" font-size="12" fill="{_TEXT}">{escape(y_label)}</text>'
+                f'text-anchor="middle" {style("y")}>{escape(y_label)}</text>'
             )
 
     def _horizontal(

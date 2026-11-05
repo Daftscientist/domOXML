@@ -543,7 +543,12 @@ def _cropped(fill: PictureFill) -> PictureFill:
     return fill.model_copy(update={"data": buffer.getvalue(), "ext": "png", "crop": None})
 
 
-def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> ShapeNode | None:
+def _picture_shape(
+    element: Element,
+    package: OpcPackage,
+    slide_part: str,
+    colors: ThemeColors | None = None,
+) -> ShapeNode | None:
     properties = element.find("p:spPr", _NS)
     transform = properties.find("a:xfrm", _NS) if properties is not None else None
     offset = transform.find("a:off", _NS) if transform is not None else None
@@ -559,16 +564,24 @@ def _picture_shape(element: Element, package: OpcPackage, slide_part: str) -> Sh
     if modifier is not None:
         with contextlib.suppress(ValueError):
             opacity = min(1.0, max(0.0, int(modifier.get("amt", "100000")) / 100_000))
+    box = Box(
+        x=_int_attr(offset, "x"),
+        y=_int_attr(offset, "y"),
+        width=_int_attr(extent, "cx"),
+        height=_int_attr(extent, "cy"),
+    )
+    # A picture's glow and shadow sit in its own ``p:spPr`` like a shape's.
+    effects: tuple[Effect, ...] = ()
+    if colors is not None:
+        effects, _warnings, _preserved = read_effects(
+            properties, lambda node: _rgba(node, colors), box=box
+        )
     return _with_pptx_identity(
         ShapeNode(
-            box=Box(
-                x=_int_attr(offset, "x"),
-                y=_int_attr(offset, "y"),
-                width=_int_attr(extent, "cx"),
-                height=_int_attr(extent, "cy"),
-            ),
+            box=box,
             fill=picture,
             opacity=opacity,
+            effects=effects,
             transform=_xfrm_transform(transform),
         ),
         element,
@@ -1280,7 +1293,7 @@ def _group_node(
             all_warns.extend(warns)
             all_preserved.extend(preserved)
         elif child_kind == "pic":
-            pic_shape = _picture_shape(child, package, slide_part)
+            pic_shape = _picture_shape(child, package, slide_part, colors)
             if pic_shape is not None:
                 children.append(pic_shape)
         elif child_kind == "grpSp":
@@ -1935,7 +1948,7 @@ def _slide(
                     contents.append(_with_pptx_identity(media, element, slide_part))
                     coverage.append(_native_reverse_coverage(slide_part, element))
                     continue
-                shape = _picture_shape(element, package, slide_part)
+                shape = _picture_shape(element, package, slide_part, colors)
                 if shape is not None:
                     # The crop (a:srcRect) is recovered into the PictureFill and emitted as
                     # background-size/position by the HTML writer, so nothing is preserved.

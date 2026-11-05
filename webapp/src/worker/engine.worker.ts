@@ -85,6 +85,12 @@ self.onmessage = async (event: MessageEvent) => {
     } else if (type === "convertCaptured") {
       const text: string = await api.get("convert_captured")(JSON.stringify(payload));
       reply(true, JSON.parse(text));
+    } else if (type === "slideIr") {
+      const text: string = await api.get("slide_ir")(JSON.stringify(payload));
+      reply(true, JSON.parse(text));
+    } else if (type === "normalize") {
+      const text: string = await api.get("normalize")(JSON.stringify(payload));
+      reply(true, JSON.parse(text));
     } else if (type === "takumiRaster") {
       // Rasterise one page (a whole slide, or one staged isolated node)
       // with Takumi, in this worker, without involving Python.

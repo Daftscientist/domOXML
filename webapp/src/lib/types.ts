@@ -66,6 +66,25 @@ export interface ReadDeckResult {
   slides: { html: string; transition: SlideTransition | null }[];
 }
 
+/** One node of a slide's derived IR, pruned for display (see slide_ir). */
+export interface IrNode {
+  kind: "shape" | "group" | "connector" | "table" | "media" | "preserved" | "node";
+  label: string;
+  box: { x: number; y: number; w: number; h: number } | null;
+  /** Element-child indices from document.body in the composed page, or null. */
+  path: number[] | null;
+  /** True when the node carries a portable (raster) fallback. */
+  fallback: boolean;
+  children: IrNode[];
+}
+
+export interface SlideIrResult {
+  width_px: number;
+  height_px: number;
+  tree: IrNode[];
+  warnings: ConversionWarning[];
+}
+
 export const TRANSITION_TYPES: { value: TransitionType; label: string }[] = [
   { value: "none", label: "None" },
   { value: "fade", label: "Fade" },

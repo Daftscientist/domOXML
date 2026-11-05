@@ -15,12 +15,15 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { engine } from "@/lib/engine";
-import { exportViaHostCapture } from "@/lib/hostCapture";
+import { captureOneSlide, exportViaHostCapture } from "@/lib/hostCapture";
 import { downloadBytes, downloadText, slug } from "@/lib/download";
+import { isForeignFragment } from "@/lib/normalize";
+import { mutateFragment, type SlideMutation } from "@/lib/fragmentEdit";
 import { blankSlideHtml, DEFAULT_CSS, newSlideId, sampleDeck } from "@/lib/sample";
 import { getDoc, listDocs, putDoc, removeDoc } from "@/lib/store";
 import type { DocMeta } from "@/lib/store";
-import type { ConvertResult, Deck, SlideTransition } from "@/lib/types";
+import type { IrDeriveState } from "@/components/IrTree";
+import type { ConvertResult, Deck, SlideIrResult, SlideTransition } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type MobileTab = "slides" | "preview" | "edit";
@@ -147,6 +150,188 @@ export default function App() {
     }, 700);
     return () => clearTimeout(t);
   }, [deck, view, activeDocId, upsertMeta]);
+
+  // The selected element on the open slide, as a DOM path from the
+  // composed page's body. Shared by the stage editor (which sets it by
+  // hit-testing) and the IR tree (which sets it by row click); each
+  // side highlights from the same value.
+  const [focusPath, setFocusPath] = useState<number[] | null>(null);
+  useEffect(() => {
+    setFocusPath(null);
+  }, [selected, deck.id]);
+
+  // Visual edits from the stage, committed into the slide's HTML.
+  // The code editor owns its document while mounted (see CodeEditor),
+  // so a programmatic change to the slide HTML — a stage gesture or a
+  // normalisation — must remount it under a fresh key, or it would keep
+  // showing (and on the next keystroke, restore) the stale document.
+  const [slideEpoch, setSlideEpoch] = useState(0);
+  const [cssEpoch, setCssEpoch] = useState(0);
+
+  const mutateSelectedSlide = useCallback(
+    (path: number[], mutation: SlideMutation) => {
+      const slide = deckRef.current.slides[selected];
+      if (!slide) return;
+      const next = mutateFragment(slide.html, path, mutation);
+      if (next === null || next === slide.html) return;
+      setSlideEpoch((e) => e + 1);
+      setDeck((d) => ({
+        ...d,
+        slides: d.slides.map((s, i) =>
+          i === selected ? { ...s, html: next } : s,
+        ),
+      }));
+    },
+    [selected],
+  );
+
+  // Normalisation: foreign HTML (hand-authored, flow layout, classes)
+  // only means something once a browser has laid it out. Running it
+  // through capture + extraction + serialisation replaces it with the
+  // canonical domOXML fragment — fully geometric, parseable straight
+  // back to IR with no browser. Triggered by a paste that dominates
+  // the slide (an import, in effect) or manually from the Slide tab;
+  // ordinary edits and already-normalised slides are never touched.
+  const deckRef = useRef(deck);
+  deckRef.current = deck;
+  const normaliseSeq = useRef(0);
+  const runNormalise = useCallback(
+    async (slideIndex: number, sourceHtml: string, reason: "paste" | "manual") => {
+      const seq = ++normaliseSeq.current;
+      try {
+        const capture = await captureOneSlide(sourceHtml, {
+          width: deck.width,
+          height: deck.height,
+          css: deck.css,
+        });
+        const out = await engine.normalize(capture, {
+          width: deck.width,
+          height: deck.height,
+        });
+        if (normaliseSeq.current !== seq) return;
+        const slide = deckRef.current.slides[slideIndex];
+        if (!slide || slide.html !== sourceHtml) return; // edited since; leave it
+        const cssChanged = !!out.css && !deckRef.current.css.includes(out.css.trim());
+        setSlideEpoch((e) => e + 1);
+        if (cssChanged) setCssEpoch((e) => e + 1);
+        setDeck((d) => ({
+          ...d,
+          css: cssChanged ? `${d.css}\n${out.css}` : d.css,
+          slides: d.slides.map((s, i) =>
+            i === slideIndex ? { ...s, html: out.html } : s,
+          ),
+        }));
+        toast.success(
+          reason === "paste"
+            ? "Pasted HTML converted to native domOXML"
+            : "Slide rebuilt as native domOXML",
+          {
+            description:
+              "Every element is now a positioned shape, so this slide opens, edits and exports without a browser layout pass.",
+          },
+        );
+      } catch (error) {
+        // A failed paste conversion stays silent: the pasted HTML still
+        // works through the browser path. The manual action reports.
+        if (reason === "manual") {
+          toast.error("Could not rebuild that slide", {
+            description: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    },
+    [deck.width, deck.height, deck.css],
+  );
+
+  const pendingPasteRef = useRef<{
+    slideId: string;
+    clipLength: number;
+    at: number;
+  } | null>(null);
+  const noteHtmlPaste = useCallback(
+    (clipLength: number) => {
+      const slide = deckRef.current.slides[selected];
+      if (slide) {
+        pendingPasteRef.current = { slideId: slide.id, clipLength, at: Date.now() };
+      }
+    },
+    [selected],
+  );
+
+  // A native capture-phase listener: paste events inside the code
+  // editor (a shadow-DOM component) are reliably visible here with
+  // their clipboard data, whatever the editor does with them after.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const inEditor = e
+        .composedPath()
+        .some(
+          (n) =>
+            n instanceof HTMLElement && n.dataset && "htmlEditor" in n.dataset,
+        );
+      if (!inEditor) return;
+      noteHtmlPaste(e.clipboardData?.getData("text/plain")?.length ?? 0);
+    };
+    document.addEventListener("paste", onPaste, true);
+    return () => document.removeEventListener("paste", onPaste, true);
+  }, [noteHtmlPaste]);
+
+  // The selected slide's IR, derived automatically in the background:
+  // host-capture the live slide and run the desktop extraction over it
+  // whenever the slide settles. Stale results are dropped by sequence.
+  const [irState, setIrState] = useState<IrDeriveState>("idle");
+  const [irResult, setIrResult] = useState<SlideIrResult | null>(null);
+  const [irError, setIrError] = useState<string | undefined>(undefined);
+  const deriveSeq = useRef(0);
+  const selectedHtml = deck.slides[selected]?.html;
+  useEffect(() => {
+    if (view !== "editor" || !selectedHtml) return;
+    const seq = ++deriveSeq.current;
+    setIrState("deriving");
+    const t = setTimeout(async () => {
+      try {
+        const capture = await captureOneSlide(selectedHtml, {
+          width: deck.width,
+          height: deck.height,
+          css: deck.css,
+        });
+        const result = await engine.slideIr(capture, {
+          width: deck.width,
+          height: deck.height,
+        });
+        if (deriveSeq.current !== seq) return;
+        setIrResult(result);
+        setIrState("ready");
+        setIrError(undefined);
+      } catch (error) {
+        if (deriveSeq.current !== seq) return;
+        setIrState("error");
+        setIrError(error instanceof Error ? error.message : String(error));
+      }
+    }, 650);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, selectedHtml, deck.css, deck.width, deck.height, selected, deck.id]);
+
+  // After a paste into the HTML editor: if the pasted content dominates
+  // the slide and the result is foreign HTML, normalise it seamlessly.
+  useEffect(() => {
+    const pending = pendingPasteRef.current;
+    if (!pending || view !== "editor" || !selectedHtml) return;
+    const slide = deck.slides[selected];
+    if (!slide || slide.id !== pending.slideId) return;
+    if (Date.now() - pending.at > 5000) {
+      pendingPasteRef.current = null;
+      return;
+    }
+    if (pending.clipLength < selectedHtml.length * 0.5) return;
+    if (!isForeignFragment(selectedHtml)) {
+      pendingPasteRef.current = null;
+      return;
+    }
+    pendingPasteRef.current = null;
+    void runNormalise(selected, selectedHtml, "paste");
+  }, [selectedHtml, selected, deck.slides, view, runNormalise]);
 
   const patchSlide = useCallback(
     (index: number, patch: Partial<Deck["slides"][number]>) => {
@@ -352,7 +537,14 @@ ${slides}
         </div>
 
         <div className={cn("min-w-0 flex-1", mobileTab !== "preview" && "max-lg:hidden")}>
-          <Stage deck={deck} selected={selected} onSelect={setSelected} />
+          <Stage
+            deck={deck}
+            selected={selected}
+            onSelect={setSelected}
+            focusPath={focusPath}
+            onFocusPath={setFocusPath}
+            onMutate={mutateSelectedSlide}
+          />
         </div>
 
         <div
@@ -380,6 +572,17 @@ ${slides}
               onApplyTransitionToAll={(transition) =>
                 setDeck((d) => ({ ...d, slides: d.slides.map((s) => ({ ...s, transition })) }))
               }
+              irState={irState}
+              irResult={irResult}
+              irError={irError}
+              focusPath={focusPath}
+              onFocusPath={setFocusPath}
+              slideEditorKey={`slide:${deck.slides[selected]?.id ?? "none"}:e${slideEpoch}`}
+              cssEditorKey={`css:${deck.id}:e${cssEpoch}`}
+              onNormaliseSlide={() => {
+                const slide = deck.slides[selected];
+                if (slide) void runNormalise(selected, slide.html, "manual");
+              }}
             />
           </div>
         </div>

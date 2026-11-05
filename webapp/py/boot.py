@@ -20,6 +20,8 @@ from domoxml.web import (  # noqa: E402
     capture_pages,
     capture_plan,
     environment,
+    normalize_captured,
+    slide_ir,
 )
 
 
@@ -96,11 +98,37 @@ async def convert_captured(payload_json: str) -> str:
     return json.dumps(result)
 
 
+def slide_ir_fn(payload_json: str) -> str:
+    """{capture, width, height} -> the slide's IR as a display tree."""
+    payload = json.loads(payload_json)
+    return json.dumps(
+        slide_ir(
+            payload["capture"],
+            width=int(payload["width"]),
+            height=int(payload["height"]),
+        )
+    )
+
+
+def normalize_fn(payload_json: str) -> str:
+    """{capture, width, height} -> the slide normalised to domOXML HTML."""
+    payload = json.loads(payload_json)
+    return json.dumps(
+        normalize_captured(
+            payload["capture"],
+            width=int(payload["width"]),
+            height=int(payload["height"]),
+        )
+    )
+
+
 domoxml_api = {
     "convert": convert,
     "convert_captured": convert_captured,
     "capture_pages": capture_pages_fn,
     "capture_plan": capture_plan_fn,
+    "slide_ir": slide_ir_fn,
+    "normalize": normalize_fn,
     "read_deck": read_deck,
     "preview": preview,
     "preview_b64": preview_b64,

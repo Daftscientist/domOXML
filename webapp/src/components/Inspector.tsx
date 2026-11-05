@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileCode2 } from "lucide-react";
+import { FileCode2, Shapes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,10 +10,12 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CodeEditor } from "./CodeEditor";
+import { IrTree, type IrDeriveState } from "./IrTree";
 import { downloadText, slug } from "@/lib/download";
+import { isForeignFragment, isNormalisedFragment } from "@/lib/normalize";
 import {
   SIZE_PRESETS, TRANSITION_DIRECTIONS, TRANSITION_TYPES,
-  type Deck, type SlideTransition, type TransitionType,
+  type Deck, type SlideIrResult, type SlideTransition, type TransitionType,
 } from "@/lib/types";
 
 interface Props {
@@ -24,6 +26,16 @@ interface Props {
   onSlideTransition: (t: SlideTransition | null) => void;
   onDeckChange: (patch: Partial<Deck>) => void;
   onApplyTransitionToAll: (t: SlideTransition | null) => void;
+  irState: IrDeriveState;
+  irResult: SlideIrResult | null;
+  irError?: string;
+  focusPath: number[] | null;
+  onFocusPath: (path: number[] | null) => void;
+  onNormaliseSlide: () => void;
+  /** Remount keys for the code editors; bumped when the app changes the
+   * document programmatically so the editor reloads instead of going stale. */
+  slideEditorKey: string;
+  cssEditorKey: string;
 }
 
 function TransitionEditor({
@@ -107,25 +119,36 @@ export function Inspector(p: Props) {
   return (
     <Tabs defaultValue="html" className="flex h-full min-h-0 flex-col gap-0">
       <div className="shrink-0 border-b px-3 py-2">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="html">HTML</TabsTrigger>
+          <TabsTrigger value="ir">IR</TabsTrigger>
           <TabsTrigger value="slide">Slide</TabsTrigger>
           <TabsTrigger value="deck">Deck</TabsTrigger>
         </TabsList>
       </div>
 
       <TabsContent value="html" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-        <div className="min-h-0 flex-1 bg-background">
+        <div className="min-h-0 flex-1 bg-background" data-html-editor="">
           {slide && (
             <CodeEditor
-              key={slide.id}
+              key={p.slideEditorKey}
               value={slide.html}
               onChange={p.onSlideHtml}
               dark={p.dark}
-              stateKey={`slide:${slide.id}`}
+              stateKey={p.slideEditorKey}
             />
           )}
         </div>
+      </TabsContent>
+
+      <TabsContent value="ir" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+        <IrTree
+          state={p.irState}
+          tree={p.irResult?.tree ?? null}
+          error={p.irError}
+          focusPath={p.focusPath}
+          onFocus={p.onFocusPath}
+        />
       </TabsContent>
 
       <TabsContent value="slide" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
@@ -143,6 +166,26 @@ export function Inspector(p: Props) {
                 >
                   <FileCode2 className="h-4 w-4" /> Download this slide as HTML
                 </Button>
+                {isNormalisedFragment(slide.html) ? (
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Native domOXML form: every element is a positioned shape, so this
+                    slide parses straight to IR with no browser layout pass.
+                  </p>
+                ) : isForeignFragment(slide.html) ? (
+                  <>
+                    <Button
+                      variant="outline" size="sm" className="justify-start"
+                      onClick={p.onNormaliseSlide}
+                    >
+                      <Shapes className="h-4 w-4" /> Rebuild as native domOXML shapes
+                    </Button>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      This slide is authored HTML: it needs a browser layout pass to
+                      become IR. Rebuilding replaces it with the equivalent native
+                      shapes, laid out identically.
+                    </p>
+                  </>
+                ) : null}
                 <p className="text-xs leading-relaxed text-muted-foreground">
                   Slide {p.selected + 1} of {p.deck.slides.length} · {p.deck.width} × {p.deck.height}px
                 </p>
@@ -204,7 +247,7 @@ export function Inspector(p: Props) {
           <div className="flex min-h-40 flex-1 flex-col gap-1.5">
             <Label>Deck stylesheet</Label>
             <div className="min-h-40 flex-1 overflow-hidden rounded-lg border">
-              <CodeEditor key={p.deck.id} value={p.deck.css} onChange={(css) => p.onDeckChange({ css })} dark={p.dark} language="css" stateKey={`css:${p.deck.id}`} />
+              <CodeEditor key={p.cssEditorKey} value={p.deck.css} onChange={(css) => p.onDeckChange({ css })} dark={p.dark} language="css" stateKey={p.cssEditorKey} />
             </div>
             <p className="text-xs leading-relaxed text-muted-foreground">
               Applied to every slide before its own markup, like a document stylesheet.

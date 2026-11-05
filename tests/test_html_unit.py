@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -730,15 +731,19 @@ def test_only_the_word_serif_marks_a_serif_family() -> None:
 
 
 def test_wrapped_text_breaks_a_word_that_does_not_fit_but_unwrapped_text_never_does() -> None:
-    def html(wrap: str) -> str:
+    def html(wrap: str, *, bullet: bool) -> str:
         run = TextRun(text="parallelogram", font_family="sans-serif", size_pt=12)
+        paragraph = TextParagraph(runs=(run,), bullet=CharBullet(char="•") if bullet else None)
         node = ShapeNode(
             box=Box(x=0, y=0, width=600_000, height=400_000),
-            text=TextBody(paragraphs=(TextParagraph(runs=(run,)),), wrap=wrap),  # type: ignore[arg-type]
+            text=TextBody(paragraphs=(paragraph,), wrap=wrap),  # type: ignore[arg-type]
         )
         slide = SlideIR(width=12_192_000, height=6_858_000, shapes=(node,))
         return serialize_canvas([slide]).slides[0].html
 
     # PowerPoint splits a word that is wider than the line; Chromium would let it overflow.
-    assert "overflow-wrap:break-word" in html("square")
-    assert "overflow-wrap" not in html("none")
+    for bullet, tag in ((False, 'div class="domoxml-text"'), (True, "li")):
+        wrapped = re.search(rf"<{tag}[^>]*style=\"([^\"]*)\"", html("square", bullet=bullet))
+        unwrapped = re.search(rf"<{tag}[^>]*style=\"([^\"]*)\"", html("none", bullet=bullet))
+        assert wrapped is not None and "overflow-wrap:break-word" in wrapped.group(1), tag
+        assert unwrapped is not None and "overflow-wrap" not in unwrapped.group(1), tag

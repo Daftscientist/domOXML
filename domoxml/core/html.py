@@ -95,7 +95,9 @@ from domoxml.types import (
 # Layout rules every emitted element needs. They are inlined on each element, never shipped in a
 # stylesheet, so a slide renders correctly wherever its markup lands.
 _SLIDE_BASE_STYLE = "position:relative;overflow:hidden;box-sizing:border-box"
-_TEXT_BASE_STYLE = "white-space:pre-wrap;overflow-wrap:break-word"
+# PowerPoint splits a word that is wider than its line; Chromium lets it overflow the shape.
+_BREAK_LONG_WORDS = "overflow-wrap:break-word"
+_TEXT_BASE_STYLE = f"white-space:pre-wrap;{_BREAK_LONG_WORDS}"
 # CSS has no distinct rendering for the heavier OOXML dash presets, so they fold onto the
 # nearest CSS border-style (dashed/dotted). The keys cover the whole DashStyle literal.
 _CSS_DASH = {
@@ -1100,6 +1102,8 @@ def _text_html(body: TextBody | None, warnings: list[ConversionWarning] | None =
             # paragraph margin/indent again on the <li> would double the gutter on round-trip.
             spacing_style = _para_spacing_style(paragraph, include_indentation=False)
             li_style = f"text-align:{paragraph.align}"
+            if body.wrap != "none":
+                li_style = f"{_BREAK_LONG_WORDS};{li_style}"
             if spacing_style:
                 li_style += ";" + spacing_style
             runs_html = "".join(_run_html(run) for run in paragraph.runs)

@@ -224,6 +224,8 @@ DashStyle = Literal["solid", "dash", "dot", "dashDot", "lgDash", "sysDash"]
 # Stroke end cap (``a:ln cap``) and join (``a:round``/``a:bevel``/``a:miter``).
 LineCap = Literal["flat", "round", "square"]
 LineJoin = Literal["round", "bevel", "miter"]
+# ``a:ln cmpd``: a single line, two equal lines, thick-thin, thin-thick or three lines.
+LineCompound = Literal["sng", "dbl", "thickThin", "thinThick", "tri"]
 # Arrowhead geometry (``a:headEnd``/``a:tailEnd``).
 ArrowheadType = Literal["none", "triangle", "stealth", "diamond", "oval", "arrow"]
 ArrowheadSize = Literal["sm", "med", "lg"]
@@ -256,6 +258,7 @@ class Line(BaseModel):
     custom_dash: tuple[float, ...] = ()
     cap: LineCap = "flat"
     join: LineJoin = "round"
+    compound: LineCompound = "sng"
     gradient: GradientFill | None = None
     head: Arrowhead | None = None
     tail: Arrowhead | None = None

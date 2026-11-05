@@ -72,8 +72,9 @@ def _tc_border_xml(tag: str, line: Line | None) -> str:
     dash = _DASH_TO_OOXML.get(line.dash, "solid")
     join_tag = _JOIN_OOXML_TAG.get(line.join, "<a:round/>")
     fill_xml = _solid_fill(line.color)
+    compound = f' cmpd="{line.compound}"' if line.compound != "sng" else ""
     return (
-        f'<a:{tag} w="{line.width_emu}" cap="{cap}">'
+        f'<a:{tag} w="{line.width_emu}" cap="{cap}"{compound}>'
         f"{fill_xml}"
         f'<a:prstDash val="{dash}"/>'
         f"{join_tag}"

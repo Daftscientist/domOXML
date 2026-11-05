@@ -440,3 +440,78 @@ def test_an_inside_label_on_a_negative_column_sits_inside_the_bar() -> None:
     (top_pos, h_pos), (top_neg, h_neg) = bars[0], bars[1]
     assert top_pos <= labels_y[0] <= top_pos + h_pos  # the positive bar's label is inside it
     assert top_neg <= labels_y[1] <= top_neg + h_neg  # and so is the negative one's
+
+
+def _pie(extra_group: str = "", series_extra: str = "") -> str:
+    series = _series(0, [1, 1, 1, 1]).replace("</c:ser>", series_extra + "</c:ser>")
+    return _svg("<c:pieChart>" + extra_group + series + "</c:pieChart>")
+
+
+def test_a_pie_starts_at_its_first_slice_angle() -> None:
+    def start(svg: str) -> tuple[float, float]:
+        match = re.search(r'<path d="M[\d.]+ [\d.]+L([\d.]+) ([\d.]+)', svg)
+        assert match is not None
+        return float(match.group(1)), float(match.group(2))
+
+    upright = start(_pie('<c:firstSliceAng val="0"/>'))
+    turned = start(_pie('<c:firstSliceAng val="90"/>'))
+
+    # Upright starts straight above the centre; a quarter turn clockwise starts to its right.
+    assert turned[0] > upright[0] + 20
+    assert turned[1] > upright[1] + 20
+
+
+def test_pie_slices_share_one_colour_when_they_do_not_vary_or_the_series_names_a_fill() -> None:
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    plain = _pie()
+    flat = _pie('<c:varyColors val="0"/>')
+    named = _pie(
+        series_extra=f'<c:spPr><a:solidFill xmlns:a="{a}"><a:srgbClr val="C00000"/></a:solidFill>'
+        "</c:spPr>"
+    )
+
+    assert len(set(re.findall(r'<path[^>]*fill="(#\w+)"', plain))) > 1
+    assert len(set(re.findall(r'<path[^>]*fill="(#\w+)"', flat))) == 1
+    assert set(re.findall(r'<path[^>]*fill="(#\w+)"', named)) == {"#C00000"}
+
+
+def test_a_chart_spaces_own_fill_and_text_colours_are_drawn() -> None:
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    title = (
+        '<c:title><c:tx><c:rich><a:p xmlns:a="' + a + '"><a:r><a:rPr b="1"><a:solidFill>'
+        '<a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>Dark</a:t></a:r></a:p></c:rich></c:tx>'
+        "</c:title>"
+    )
+    chart = (
+        f'<c:chartSpace xmlns:c="{_C}"><c:roundedCorners val="1"/>'
+        f'<c:spPr><a:solidFill xmlns:a="{a}"><a:srgbClr val="202020"/></a:solidFill></c:spPr>'
+        f"<c:chart>{title}<c:plotArea><c:pieChart>{_series(0, [1, 2])}</c:pieChart></c:plotArea>"
+        "</c:chart></c:chartSpace>"
+    ).encode()
+
+    svg = chart_to_svg(chart, width_px=480, height_px=300)
+
+    assert svg is not None
+    assert 'rx="12" fill="#202020"' in svg  # the rounded dark background
+    assert 'fill="#FFFFFF" font-weight="700"' in svg or 'fill="#FFFFFF"' in svg
+
+
+def test_a_series_outline_colour_does_not_flatten_the_slices_and_a_background_keeps_its_alpha() -> (
+    None
+):
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    outline = _pie(
+        series_extra=f'<c:spPr><a:ln xmlns:a="{a}"><a:solidFill><a:srgbClr val="FFFFFF"/>'
+        "</a:solidFill></a:ln></c:spPr>"
+    )
+    chart = (
+        f'<c:chartSpace xmlns:c="{_C}"><c:spPr><a:solidFill xmlns:a="{a}"><a:srgbClr val="202020">'
+        '<a:alpha val="50000"/></a:srgbClr></a:solidFill></c:spPr>'
+        f"<c:chart><c:plotArea><c:pieChart>{_series(0, [1, 2])}</c:pieChart></c:plotArea></c:chart>"
+        "</c:chartSpace>"
+    ).encode()
+
+    background = chart_to_svg(chart, width_px=480, height_px=300)
+
+    assert len(set(re.findall(r'<path[^>]*fill="(#\w+)"', outline))) > 1
+    assert background is not None and 'fill="#202020" fill-opacity="0.5"' in background

@@ -75,6 +75,7 @@ class Series:
     marker: bool = False
     show_values: bool = False
     label_pos: str = ""
+    explicit_color: bool = False  # the series names its own fill, which every slice then takes
     label_color: str = ""
     label_bold: bool = False
     label_px: float = 10.0
@@ -92,6 +93,8 @@ class Group:
     overlap: int = 0
     filled: bool = False
     hole: float = 0.5
+    vary_colors: bool = True
+    first_angle: int = 0
 
 
 def chart_to_svg(
@@ -153,6 +156,12 @@ def chart_to_svg(
     canvas.accents = [_accent(palette, i) for i in range(6)]
     canvas.title = title
     canvas.title_layout = _manual_layout(title_node)
+    canvas.title_color = _text_colour(title_node, palette)
+    canvas.title_bold = _is_bold(title_node)
+    canvas.legend_color = _text_colour(legend, palette)
+    canvas.background = _fill_hex(root.find("c:spPr", _NS), palette)
+    canvas.background_alpha = _fill_alpha(root.find("c:spPr", _NS))
+    canvas.rounded = _val(root.find("c:roundedCorners", _NS), "0") in ("1", "true")
     canvas.title_px = _font_px(title_node, 16.0 * 96 / 72 if title_node is not None else 16.0)
     canvas.legend_pos = legend_pos
     canvas.legend_layout = _manual_layout(legend)
@@ -217,6 +226,8 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 xs=xs,
                 sizes=sizes,
                 color=color,
+                explicit_color=ser.find("c:spPr/a:solidFill", _NS) is not None
+                and _series_color(ser, palette) is not None,
                 line=not line_off and (kind != "scatter" or scatter_style != "marker"),
                 marker=marker_symbol not in ("none",)
                 and (kind == "scatter" or marker_symbol != "" or (kind == "line" and False)),
@@ -243,6 +254,8 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
         overlap=int(_val(element.find("c:overlap", _NS), "0")),
         filled=radar_style == "filled",
         hole=min(0.9, max(0.1, hole)),
+        vary_colors=_val(element.find("c:varyColors", _NS), "1") not in ("0", "false"),
+        first_angle=int(_val(element.find("c:firstSliceAng", _NS), "0")) % 360,
     )
 
 
@@ -309,6 +322,55 @@ def _transformed(base: str, element: Element) -> str:
         int(base[0:2], 16), int(base[2:4], 16), int(base[4:6], 16), 1.0, element
     )
     return f"{red:02X}{green:02X}{blue:02X}"
+
+
+def _text_colour(node: Element | None, palette: Mapping[str, str]) -> str:
+    """The colour of the first run properties under ``node`` (a title, a legend), or ``""``."""
+    if node is None:
+        return ""
+    for tag in ("defRPr", "rPr"):
+        for properties in node.iter(f"{{{_A}}}{tag}"):
+            fill = properties.find("a:solidFill", _NS)
+            if fill is not None:
+                return _fill_hex(properties, palette)
+    return ""
+
+
+def _fill_alpha(properties: Element | None) -> float:
+    """The opacity of the solid fill in ``properties`` (``a:alpha``), 1 when it has none."""
+    alpha = properties.find("a:solidFill/*/a:alpha", _NS) if properties is not None else None
+    try:
+        return (
+            max(0.0, min(1.0, int(alpha.get("val", "100000")) / 100_000))
+            if alpha is not None
+            else 1.0
+        )
+    except ValueError:
+        return 1.0
+
+
+def _is_bold(node: Element | None) -> bool:
+    if node is None:
+        return False
+    return any(
+        properties.get("b") == "1"
+        for tag in ("defRPr", "rPr")
+        for properties in node.iter(f"{{{_A}}}{tag}")
+    )
+
+
+def _fill_hex(properties: Element | None, palette: Mapping[str, str]) -> str:
+    """The solid colour of ``properties`` (an ``spPr`` or run properties), or ``""``."""
+    fill = properties.find("a:solidFill", _NS) if properties is not None else None
+    if fill is None:
+        return ""
+    rgb = fill.find("a:srgbClr", _NS)
+    scheme = fill.find("a:schemeClr", _NS)
+    if rgb is not None and _hex(rgb.get("val")):
+        return _transformed(rgb.get("val", ""), rgb)
+    if scheme is not None and _hex(palette.get(scheme.get("val", ""))):
+        return _transformed(palette[scheme.get("val", "")], scheme)
+    return ""
 
 
 def _label_style(labels: Element | None, palette: Mapping[str, str]) -> tuple[str, bool]:
@@ -485,6 +547,12 @@ class _Canvas:
         self.legend_pos: str | None = None
         self.title_layout: tuple[float, float, float, float] | None = None
         self.title_px = 16.0
+        self.title_color = ""
+        self.title_bold = False
+        self.legend_color = ""
+        self.background = ""
+        self.background_alpha = 1.0
+        self.rounded = False
         self.legend_layout: tuple[float, float, float, float] | None = None
         self.legend_px = 12.0
         self.plot_layout: tuple[float, float, float, float] | None = None
@@ -503,12 +571,14 @@ class _Canvas:
             x, y = self.title_layout[0] * self.w, self.title_layout[1] * self.h
             self.parts.append(
                 f'<text x="{x:.1f}" y="{y + self.title_px * 0.8:.1f}" '
-                f'font-size="{self.title_px:.1f}" fill="#000000">{escape(self.title)}</text>'
+                f'font-size="{self.title_px:.1f}" fill="{self._title_fill("#000000")}"'
+                f"{self._title_weight('')}>{escape(self.title)}</text>"
             )
         elif self.title:
             self.parts.append(
                 f'<text x="{self.w / 2:.1f}" y="{top + 14:.1f}" text-anchor="middle" '
-                f'font-size="16" font-weight="700" fill="#404040">{escape(self.title)}</text>'
+                f'font-size="16" fill="{self._title_fill("#404040")}" font-weight="700">'
+                f"{escape(self.title)}</text>"
             )
             top += 28
         if self.legend_pos and names and self.legend_layout is not None:
@@ -578,14 +648,29 @@ class _Canvas:
             mark = f'<rect x="{x:.1f}" y="{y:.1f}" width="10" height="10" fill="#{color}"/>'
         self.parts.append(
             f"{mark}"
-            f'<text x="{x + 15:.1f}" y="{y + 9.5:.1f}" font-size="{size}" fill="{_TEXT}">'
+            f'<text x="{x + 15:.1f}" y="{y + 9.5:.1f}" font-size="{size}" '
+            f'fill="{"#" + self.legend_color if self.legend_color else _TEXT}">'
             f"{escape(label)}</text>"
         )
 
+    def _title_fill(self, default: str) -> str:
+        return f"#{self.title_color}" if self.title_color else default
+
+    def _title_weight(self, default: str) -> str:
+        return ' font-weight="700"' if self.title_bold else default
+
     def _wrap(self) -> str:
+        # The chart's own background (``chartSpace`` fill) sits behind everything else.
+        back = (
+            f'<rect width="{self.w:g}" height="{self.h:g}" rx="{12 if self.rounded else 0}" '
+            f'fill="#{self.background}" fill-opacity="{self.background_alpha:g}"/>'
+            if self.background
+            else ""
+        )
         return (
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{self.w:g}" height="{self.h:g}" '
-            f'viewBox="0 0 {self.w:g} {self.h:g}" font-family="{_FONT}">{"".join(self.parts)}</svg>'
+            f'viewBox="0 0 {self.w:g} {self.h:g}" font-family="{_FONT}">'
+            f"{back}{''.join(self.parts)}</svg>"
         )
 
     # cartesian ---------------------------------------------------------------------------
@@ -1064,7 +1149,7 @@ class _Canvas:
         names = [
             (
                 first.categories[i] if i < len(first.categories) else str(i + 1),
-                first.point_colors.get(i, self.accents[i % len(self.accents)]),
+                first.point_colors.get(i, self._slice_colour(group, first, i)),
                 False,
             )
             for i in range(len(first.values))
@@ -1079,20 +1164,28 @@ class _Canvas:
         for ring, series in enumerate(rings):
             inner = hole + band * ring
             outer = hole + band * (ring + 1) if group.kind == "doughnut" else radius
-            self._ring(series, cx, cy, outer, inner if group.kind == "doughnut" else 0.0)
+            self._ring(series, cx, cy, outer, inner if group.kind == "doughnut" else 0.0, group)
         return self._wrap()
 
-    def _ring(self, series: Series, cx: float, cy: float, outer: float, inner: float) -> None:
+    def _slice_colour(self, group: Group, series: Series, index: int) -> str:
+        """The next accent, or the series' own colour when the slices do not vary."""
+        if group.vary_colors and not series.explicit_color:
+            return self.accents[index % len(self.accents)]
+        return series.color
+
+    def _ring(
+        self, series: Series, cx: float, cy: float, outer: float, inner: float, group: Group
+    ) -> None:
         values = [max(0.0, v or 0.0) for v in series.values]
         total = sum(values)
         if total <= 0:
             return
-        angle = -math.pi / 2
+        angle = -math.pi / 2 + math.radians(group.first_angle)
         for i, value in enumerate(values):
             sweep = value / total * 2 * math.pi
             if sweep <= 0:
                 continue
-            color = series.point_colors.get(i, self.accents[i % len(self.accents)])
+            color = series.point_colors.get(i, self._slice_colour(group, series, i))
             self.parts.append(_slice(cx, cy, outer, inner, angle, angle + sweep, color))
             if series.show_values:
                 mid = angle + sweep / 2

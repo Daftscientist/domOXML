@@ -225,7 +225,7 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
     scatter_style = _val(element.find("c:scatterStyle", _NS), "lineMarker")
     radar_style = _val(element.find("c:radarStyle", _NS), "standard")
     # A series with no ``c:smooth`` takes the chart's, then the schema default (smoothed).
-    chart_smooth = _val(element.find("c:smooth", _NS), "1")
+    chart_smooth = _boolean(element.find("c:smooth", _NS), True)
     series: list[Series] = []
     for offset, ser in enumerate(element.findall("c:ser", _NS)):
         color = _series_color(ser, palette) or _accent(palette, start + offset)
@@ -262,7 +262,7 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 alpha=_solid_alpha(ser.find("c:spPr", _NS)),
                 # A scatter series with no ``c:smooth`` is smoothed (the schema default is true).
                 smooth=kind in ("scatter", "line")
-                and _val(ser.find("c:smooth", _NS), chart_smooth) not in ("0", "false"),
+                and _boolean(ser.find("c:smooth", _NS), chart_smooth),
                 line=not line_off and (kind != "scatter" or scatter_style != "marker"),
                 marker=marker_symbol != "none"
                 and (kind in ("scatter", "line") or marker_symbol != ""),
@@ -318,6 +318,13 @@ def _accent(palette: Mapping[str, str], index: int) -> str:
 
 def _val(element: Element | None, default: str) -> str:
     return element.get("val", default) if element is not None else default
+
+
+def _boolean(element: Element | None, default: bool) -> bool:
+    """A ``CT_Boolean`` element: ``default`` when absent, and true when present without a value."""
+    if element is None:
+        return default
+    return element.get("val", "1") not in ("0", "false")
 
 
 def _series_name(ser: Element) -> str:
@@ -843,6 +850,22 @@ class _Canvas:
             else:
                 x += min(200.0, 24 + len(label) * self.legend_px * 0.58)
 
+    @staticmethod
+    def _line_path(series: Series, points: list[tuple[float, float]]) -> str:
+        """A series' line through ``points``, smoothed, dashed and sized as the series says."""
+        path = (
+            _smooth_path(points)
+            if series.smooth
+            else " ".join(
+                f"{'M' if k == 0 else 'L'}{x:.1f} {y:.1f}" for k, (x, y) in enumerate(points)
+            )
+        )
+        return (
+            f'<path d="{path}" fill="none" stroke="#{series.color}" '
+            f'stroke-width="{series.line_px:g}"{_dash_attr(series.dash, series.line_px)} '
+            'stroke-linejoin="round" stroke-linecap="round"/>'
+        )
+
     def _marker(self, series: Series, x: float, y: float) -> str:
         symbol = series.marker_symbol or _AUTO_MARKERS[series.position % len(_AUTO_MARKERS)]
         return _marker_svg(symbol, x, y, series.marker_px, series.marker_color or series.color)
@@ -1093,19 +1116,7 @@ class _Canvas:
             if group.kind == "area":
                 self._area(group, series, left, slot, y_of, count, running_positive)
             elif len(points) > 1 and series.line:
-                path = (
-                    _smooth_path(points)
-                    if series.smooth
-                    else " ".join(
-                        f"{'M' if k == 0 else 'L'}{x:.1f} {y:.1f}"
-                        for k, (x, y) in enumerate(points)
-                    )
-                )
-                self.parts.append(
-                    f'<path d="{path}" fill="none" stroke="#{series.color}" '
-                    f'stroke-width="{series.line_px:g}"{_dash_attr(series.dash, series.line_px)} '
-                    'stroke-linejoin="round" stroke-linecap="round"/>'
-                )
+                self.parts.append(self._line_path(series, points))
             if series.marker:
                 for x, y in points:
                     self.parts.append(self._marker(series, x, y))
@@ -1390,17 +1401,7 @@ class _Canvas:
                 if v is not None
             ]
             if group.kind != "bubble" and series.line and len(points) > 1:
-                d = (
-                    _smooth_path(points)
-                    if series.smooth
-                    else " ".join(
-                        f"{'M' if k == 0 else 'L'}{x:.1f} {y:.1f}"
-                        for k, (x, y) in enumerate(points)
-                    )
-                )
-                self.parts.append(
-                    f'<path d="{d}" fill="none" stroke="#{series.color}" stroke-width="2"/>'
-                )
+                self.parts.append(self._line_path(series, points))
             if group.kind == "bubble":
                 peak = max((v for v in (series.sizes or []) if v), default=1.0)
                 for (x, y), size in zip(points, series.sizes or [], strict=False):
@@ -1416,7 +1417,7 @@ class _Canvas:
                         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius:.1f}" '
                         f'fill="{paint}"{opacity}/>'
                     )
-            elif series.marker or not series.line:
+            elif series.marker:
                 for x, y in points:
                     self.parts.append(self._marker(series, x, y))
         self._axis_titles(

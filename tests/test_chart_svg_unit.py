@@ -759,3 +759,23 @@ def test_a_line_chart_level_smooth_off_straightens_series_that_do_not_say() -> N
 
     assert " C" not in chart('<c:smooth val="0"/>', "")
     assert " C" in chart('<c:smooth val="0"/>', '<c:smooth val="1"/>')  # the series wins
+
+
+def test_a_bare_smooth_element_means_smooth_and_scatter_lines_take_series_style() -> None:
+    bare = _svg(
+        '<c:lineChart><c:grouping val="standard"/><c:smooth val="0"/>'
+        + _series(0, [1, 3, 2]).replace("</c:ser>", "<c:smooth/></c:ser>")
+        + "</c:lineChart>"
+    )
+    scatter = _svg(
+        '<c:scatterChart><c:scatterStyle val="lineMarker"/><c:ser><c:idx val="0"/>'
+        '<c:spPr><a:ln w="38100"><a:prstDash val="dash"/></a:ln></c:spPr>'
+        '<c:marker><c:symbol val="none"/></c:marker>'
+        + _literal("xVal", [1, 2, 3])
+        + _literal("yVal", [5, 9, 4])
+        + "</c:ser></c:scatterChart>"
+    )
+
+    assert " C" in bare
+    assert 'stroke-width="4"' in scatter and "stroke-dasharray" in scatter
+    assert "<polygon" not in scatter and "<circle" not in scatter  # symbol none draws no marker

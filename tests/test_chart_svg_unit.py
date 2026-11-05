@@ -847,3 +847,16 @@ def _value_labels(grouping: str, height_px: float) -> list[str]:
 def test_value_axis_steps_follow_the_label_height_and_are_coarser_for_percent() -> None:
     assert _value_labels("clustered", 220) == [str(v) for v in range(0, 181, 20)]
     assert _value_labels("percentStacked", 300) == [f"{v}%" for v in range(0, 101, 20)]
+
+
+def test_a_deleted_horizontal_value_axis_draws_no_tick_labels() -> None:
+    def labels(delete: str) -> list[str]:
+        svg = _svg(
+            '<c:barChart><c:barDir val="bar"/><c:grouping val="clustered"/>'
+            + _series(0, [1, 2, 3])
+            + "</c:barChart>"
+            + f'<c:valAx><c:axId val="2"/><c:delete val="{delete}"/></c:valAx>'
+        )
+        return re.findall(r'text-anchor="middle"[^>]*>(\d+)</text>', svg)
+
+    assert labels("0") and not labels("1")

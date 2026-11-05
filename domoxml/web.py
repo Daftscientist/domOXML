@@ -1,20 +1,25 @@
-"""Web facade — domOXML running entirely in the browser (Pyodide + Takumi).
+"""Web facade — domOXML running entirely in the browser (Pyodide).
 
-One async API for the web app, with no browser-DOM capture anywhere:
+One async API for the web app, with two conversion paths:
 
-- :func:`apreview` renders one slide's HTML to a PNG through Takumi
-  (``takumi-js``), for the editor's live preview and the slideshow viewer.
 - :func:`aconvert` turns per-slide HTML fragments into a ``.pptx`` whose
-  layout comes from Takumi's paint tree (``takumi-paint``), never from the
-  host page's DOM. Simple fills and text become editable native objects;
-  anything unsupported fails closed to one slide-owned raster, exactly as
-  on desktop.
+  layout comes from Takumi's paint tree (``takumi-paint``). Simple fills
+  and text become editable native objects; anything unsupported fails
+  closed to one slide-owned raster, exactly as on desktop.
+- The host-capture path (:func:`capture_pages`, :func:`capture_plan`,
+  :func:`aconvert_captured`) converts from layout the host page's own
+  browser captured in an offscreen iframe — the shared snapshot payload
+  the desktop Chromium path evaluates — so CSS the browser supports
+  converts even where Takumi's parser cannot. The host rasterises the
+  isolated nodes the extractor plans (the web build uses Takumi for
+  those pixels); extraction, font resolution and emission are the
+  desktop code, fed pre-rendered slides.
 - :func:`aread_deck` reads a ``.pptx`` back into per-slide HTML plus the
   deck size and per-slide transitions, so an uploaded deck opens in the
   same editor and is edited by editing its HTML.
 
-Under CPython the same functions work through the Node Takumi bridge, which
-is how the web build is smoke-tested outside a browser.
+Under CPython the Takumi functions work through the Node Takumi bridge,
+which is how the web build is smoke-tested outside a browser.
 """
 
 from __future__ import annotations
@@ -26,6 +31,13 @@ from typing import Any
 
 from domoxml.core.ir.model import SlideTransition
 from domoxml.core.render import compose_page
+from domoxml.core.render.host import (
+    RECORDER_JS,
+    RESOURCES_JS,
+    SNAPSHOT_JS,
+    build_slide,
+    plan_capture,
+)
 from domoxml.core.render.takumi_backend import TakumiSession
 from domoxml.core.roundtrip import inline_assets
 from domoxml.core.units import emu_to_px
@@ -33,7 +45,15 @@ from domoxml.presentation import Presentation
 from domoxml.slides import read_pptx_result
 from domoxml.types import CustomSize, OutputFormat, Slide, Theme
 
-__all__ = ["aconvert", "apreview", "aread_deck", "environment"]
+__all__ = [
+    "aconvert",
+    "aconvert_captured",
+    "apreview",
+    "aread_deck",
+    "capture_pages",
+    "capture_plan",
+    "environment",
+]
 
 
 def environment() -> str:
@@ -102,6 +122,10 @@ async def aconvert(
     )
     for fragment in fragments:
         deck.add(Slide(html=fragment))
+    return await _convert_result(deck)
+
+
+async def _convert_result(deck: Presentation) -> dict[str, Any]:
     result = await deck.arender({OutputFormat.PPTX})
     if result.pptx is None:
         raise RuntimeError("conversion produced no PPTX")
@@ -110,6 +134,91 @@ async def aconvert(
         "coverage": [item.model_dump(mode="json") for item in result.coverage.items],
         "warnings": [w.model_dump(mode="json") for w in result.warnings],
     }
+
+
+def capture_pages(
+    fragments: Sequence[str],
+    *,
+    width: int,
+    height: int,
+    css: str | None = None,
+) -> dict[str, Any]:
+    """Compose the full slide pages for host capture, plus the JavaScript
+    payloads the host evaluates in the capture document (the shared
+    snapshot payload, the resources collector, the canvas recorder)."""
+    theme = Theme()
+    return {
+        "pages": [
+            compose_page(
+                fragment, css=css, theme=theme, width_px=width, height_px=height
+            )
+            for fragment in fragments
+        ],
+        "snapshot_js": SNAPSHOT_JS,
+        "resources_js": RESOURCES_JS,
+        "recorder_js": RECORDER_JS,
+    }
+
+
+def capture_plan(
+    raw: Sequence[dict[str, Any]], *, width: int, height: int
+) -> dict[str, Any]:
+    """Raster planning for one host-captured slide (see
+    :func:`domoxml.core.render.host.plan_capture`)."""
+    return plan_capture(raw, width=width, height=height)
+
+
+async def aconvert_captured(
+    fragments: Sequence[str],
+    captures: Sequence[dict[str, Any]],
+    *,
+    width: int,
+    height: int,
+    css: str | None = None,
+    transitions: Sequence[dict[str, Any] | None] | None = None,
+) -> dict[str, Any]:
+    """Convert host-captured slides into a ``.pptx``.
+
+    ``captures`` aligns with ``fragments``; each entry carries the raw
+    snapshot (``raw``), the page's data: resources (``resources``), the
+    full-slide PNG (``png_b64``), isolated-node PNGs keyed by snapshot
+    index (``rasters``) and, per backdrop node, a sharp full-slide render
+    taken with that node hidden (``backdrop_sharp``). PNG payloads are
+    base64. Extraction and emission are the desktop pipeline's, fed the
+    assembled pre-rendered slides.
+    """
+    if len(captures) != len(fragments):
+        raise ValueError(
+            f"got {len(captures)} captures for {len(fragments)} fragments"
+        )
+    slides = [
+        build_slide(
+            capture["raw"],
+            width=width,
+            height=height,
+            scale=1.0,
+            png_b64=capture.get("png_b64"),
+            resources_b64=capture.get("resources"),
+            raster_pngs_b64={
+                int(index): payload
+                for index, payload in (capture.get("rasters") or {}).items()
+            },
+            backdrop_sharp_b64={
+                int(index): payload
+                for index, payload in (capture.get("backdrop_sharp") or {}).items()
+            },
+        )
+        for capture in captures
+    ]
+    deck = Presentation(
+        size=CustomSize(width_in=width / 96, height_in=height / 96),
+        css=css,
+        transitions=[_transition_from_dict(t) for t in transitions or ()],
+        rendered_slides=slides,
+    )
+    for fragment in fragments:
+        deck.add(Slide(html=fragment))
+    return await _convert_result(deck)
 
 
 async def aread_deck(data: bytes) -> dict[str, Any]:

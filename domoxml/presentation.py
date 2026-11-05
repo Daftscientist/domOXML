@@ -49,10 +49,19 @@ class Presentation:
         css: str | None = None,
         render_engine: Literal["chromium", "takumi"] = "chromium",
         transitions: Sequence[SlideTransition | None] | None = None,
+        rendered_slides: Sequence[RenderedSlide] | None = None,
     ) -> None:
         if render_engine not in ("chromium", "takumi"):
             raise ValueError(f"unsupported render_engine: {render_engine}")
         self.render_engine = render_engine
+        # Pre-rendered slides (host capture): when supplied, rendering is
+        # already done — a host environment (e.g. the page a Pyodide build
+        # runs in) captured each slide's layout itself, and _render returns
+        # these instead of opening a session. Extraction, font resolution
+        # and emission are unchanged.
+        self._rendered_slides: tuple[RenderedSlide, ...] | None = (
+            tuple(rendered_slides) if rendered_slides is not None else None
+        )
         # Per-slide transitions, aligned with ``slides`` order; ``None`` entries
         # (or a shorter sequence) leave that slide without a transition. Applied
         # to the extracted IR before the deck is built, so they round-trip
@@ -175,6 +184,16 @@ class Presentation:
 
         if not chosen:  # nothing to render — don't spin up a browser
             return []
+
+        if self._rendered_slides is not None:
+            if len(self._rendered_slides) != len(self.slides):
+                raise ValueError(
+                    f"rendered_slides has {len(self._rendered_slides)} slides "
+                    f"for a deck of {len(self.slides)}"
+                )
+            if indices is None:
+                return list(self._rendered_slides)
+            return [self._rendered_slides[i] for i in sorted(indices)]
 
         rendered: list[RenderedSlide | TakumiRenderedSlide] = []
         session_backend = BrowserSession() if self.render_engine == "chromium" else TakumiSession()

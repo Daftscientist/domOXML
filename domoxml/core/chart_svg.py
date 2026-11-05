@@ -160,6 +160,7 @@ def chart_to_svg(
     canvas.title_bold = _is_bold(title_node)
     canvas.legend_color = _text_colour(legend, palette)
     canvas.background = _fill_hex(root.find("c:spPr", _NS), palette)
+    canvas.background_alpha = _fill_alpha(root.find("c:spPr", _NS))
     canvas.rounded = _val(root.find("c:roundedCorners", _NS), "0") in ("1", "true")
     canvas.title_px = _font_px(title_node, 16.0 * 96 / 72 if title_node is not None else 16.0)
     canvas.legend_pos = legend_pos
@@ -225,7 +226,8 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 xs=xs,
                 sizes=sizes,
                 color=color,
-                explicit_color=_series_color(ser, palette) is not None,
+                explicit_color=ser.find("c:spPr/a:solidFill", _NS) is not None
+                and _series_color(ser, palette) is not None,
                 line=not line_off and (kind != "scatter" or scatter_style != "marker"),
                 marker=marker_symbol not in ("none",)
                 and (kind == "scatter" or marker_symbol != "" or (kind == "line" and False)),
@@ -332,6 +334,19 @@ def _text_colour(node: Element | None, palette: Mapping[str, str]) -> str:
             if fill is not None:
                 return _fill_hex(properties, palette)
     return ""
+
+
+def _fill_alpha(properties: Element | None) -> float:
+    """The opacity of the solid fill in ``properties`` (``a:alpha``), 1 when it has none."""
+    alpha = properties.find("a:solidFill/*/a:alpha", _NS) if properties is not None else None
+    try:
+        return (
+            max(0.0, min(1.0, int(alpha.get("val", "100000")) / 100_000))
+            if alpha is not None
+            else 1.0
+        )
+    except ValueError:
+        return 1.0
 
 
 def _is_bold(node: Element | None) -> bool:
@@ -536,6 +551,7 @@ class _Canvas:
         self.title_bold = False
         self.legend_color = ""
         self.background = ""
+        self.background_alpha = 1.0
         self.rounded = False
         self.legend_layout: tuple[float, float, float, float] | None = None
         self.legend_px = 12.0
@@ -647,7 +663,7 @@ class _Canvas:
         # The chart's own background (``chartSpace`` fill) sits behind everything else.
         back = (
             f'<rect width="{self.w:g}" height="{self.h:g}" rx="{12 if self.rounded else 0}" '
-            f'fill="#{self.background}"/>'
+            f'fill="#{self.background}" fill-opacity="{self.background_alpha:g}"/>'
             if self.background
             else ""
         )

@@ -494,3 +494,24 @@ def test_a_chart_spaces_own_fill_and_text_colours_are_drawn() -> None:
     assert svg is not None
     assert 'rx="12" fill="#202020"' in svg  # the rounded dark background
     assert 'fill="#FFFFFF" font-weight="700"' in svg or 'fill="#FFFFFF"' in svg
+
+
+def test_a_series_outline_colour_does_not_flatten_the_slices_and_a_background_keeps_its_alpha() -> (
+    None
+):
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    outline = _pie(
+        series_extra=f'<c:spPr><a:ln xmlns:a="{a}"><a:solidFill><a:srgbClr val="FFFFFF"/>'
+        "</a:solidFill></a:ln></c:spPr>"
+    )
+    chart = (
+        f'<c:chartSpace xmlns:c="{_C}"><c:spPr><a:solidFill xmlns:a="{a}"><a:srgbClr val="202020">'
+        '<a:alpha val="50000"/></a:srgbClr></a:solidFill></c:spPr>'
+        f"<c:chart><c:plotArea><c:pieChart>{_series(0, [1, 2])}</c:pieChart></c:plotArea></c:chart>"
+        "</c:chartSpace>"
+    ).encode()
+
+    background = chart_to_svg(chart, width_px=480, height_px=300)
+
+    assert len(set(re.findall(r'<path[^>]*fill="(#\w+)"', outline))) > 1
+    assert background is not None and 'fill="#202020" fill-opacity="0.5"' in background

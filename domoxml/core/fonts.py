@@ -48,7 +48,7 @@ FaceKey = tuple[str, bool, bool]
 class FontFace(BaseModel):
     """One concrete font face used by the deck, plus its embeddable TrueType bytes."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, ser_json_bytes="base64", val_json_bytes="base64")
 
     family: str
     bold: bool

@@ -6,8 +6,8 @@
 // network-first so a new deployment is picked up on the next visit.
 // Pyodide comes from a version-pinned CDN URL, so it is cache-first too:
 // after the first visit, a repeat load downloads nothing at all.
-// 127baed3 is stamped with the bundle hash when the site is assembled.
-const CACHE = "domoxml-studio-127baed3";
+// e889d499 is stamped with the bundle hash when the site is assembled.
+const CACHE = "domoxml-studio-e889d499";
 const CORE = ["./", "./index.html", "./py/bundle-manifest.json"];
 
 self.addEventListener("install", (event) => {

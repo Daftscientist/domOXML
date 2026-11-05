@@ -90,6 +90,7 @@ class Series:
     marker_symbol: str = ""  # empty: the automatic symbol for the series' position
     marker_px: float = 6.7  # the automatic marker is 5 pt
     marker_color: str = ""
+    marker_hollow: bool = False  # the marker's fill is ``a:noFill``: only its outline shows
     position: int = 0  # the series' index among the chart's, for automatic markers
 
 
@@ -283,6 +284,8 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 marker_color=_fill_hex(marker.find("c:spPr", _NS), palette)
                 if marker is not None
                 else "",
+                marker_hollow=marker is not None
+                and marker.find("c:spPr/a:noFill", _NS) is not None,
                 position=start + offset,
                 show_values=show,
                 label_pos=_val(labels.find("c:dLblPos", _NS), "") if labels is not None else "",
@@ -489,10 +492,12 @@ def _dash_attr(name: str, width: float) -> str:
     return f' stroke-dasharray="{" ".join(f"{n * width:.1f}" for n in lengths)}"'
 
 
-def _marker_svg(symbol: str, x: float, y: float, size: float, colour: str) -> str:
+def _marker_svg(
+    symbol: str, x: float, y: float, size: float, colour: str, *, hollow: bool = False
+) -> str:
     """One chart marker of ``size`` px centred on ``(x, y)`` (PowerPoint's symbol names)."""
     r = size / 2
-    fill = f'fill="#{colour}"'
+    fill = f'fill="none" stroke="#{colour}" stroke-width="1.5"' if hollow else f'fill="#{colour}"'
     stroke = f'stroke="#{colour}" stroke-width="1.5" fill="none"'
     if symbol == "square":
         return (
@@ -805,7 +810,9 @@ class _Canvas:
 
     # frame -------------------------------------------------------------------------------
 
-    def _frame(self, names: list[tuple[str, str, bool]]) -> tuple[float, float, float, float]:
+    def _frame(
+        self, names: list[tuple[str, str, Series | None]]
+    ) -> tuple[float, float, float, float]:
         """Draw title and legend; return the plot rectangle ``(x, y, w, h)`` that is left."""
         left, top, right, bottom = 12.0, 10.0, self.w - 12.0, self.h - 10.0
         if self.title and self.title_layout is not None:
@@ -831,7 +838,7 @@ class _Canvas:
 
     def _legend(
         self,
-        names: list[tuple[str, str, bool]],
+        names: list[tuple[str, str, Series | None]],
         top: float,
         right: float,
         bottom: float,
@@ -864,7 +871,7 @@ class _Canvas:
                 top += 26
         return top, right, bottom, left
 
-    def _placed_legend(self, names: list[tuple[str, str, bool]]) -> None:
+    def _placed_legend(self, names: list[tuple[str, str, Series | None]]) -> None:
         """A legend row where the author put it (``c:legend`` manual layout)."""
         assert self.legend_layout is not None
         x, y = self.legend_layout[0] * self.w, self.legend_layout[1] * self.h
@@ -930,18 +937,41 @@ class _Canvas:
 
     def _marker(self, series: Series, x: float, y: float) -> str:
         symbol = series.marker_symbol or _AUTO_MARKERS[series.position % len(_AUTO_MARKERS)]
-        return _marker_svg(symbol, x, y, series.marker_px, series.marker_color or series.color)
+        return _marker_svg(
+            symbol,
+            x,
+            y,
+            series.marker_px,
+            series.marker_color or series.color,
+            hollow=series.marker_hollow,
+        )
 
     def _swatch(
-        self, x: float, y: float, label: str, color: str, size: int, line: bool = False
+        self,
+        x: float,
+        y: float,
+        label: str,
+        color: str,
+        size: int,
+        series: Series | None = None,
     ) -> None:
-        if line:
+        if series is not None:
             # A line series is keyed by a short line with its marker, as PowerPoint draws it.
+            width = min(series.line_px, 3.0)
             mark = (
                 f'<line x1="{x - 2:.1f}" y1="{y + 5:.1f}" x2="{x + 12:.1f}" y2="{y + 5:.1f}" '
-                f'stroke="#{color}" stroke-width="2"/>'
-                f'<circle cx="{x + 5:.1f}" cy="{y + 5:.1f}" r="2.6" fill="#{color}"/>'
+                f'stroke="#{color}" stroke-width="{width:g}"{_dash_attr(series.dash, width)}/>'
             )
+            if series.marker:
+                symbol = series.marker_symbol or _AUTO_MARKERS[series.position % len(_AUTO_MARKERS)]
+                mark += _marker_svg(
+                    symbol,
+                    x + 5,
+                    y + 5,
+                    min(series.marker_px, 8.0),
+                    series.marker_color or color,
+                    hollow=series.marker_hollow,
+                )
         else:
             mark = f'<rect x="{x:.1f}" y="{y:.1f}" width="10" height="10" fill="#{color}"/>'
         self.parts.append(
@@ -975,7 +1005,11 @@ class _Canvas:
     # cartesian ---------------------------------------------------------------------------
 
     def cartesian(self, groups: list[Group], axis_format: str, value_axis_hidden: bool) -> str:
-        names = [(s.name, s.color, g.kind == "line" and s.line) for g in groups for s in g.series]
+        names = [
+            (s.name, s.color, s if g.kind == "line" and s.line else None)
+            for g in groups
+            for s in g.series
+        ]
         horizontal = groups[0].horizontal and groups[0].kind == "bar"
         x0, y0, pw, ph = self._frame(names)
         categories: list[str] = []
@@ -1426,7 +1460,9 @@ class _Canvas:
     # scatter -----------------------------------------------------------------------------
 
     def scatter(self, group: Group, axis_format: str) -> str:
-        names = [(s.name, s.color, False) for s in group.series]
+        names: list[tuple[str, str, Series | None]] = [
+            (s.name, s.color, None) for s in group.series
+        ]
         x0, y0, pw, ph = self._frame(names)
         xs = [x for s in group.series for x in (s.xs or [])]
         ys = [v for s in group.series for v in s.values if v is not None]
@@ -1513,11 +1549,11 @@ class _Canvas:
 
     def pie(self, group: Group) -> str:
         first = group.series[0]
-        names = [
+        names: list[tuple[str, str, Series | None]] = [
             (
                 first.categories[i] if i < len(first.categories) else str(i + 1),
                 first.point_colors.get(i, self._slice_colour(group, first, i)),
-                False,
+                None,
             )
             for i in range(len(first.values))
         ]
@@ -1565,7 +1601,9 @@ class _Canvas:
             angle += sweep
 
     def radar(self, group: Group) -> str:
-        names = [(s.name, s.color, False) for s in group.series]
+        names: list[tuple[str, str, Series | None]] = [
+            (s.name, s.color, None) for s in group.series
+        ]
         x0, y0, pw, ph = self._frame(names)
         count = max((len(s.values) for s in group.series), default=0)
         peak = max((v for s in group.series for v in s.values if v is not None), default=1.0)

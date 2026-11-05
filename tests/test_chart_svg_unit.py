@@ -571,3 +571,43 @@ def test_a_column_with_its_own_point_colour_stays_well_formed_svg() -> None:
 
     fromstring(svg)  # raises on malformed markup
     assert 'fill="#FF0000"/>' in svg
+
+
+def _scatter(kind: str, *, smooth: str = "", scale: int | None = None, x_grid: bool = True) -> str:
+    sizes = _literal("bubbleSize", [4, 16]) if kind == "bubbleChart" else ""
+    scale_xml = f'<c:bubbleScale val="{scale}"/>' if scale is not None else ""
+    grid = "<c:majorGridlines/>" if x_grid else ""
+    return _svg(
+        f'<c:{kind}><c:scatterStyle val="lineMarker"/><c:ser><c:idx val="0"/>'
+        + _literal("xVal", [1, 10])
+        + _literal("yVal", [10, 65])
+        + sizes
+        + smooth
+        + f"</c:ser>{scale_xml}</c:{kind}>"
+        + f'<c:valAx><c:axId val="1"/>{grid}</c:valAx>'
+        + '<c:valAx><c:axId val="2"/><c:majorGridlines/></c:valAx>'
+    )
+
+
+def test_scatter_axes_leave_headroom_and_draw_vertical_gridlines() -> None:
+    svg = _scatter("scatterChart")
+    labels = re.findall(r">(\d+)</text>", svg)
+
+    assert "12" in labels and "70" in labels  # 10 and 65 round up past the data
+    assert len(re.findall(r'<line x1="([\d.]+)"[^>]* x2="\1"', svg)) >= 5  # vertical gridlines
+    assert _scatter("scatterChart", x_grid=False).count("<line") < svg.count("<line")
+
+
+def test_scatter_lines_are_smoothed_unless_the_series_says_otherwise() -> None:
+    assert " C" in _scatter("scatterChart")
+    assert " C" not in _scatter("scatterChart", smooth='<c:smooth val="0"/>')
+
+
+def test_bubbles_are_opaque_and_follow_the_bubble_scale() -> None:
+    def biggest(svg: str) -> float:
+        return max(float(r) for r in re.findall(r'<circle[^>]* r="([\d.]+)"', svg))
+
+    small, large = _scatter("bubbleChart", scale=50), _scatter("bubbleChart", scale=100)
+
+    assert "fill-opacity" not in large
+    assert abs(biggest(large) / biggest(small) - 2) < 0.05

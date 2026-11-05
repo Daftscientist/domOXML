@@ -98,6 +98,8 @@ class Group:
     hole: float = 0.5
     vary_colors: bool = True
     first_angle: int = 0
+    bubble_scale: float = 1.0
+    smooth: bool = False
 
 
 def chart_to_svg(
@@ -175,6 +177,7 @@ def chart_to_svg(
         else None
     )
     canvas.grid = _has_gridlines(plot)
+    canvas.grid_x = _has_x_gridlines(plot)
     grid_node = plot.find("c:valAx/c:majorGridlines/c:spPr", _NS)
     canvas.grid_color, line_width = _line_style(grid_node, palette)
     # Gridlines with no style of their own are PowerPoint's automatic ones: black hairlines.
@@ -268,6 +271,13 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
         hole=min(0.9, max(0.1, hole)),
         vary_colors=_val(element.find("c:varyColors", _NS), "1") not in ("0", "false"),
         first_angle=int(_val(element.find("c:firstSliceAng", _NS), "0")) % 360,
+        bubble_scale=int(_val(element.find("c:bubbleScale", _NS), "100")) / 100,
+        # A scatter series with no ``c:smooth`` is smoothed (the schema default is true).
+        smooth=kind == "scatter"
+        and all(
+            _val(ser.find("c:smooth", _NS), "1") not in ("0", "false")
+            for ser in element.findall("c:ser", _NS)
+        ),
     )
 
 
@@ -516,6 +526,24 @@ def _font_px(node: Element | None, default: float) -> float:
     return default
 
 
+def _has_x_gridlines(plot: Element) -> bool:
+    """Whether a scatter or bubble chart's x axis (its first value axis) draws major gridlines."""
+    axes = list(plot.iter(f"{{{_C}}}valAx"))
+    return len(axes) > 1 and axes[0].find("c:majorGridlines", _NS) is not None
+
+
+def _smooth_path(points: list[tuple[float, float]]) -> str:
+    """A Catmull-Rom spline through ``points`` as cubic Béziers (PowerPoint's smoothed line)."""
+    d = f"M{points[0][0]:.1f} {points[0][1]:.1f}"
+    for k in range(len(points) - 1):
+        before, start = points[max(k - 1, 0)], points[k]
+        end, after = points[k + 1], points[min(k + 2, len(points) - 1)]
+        c1 = (start[0] + (end[0] - before[0]) / 6, start[1] + (end[1] - before[1]) / 6)
+        c2 = (end[0] - (after[0] - start[0]) / 6, end[1] - (after[1] - start[1]) / 6)
+        d += f" C{c1[0]:.1f} {c1[1]:.1f} {c2[0]:.1f} {c2[1]:.1f} {end[0]:.1f} {end[1]:.1f}"
+    return d
+
+
 def _has_gridlines(plot: Element) -> bool:
     """Whether the value axis draws major gridlines (a ``majorGridlines`` that is not no-line)."""
     for axis in plot.iter(f"{{{_C}}}valAx"):
@@ -632,6 +660,7 @@ class _Canvas:
         self.legend_px = 12.0
         self.plot_layout: tuple[float, float, float, float] | None = None
         self.grid = True
+        self.grid_x = False
         self.grid_color = ""
         self.grid_px = 1.0
         self.defs: list[str] = []
@@ -1186,11 +1215,18 @@ class _Canvas:
         ys = [v for s in group.series for v in s.values if v is not None]
         if not xs or not ys:
             return self._wrap()
-        x_ticks = _nice_ticks(_axis_floor(min(xs), max(xs)), max(xs))
-        y_ticks = _nice_ticks(min(0.0, min(ys)), max(ys))
-        gutter = 8 + max(len(format_number(t, axis_format)) for t in y_ticks) * 6.5
+        # Excel leaves 5% above the data on both axes and a gridline about every 27 px (every 70 px
+        # along the width); a bubble chart also leaves room for its biggest bubble at the edges.
+        x_low = _axis_floor(min(xs), max(xs))
+        x_high = max(xs) + (0.1 if group.kind == "bubble" else 0.05) * (max(xs) - x_low)
+        y_low, y_high = min(0.0, min(ys)), max(ys)
+        gutter = 8 + max(len(format_number(t, axis_format)) for t in (y_low, y_high)) * 6.5 + 6.5
         left, top = x0 + gutter, y0
         plot_w, plot_h = max(10.0, pw - gutter), max(10.0, ph - 24)
+        x_ticks = _nice_ticks(x_low, x_high, max(4, min(10, int(plot_w / 70))))
+        y_ticks = _nice_ticks(
+            y_low, y_high + 0.05 * (y_high - y_low), max(4, min(10, math.ceil(plot_h / 27)))
+        )
 
         def px(value: float) -> float:
             return left + (value - x_ticks[0]) / (x_ticks[-1] - x_ticks[0]) * plot_w
@@ -1198,17 +1234,28 @@ class _Canvas:
         def py(value: float) -> float:
             return top + plot_h - (value - y_ticks[0]) / (y_ticks[-1] - y_ticks[0]) * plot_h
 
+        grid = f"#{self.grid_color or '000000'}"
         for tick in y_ticks:
+            if self.grid:
+                self.parts.append(
+                    f'<line x1="{left:.1f}" y1="{py(tick):.1f}" x2="{left + plot_w:.1f}" '
+                    f'y2="{py(tick):.1f}" stroke="{grid}" stroke-width="{self.grid_px:g}"/>'
+                )
             self.parts.append(
-                f'<line x1="{left:.1f}" y1="{py(tick):.1f}" x2="{left + plot_w:.1f}" '
-                f'y2="{py(tick):.1f}" stroke="{_GRID}"/><text x="{left - 6:.1f}" '
-                f'y="{py(tick) + 4:.1f}" text-anchor="end" font-size="11" fill="{_TEXT}">'
+                f'<text x="{left - 6:.1f}" y="{py(tick) + 4:.1f}" text-anchor="end" '
+                f'font-size="{self.tick_px:.1f}" fill="#{self.tick_color}">'
                 f"{escape(format_number(tick, axis_format))}</text>"
             )
         for tick in x_ticks:
+            if self.grid_x:
+                self.parts.append(
+                    f'<line x1="{px(tick):.1f}" y1="{top:.1f}" x2="{px(tick):.1f}" '
+                    f'y2="{top + plot_h:.1f}" stroke="{grid}" stroke-width="{self.grid_px:g}"/>'
+                )
             self.parts.append(
                 f'<text x="{px(tick):.1f}" y="{top + plot_h + 16:.1f}" text-anchor="middle" '
-                f'font-size="11" fill="{_TEXT}">{escape(format_number(tick, "General"))}</text>'
+                f'font-size="{self.tick_px:.1f}" fill="#{self.tick_color}">'
+                f"{escape(format_number(tick, 'General'))}</text>"
             )
         for series in group.series:
             points = [
@@ -1217,8 +1264,13 @@ class _Canvas:
                 if v is not None
             ]
             if group.kind != "bubble" and series.line and len(points) > 1:
-                d = " ".join(
-                    f"{'M' if k == 0 else 'L'}{x:.1f} {y:.1f}" for k, (x, y) in enumerate(points)
+                d = (
+                    _smooth_path(points)
+                    if group.smooth
+                    else " ".join(
+                        f"{'M' if k == 0 else 'L'}{x:.1f} {y:.1f}"
+                        for k, (x, y) in enumerate(points)
+                    )
                 )
                 self.parts.append(
                     f'<path d="{d}" fill="none" stroke="#{series.color}" stroke-width="2"/>'
@@ -1226,10 +1278,17 @@ class _Canvas:
             if group.kind == "bubble":
                 peak = max((v for v in (series.sizes or []) if v), default=1.0)
                 for (x, y), size in zip(points, series.sizes or [], strict=False):
-                    radius = 4 + 22 * math.sqrt(max(size or 0.0, 0.0) / peak)
+                    # The biggest bubble is a quarter of the plot's short side across, at 100%.
+                    radius = (
+                        min(plot_w, plot_h)
+                        / 8
+                        * group.bubble_scale
+                        * math.sqrt(max(size or 0.0, 0.0) / peak)
+                    )
+                    paint, opacity = self._paint(series)
                     self.parts.append(
                         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius:.1f}" '
-                        f'fill="#{series.color}" fill-opacity="0.6" stroke="#{series.color}"/>'
+                        f'fill="{paint}"{opacity}/>'
                     )
             elif series.marker or not series.line:
                 for x, y in points:

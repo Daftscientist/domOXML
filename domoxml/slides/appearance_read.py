@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Literal, cast, get_args
 from xml.etree.ElementTree import Element
 
 from PIL import ImageColor
@@ -18,6 +18,7 @@ from domoxml.core.ir.model import (
     GradientFill,
     GradientStop,
     Line,
+    LineCompound,
     PatternFill,
     PictureFill,
     Rgba,
@@ -293,13 +294,9 @@ def _arrowhead(element: Element | None) -> Arrowhead | None:
 _HAIRLINE_EMU = 9525  # one CSS pixel
 
 
-_COMPOUND_FROM_OOXML: dict[str, Literal["sng", "dbl", "thickThin", "thinThick", "tri"]] = {
-    "sng": "sng",
-    "dbl": "dbl",
-    "thickThin": "thickThin",
-    "thinThick": "thinThick",
-    "tri": "tri",
-}
+def _compound(value: str) -> LineCompound:
+    """The ``a:ln cmpd`` token, or a single line for one this does not know."""
+    return cast(LineCompound, value) if value in get_args(LineCompound) else "sng"
 
 
 def line_element(element: Element, colors: ThemeColors) -> Line | None:
@@ -335,7 +332,7 @@ def line_element(element: Element, colors: ThemeColors) -> Line | None:
         custom_dash=tuple(custom),
         cap=_CAP_FROM_OOXML.get(element.get("cap", "flat"), "flat"),
         join=join,
-        compound=_COMPOUND_FROM_OOXML.get(element.get("cmpd", "sng"), "sng"),
+        compound=_compound(element.get("cmpd", "sng")),
         gradient=gradient_fill,
         head=_arrowhead(element.find("a:headEnd", _NS)),
         tail=_arrowhead(element.find("a:tailEnd", _NS)),

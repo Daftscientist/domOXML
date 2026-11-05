@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from xml.etree.ElementTree import fromstring
 
 from domoxml.core.drawingml.shape import line_xml
-from domoxml.core.html import serialize_canvas
+from domoxml.core.drawingml.table_xml import _tc_border_xml  # pyright: ignore[reportPrivateUsage]
+from domoxml.core.html import (
+    _border_side_css,  # pyright: ignore[reportPrivateUsage]
+    serialize_canvas,
+)
 from domoxml.core.ir.model import Box, Line, Rgba, ShapeNode, SlideIR
 from domoxml.core.ir.parse import parse_border_side
 from domoxml.slides.appearance_read import line_element
@@ -44,12 +49,24 @@ def test_html_draws_a_compound_line_as_a_css_double_border_and_reads_it_back() -
         box=Box(x=0, y=0, width=2_000_000, height=1_000_000),
         line=Line(color=_BLACK, width_emu=76200, compound="dbl"),
     )
-    html = (
-        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, shapes=(node,))])
-        .slides[0]
-        .html
-    )
+    slide = SlideIR(width=12_192_000, height=6_858_000, shapes=(node,))
+    html = serialize_canvas([slide]).slides[0].html
 
-    assert "double" in html and "solid rgba" not in html.split("border:", 1)[1].split(";")[0]
+    assert re.search(r"border:[\d.]+px double rgba\(0,0,0,1\)", html)
     line, warning = parse_border_side("8px", "double", "rgb(0, 0, 0)")
     assert line is not None and line.compound == "dbl" and warning is None
+
+
+def test_table_cell_borders_keep_their_compound_type_in_both_directions() -> None:
+    double = Line(color=_BLACK, width_emu=38100, compound="dbl")
+
+    assert ' cmpd="dbl"' in _tc_border_xml("lnL", double)
+    assert "cmpd" not in _tc_border_xml("lnL", Line(color=_BLACK, width_emu=38100))
+    assert _border_side_css(double).split()[1] == "double"
+    assert _border_side_css(Line(color=_BLACK, width_emu=38100)).split()[1] == "solid"
+
+
+def test_an_unknown_compound_token_is_a_single_line() -> None:
+    line = _read("somethingNew")
+
+    assert line is not None and line.compound == "sng"

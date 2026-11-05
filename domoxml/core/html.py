@@ -1022,7 +1022,7 @@ def _fit_insets(
     if extent_emu is None:
         return before, after
     room = max(0, extent_emu - 2 * border_emu)
-    if before + after <= room or before + after == 0:
+    if before + after <= room:
         return before, after
     scale = room / (before + after)
     return round(before * scale), round(after * scale)
@@ -1346,6 +1346,8 @@ def _border_side_css(line_val: object) -> str:
     if not isinstance(line_val, Line):
         return "none"
     style = _CSS_DASH.get(line_val.dash, "solid")
+    if line_val.compound != "sng" and style == "solid":
+        style = "double"  # CSS splits the width into line, gap and line
     return f"{_px(line_val.width_emu)} {style} {_rgba(line_val.color)}"
 
 

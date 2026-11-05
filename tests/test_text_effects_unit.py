@@ -7,7 +7,7 @@ from xml.etree.ElementTree import Element, fromstring
 
 from domoxml.core.drawingml.shape import _run  # pyright: ignore[reportPrivateUsage]
 from domoxml.core.ir.model import GradientFill, GradientStop, Rgba, TextRun
-from domoxml.slides.inherit import ThemeContext
+from domoxml.slides.inherit import ThemeContext, resolve_run_rpr
 from domoxml.slides.text_read import read_text_run
 
 NS = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
@@ -95,3 +95,32 @@ def test_text_that_names_no_typeface_is_set_in_the_theme_body_font() -> None:
 
     assert with_properties is not None and with_properties.font_family == "Calibri"
     assert without_properties is not None and without_properties.font_family == "Calibri"
+
+
+def test_text_with_no_size_anywhere_in_its_chain_is_18pt_like_powerpoint() -> None:
+    plain = read_text_run(
+        element("<a:r><a:rPr/><a:t>Text</a:t></a:r>"), {}, lambda _: None, theme_ctx=None
+    )
+    bare = read_text_run(element("<a:r><a:t>Text</a:t></a:r>"), {}, lambda _: None)
+    sized = read_text_run(
+        element("<a:r><a:rPr sz='1400'/><a:t>Text</a:t></a:r>"), {}, lambda _: None
+    )
+
+    assert plain is not None and plain.size_pt == 18.0
+    assert bare is not None and bare.size_pt == 18.0
+    assert sized is not None and sized.size_pt == 14.0
+
+
+def test_the_presentation_default_paragraph_size_applies_before_the_18pt_fallback() -> None:
+    style = fromstring(
+        f"<p:defaultTextStyle {NS} xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'>"
+        "<a:defPPr><a:defRPr sz='2400'/></a:defPPr>"
+        "<a:lvl1pPr><a:defRPr b='1'/></a:lvl1pPr></p:defaultTextStyle>"
+    )
+    inherited = resolve_run_rpr(None, 0, None, default_style=style)
+
+    run = read_text_run(
+        element("<a:r><a:t>Text</a:t></a:r>"), {}, lambda _: None, fallback_rpr=inherited
+    )
+
+    assert run is not None and run.size_pt == 24.0 and run.bold  # size from defPPr, bold from lvl1

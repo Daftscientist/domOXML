@@ -1,8 +1,8 @@
 {
-  "bundle": "domoxml-bundle-e889d499.zip",
-  "sha256": "e889d499d0c0119f57b8605d977a785b8b83b7de3e35444374b4745bee44377c",
+  "bundle": "domoxml-bundle-86f16bae.zip",
+  "sha256": "86f16bae94b33cd1960f78a003bf654a73f46415092896847ddadab0e1e6ffe5",
   "files": 100,
-  "bytes": 398675,
+  "bytes": 400464,
   "pyodide": "0.29.3",
   "packages_eager": [
     "pydantic",

@@ -84,9 +84,10 @@ class Presentation:
     ) -> RenderResult:
         """Async variant of :meth:`render`."""
         needs_render = bool(formats & {OutputFormat.PNG, OutputFormat.PPTX, OutputFormat.HTML})
-        rendered = await self._render(indices) if needs_render else []
+        want_png = OutputFormat.PNG in formats
+        rendered = await self._render(indices, capture_png=want_png) if needs_render else []
 
-        pngs = tuple(slide.png for slide in rendered) if OutputFormat.PNG in formats else ()
+        pngs = tuple(slide.png for slide in rendered if slide.png is not None) if want_png else ()
 
         pptx: bytes | None = None
         html = None
@@ -134,7 +135,9 @@ class Presentation:
         for index, png in enumerate(result.pngs, start=1):
             (directory / f"slide-{index:02d}.png").write_bytes(png)
 
-    async def _render(self, indices: set[int] | None) -> list[RenderedSlide]:
+    async def _render(
+        self, indices: set[int] | None, *, capture_png: bool = True
+    ) -> list[RenderedSlide]:
         if indices is None:
             chosen = self.slides
         else:
@@ -153,7 +156,9 @@ class Presentation:
                 page = compose_page(
                     slide.html, css=self.css, theme=self.theme, width_px=width, height_px=height
                 )
-                rendered.append(await session.render(page, width=width, height=height))
+                rendered.append(
+                    await session.render(page, width=width, height=height, capture_png=capture_png)
+                )
         return rendered
 
 

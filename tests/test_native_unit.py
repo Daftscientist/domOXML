@@ -76,6 +76,7 @@ def _captured_slide(*nodes: RenderedNode) -> RenderedSlide:
         x, y, right, bottom = _raster_bounds(
             node, slide_width=slide.width, slide_height=slide.height
         )
+        assert slide.png is not None
         crop = crop_png(
             slide.png,
             left=x * slide.scale,

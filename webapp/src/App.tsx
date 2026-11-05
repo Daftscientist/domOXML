@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FilePlus2, Layers, MonitorPlay, PencilRuler, Presentation } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { EditProvider } from "@pierre/diffs/react";
 import { Editor } from "@pierre/diffs/edit";
 import type { EditorFactory } from "@pierre/diffs/react";
 import { Header } from "@/components/Header";
+import { HomePage } from "@/components/HomePage";
 import { SlideRail } from "@/components/SlideRail";
 import { Stage } from "@/components/Stage";
 import { Inspector } from "@/components/Inspector";
@@ -16,7 +17,9 @@ import {
 import { engine } from "@/lib/engine";
 import { exportViaHostCapture } from "@/lib/hostCapture";
 import { downloadBytes, downloadText, slug } from "@/lib/download";
-import { blankSlideHtml, newSlideId, sampleDeck } from "@/lib/sample";
+import { blankSlideHtml, DEFAULT_CSS, newSlideId, sampleDeck } from "@/lib/sample";
+import { getDoc, listDocs, putDoc, removeDoc } from "@/lib/store";
+import type { DocMeta } from "@/lib/store";
 import type { ConvertResult, Deck, SlideTransition } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -38,13 +41,112 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<ConvertResult | null>(null);
   const [presenting, setPresenting] = useState(false);
-  const [confirmNew, setConfirmNew] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("preview");
+  // Home (the file library) vs the editor. Documents live in OPFS (see
+  // lib/store); the open document autosaves back there as it changes.
+  const [view, setView] = useState<"home" | "editor">("home");
+  const [docs, setDocs] = useState<DocMeta[]>([]);
+  const [activeDocId, setActiveDocId] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const lastSavedJsonRef = useRef<string>("");
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     localStorage.setItem("domoxml-theme", dark ? "dark" : "light");
   }, [dark]);
+
+  const refreshDocs = useCallback(async () => {
+    setDocs(await listDocs());
+  }, []);
+
+  useEffect(() => {
+    void refreshDocs();
+  }, [refreshDocs]);
+
+  const upsertMeta = useCallback((meta: DocMeta) => {
+    setDocs((prev) => [meta, ...prev.filter((m) => m.id !== meta.id)]);
+  }, []);
+
+  const enterEditor = useCallback((d: Deck) => {
+    lastSavedJsonRef.current = JSON.stringify(d);
+    setDeck(d);
+    setSelected(0);
+    setMobileTab("preview");
+    setActiveDocId(d.id);
+    setSaveState("saved");
+    setView("editor");
+  }, []);
+
+  /** Store a freshly built deck as a library document, then open it. */
+  const createAndOpen = useCallback(
+    async (d: Deck) => {
+      try {
+        upsertMeta(await putDoc(d));
+      } catch {
+        // Storage failing must not block opening the document.
+      }
+      enterEditor(d);
+    },
+    [enterEditor, upsertMeta],
+  );
+
+  const openStored = useCallback(
+    async (id: string) => {
+      const d = await getDoc(id);
+      if (!d) {
+        toast.error("Could not open that file", {
+          description: "It may have been removed from this browser's storage.",
+        });
+        void refreshDocs();
+        return;
+      }
+      enterEditor(d);
+    },
+    [enterEditor, refreshDocs],
+  );
+
+  const goHome = useCallback(async () => {
+    // Flush the open document before leaving it.
+    if (activeDocId && deck.id === activeDocId) {
+      try {
+        upsertMeta(await putDoc(deck));
+        lastSavedJsonRef.current = JSON.stringify(deck);
+      } catch {
+        // The debounced autosave remains as a backstop.
+      }
+    }
+    setActiveDocId(null);
+    setView("home");
+    void refreshDocs();
+  }, [activeDocId, deck, refreshDocs, upsertMeta]);
+
+  const deleteStored = useCallback(
+    async (id: string) => {
+      await removeDoc(id);
+      setDocs((prev) => prev.filter((m) => m.id !== id));
+      toast.success("Deleted from your files");
+    },
+    [],
+  );
+
+  // Autosave the open document (debounced; skipped when nothing changed
+  // since the last write, e.g. straight after opening it).
+  useEffect(() => {
+    if (view !== "editor" || !activeDocId || deck.id !== activeDocId) return;
+    if (JSON.stringify(deck) === lastSavedJsonRef.current) return;
+    setSaveState("saving");
+    const t = setTimeout(async () => {
+      try {
+        const meta = await putDoc(deck);
+        lastSavedJsonRef.current = JSON.stringify(deck);
+        setSaveState("saved");
+        upsertMeta(meta);
+      } catch {
+        setSaveState("idle");
+      }
+    }, 700);
+    return () => clearTimeout(t);
+  }, [deck, view, activeDocId, upsertMeta]);
 
   const patchSlide = useCallback(
     (index: number, patch: Partial<Deck["slides"][number]>) => {
@@ -154,7 +256,10 @@ ${slides}
         toast.error("That file has no slides we can read");
         return;
       }
-      setDeck({
+      // The deck is read into its document form (size, stylesheet,
+      // per-slide HTML) and stored in the library, so it reopens from
+      // Your files without the original .pptx.
+      await createAndOpen({
         id: newSlideId(),
         name: file.name.replace(/\.pptx$/i, ""),
         width: result.width,
@@ -166,30 +271,31 @@ ${slides}
           transition: s.transition,
         })),
       });
-      setSelected(0);
-      setMobileTab("preview");
       toast.success(`Opened ${file.name}`, {
-        description: `${result.slides.length} slides · ${result.width} × ${result.height}`,
+        description: `${result.slides.length} slides · ${result.width} × ${result.height} · Saved to your files`,
       });
     } catch (error) {
       toast.error("Could not open that file", {
         description: error instanceof Error ? error.message : String(error),
       });
     }
-  }, []);
+  }, [createAndOpen]);
 
+  /** A new blank deck as a stored document (from Home or the editor). */
   const newDeck = useCallback(() => {
-    setDeck({
+    void createAndOpen({
       id: newSlideId(),
       name: "Untitled presentation",
       width: 1280,
       height: 720,
-      css: deck.css,
+      css: DEFAULT_CSS,
       slides: [{ id: newSlideId(), html: blankSlideHtml(1280, 720), transition: null }],
     });
-    setSelected(0);
-    setConfirmNew(false);
-  }, [deck.css]);
+  }, [createAndOpen]);
+
+  const sampleAsDoc = useCallback(() => {
+    void createAndOpen(sampleDeck());
+  }, [createAndOpen]);
 
   const editableShare = useMemo(() => {
     if (!exportResult || exportResult.coverage.length === 0) return null;
@@ -200,9 +306,24 @@ ${slides}
   return (
     <EditProvider createEditor={createEditor}>
     <div className="flex h-full flex-col bg-background text-foreground">
+      {view === "home" ? (
+        <HomePage
+          docs={docs}
+          onOpen={(id) => void openStored(id)}
+          onDelete={(id) => void deleteStored(id)}
+          onCreateBlank={newDeck}
+          onCreateSample={sampleAsDoc}
+          onOpenFile={openFile}
+          dark={dark}
+          onToggleTheme={() => setDark((v) => !v)}
+        />
+      ) : (
+      <>
       <Header
         name={deck.name}
         onNameChange={(name) => setDeck((d) => ({ ...d, name }))}
+        onHome={() => void goHome()}
+        saveState={saveState}
         slideCount={deck.slides.length}
         dark={dark}
         onToggleTheme={() => setDark((v) => !v)}
@@ -244,7 +365,7 @@ ${slides}
             <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               <PencilRuler className="h-3.5 w-3.5" /> Inspector
             </span>
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setConfirmNew(true)}>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={newDeck}>
               <FilePlus2 className="h-3.5 w-3.5" /> New deck
             </Button>
           </div>
@@ -292,6 +413,8 @@ ${slides}
           Present
         </button>
       </nav>
+      </>
+      )}
 
       {presenting && (
         <PresentMode deck={deck} startAt={selected} onClose={() => setPresenting(false)} />
@@ -318,9 +441,9 @@ ${slides}
                   <div className="h-full rounded-full bg-emerald-500" style={{ width: `${editableShare.pct}%` }} />
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  Native elements stay editable as text and shapes. Anything Takumi paints
-                  that has no PowerPoint equivalent yet is kept as one picture per slide,
-                  never as cropped fragments.
+                  Native elements stay editable as text and shapes. Anything with no
+                  PowerPoint equivalent yet is kept as a picture, never as cropped
+                  fragments.
                 </p>
               </div>
               {exportResult && exportResult.warnings.length > 0 && (
@@ -339,21 +462,6 @@ ${slides}
           )}
           <DialogFooter>
             <Button onClick={() => setExportResult(null)}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={confirmNew} onOpenChange={setConfirmNew}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Start a new presentation?</DialogTitle>
-            <DialogDescription>
-              The current deck is not saved anywhere. Export it first if you want to keep it.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmNew(false)}>Keep editing</Button>
-            <Button variant="destructive" onClick={newDeck}>Discard and start new</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ChevronDown, FileDown, FileCode2, Loader2, MonitorPlay, Moon, Presentation, Sun, Upload,
+  ChevronDown, FileDown, FileCode2, House, Loader2, MonitorPlay, Moon, Presentation, Sun, Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 interface Props {
   name: string;
   onNameChange: (name: string) => void;
+  onHome: () => void;
+  saveState: "idle" | "saving" | "saved";
   slideCount: number;
   dark: boolean;
   onToggleTheme: () => void;
@@ -41,6 +43,16 @@ export function Header(p: Props) {
 
   return (
     <header className="flex h-[52px] shrink-0 items-center gap-2 border-b bg-background px-3 sm:gap-3 sm:px-4">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={p.onHome}
+        aria-label="Back to your files"
+        title="Your files"
+        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+      >
+        <House className="h-4 w-4" />
+      </Button>
       <div className="flex items-center gap-2.5">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Presentation className="h-4 w-4" />
@@ -62,6 +74,9 @@ export function Header(p: Props) {
       <Badge variant="secondary" className="hidden font-normal text-muted-foreground md:inline-flex">
         {p.slideCount} {p.slideCount === 1 ? "slide" : "slides"}
       </Badge>
+      <span className="hidden text-xs text-muted-foreground lg:block" aria-live="polite">
+        {p.saveState === "saving" ? "Saving…" : p.saveState === "saved" ? "Saved in this browser" : ""}
+      </span>
 
       <div className="flex-1" />
 

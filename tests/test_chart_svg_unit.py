@@ -746,3 +746,16 @@ def test_line_width_and_dash_come_from_the_series_outline() -> None:
 
     assert 'stroke-width="4"' in styled and 'stroke-dasharray="12.0 4.0"' in styled
     assert "stroke-dasharray" not in plain and 'stroke-width="1.5"' in plain
+
+
+def test_a_line_chart_level_smooth_off_straightens_series_that_do_not_say() -> None:
+    def chart(chart_level: str, series_level: str) -> str:
+        return _svg(
+            '<c:lineChart><c:grouping val="standard"/>'
+            + _series(0, [1, 3, 2]).replace("</c:ser>", series_level + "</c:ser>")
+            + chart_level
+            + "</c:lineChart>"
+        )
+
+    assert " C" not in chart('<c:smooth val="0"/>', "")
+    assert " C" in chart('<c:smooth val="0"/>', '<c:smooth val="1"/>')  # the series wins

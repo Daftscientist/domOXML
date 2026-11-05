@@ -224,6 +224,8 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
     direction = _val(element.find("c:barDir", _NS), "col")
     scatter_style = _val(element.find("c:scatterStyle", _NS), "lineMarker")
     radar_style = _val(element.find("c:radarStyle", _NS), "standard")
+    # A series with no ``c:smooth`` takes the chart's, then the schema default (smoothed).
+    chart_smooth = _val(element.find("c:smooth", _NS), "1")
     series: list[Series] = []
     for offset, ser in enumerate(element.findall("c:ser", _NS)):
         color = _series_color(ser, palette) or _accent(palette, start + offset)
@@ -260,7 +262,7 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 alpha=_solid_alpha(ser.find("c:spPr", _NS)),
                 # A scatter series with no ``c:smooth`` is smoothed (the schema default is true).
                 smooth=kind in ("scatter", "line")
-                and _val(ser.find("c:smooth", _NS), "1") not in ("0", "false"),
+                and _val(ser.find("c:smooth", _NS), chart_smooth) not in ("0", "false"),
                 line=not line_off and (kind != "scatter" or scatter_style != "marker"),
                 marker=marker_symbol != "none"
                 and (kind in ("scatter", "line") or marker_symbol != ""),

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import PurePosixPath
 from typing import Literal
 from xml.etree.ElementTree import Element
 
-from PIL import ImageColor
+from PIL import Image, ImageColor
 
 from domoxml.core.ir.model import (
     Arrowhead,
@@ -193,6 +194,41 @@ def _svg_blip(blip: Element, package: OpcPackage, slide_part: str) -> bytes | No
     return None
 
 
+def _with_luminance(data: bytes, blip: Element) -> tuple[bytes, str] | None:
+    """The picture's pixels with its ``a:lum`` brightness and contrast applied (PNG out).
+
+    PowerPoint adds the brightness (a fraction of the range) and then scales contrast about
+    mid-grey by ``1 + contrast`` (measured against real PowerPoint); alpha is left alone. Like a
+    crop or a CSS colour filter, this is a change to the pixels, which stay a native picture.
+    ``None`` when there is nothing to apply or the image cannot be decoded.
+    """
+    lum = blip.find("a:lum", _NS)
+    if lum is None:
+        return None
+    bright = _int_attr(lum, "bright") / 100_000
+    scale = 1.0 + _int_attr(lum, "contrast") / 100_000
+    if bright == 0.0 and scale == 1.0:
+        return None
+    table = [
+        round(min(1.0, max(0.0, ((value / 255 + bright) - 0.5) * scale + 0.5)) * 255)
+        for value in range(256)
+    ]
+    try:
+        with Image.open(BytesIO(data)) as source:
+            image = source.convert("RGBA")
+            red, green, blue, alpha = image.split()
+            channels: list[Image.Image] = [
+                channel.point(table)  # pyright: ignore[reportUnknownMemberType]
+                for channel in (red, green, blue)
+            ]
+            adjusted = Image.merge("RGBA", (*channels, alpha))
+            buffer = BytesIO()
+            adjusted.save(buffer, "PNG")
+    except (OSError, Image.DecompressionBombError):
+        return None
+    return buffer.getvalue(), "png"
+
+
 def picture(
     element: Element,
     package: OpcPackage,
@@ -218,8 +254,11 @@ def picture(
     extension = _IMAGE_EXT.get(PurePosixPath(part).suffix.lower().lstrip("."))
     if extension is None:
         return None
+    data = package.read(part)
+    if blip is not None and (adjusted := _with_luminance(data, blip)) is not None:
+        data, extension = adjusted
     return PictureFill(
-        data=package.read(part),
+        data=data,
         ext=extension,  # type: ignore[arg-type]
         crop=crop,
         raster_role=raster_role,

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from io import BytesIO
+from xml.etree.ElementTree import fromstring
 
 import pytest
 from pptx import Presentation as PptxPresentation
@@ -45,6 +46,7 @@ def _literal(tag: str, values: list[float]) -> str:
 def _svg(plot: str, extra: str = "") -> str:
     svg = chart_to_svg(_chart(plot, extra), width_px=480, height_px=300)
     assert svg is not None
+    fromstring(svg)  # every chart the tests draw must be well-formed SVG
     return svg
 
 
@@ -84,7 +86,7 @@ def test_lines_areas_pies_doughnuts_scatter_and_radar_all_draw() -> None:
         ),
         "area": (
             '<c:areaChart><c:grouping val="standard"/>' + _series(0, [1, 3, 2]) + "</c:areaChart>",
-            "fill-opacity",
+            "Z",
         ),
         "pie": ("<c:pieChart>" + _series(0, [1, 2, 3]) + "</c:pieChart>", "A"),
         "doughnut": (
@@ -291,9 +293,10 @@ def test_gridlines_are_drawn_only_when_the_value_axis_has_visible_ones() -> None
     visible = "<c:majorGridlines><c:spPr><a:ln><a:solidFill/></a:ln></c:spPr></c:majorGridlines>"
     hidden = "<c:majorGridlines><c:spPr><a:ln><a:noFill/></a:ln></c:spPr></c:majorGridlines>"
 
-    assert "#D9D9D9" in _svg(_BAR + axis(visible))
-    assert "#D9D9D9" not in _svg(_BAR + axis(hidden))
-    assert "#D9D9D9" not in _svg(_BAR + axis(""))
+    # Unstyled gridlines are PowerPoint's automatic ones: black hairlines.
+    assert 'stroke="#000000" stroke-width="1"' in _svg(_BAR + axis(visible))
+    assert 'stroke="#000000" stroke-width="1"' not in _svg(_BAR + axis(hidden))
+    assert 'stroke="#000000" stroke-width="1"' not in _svg(_BAR + axis(""))
 
 
 def test_a_title_element_without_text_shows_powerpoints_placeholder_at_its_own_position() -> None:
@@ -515,3 +518,56 @@ def test_a_series_outline_colour_does_not_flatten_the_slices_and_a_background_ke
 
     assert len(set(re.findall(r'<path[^>]*fill="(#\w+)"', outline))) > 1
     assert background is not None and 'fill="#202020" fill-opacity="0.5"' in background
+
+
+def test_series_gradients_transparency_and_gridline_styling_are_drawn() -> None:
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    fill = (
+        f'<c:spPr><a:gradFill xmlns:a="{a}"><a:gsLst><a:gs pos="0"><a:srgbClr val="FF0000"/></a:gs>'
+        '<a:gs pos="100000"><a:srgbClr val="0000FF"><a:alpha val="40000"/></a:srgbClr></a:gs>'
+        '</a:gsLst><a:lin ang="5400000"/></a:gradFill></c:spPr>'
+    )
+    translucent = (
+        f'<c:spPr><a:solidFill xmlns:a="{a}"><a:srgbClr val="00AA00"><a:alpha val="50000"/>'
+        "</a:srgbClr></a:solidFill></c:spPr>"
+    )
+    grid = (
+        f'<c:valAx><c:axId val="1"/><c:majorGridlines><c:spPr><a:ln xmlns:a="{a}" w="19050">'
+        '<a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>'
+        "</c:valAx>"
+    )
+
+    gradient_area = _svg(
+        '<c:areaChart><c:grouping val="standard"/>'
+        + _series(0, [1, 3, 2]).replace("</c:ser>", fill + "</c:ser>")
+        + "</c:areaChart>"
+        + grid
+    )
+    alpha_columns = _svg(
+        '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+        + _series(0, [1, 3]).replace("</c:ser>", translucent + "</c:ser>")
+        + "</c:barChart>"
+    )
+
+    assert '<linearGradient id="g0" x1="0.5" y1="0" x2="0.5" y2="1">' in gradient_area
+    assert (
+        'stop-color="#0000FF" stop-opacity="0.4"' in gradient_area and "url(#g0)" in gradient_area
+    )
+    assert 'stroke="#000000" stroke-width="2"' in gradient_area  # the chart's own gridlines
+    assert 'fill="#00AA00" fill-opacity="0.5"' in alpha_columns
+
+
+def test_a_column_with_its_own_point_colour_stays_well_formed_svg() -> None:
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    point = (
+        '<c:dPt><c:idx val="1"/><c:spPr><a:solidFill xmlns:a="' + a + '">'
+        '<a:srgbClr val="FF0000"/></a:solidFill></c:spPr></c:dPt>'
+    )
+    series = _series(0, [1, 2, 3]).replace("</c:ser>", point + "</c:ser>")
+
+    svg = _svg(
+        '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>' + series + "</c:barChart>"
+    )
+
+    fromstring(svg)  # raises on malformed markup
+    assert 'fill="#FF0000"/>' in svg

@@ -76,6 +76,9 @@ class Series:
     show_values: bool = False
     label_pos: str = ""
     explicit_color: bool = False  # the series names its own fill, which every slice then takes
+    gradient: tuple[tuple[float, str, float], ...] = ()  # (position, colour, opacity) stops
+    gradient_angle: float = 0.0  # degrees clockwise from left-to-right
+    alpha: float | None = None  # the solid fill's opacity, when it names one
     label_color: str = ""
     label_bold: bool = False
     label_px: float = 10.0
@@ -158,7 +161,7 @@ def chart_to_svg(
     canvas.title_layout = _manual_layout(title_node)
     canvas.title_color = _text_colour(title_node, palette)
     canvas.title_bold = _is_bold(title_node)
-    canvas.legend_color = _text_colour(legend, palette)
+    canvas.legend_color = _text_colour(legend, palette) or "000000"
     canvas.background = _fill_hex(root.find("c:spPr", _NS), palette)
     canvas.background_alpha = _fill_alpha(root.find("c:spPr", _NS))
     canvas.rounded = _val(root.find("c:roundedCorners", _NS), "0") in ("1", "true")
@@ -172,12 +175,18 @@ def chart_to_svg(
         else None
     )
     canvas.grid = _has_gridlines(plot)
+    grid_node = plot.find("c:valAx/c:majorGridlines/c:spPr", _NS)
+    canvas.grid_color, line_width = _line_style(grid_node, palette)
+    # Gridlines with no style of their own are PowerPoint's automatic ones: black hairlines.
+    canvas.grid_color = canvas.grid_color or "000000"
+    canvas.grid_px = line_width or 1.0
     axis_node = plot.find("c:valAx", _NS)
     axis_node = axis_node if axis_node is not None else plot.find("c:catAx", _NS)
     # The axis's own text properties, not those of an axis title nested in it.
-    canvas.tick_px = _font_px(
-        axis_node.find("c:txPr", _NS) if axis_node is not None else None, 11.0
-    )
+    tick_text = axis_node.find("c:txPr", _NS) if axis_node is not None else None
+    canvas.tick_px = _font_px(tick_text, 11.0)
+    # Text with no properties of its own is black (the automatic colour), not the modern grey.
+    canvas.tick_color = _text_colour(tick_text, palette) or "000000"
     canvas.axis_titles = _axis_titles(plot)
     first = groups[0]
     if first.kind in ("pie", "doughnut"):
@@ -228,6 +237,9 @@ def _group(element: Element, kind: str, palette: Mapping[str, str], start: int) 
                 color=color,
                 explicit_color=ser.find("c:spPr/a:solidFill", _NS) is not None
                 and _series_color(ser, palette) is not None,
+                gradient=_gradient_stops(ser.find("c:spPr", _NS), palette),
+                gradient_angle=_gradient_angle(ser.find("c:spPr", _NS)),
+                alpha=_solid_alpha(ser.find("c:spPr", _NS)),
                 line=not line_off and (kind != "scatter" or scatter_style != "marker"),
                 marker=marker_symbol not in ("none",)
                 and (kind == "scatter" or marker_symbol != "" or (kind == "line" and False)),
@@ -334,6 +346,68 @@ def _text_colour(node: Element | None, palette: Mapping[str, str]) -> str:
             if fill is not None:
                 return _fill_hex(properties, palette)
     return ""
+
+
+def _gradient_stops(
+    properties: Element | None, palette: Mapping[str, str]
+) -> tuple[tuple[float, str, float], ...]:
+    """The ``a:gradFill`` stops of ``properties`` as ``(position, colour, opacity)``."""
+    stops = properties.findall("a:gradFill/a:gsLst/a:gs", _NS) if properties is not None else []
+    found: list[tuple[float, str, float]] = []
+    for stop in stops:
+        colour = _fill_hex_of(stop, palette)
+        if not colour:
+            return ()
+        alpha = stop.find("*/a:alpha", _NS)
+        try:
+            opacity = int(alpha.get("val", "100000")) / 100_000 if alpha is not None else 1.0
+            position = int(stop.get("pos", "0")) / 100_000
+        except ValueError:
+            return ()
+        found.append((position, colour, max(0.0, min(1.0, opacity))))
+    return tuple(found) if len(found) >= 2 else ()
+
+
+def _gradient_angle(properties: Element | None) -> float:
+    linear = properties.find("a:gradFill/a:lin", _NS) if properties is not None else None
+    try:
+        return int(linear.get("ang", "0")) / 60_000 if linear is not None else 0.0
+    except ValueError:
+        return 0.0
+
+
+def _solid_alpha(properties: Element | None) -> float | None:
+    """The opacity of a solid fill that names one, else ``None``."""
+    alpha = properties.find("a:solidFill/*/a:alpha", _NS) if properties is not None else None
+    try:
+        return int(alpha.get("val", "100000")) / 100_000 if alpha is not None else None
+    except ValueError:
+        return None
+
+
+def _fill_hex_of(holder: Element, palette: Mapping[str, str]) -> str:
+    """The colour of the first ``srgbClr``/``schemeClr`` child of ``holder``, or ``""``."""
+    rgb = holder.find("a:srgbClr", _NS)
+    scheme = holder.find("a:schemeClr", _NS)
+    if rgb is not None and _hex(rgb.get("val")):
+        return _transformed(rgb.get("val", ""), rgb)
+    if scheme is not None and _hex(palette.get(scheme.get("val", ""))):
+        return _transformed(palette[scheme.get("val", "")], scheme)
+    return ""
+
+
+def _line_style(properties: Element | None, palette: Mapping[str, str]) -> tuple[str, float]:
+    """The ``(colour, width in px)`` of an ``a:ln`` solid line in ``properties``."""
+    line = properties.find("a:ln", _NS) if properties is not None else None
+    if line is None:
+        return "", 0.0
+    fill = line.find("a:solidFill", _NS)
+    colour = _fill_hex_of(fill, palette) if fill is not None else ""
+    try:
+        width = int(line.get("w", "")) / 9525
+    except ValueError:
+        width = 0.0
+    return colour, width
 
 
 def _fill_alpha(properties: Element | None) -> float:
@@ -550,6 +624,7 @@ class _Canvas:
         self.title_color = ""
         self.title_bold = False
         self.legend_color = ""
+        self.tick_color = "000000"
         self.background = ""
         self.background_alpha = 1.0
         self.rounded = False
@@ -557,6 +632,9 @@ class _Canvas:
         self.legend_px = 12.0
         self.plot_layout: tuple[float, float, float, float] | None = None
         self.grid = True
+        self.grid_color = ""
+        self.grid_px = 1.0
+        self.defs: list[str] = []
         self.tick_px = 11.0
         self.axis_titles: dict[str, str] = {}
         self.parts: list[str] = []
@@ -670,6 +748,7 @@ class _Canvas:
         return (
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{self.w:g}" height="{self.h:g}" '
             f'viewBox="0 0 {self.w:g} {self.h:g}" font-family="{_FONT}">'
+            f"{'<defs>' + ''.join(self.defs) + '</defs>' if self.defs else ''}"
             f"{back}{''.join(self.parts)}</svg>"
         )
 
@@ -746,13 +825,14 @@ class _Canvas:
             if self.grid:
                 self.parts.append(
                     f'<line x1="{left:.1f}" y1="{y:.1f}" x2="{left + plot_w:.1f}" y2="{y:.1f}" '
-                    f'stroke="{_GRID}" stroke-width="1"/>'
+                    f'stroke="{"#" + self.grid_color if self.grid_color else _GRID}" '
+                    f'stroke-width="{self.grid_px:g}"/>'
                 )
             if not value_axis_hidden:
                 self.parts.append(
                     f'<text x="{left - 6:.1f}" y="{y + self.tick_px * 0.36:.1f}" '
                     f'text-anchor="end" font-size="{self.tick_px:.1f}" '
-                    f'fill="{_TEXT}">{escape(format_number(tick, code))}</text>'
+                    f'fill="#{self.tick_color}">{escape(format_number(tick, code))}</text>'
                 )
         slot = plot_w / count
         bar_groups = [g for g in groups if g.kind == "bar"]
@@ -770,7 +850,8 @@ class _Canvas:
             self.parts.append(
                 f'<text x="{left + slot * (i + 0.5):.1f}" '
                 f'y="{top + plot_h + 6 + self.tick_px:.1f}" '
-                f'text-anchor="middle" font-size="{self.tick_px:.1f}" fill="{_TEXT}">'
+                f'text-anchor="middle" font-size="{self.tick_px:.1f}" '
+                f'fill="#{self.tick_color}">'
                 f"{escape(label)}</text>"
             )
         self._axis_titles(left, top, plot_w, plot_h, x_label, y_label)
@@ -847,10 +928,11 @@ class _Canvas:
                         x += slot_index * bar_w * (1 - overlap)
                         start, end = 0.0, amount
                     y1, y2 = y_of(max(start, end)), y_of(min(start, end))
-                    color = series.point_colors.get(i, series.color)
+                    own = series.point_colors.get(i)
+                    paint, opacity = (f"#{own}", "") if own else self._paint(series)
                     self.parts.append(
                         f'<rect x="{x:.1f}" y="{y1:.1f}" width="{bar_w:.1f}" '
-                        f'height="{max(0.0, y2 - y1):.1f}" fill="#{color}"/>'
+                        f'height="{max(0.0, y2 - y1):.1f}" fill="{paint}"{opacity}/>'
                     )
                     if series.show_values:
                         height = max(0.0, y2 - y1)
@@ -965,9 +1047,26 @@ class _Canvas:
                 running[i] = base + value
         outline = top_points + bottom_points[::-1]
         d = " ".join(f"{'M' if k == 0 else 'L'}{x:.1f} {y:.1f}" for k, (x, y) in enumerate(outline))
-        self.parts.append(
-            f'<path d="{d} Z" fill="#{series.color}" fill-opacity="0.8" stroke="#{series.color}"/>'
-        )
+        paint, opacity = self._paint(series)
+        self.parts.append(f'<path d="{d} Z" fill="{paint}"{opacity} stroke="#{series.color}"/>')
+
+    def _paint(self, series: Series) -> tuple[str, str]:
+        """A series' fill as an SVG paint and its ``fill-opacity`` attribute (maybe empty)."""
+        if series.gradient:
+            name = f"g{len(self.defs)}"
+            angle = math.radians(series.gradient_angle)
+            dx, dy = math.cos(angle) / 2, math.sin(angle) / 2
+            stops = "".join(
+                f'<stop offset="{position:g}" stop-color="#{colour}" stop-opacity="{opacity:g}"/>'
+                for position, colour, opacity in series.gradient
+            )
+            self.defs.append(
+                f'<linearGradient id="{name}" x1="{0.5 - dx:g}" y1="{0.5 - dy:g}" '
+                f'x2="{0.5 + dx:g}" y2="{0.5 + dy:g}">{stops}</linearGradient>'
+            )
+            return f"url(#{name})", ""
+        alpha = series.alpha
+        return f"#{series.color}", f' fill-opacity="{alpha:g}"' if alpha is not None else ""
 
     def _label(
         self,

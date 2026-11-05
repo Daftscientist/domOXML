@@ -25,6 +25,8 @@ class _Fill:
     ref: str
     tint: float | None = None  # share of the colour kept; the rest is white
     shade: float | None = None  # share of the colour kept; the rest is black
+    over: str | None = None  # the colour this one is laid over, at ``alpha`` opacity
+    alpha: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -180,8 +182,9 @@ def _themed2(accent: str) -> _Style:
         last_row=_Region(top="lt1"),
         first_col=_Region(right="lt1"),
         last_col=_Region(left="lt1"),
-        band_h=_Region(fill=_Fill("lt1", tint=0.2)),
-        band_v=_Region(fill=_Fill("lt1", tint=0.2)),
+        # White at 20% opacity over the accent: a light tint of it, not opaque white.
+        band_h=_Region(fill=_Fill("lt1", over=accent, alpha=0.2)),
+        band_v=_Region(fill=_Fill("lt1", over=accent, alpha=0.2)),
     )
 
 
@@ -252,8 +255,8 @@ def _medium2(accent: str) -> _Style:
             fill=_Fill(ink, tint=0.2),
             text="dk1",
         ),
-        first_row=solid,
-        last_row=_Region(fill=_Fill(ink), text="lt1", top="lt1"),
+        first_row=_Region(fill=_Fill(ink), text="lt1", bottom="lt1@38100"),
+        last_row=_Region(fill=_Fill(ink), text="lt1", top="lt1@38100"),
         first_col=solid,
         last_col=solid,
         band_h=band,
@@ -390,6 +393,15 @@ def _fill(spec: _Fill | None, colors: Mapping[str, str]) -> Rgba | None:
     base = _colour(spec.ref, colors)
     if base is None:
         return None
+    if spec.over is not None:
+        under = _colour(spec.over, colors)
+        if under is None:
+            return base
+        mixed = [
+            round(top * spec.alpha + low * (1 - spec.alpha))
+            for top, low in ((base.r, under.r), (base.g, under.g), (base.b, under.b))
+        ]
+        return Rgba(r=mixed[0], g=mixed[1], b=mixed[2])
     if spec.tint is not None:
         return _blend(base, spec.tint, 1.0)
     if spec.shade is not None:
@@ -406,6 +418,8 @@ def resolve_cell_style(
     columns: int,
     flags: Mapping[str, bool],
     colors: Mapping[str, str],
+    column_span: int = 1,
+    row_span: int = 1,
 ) -> ResolvedCellStyle | None:
     """The built-in style's fill, text colour, borders and bold for one cell, or ``None``.
 
@@ -417,9 +431,12 @@ def resolve_cell_style(
         return None
     style = _FAMILIES[named[0]](named[1])
     first_row = flags.get("firstRow", False) and row == 0
-    last_row = flags.get("lastRow", False) and row == rows - 1
+    # A merged cell that reaches the last row or column is in those regions too.
+    reaches_bottom = row + row_span - 1 >= rows - 1
+    reaches_right = column + column_span - 1 >= columns - 1
+    last_row = flags.get("lastRow", False) and reaches_bottom
     first_col = flags.get("firstCol", False) and column == 0
-    last_col = flags.get("lastCol", False) and column == columns - 1
+    last_col = flags.get("lastCol", False) and reaches_right
     stack = [style.whole]
     body_row = row - (1 if flags.get("firstRow", False) else 0)
     body_col = column - (1 if flags.get("firstCol", False) else 0)
@@ -453,9 +470,9 @@ def resolve_cell_style(
             if value is not None:
                 edges[name] = value
     top = edges.get("top") if row == 0 else edges.get("inside_h")
-    bottom = edges.get("bottom") if row == rows - 1 else edges.get("inside_h")
+    bottom = edges.get("bottom") if reaches_bottom else edges.get("inside_h")
     left = edges.get("left") if column == 0 else edges.get("inside_v")
-    right = edges.get("right") if column == columns - 1 else edges.get("inside_v")
+    right = edges.get("right") if reaches_right else edges.get("inside_v")
     # A header's bottom line, a total row's top line and a first or last column's inner line
     # belong to the region itself, wherever it sits in the table.
     if first_row and style.first_row.bottom is not None:
@@ -468,8 +485,12 @@ def resolve_cell_style(
         left = style.last_col.left
 
     def line(ref: str | None) -> Line | None:
-        colour = _colour(ref, colors) if ref else None
-        return Line(color=colour, width_emu=_BORDER_EMU) if colour is not None else None
+        # A reference may carry its own width ("lt1@38100"); the rest draw at one point.
+        name, _, width = (ref or "").partition("@")
+        colour = _colour(name, colors) if name else None
+        if colour is None:
+            return None
+        return Line(color=colour, width_emu=int(width) if width else _BORDER_EMU)
 
     sides = SideLines(top=line(top), right=line(right), bottom=line(bottom), left=line(left))
     return ResolvedCellStyle(

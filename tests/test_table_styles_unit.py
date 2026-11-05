@@ -152,3 +152,47 @@ def test_a_cell_merged_into_its_neighbour_does_not_shift_the_columns_after_it() 
     assert (
         isinstance(last.fill, SolidFill) and last.fill.color.hex == "000000"
     )  # last-column region
+
+
+def test_medium_style_2_draws_its_header_and_total_row_lines_at_three_points() -> None:
+    header = _cell(_MEDIUM2_NEUTRAL, 0)
+    total = _cell(_MEDIUM2_NEUTRAL, 4, flags={**_FLAGS, "lastRow": True})
+
+    assert header is not None and header.borders is not None and header.borders.bottom is not None
+    assert header.borders.bottom.width_emu == 38_100
+    assert total is not None and total.borders is not None and total.borders.top is not None
+    assert total.borders.top.width_emu == 38_100
+
+
+def test_a_merged_cell_that_reaches_the_last_column_or_row_is_in_those_regions() -> None:
+    wide = resolve_cell_style(
+        _MEDIUM2_NEUTRAL,
+        row=1,
+        column=2,
+        rows=5,
+        columns=4,
+        flags={"lastCol": True},
+        colors=_THEME,
+        column_span=2,
+    )
+    short = resolve_cell_style(
+        _MEDIUM2_NEUTRAL,
+        row=3,
+        column=1,
+        rows=5,
+        columns=4,
+        flags={"lastRow": True},
+        colors=_THEME,
+        row_span=2,
+    )
+
+    assert wide is not None and wide.bold  # spans columns 2 and 3 of 4
+    assert short is not None and short.bold  # spans rows 3 and 4 of 5
+
+
+def test_themed_style_2_bands_are_a_light_tint_of_the_accent_not_opaque_white() -> None:
+    themed2_accent1 = "{D113A9D2-9D6B-4929-AA2D-F23B5EE8CBE7}"
+    band = _cell(themed2_accent1, 1)
+
+    assert band is not None and band.fill is not None
+    assert band.fill.hex != "FFFFFF" and band.fill.b > band.fill.r  # a pale blue

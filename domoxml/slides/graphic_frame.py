@@ -210,6 +210,8 @@ def parse_table(
                     columns=len(column_widths),
                     flags=flags,
                     colors=theme_colors or {},
+                    column_span=max(1, _int_attr(cell, "gridSpan", 1)),
+                    row_span=max(1, _int_attr(cell, "rowSpan", 1)),
                 )
                 if style_id
                 else None

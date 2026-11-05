@@ -691,3 +691,23 @@ def test_horizontal_bar_series_stack_upwards_within_a_cluster() -> None:
     upwards, downwards = first_cluster(_bars("minMax")), first_cluster(_bars("maxMin"))
 
     assert upwards[0] != upwards[1] and upwards == downwards[::-1]
+
+
+def test_category_labels_take_the_category_axis_text_style_not_the_value_axis() -> None:
+    def axes(value_size: int) -> str:
+        return (
+            '<c:catAx><c:axId val="1"/><c:txPr><a:p><a:pPr><a:defRPr sz="900"/></a:pPr></a:p>'
+            "</c:txPr></c:catAx>"
+            f'<c:valAx><c:axId val="2"/><c:txPr><a:p><a:pPr><a:defRPr sz="{value_size}"/>'
+            "</a:pPr></a:p></c:txPr></c:valAx>"
+        )
+
+    svg = _svg(
+        '<c:barChart><c:barDir val="bar"/><c:grouping val="clustered"/>'
+        + _series(0, [1, 2])
+        + "</c:barChart>"
+        + axes(1800)
+    )
+
+    assert float(next(v for v in re.findall(r'font-size="([\d.]+)"[^>]*>C0</text>', svg))) == 12.0
+    assert float(next(v for v in re.findall(r'font-size="([\d.]+)"[^>]*>1</text>', svg))) == 24.0

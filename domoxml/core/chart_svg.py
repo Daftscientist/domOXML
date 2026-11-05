@@ -195,6 +195,10 @@ def chart_to_svg(
     canvas.tick_px = _font_px(tick_text, 11.0)
     # Text with no properties of its own is black (the automatic colour), not the modern grey.
     canvas.tick_color = _text_colour(tick_text, palette) or "000000"
+    category_node = plot.find("c:catAx", _NS)
+    category_text = category_node.find("c:txPr", _NS) if category_node is not None else None
+    canvas.category_px = _font_px(category_text, 11.0)
+    canvas.category_color = _text_colour(category_text, palette) or "000000"
     canvas.axis_titles = _axis_titles(plot)
     first = groups[0]
     if first.kind in ("pie", "doughnut"):
@@ -681,6 +685,8 @@ class _Canvas:
         self.grid_px = 1.0
         self.defs: list[str] = []
         self.tick_px = 11.0
+        self.category_px = 11.0  # the category axis's own label size and colour
+        self.category_color = "000000"
         self.axis_titles: dict[str, str] = {}
         self.parts: list[str] = []
 
@@ -894,9 +900,9 @@ class _Canvas:
             label = categories[i] if i < len(categories) else str(i + 1)
             self.parts.append(
                 f'<text x="{left + slot * (i + 0.5):.1f}" '
-                f'y="{top + plot_h + 6 + self.tick_px:.1f}" '
-                f'text-anchor="middle" font-size="{self.tick_px:.1f}" '
-                f'fill="#{self.tick_color}">'
+                f'y="{top + plot_h + 6 + self.category_px:.1f}" '
+                f'text-anchor="middle" font-size="{self.category_px:.1f}" '
+                f'fill="#{self.category_color}">'
                 f"{escape(label)}</text>"
             )
         self._axis_titles(left, top, plot_w, plot_h, x_label, y_label)
@@ -1228,8 +1234,8 @@ class _Canvas:
             label = categories[i] if i < len(categories) else str(i + 1)
             self.parts.append(
                 f'<text x="{left - 6:.1f}" y="{top + slot * (row(i) + 0.5) + 4:.1f}" '
-                f'text-anchor="end" font-size="{self.tick_px:.1f}" fill="#{self.tick_color}">'
-                f"{escape(label)}</text>"
+                f'text-anchor="end" font-size="{self.category_px:.1f}" '
+                f'fill="#{self.category_color}">{escape(label)}</text>'
             )
         self._axis_titles(left, top, plot_w, plot_h, x_label, y_label)
         return self._wrap()

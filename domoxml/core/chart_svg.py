@@ -1035,6 +1035,7 @@ class _Canvas:
                 (left, top, plot_w, plot_h),
                 x_label,
                 y_label,
+                value_axis_hidden,
             )
 
         def y_of(value: float) -> float:
@@ -1343,6 +1344,7 @@ class _Canvas:
         rect: tuple[float, float, float, float],
         x_label: str,
         y_label: str,
+        value_axis_hidden: bool = False,
     ) -> str:
         left, top, plot_w, plot_h = rect
         low, high = ticks[0], ticks[-1]
@@ -1359,11 +1361,12 @@ class _Canvas:
                     f'<line x1="{x:.1f}" y1="{top:.1f}" x2="{x:.1f}" y2="{top + plot_h:.1f}" '
                     f'stroke="#{self.grid_color or "000000"}" stroke-width="{self.grid_px:g}"/>'
                 )
-            self.parts.append(
-                f'<text x="{x:.1f}" y="{top + plot_h + 16:.1f}" text-anchor="middle" '
-                f'font-size="{self.tick_px:.1f}" fill="#{self.tick_color}">'
-                f"{escape(format_number(tick, code))}</text>"
-            )
+            if not value_axis_hidden:
+                self.parts.append(
+                    f'<text x="{x:.1f}" y="{top + plot_h + 16:.1f}" text-anchor="middle" '
+                    f'font-size="{self.tick_px:.1f}" fill="#{self.tick_color}">'
+                    f"{escape(format_number(tick, code))}</text>"
+                )
         running_positive = [0.0] * count
         running_negative = [0.0] * count
         # A horizontal bar chart runs its first category (and series) along the bottom, unless

@@ -31,14 +31,17 @@ min_count = 1
 
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"
-xpath = ".//a:bodyPr[@lIns='152400'][@tIns='152400'][@rIns='152400'][@bIns='152400']"
+xpath = ".//a:bodyPr[@lIns='130082'][@tIns='130082'][@rIns='130082'][@bIns='130082']"
 min_count = 2
 
+# The two 8 px-radius blocks: 16 px padding less the roundRect's own text-rectangle inset
+# (0.29289 of the 8 px radius), which PowerPoint applies before the body insets.
 # The bordered block: 16 px padding plus its 1 px border, less the 0.5 px its box moves in
-# because the stroke is centred on the shape's edge.
+# because the stroke is centred on the shape's edge, less the same text-rectangle inset for its
+# 4 px radius.
 [[expected.xml]]
 part = "ppt/slides/slide1.xml"
-xpath = ".//a:bodyPr[@lIns='157163'][@tIns='157163'][@rIns='157163'][@bIns='157163']"
+xpath = ".//a:bodyPr[@lIns='147399'][@tIns='147399'][@rIns='147399'][@bIns='147399']"
 min_count = 1
 
 [visual]

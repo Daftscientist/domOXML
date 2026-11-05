@@ -17,7 +17,7 @@ from defusedxml import ElementTree
 from PIL import Image, ImageChops
 
 from domoxml.core.drawingml.identity import NAMESPACE as IDENTITY_NAMESPACE
-from domoxml.core.drawingml.preset_geometry import preset_geometry
+from domoxml.core.drawingml.preset_geometry import preset_geometry, preset_text_insets
 from domoxml.core.drawingml.stroke import stroke_centred, stroke_outer
 from domoxml.core.fontsread import ReverseFontFace, read_embedded_fonts
 from domoxml.core.images import crop_slide_region
@@ -56,6 +56,7 @@ from domoxml.core.ir.model import (
     SlideIR,
     SolidFill,
     SourceProvenance,
+    TextBody,
     Transform,
 )
 from domoxml.core.opc import OpcPackage, capture_payload
@@ -478,12 +479,16 @@ def _shape(
                     portable_fallback=portable_fallback,
                     corner_radius_emu=corner,
                     transform=_xfrm_transform(xfrm),
-                    text=read_text_body(
-                        element,
-                        colors,
-                        hyperlink_for,
-                        ph_ctx=ph_ctx,
-                        theme_ctx=inherit_ctx.theme_ctx if inherit_ctx is not None else None,
+                    text=_in_preset_text_rectangle(
+                        read_text_body(
+                            element,
+                            colors,
+                            hyperlink_for,
+                            ph_ctx=ph_ctx,
+                            theme_ctx=inherit_ctx.theme_ctx if inherit_ctx is not None else None,
+                        ),
+                        geometry if custgeom_el is None else None,
+                        box,
                     ),
                 )
             ),
@@ -734,6 +739,40 @@ def _outline_survives_html(element: Element, properties: Element) -> bool:
     )
 
 
+def _geometry_adjusts(geometry: Element) -> dict[str, float]:
+    """The adjust values (``a:avLst/a:gd`` ``val`` formulas) a preset names."""
+    adjusts: dict[str, float] = {}
+    for guide in geometry.findall("a:avLst/a:gd", _NS):
+        formula = guide.get("fmla", "")
+        if formula.startswith("val "):
+            with contextlib.suppress(ValueError):
+                adjusts[guide.get("name", "")] = float(formula.removeprefix("val "))
+    return adjusts
+
+
+def _in_preset_text_rectangle(
+    text: TextBody | None, geometry: Element | None, box: Box
+) -> TextBody | None:
+    """``text`` with its margins measured from the box edge instead of the preset's text rectangle.
+
+    PowerPoint lays text out inside the preset's own rectangle and then applies the body insets;
+    the IR (like CSS padding) measures them from the box, so the rectangle's offsets are added.
+    """
+    if text is None or geometry is None:
+        return text
+    insets = preset_text_insets(
+        geometry.get("prst", "rect"), box.width, box.height, _geometry_adjusts(geometry)
+    )
+    if not any(insets):
+        return text
+    left, top, right, bottom = text.margins
+    return text.model_copy(
+        update={
+            "margins": (left + insets[0], top + insets[1], right + insets[2], bottom + insets[3])
+        }
+    )
+
+
 def _preset_outline(
     geometry: Element, box: Box, *, picture_beside_paint: bool = False
 ) -> tuple[CustomGeometry | None, bool]:
@@ -742,12 +781,7 @@ def _preset_outline(
     A picture is painted only inside the shape's box, so a picture-filled outline with a stroke or
     text that leaves it (a callout's tail, a cloud's last bubble) keeps its rectangle.
     """
-    adjusts: dict[str, float] = {}
-    for guide in geometry.findall("a:avLst/a:gd", _NS):
-        formula = guide.get("fmla", "")
-        if formula.startswith("val "):
-            with contextlib.suppress(ValueError):
-                adjusts[guide.get("name", "")] = float(formula.removeprefix("val "))
+    adjusts = _geometry_adjusts(geometry)
     outline, complete = preset_geometry(
         geometry.get("prst", "rect"), box.width, box.height, adjusts
     )

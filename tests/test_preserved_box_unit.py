@@ -7,6 +7,7 @@ was emitted untouched and the node's box was ignored.
 
 from __future__ import annotations
 
+import math
 import re
 from io import BytesIO
 from pathlib import Path
@@ -91,12 +92,12 @@ def test_a_turned_preserved_object_moves_by_its_centre_and_keeps_its_size() -> N
         update={"payload": node.payload.model_copy(update={"root_xml": turned_xml})}
     )
     # A captured turned object reports its bounds: bigger than its frame, same centre.
-    bounds = Box(
-        x=node.box.x + 914400 - 100_000,
-        y=node.box.y - 50_000,
-        width=node.box.width + 200_000,
-        height=node.box.height + 100_000,
-    )
+    angle = math.radians(30)
+    bw = round(node.box.width * abs(math.cos(angle)) + node.box.height * abs(math.sin(angle)))
+    bh = round(node.box.width * abs(math.sin(angle)) + node.box.height * abs(math.cos(angle)))
+    centre_x = node.box.x + 914400 + node.box.width // 2
+    centre_y = node.box.y + node.box.height // 2
+    bounds = Box(x=centre_x - bw // 2, y=centre_y - bh // 2, width=bw, height=bh)
     contents = [
         turned.model_copy(update={"box": bounds}) if n.node_id == node.node_id else n
         for n in slide.contents
@@ -108,3 +109,39 @@ def test_a_turned_preserved_object_moves_by_its_centre_and_keeps_its_size() -> N
         node.box.width,
         node.box.height,
     )
+
+
+def test_a_fallback_box_moves_the_shape_by_the_same_amount() -> None:
+    """A box describing a fallback (a full-slide render) moves the frame with it, not onto it."""
+    index, node = _chart_slide()
+    slide = read_pptx_result(DECK.read_bytes()).slides[index]
+    full = Box(x=0, y=0, width=slide.width, height=slide.height)
+    placed = node.model_copy(
+        update={"box": full, "payload": node.payload.model_copy(update={"placed_box": full})}
+    )
+    untouched = [placed if n.node_id == node.node_id else n for n in slide.contents]
+    pptx = build_pptx([slide.model_copy(update={"contents": untouched})])
+    assert _frame_xfrm(pptx, 1) == (node.box.x, node.box.y, node.box.width, node.box.height)
+    moved_box = full.model_copy(update={"x": 457200})
+    moved = [
+        placed.model_copy(update={"box": moved_box}) if n.node_id == node.node_id else n
+        for n in slide.contents
+    ]
+    pptx = build_pptx([slide.model_copy(update={"contents": moved})])
+    expected = (node.box.x + 457200, node.box.y, node.box.width, node.box.height)
+    assert _frame_xfrm(pptx, 1) == expected
+
+
+def test_an_unreadable_rotation_keeps_the_source_transform() -> None:
+    index, node = _chart_slide()
+    slide = read_pptx_result(DECK.read_bytes()).slides[index]
+    xml = re.sub(r"<(\w+:)?xfrm>", r'<\1xfrm rot="bad">', node.payload.root_xml, count=1)
+    broken = node.model_copy(
+        update={
+            "box": node.box.model_copy(update={"x": node.box.x + 914400}),
+            "payload": node.payload.model_copy(update={"root_xml": xml}),
+        }
+    )
+    contents = [broken if n.node_id == node.node_id else n for n in slide.contents]
+    pptx = build_pptx([slide.model_copy(update={"contents": contents})])
+    assert _frame_xfrm(pptx, 1) == (node.box.x, node.box.y, node.box.width, node.box.height)

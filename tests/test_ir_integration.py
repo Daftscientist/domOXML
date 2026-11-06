@@ -1624,7 +1624,8 @@ async def test_browser_capture_restores_attached_preservation_payload() -> None:
 
     [recovered] = [item for item in ir.contents if isinstance(item, PreservedNode)]
     assert recovered.node_id == "chart-1"
-    assert recovered.payload == payload
+    # The payload comes back as attached, with the box it was placed at.
+    assert recovered.payload == node.payload
 
 
 async def test_browser_capture_restores_preserved_visual_fallback_and_coverage() -> None:
@@ -1647,7 +1648,7 @@ async def test_browser_capture_restores_preserved_visual_fallback_and_coverage()
 
     [recovered] = [item for item in result.slide.contents if isinstance(item, PreservedNode)]
     assert recovered.fallback is not None
-    assert recovered.payload == payload
+    assert recovered.payload == node.payload
     assert recovered.fallback.data == image.getvalue()
     [coverage] = result.coverage
     assert coverage.representation is Representation.ELEMENT_LAYER

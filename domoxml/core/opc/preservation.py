@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import math
 import posixpath
 from collections import deque
 from collections.abc import Callable
@@ -17,6 +18,7 @@ from defusedxml import ElementTree
 
 from domoxml.core.drawingml.identity import EXTENSION_URI, NAMESPACE
 from domoxml.core.ir.model import (
+    Box,
     PreservationPart,
     PreservationPayload,
     PreservationRelationship,
@@ -243,30 +245,69 @@ def _top_transforms(root: Element) -> list[Element]:
     return transforms
 
 
-def _place(root: Element, node: PreservedNode) -> None:
-    """Writes the node's box into the preserved root's transform.
+_PIXEL_EMU = 9525
 
-    The box is the node's position on the slide; the root XML keeps the one it was read with. A
-    preserved object that was moved or resized (in the IR, or as HTML captured back) must land
-    where it is now, so the box wins. A group keeps its child offsets, so its contents scale.
+
+def _near(a: tuple[int, ...], b: tuple[int, ...]) -> bool:
+    return all(abs(p - q) <= _PIXEL_EMU for p, q in zip(a, b, strict=True))
+
+
+def _rotation(xfrm: Element) -> int | None:
+    try:
+        return int(xfrm.get("rot", "0") or 0)
+    except ValueError:
+        return None
+
+
+def _bounds(width: int, height: int, rot: int) -> tuple[int, int]:
+    """The axis-aligned size of a ``width`` x ``height`` frame turned by ``rot`` (60000ths of °)."""
+    angle = math.radians(rot / 60_000)
+    cos, sin = abs(math.cos(angle)), abs(math.sin(angle))
+    return round(width * cos + height * sin), round(width * sin + height * cos)
+
+
+def _place(root: Element, node: PreservedNode) -> None:
+    """Moves and scales the preserved root's transform by however much the node's box changed.
+
+    The root XML keeps the transform it was read with, which belongs to ``payload.placed_box`` (the
+    box when the payload was attached; it may describe a fallback picture rather than the shape). An
+    object that was moved or resized, in the IR or as HTML captured back, lands where it is now;
+    within a pixel of its placement (a capture's sub-pixel rounding) it keeps its source values.
+    A group keeps its child offsets, so its contents scale. An unreadable rotation leaves it alone.
     """
     box = node.box
+    placed = node.payload.placed_box or box
     for xfrm in _top_transforms(root):
         offset = xfrm.find(f"{{{_A}}}off")
         extent = xfrm.find(f"{{{_A}}}ext")
-        if offset is None or extent is None:
+        rot = _rotation(xfrm)
+        if offset is None or extent is None or rot is None:
             continue
-        if int(xfrm.get("rot", "0") or 0) % 21_600_000:
-            # A turned object's captured box is its bounds, not its frame: only its centre is
-            # reliable, so it moves to the box's centre and keeps its own size.
-            width, height = int(extent.get("cx", "0")), int(extent.get("cy", "0"))
-            offset.set("x", str(box.x + (box.width - width) // 2))
-            offset.set("y", str(box.y + (box.height - height) // 2))
+        target = box
+        if rot % 21_600_000 and _near(
+            (box.width, box.height), _bounds(placed.width, placed.height, rot)
+        ):
+            # A turned object captured from HTML reports its bounds: it moved, at its own size.
+            centre_x, centre_y = box.x + box.width // 2, box.y + box.height // 2
+            target = Box(
+                x=centre_x - placed.width // 2,
+                y=centre_y - placed.height // 2,
+                width=placed.width,
+                height=placed.height,
+            )
+        if _near(
+            (target.x, target.y, target.width, target.height),
+            (placed.x, placed.y, placed.width, placed.height),
+        ):
             continue
-        offset.set("x", str(box.x))
-        offset.set("y", str(box.y))
-        extent.set("cx", str(box.width))
-        extent.set("cy", str(box.height))
+        scale_x = target.width / placed.width if placed.width else 1.0
+        scale_y = target.height / placed.height if placed.height else 1.0
+        x, y = int(offset.get("x", "0")), int(offset.get("y", "0"))
+        width, height = int(extent.get("cx", "0")), int(extent.get("cy", "0"))
+        offset.set("x", str(round(target.x + (x - placed.x) * scale_x)))
+        offset.set("y", str(round(target.y + (y - placed.y) * scale_y)))
+        extent.set("cx", str(max(1, round(width * scale_x))))
+        extent.set("cy", str(max(1, round(height * scale_y))))
 
 
 def register_source_namespaces(xml: bytes) -> None:

@@ -385,7 +385,7 @@ def test_serialize_canvas_embeds_attached_preservation_payload() -> None:
 
     assert 'class="domoxml-preserved"' in html
     assert 'data-domoxml-node-id="chart-1"' in html
-    assert decode_payload(encoded) == payload
+    assert decode_payload(encoded) == node.payload  # attached, with its placement
 
 
 def test_serialize_canvas_makes_preserved_fallback_visible_as_an_asset() -> None:

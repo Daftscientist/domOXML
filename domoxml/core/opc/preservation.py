@@ -29,6 +29,7 @@ _C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 _NS = {"p": _P}
 _RID = f"{{{_R}}}id"
 
@@ -176,8 +177,9 @@ def rewrite_root_xml(
     allocate_shape_id: Callable[[], int],
     relationship_ids: dict[str, str],
 ) -> str:
-    """Rebind a preserved root and all descendants to unique slide-local shape IDs."""
+    """Rebind a preserved root and its descendants to unique slide-local shape IDs, at its box."""
     root = ElementTree.fromstring(node.payload.root_xml)
+    _place(root, node)
     for descendant in root.iter():
         for attribute, relationship_id in tuple(descendant.attrib.items()):
             if attribute.startswith(f"{{{_R}}}") and relationship_id in relationship_ids:
@@ -220,6 +222,51 @@ def rewrite_root_xml(
     for prefix, namespace in (("a", _A), ("c", _C), ("p", _P), ("r", _R), ("dx", NAMESPACE)):
         StdElementTree.register_namespace(prefix, namespace)
     return StdElementTree.tostring(root, encoding="unicode")
+
+
+def _top_transforms(root: Element) -> list[Element]:
+    """The root shape's own ``xfrm`` (each alternative's, under ``mc:AlternateContent``)."""
+    shapes = [root]
+    if root.tag == f"{{{_MC}}}AlternateContent":
+        shapes = [shape for alternative in root for shape in alternative]
+    transforms: list[Element] = []
+    for shape in shapes:
+        kind = shape.tag.rsplit("}", 1)[-1]
+        if kind == "graphicFrame":
+            xfrm = shape.find(f"{{{_P}}}xfrm")
+        elif kind == "grpSp":
+            xfrm = shape.find(f"{{{_P}}}grpSpPr/{{{_A}}}xfrm")
+        else:
+            xfrm = shape.find(f"{{{_P}}}spPr/{{{_A}}}xfrm")
+        if xfrm is not None:
+            transforms.append(xfrm)
+    return transforms
+
+
+def _place(root: Element, node: PreservedNode) -> None:
+    """Writes the node's box into the preserved root's transform.
+
+    The box is the node's position on the slide; the root XML keeps the one it was read with. A
+    preserved object that was moved or resized (in the IR, or as HTML captured back) must land
+    where it is now, so the box wins. A group keeps its child offsets, so its contents scale.
+    """
+    box = node.box
+    for xfrm in _top_transforms(root):
+        offset = xfrm.find(f"{{{_A}}}off")
+        extent = xfrm.find(f"{{{_A}}}ext")
+        if offset is None or extent is None:
+            continue
+        if int(xfrm.get("rot", "0") or 0) % 21_600_000:
+            # A turned object's captured box is its bounds, not its frame: only its centre is
+            # reliable, so it moves to the box's centre and keeps its own size.
+            width, height = int(extent.get("cx", "0")), int(extent.get("cy", "0"))
+            offset.set("x", str(box.x + (box.width - width) // 2))
+            offset.set("y", str(box.y + (box.height - height) // 2))
+            continue
+        offset.set("x", str(box.x))
+        offset.set("y", str(box.y))
+        extent.set("cx", str(box.width))
+        extent.set("cy", str(box.height))
 
 
 def register_source_namespaces(xml: bytes) -> None:

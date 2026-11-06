@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import math
 import posixpath
 from collections import deque
 from collections.abc import Callable
@@ -17,6 +18,7 @@ from defusedxml import ElementTree
 
 from domoxml.core.drawingml.identity import EXTENSION_URI, NAMESPACE
 from domoxml.core.ir.model import (
+    Box,
     PreservationPart,
     PreservationPayload,
     PreservationRelationship,
@@ -29,6 +31,7 @@ _C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 _NS = {"p": _P}
 _RID = f"{{{_R}}}id"
 
@@ -176,8 +179,9 @@ def rewrite_root_xml(
     allocate_shape_id: Callable[[], int],
     relationship_ids: dict[str, str],
 ) -> str:
-    """Rebind a preserved root and all descendants to unique slide-local shape IDs."""
+    """Rebind a preserved root and its descendants to unique slide-local shape IDs, at its box."""
     root = ElementTree.fromstring(node.payload.root_xml)
+    _place(root, node)
     for descendant in root.iter():
         for attribute, relationship_id in tuple(descendant.attrib.items()):
             if attribute.startswith(f"{{{_R}}}") and relationship_id in relationship_ids:
@@ -220,6 +224,90 @@ def rewrite_root_xml(
     for prefix, namespace in (("a", _A), ("c", _C), ("p", _P), ("r", _R), ("dx", NAMESPACE)):
         StdElementTree.register_namespace(prefix, namespace)
     return StdElementTree.tostring(root, encoding="unicode")
+
+
+def _top_transforms(root: Element) -> list[Element]:
+    """The root shape's own ``xfrm`` (each alternative's, under ``mc:AlternateContent``)."""
+    shapes = [root]
+    if root.tag == f"{{{_MC}}}AlternateContent":
+        shapes = [shape for alternative in root for shape in alternative]
+    transforms: list[Element] = []
+    for shape in shapes:
+        kind = shape.tag.rsplit("}", 1)[-1]
+        if kind == "graphicFrame":
+            xfrm = shape.find(f"{{{_P}}}xfrm")
+        elif kind == "grpSp":
+            xfrm = shape.find(f"{{{_P}}}grpSpPr/{{{_A}}}xfrm")
+        else:
+            xfrm = shape.find(f"{{{_P}}}spPr/{{{_A}}}xfrm")
+        if xfrm is not None:
+            transforms.append(xfrm)
+    return transforms
+
+
+_PIXEL_EMU = 9525
+
+
+def _near(a: tuple[int, ...], b: tuple[int, ...]) -> bool:
+    return all(abs(p - q) <= _PIXEL_EMU for p, q in zip(a, b, strict=True))
+
+
+def _rotation(xfrm: Element) -> int | None:
+    try:
+        return int(xfrm.get("rot", "0") or 0)
+    except ValueError:
+        return None
+
+
+def _bounds(width: int, height: int, rot: int) -> tuple[int, int]:
+    """The axis-aligned size of a ``width`` x ``height`` frame turned by ``rot`` (60000ths of °)."""
+    angle = math.radians(rot / 60_000)
+    cos, sin = abs(math.cos(angle)), abs(math.sin(angle))
+    return round(width * cos + height * sin), round(width * sin + height * cos)
+
+
+def _place(root: Element, node: PreservedNode) -> None:
+    """Moves and scales the preserved root's transform by however much the node's box changed.
+
+    The root XML keeps the transform it was read with, which belongs to ``payload.placed_box`` (the
+    box when the payload was attached; it may describe a fallback picture rather than the shape). An
+    object that was moved or resized, in the IR or as HTML captured back, lands where it is now;
+    within a pixel of its placement (a capture's sub-pixel rounding) it keeps its source values.
+    A group keeps its child offsets, so its contents scale. An unreadable rotation leaves it alone.
+    """
+    box = node.box
+    placed = node.payload.placed_box or box
+    for xfrm in _top_transforms(root):
+        offset = xfrm.find(f"{{{_A}}}off")
+        extent = xfrm.find(f"{{{_A}}}ext")
+        rot = _rotation(xfrm)
+        if offset is None or extent is None or rot is None:
+            continue
+        target = box
+        if rot % 21_600_000 and _near(
+            (box.width, box.height), _bounds(placed.width, placed.height, rot)
+        ):
+            # A turned object captured from HTML reports its bounds: it moved, at its own size.
+            centre_x, centre_y = box.x + box.width // 2, box.y + box.height // 2
+            target = Box(
+                x=centre_x - placed.width // 2,
+                y=centre_y - placed.height // 2,
+                width=placed.width,
+                height=placed.height,
+            )
+        if _near(
+            (target.x, target.y, target.width, target.height),
+            (placed.x, placed.y, placed.width, placed.height),
+        ):
+            continue
+        scale_x = target.width / placed.width if placed.width else 1.0
+        scale_y = target.height / placed.height if placed.height else 1.0
+        x, y = int(offset.get("x", "0")), int(offset.get("y", "0"))
+        width, height = int(extent.get("cx", "0")), int(extent.get("cy", "0"))
+        offset.set("x", str(round(target.x + (x - placed.x) * scale_x)))
+        offset.set("y", str(round(target.y + (y - placed.y) * scale_y)))
+        extent.set("cx", str(max(1, round(width * scale_x))))
+        extent.set("cy", str(max(1, round(height * scale_y))))
 
 
 def register_source_namespaces(xml: bytes) -> None:

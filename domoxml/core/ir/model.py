@@ -14,7 +14,7 @@ and the serializers warn (never silently discard) on the arms they cannot emit.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -730,6 +730,11 @@ class PreservationPayload(BaseModel):
     relationships: tuple[PreservationRelationship, ...] = ()
     parts: tuple[PreservationPart, ...] = ()
     ambient_theme: PreservationPart | None = None
+    # The node's box when the payload was attached (read, authored or captured). The root XML's own
+    # transform belongs to that box: export moves and scales it by however much the box has changed
+    # since, so an untouched object keeps its exact source geometry even when its box describes a
+    # fallback picture (a poster, a full-slide render) rather than the shape itself.
+    placed_box: Box | None = None
 
 
 class PreservedNode(CanvasNode):
@@ -747,6 +752,28 @@ class PreservedNode(CanvasNode):
     payload: PreservationPayload
     fallback: PictureFill | None = None
     fallback_representation: Literal["element_layer", "rasterized"] = "element_layer"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _remember_placement(cls, data: Any) -> Any:
+        """A payload without a placement takes the box it is attached at."""
+        if not isinstance(data, dict):
+            return data
+        fields: dict[str, Any] = dict(cast("dict[str, Any]", data))
+        payload: Any = fields.get("payload")
+        box: Any = fields.get("box")
+        if box is None:
+            return fields
+        if isinstance(payload, PreservationPayload):
+            if payload.placed_box is None:
+                placed = box if isinstance(box, Box) else Box.model_validate(box)
+                fields["payload"] = payload.model_copy(update={"placed_box": placed})
+        elif isinstance(payload, dict):
+            raw: dict[str, Any] = dict(cast("dict[str, Any]", payload))
+            if raw.get("placed_box") is None:
+                raw["placed_box"] = box
+                fields["payload"] = raw
+        return fields
 
 
 class ShapeNode(CanvasNode):

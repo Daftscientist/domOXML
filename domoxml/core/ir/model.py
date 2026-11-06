@@ -774,18 +774,6 @@ class PreservedNode(CanvasNode):
                 raw["placed_box"] = box
                 fields["payload"] = raw
         return fields
-        fields = cast("dict[str, Any]", data)
-        payload, box = fields.get("payload"), fields.get("box")
-        if (
-            isinstance(payload, PreservationPayload)
-            and payload.placed_box is None
-            and box is not None
-        ):
-            placed = box if isinstance(box, Box) else Box.model_validate(box)
-            return {**fields, "payload": payload.model_copy(update={"placed_box": placed})}
-        if isinstance(payload, dict) and payload.get("placed_box") is None and box is not None:  # pyright: ignore[reportUnknownMemberType]
-            return {**fields, "payload": {**cast("dict[str, Any]", payload), "placed_box": box}}
-        return data
 
 
 class ShapeNode(CanvasNode):

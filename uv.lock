@@ -332,7 +332,7 @@ requires-dist = [
     { name = "msal", marker = "extra == 'graph'", specifier = ">=1.31" },
     { name = "pillow", specifier = ">=12.2" },
     { name = "playwright", specifier = ">=1.60" },
-    { name = "pydantic", specifier = ">=2.13" },
+    { name = "pydantic", specifier = ">=2.12" },
     { name = "pyright", marker = "extra == 'dev'", specifier = "==1.1.409" },
     { name = "pytest", marker = "extra == 'dev'", specifier = "==9.0.3" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = "==1.4.0" },

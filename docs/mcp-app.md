@@ -26,6 +26,14 @@ changes. Presentations first; documents and workbooks later use the same file an
   host (`ui/download-file`), or writes back to the path in local mode. The relay:
   a model tool call is queued, the live view picks it up (long-poll), computes, and posts the result back through an
   app-only tool, and the server returns it to the model.
+- **Two engine modes, one protocol** (chosen per host by capability detection):
+  - *Engine in the view*: everything above, in the browser (needs WebAssembly + workers in the host's sandbox).
+  - *Split* (when the host blocks WebAssembly, and possibly the default because the view then starts instantly with no
+    ~13 MB download): the view still does all **browser work** (layout, computed styles, boxes, rasters for effects with
+    no Office mapping, rendering, screenshots) with domOXML's plain-JavaScript capture script (as Ream's `capture.ts`
+    does today), and sends the capture to the server; the server runs only the **Python work** (capture → IR,
+    reconciliation, `.pptx` building) in memory, statelessly, and returns the result. Nothing is stored; file contents
+    and captures pass through in transit only.
 - **A live view is required.** Model tools that need the engine return `VIEW_REQUIRED` with what to do ("call
   `file_show`") when no view is attached. Optional fallback, decided after the spike: a server-side engine (local Python
   domOXML + Playwright) for hosts where the view's engine can't start.

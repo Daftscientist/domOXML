@@ -1,0 +1,25 @@
+{
+  "name": "@domoxml/mcp-view",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "The domOXML MCP App view: an editor that renders inside MCP hosts (inline, fullscreen, pip).",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "2.0.4",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "5.1.0",
+    "typescript": "5.9.3",
+    "vite": "7.2.2",
+    "vite-plugin-singlefile": "2.3.0"
+  }
+}

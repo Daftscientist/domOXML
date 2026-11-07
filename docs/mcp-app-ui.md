@@ -23,6 +23,17 @@ state. Copy never names a model or a host: the AI is "the assistant".
    changes land with a brief highlight; you can keep working while it works.
 4. **Nothing on the slide is covered by chrome.** Bars sit above/below the slide, never over it.
 
+## One responsive layout (the user, 2026-11-07)
+Not separate inline and full designs: **one layout that responds to the space it has**. Display mode only changes the
+expand/collapse control; width decides how much editing is offered. Ream's deck editor is the working proof of
+concept for the interactions (its styling is not the target; the host's look is).
+| Width | What's offered |
+|---|---|
+| **Narrow** (< 520px, most inline cards) | View, flip slides, Present, Download; tap/click to select; double-click to edit text; the assistant's activity. No other formatting chrome. |
+| **Medium** (520–1023px: wide inline, narrow panels) | Adds a compact context strip for the selection (size, bold/italic/underline, colour, align), drag to move/resize, filmstrip reordering, comments as popovers. |
+| **Wide** (≥ 1024px, the full panel) | The full editor: rail, contextual bar, comments panel, notes drawer, tables, charts, transitions, layouts. |
+Sections 1–2 below describe the medium and wide tiers; narrow is medium minus the context strip and drag handles.
+
 ## Theming (host → view tokens)
 The view defines its own tokens and fills each from the host's standard variable, falling back to its own default:
 | View token | Host variable | Fallback (light / dark) |

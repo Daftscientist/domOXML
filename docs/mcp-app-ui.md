@@ -183,3 +183,63 @@ React + Vite single-file bundle (the ext-apps pattern), `@modelcontextprotocol/e
 the view with chosen host context (theme, variables, display mode, size) so every mode × theme × width can be
 screenshotted; then tested in the ext-apps `basic-host` against the real server. Reviews: this spec (Claude + Codex)
 before building; screenshots (Codex) after.
+
+## Interaction contracts (from review v1)
+- **Status is three things, kept apart**: the working copy ("Saved in this browser" only after the revision is stored;
+  "Not saved: browser storage full / unavailable" with Retry and a rescue download), the assistant link ("The assistant
+  can't reach this card right now. Your edits are safe here."), and the file ("Changes since last download").
+- **The assistant never interrupts a gesture**: an object being dragged, resized or typed in (including IME
+  composition) is locked to the assistant until the gesture ends (+2 s idle); its write returns CONFLICT and the frame
+  shows "The assistant wants to change this · Show". Unrelated changes apply immediately; caret and selection are kept;
+  a deleted target ends the gesture with a notice. (Differs from Ream's "locked while Ask edits" because here two
+  actors edit freely by design.)
+- **The assistant's work stays visible until reviewed**: a persistent chip "N changes on slides 2, 4 · Review · Undo"
+  (Review steps through each change with before/after; Undo is selective per transaction, with overlap failures
+  explained). Highlights persist until the changed slide has been seen while the card is visible. Only `file_open`,
+  `file_create` and `file_show` render a card; after a multi-step edit the assistant shows its result with `file_look`
+  screenshots next to its reply.
+- **One editing owner per file**: a server-held lease names the active view; the newest card takes it; older cards
+  collapse to a one-row summary ("Continued in a newer card · Edit here") with no engine running. Reopened
+  conversations show "Restored from this browser". No host scrolling is assumed.
+- **Editing without fullscreen**: when the host has no fullscreen (or refuses it), the card offers an in-card editor
+  (sheets with Back) instead of hiding editing.
+- **Presenter view** is a fullscreen split (current, next, notes, timer); PiP is only "keep watching while you chat".
+  Presenting shows a committed revision; later assistant edits queue until "Show latest". Touch presenting has visible
+  previous / next / exit controls.
+- **Sizing** is per dimension (fixed / flexible / unbounded), independent of display mode; when height is too small
+  for slide + strip + filmstrip, the filmstrip collapses to a pager before anything scrolls. The stage uses the deck's
+  real aspect ratio (4:3, portrait, custom), contain-fitted; thumbnails keep proportions inside equal bounds.
+- **Selection never resizes the card**: the strip row is always present (slide actions, the selection's essentials, or
+  the assistant's activity).
+- **Scrolling and gestures**: inline never captures vertical wheel or pinch (only horizontal deltas / shift+wheel move
+  the filmstrip; `touch-action: pan-y`); zoom by wheel/pinch exists only in the full panel; drag has a threshold,
+  insertion markers, Esc/pointer-cancel rollback, and keyboard Move before/after.
+- **Keyboard**: region-specific; native text editing always wins; Esc ladder edit → popover → selection → present →
+  fullscreen; Present ⌘⇧Enter, full view ⌘Enter (no F5, ⌘D, ⌘G); Delete acts only on a slide selection made by
+  clicking inside the card; nothing autofocuses on mount or on assistant updates; Tab leaves the app normally; toolbars
+  are ARIA toolbars (one tab stop, arrows inside), F6 cycles regions in the full panel.
+- **Objects list** (from the selection chip and ⌥⌘O): every object with select, order, hide, lock; numeric geometry
+  fields; keyboard traversal of canvas objects; focus and selection drawn differently.
+- **Insert** in every editing layout: the full panel header has Text, Shapes ▾, Picture, Table ▾, Chart ▾ (Ream's
+  galleries); medium cards get Insert ▾ in the strip. A deck menu ▾ by the file name holds Theme, slide size, history,
+  accessibility check, find/replace, rename (no single-click rename).
+- **Comments** in every layout (💬 N in the top bar → panel or in-card sheet), slide- or object-anchored, with drafts,
+  failure and resolved states; "Post" and "Ask the assistant" (sends the thread through model context + a message) are
+  separate actions.
+- **Fidelity issues visible to the person**: an issues count (missing fonts, simplified content, objects that will be
+  pictures in PowerPoint) opening object-specific findings; new losses surfaced before download.
+- **Download**: preparing → ready → host handoff → saved / cancelled / failed, for a named revision, only through the
+  host's download capability; without it, an explicit limitation ("Ask the assistant to save it") instead of a link.
+- **Loading phases**: acknowledged, downloading (bytes), initializing, importing (per slide only when the engine emits
+  it), stalled, failed, with cancel/retry that keeps the file; what works per engine mode while disconnected.
+- **Marks on slides**: fixed high-contrast colours with light/dark halos and screen-sized handles; selection (solid),
+  focus (dashed), assistant change (violet, with a "changed" label on hover/focus), comment pins (shape + count).
+- **Contrast**: fallbacks measured for every text/background pair (tertiary text #6b6b6b on white, #9a9a9a on #262626);
+  partial host palettes fill per role; text-enlargement tested.
+- **Component states**: hover, pressed, disabled, checked, mixed; tooltips after 600 ms; popovers clipped to the view
+  with flip; focus returns to the opener; minimum (not fixed) control heights.
+
+## Review triage (UI spec v1)
+Claude subagent 20 findings, Codex high 25; overlapping on most. All accepted into the contracts above, the layout
+tiers, and the build. Rejected: none. Deferred: "Instant deck" read-only render from streamed tool input; "Ask about
+this" as a full prompt field (built as an action in the strip that sends the selection with a message).

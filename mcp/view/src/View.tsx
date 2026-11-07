@@ -82,7 +82,7 @@ function Editor({ deck, current, onGo, onDone, working }: { deck: typeof SAMPLE;
   const slide = deck.slides[current]
   const select = useCallback((ids: string[], additive: boolean) => setSelection((s) => (additive ? [...new Set([...s, ...ids])] : ids)), [])
   useEffect(() => { if (!q.get('select')) setSelection([]) }, [current]) // eslint-disable-line react-hooks/exhaustive-deps
-  const fit = Math.max(0, Math.min(stage.w - 96, (stage.h - 80) * (SLIDE_W / SLIDE_H)))
+  const fit = Math.max(0, Math.min(stage.w - 80, (stage.h - 48) * (SLIDE_W / SLIDE_H)))
 
   return (
     <div className="editor">
@@ -99,21 +99,27 @@ function Editor({ deck, current, onGo, onDone, working }: { deck: typeof SAMPLE;
         <button className="text-btn strong" onClick={onDone}>Done</button>
       </header>
 
-      <Toolbar selection={selection} />
-
       <div className="ed-body">
         <nav className="ed-slides" aria-label="Slides">
           {deck.slides.map((s, i) => <Thumb key={s.id} slide={s} n={i} active={i === current} onClick={() => onGo(i)} changed={working && i === 1} />)}
           <button className="add">+ New slide</button>
         </nav>
 
-        <main className="ed-stage" ref={stageRef}>
-          {fit > 0 && <SlideCanvas html={slide.html} width={fit} selection={selection} changed={working ? ['e6', 'e7'] : []} interactive onSelect={select} label={`Slide ${current + 1} of ${deck.slides.length}`} />}
-          <span className="zoom quiet">Fit</span>
+        <main className="ed-panel ed-main">
+          <Toolbar selection={selection} />
+          <div className="ed-stage" ref={stageRef}>
+            {fit > 0 && <SlideCanvas html={slide.html} width={fit} selection={selection} changed={working ? ['e6', 'e7'] : []} interactive onSelect={select} label={`Slide ${current + 1} of ${deck.slides.length}`} />}
+          </div>
+          <div className="ed-notes">
+            {notesOpen
+              ? <textarea autoFocus defaultValue={slide.notes ?? ''} placeholder="Speaker notes" aria-label="Speaker notes" onBlur={() => setNotesOpen(false)} />
+              : <button onClick={() => setNotesOpen(true)}>{slide.notes ?? <span className="quiet">Add speaker notes…</span>}</button>}
+          </div>
         </main>
 
         {comments && (
-          <aside className="ed-comments" aria-label="Comments">
+          <aside className="ed-panel ed-comments" aria-label="Comments">
+            <p className="panel-title">Comments</p>
             <div className="thread">
               <p className="who">You <span className="quiet">on “+18%” · 2m</span></p>
               <p>Can we check this against the board pack figure?</p>
@@ -131,11 +137,6 @@ function Editor({ deck, current, onGo, onDone, working }: { deck: typeof SAMPLE;
         )}
       </div>
 
-      <footer className="ed-notes">
-        {notesOpen
-          ? <textarea autoFocus defaultValue={slide.notes ?? ''} placeholder="Speaker notes" aria-label="Speaker notes" onBlur={() => setNotesOpen(false)} />
-          : <button onClick={() => setNotesOpen(true)}>{slide.notes ?? <span className="quiet">Add speaker notes…</span>}</button>}
-      </footer>
     </div>
   )
 }

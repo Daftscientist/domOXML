@@ -5,7 +5,6 @@ import { useState } from 'react'
 import { HOSTS } from './hosts'
 import { StaticHostProvider, type DisplayMode } from './host'
 import { View } from './View'
-import { Switcher } from './prototype/Switcher'
 import './tokens.css'
 
 function Harness() {
@@ -27,7 +26,6 @@ function Harness() {
     <div style={{ padding: mode === 'inline' ? 24 : 0 }}>
       <div style={{ width: w, height: h, margin: mode === 'pip' ? 24 : 0, overflow: 'hidden', borderRadius: mode === 'inline' ? 12 : 0, boxShadow: mode === 'fullscreen' ? 'none' : '0 0 0 1px var(--border)' }}>
         <StaticHostProvider context={context as never} onMode={setMode}><View /></StaticHostProvider>
-        {import.meta.env.DEV && !q.get('variant') && <Switcher current="" />}
       </div>
     </div>
   )

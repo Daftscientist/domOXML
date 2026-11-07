@@ -7,6 +7,10 @@ import { SAMPLE } from './sample'
 import { SlideCanvas, SLIDE_H, SLIDE_W } from './SlideCanvas'
 import { Icon } from './icons'
 import './view.css'
+import { VariantA } from './prototype/VariantA'
+import { VariantB } from './prototype/VariantB'
+import { VariantC } from './prototype/VariantC'
+import { Switcher } from './prototype/Switcher'
 
 type Tier = 'narrow' | 'medium' | 'wide'
 const tierOf = (w: number): Tier => (w < 520 ? 'narrow' : w < 1024 ? 'medium' : 'wide')
@@ -43,6 +47,17 @@ export function View() {
   const select = useCallback((ids: string[], additive: boolean) => setSelection((s) => (additive ? [...new Set([...s, ...ids])] : ids)), [])
   useEffect(() => setSelection((s) => (q.get('select') ? s : [])), [current]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // PROTOTYPE: ?variant=A|B|C renders one of the design directions (src/prototype/NOTES.md).
+  const variant = q.get('variant') ?? ''
+  if (variant && host.mode !== 'pip') {
+    const props = { width, working, initialSlide: current, initialSelection: selection }
+    return (
+      <div ref={root} style={{ height: host.mode === 'fullscreen' ? '100%' : undefined }}>
+        {width > 0 && (variant === 'A' ? <VariantA {...props} /> : variant === 'B' ? <VariantB {...props} /> : <VariantC {...props} />)}
+        {import.meta.env.DEV && <Switcher current={variant} />}
+      </div>
+    )
+  }
   if (host.mode === 'pip') return <Pip ref={root} width={width} height={(host.context.containerDimensions as { height?: number } | undefined)?.height ?? 220} slide={slide} n={current} total={deck.slides.length} onNav={setCurrent} working={working} />
 
   const touch = !!host.context.deviceCapabilities?.touch && host.context.deviceCapabilities?.hover === false

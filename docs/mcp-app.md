@@ -1,150 +1,141 @@
-# domOXML MCP (spec v2)
+# domOXML MCP App (spec v3)
 
-Status: draft v2 for the user's approval, 2026-11-07. v1 was reviewed by a Claude subagent (20 findings) and Codex high
-(19); they agreed on every blocker. v2 folds them in (triage at the end). File-type-agnostic: presentations first,
-other Office formats later.
+Status: draft v3, 2026-11-07. v2 (after Claude + Codex review) reshaped by the user: three tool layers (file /
+HTML-CSS / per-kind), strong typing everywhere, the engine running in the MCP App view, screenshots on demand, the
+person's edits and comments reaching the model as soon as it acts, and normalized HTML always returned. The v2 review
+triage still applies (end of file); v3 needs its own review round before building.
 
 ## 1. What it is
-An MCP server for domOXML, then an MCP App view on top: you and the model work on the same file inside Claude, ChatGPT,
-VS Code, Goose or any MCP host. Phase 1 is the tools alone (headless); phase 2 adds the interactive view for co-editing.
+You and the model work on the same file inside any MCP host with MCP Apps (Claude, ChatGPT, VS Code, Goose…). The view
+shows the file and lets you edit, comment and present; the model works through typed tools; both see each other's
+changes. Presentations first; documents and workbooks later use the same file and HTML layers.
 
-## 2. Ground rules
-- **The model's language is HTML/CSS, any layout.** What's *stored* is not that HTML: every slide is **compiled** at a
-  fixed size by Chromium into domOXML's canvas objects (IR) plus assets, with the model's HTML kept as provenance. The
-  view, exports, lint and previews all use the compiled form. Visual edits (drag, resize, restyle) change compiled
-  objects; a new whole-slide HTML from the model is an explicit replacement, reconciled against what's there (§4).
-- **We don't store people's files.** Files are opened where they live (allowed folders, https URLs, uploads through the
-  view); the server keeps a **working copy** with history (like an editor's autosave, on the local machine, under
-  `$XDG_DATA_HOME/domoxml-mcp/`), and only writes back to the original when asked. Working copies survive restarts;
-  retention and deletion are explicit.
-- **Privacy, stated honestly.** Local mode does all processing on this machine, but whatever the tools return (text,
-  HTML, previews) goes to the person's AI provider, like any tool output. A hosted mode is a separate, later decision.
-- **Inert content.** Slide HTML is a strict profile: no scripts, event handlers, navigation, forms, embedded documents
-  or executable SVG; styles scoped to the slide; no network (only `data:` resources, as domOXML's renderer already
-  enforces). External pictures come in only through `add_asset` (server fetches https under size limits, no private
-  addresses). Imported files are bounded (zip ratio, part count, bytes, pixels, nodes).
+## 2. Architecture: the engine lives in the view
+- **The view is the engine.** It runs domOXML in the browser (Pyodide in a worker, as Ream does), lays out HTML with the
+  host's browser, captures and compiles it, renders slides, takes screenshots (SVG `foreignObject` → canvas), checks,
+  and builds `.pptx` files. All computation happens there.
+- **The server is thin**: file I/O (opening from allowed folders/URLs, saving back), durable storage of working copies
+  and history (the view uploads each committed revision; the server persists it before acknowledging), and a relay:
+  a model tool call is queued, the live view picks it up (long-poll), computes, and posts the result back through an
+  app-only tool, and the server returns it to the model.
+- **A live view is required.** Model tools that need the engine return `VIEW_REQUIRED` with what to do ("call
+  `file_show`") when no view is attached. Optional fallback, decided after the spike: a server-side engine (local Python
+  domOXML + Playwright) for hosts where the view's engine can't start.
+- **Day-one spike (go/no-go for this architecture)**: on Claude Desktop, claude.ai, ChatGPT and VS Code, does the view's
+  sandbox allow WebAssembly compilation (the MCP Apps reference CSP has no `wasm-unsafe-eval`), workers (`worker-src`
+  falls back to `script-src`), loading the engine (from `resourceDomains`, ~13 MB today; the startup-speed work matters
+  even more now), nested frames for capture (`frame-src 'none'` unless declared; capture can move to a shadow root),
+  storage, and long-poll timing while the view is visible or scrolled away? Results become the host capability matrix.
 
-## 3. Identity, revisions, transactions
-- **Documents and views are separate.** A `file` id is durable (survives restarts). A view (phase 2) is one rendering of
-  a file in one tool result; there can be several; they attach to the file and can reattach. All model tools work
-  with no view open.
-- **Stable element ids at every depth.** The server stamps a short slide-scoped id (`e17`) on every stored element,
-  returns them in reads, and never reuses one after deletion. Model HTML that echoes ids keeps them; new elements
-  without ids are matched by tag, parent, text and nearest box, and are new only when nothing matches.
-- **Internal payloads never reach the model.** Reads show a clean projection (only `data-domoxml-node-id` kept); the
-  server reattaches payloads by id on write and **invalidates** any payload whose inputs changed (text changed → text
-  payload dropped; box changed → geometry/group payloads dropped). This fixes today's silent revert of edited imported
-  text, and is shared with Ream.
-- **Revisions are opaque strings** (hash + parent). The server remembers the last revision each caller read, so
-  `base_rev` is optional for the model.
-- **Transactions**: every write has a `request_id`; the server stores `request_id → input hash → result` with the commit,
-  so a retry returns the original result (never a duplicate). Edits to *different* elements than intervening changes
-  rebase automatically; a conflict is reported only for the same element (or slide properties, or a whole-slide
-  replacement over a changed slide), with that element's current HTML in the error so a retry needs no extra read.
-  A batch is atomic by default; `atomic: "slide"` commits slide by slide so one bad id doesn't discard a 6-slide build.
-  Each accepted transaction is persisted before it's acknowledged.
-- **Undo is selective.** `file_undo(transaction)` applies the inverse of one transaction onto the current state (later
-  work by anyone stays); overlapping later changes are reported. Whole-file restore is a separate, explicitly
-  destructive tool.
+## 3. Ground rules
+- **HTML/CSS is the authoring language, any layout.** Every surface is compiled at its fixed size into domOXML's canvas
+  objects; what's stored is the compiled form plus the author's HTML as provenance.
+- **Normalized HTML always comes back.** Every read returns normalized HTML (domOXML's canonical form, payloads
+  stripped, stable ids); every write returns the normalized HTML of what it changed, plus a **compile report**: what was
+  transformed (e.g. "flex row → 4 absolutely positioned boxes", "font 'Inter Display' → 'Inter'", "box-shadow
+  approximated", "backdrop blur → picture in PowerPoint"). The model may author freely and always learns exactly how its
+  HTML exists after processing, so its next edit starts from the truth.
+- **The person comes first.** Every model tool result begins with `since_your_last_call`: the person's edits and new
+  comments since the model last acted (typed list, capped, `+N more`). Writes are checked per element against those
+  changes: touching an element the person changed since the model read it returns `CONFLICT` with that element's current
+  normalized HTML, never a silent overwrite. Comments are first-class (threads on a surface or element) and the model
+  can read, reply to and resolve them.
+- **We don't store people's files**: files open where they live; working copies and history persist locally (server)
+  so nothing is lost on restart; saving back is explicit.
+- **Inert content, bounded input, honest privacy** (as v2: strict HTML profile, no network from slides, limits on
+  imports; tool results go to the person's AI provider).
 
-## 4. Reconciliation (shared engine code, in domOXML)
-Given the stored slide and new HTML: classify each object as unchanged, geometry-only, content-changed, inserted or
-deleted; reuse untouched imported IR, patch geometry where valid, recapture only changed objects, invalidate dependent
-payloads, and compare resolved styles where shared CSS can affect objects. Executable fixtures define the behaviour;
-Ream's editor and AI use the same code (through its Pyodide worker), so there is one implementation.
+## 4. Types (one registry, strongly typed)
+- One Pydantic registry is the single source: it generates every tool's input JSON Schema **and `outputSchema`**
+  (results are typed `structuredContent`, with a short text summary in `content`), the TypeScript types used by the view
+  and by Ream, and the API reference (as the earlier office plugin did).
+- **Enums for every closed set**: `FileKind` (presentation; later document, workbook), `Detail`, `InsertPosition`
+  (before/after/prepend/append), `ZMove` (front/back/forward/backward), `Align`/`Distribute`, `TransitionEffect` (+
+  `TransitionDirection`), `AnimationEffect`, `AnimationTrigger`, `AnimationCategory` (entrance/emphasis/exit/path),
+  `SlideSizePreset`, `Unit` (px/pt/in/cm/emu), `ExportFormat`, `FindingCode`, `Fidelity`
+  (native/approximated/raster/dropped), `ChangeKind`, `Actor` (person/model), `ErrorCode` (VIEW_REQUIRED, CONFLICT,
+  NOT_FOUND, INVALID_HTML, LIMIT_EXCEEDED, UNSUPPORTED…).
+- **Tagged unions with `type`** for every choice: `FileSource` (path/url/upload/file), `ElementRef` (id/name/selector),
+  `SurfaceRef` (id/number/batch_ref), `AssetSource` (path/url/data).
+- **Prefixed ids with patterns**: `fl_` file, `sf_` surface (slide/page), `el_` element, `tx_` transaction, `as_` asset,
+  `cm_` comment, `rv_` revision, `vw_` view.
+- **Typed styles**: `set_style` takes a `Style` object (`fill`, `color`, `font_family`, `font_size` {value, unit},
+  `font_weight` enum, `italic`, `underline`, `text_align` enum, `vertical_align` enum, `line_height`, `letter_spacing`,
+  `border` {width, style enum, color}, `radius`, `shadow`, `opacity`, `rotate`, `padding`…), with raw `css` declarations
+  as a checked escape hatch (each value gets a `Fidelity`).
+- Every write carries `request_id` (idempotent retries) and an `activity` label (≤ 4 words, shown in the view).
+- Resource templates (`office://files/{file}/…`) and completions for every id argument.
 
-## 5. The presentation edit protocol
-Typed operations, discriminated by `op`, small enough that a colour change doesn't echo HTML:
-| Op | Fields |
+## 5. Tools
+### Layer 1: `file_*` (any kind)
+| Tool | Does |
 |---|---|
-| `insert_slides` | `after`: slide ref or `"start"`; `slides`: [{`ref?` (e.g. `"new-1"`, usable later in the batch), `html`, `notes?`, `name?`}] |
-| `replace_slide` | `slide`, `html` (reconciled, §4) |
-| `patch_element` | `slide`, `id`, any of `style` (CSS declarations merged), `text` (keeps run formatting where it can), `box` {x,y,w,h,rotate}, `html` (whole element) |
-| `insert_elements` | `slide`, `after_id?`, `html` |
-| `delete_elements` / `reorder_elements` | `slide`, `ids` (+ `to: "front"\|"back"\|"forward"\|"backward"`) |
-| `delete_slides` / `move_slides` / `duplicate_slides` | `slides` (+ `after`) |
-| `set_slide` | `slide`, any of `notes`, `transition`, `background`, `hidden`, `name` |
-| `set_animation` | `slide`, `id`, effect, trigger, order |
-| `set_deck` | any of `css`, `theme`, `name`, `size` |
-| `add_asset` | `source`: {`path`} \| {`url`} \| {`data`, `media_type`} → `asset:<id>` (immutable, durable, usable in HTML) |
+| `file_find` | Search allowed folders, working copies and recent files by name and text |
+| `file_list` | Working copies with live-view status |
+| `file_open` | Import from a `FileSource` into a working copy (shows a view) |
+| `file_create` | New file of a `FileKind` (shows a view) |
+| `file_show` | A fresh view of an open file (attaches the engine) |
+| `file_look` | **Screenshots** of chosen surfaces or one element, at a chosen width; optional before/after vs a revision |
+| `file_check` | Findings (`FindingCode`): overflow, overlap, off-canvas, contrast, fidelity (what becomes a picture), missing fonts, accessibility (alt text, reading order) |
+| `file_changes` | The person's edits and comments since a revision (full list; results carry the short version) |
+| `file_history` / `file_undo` / `file_restore` | Read-only history; selective undo of one transaction; destructive whole-file restore |
+| `file_export` | `ExportFormat` (pptx, pdf, png, html); save back, save as, or download in the view |
+| `file_close` | Release the engine; the working copy stays |
 
-Slide refs: id (`s_ab`), number (resolved against the base revision, not mid-batch), or a `ref` from this batch.
+### Layer 2: `html_*` (any surface authored in HTML: slides now, pages later)
+| Tool | Does |
+|---|---|
+| `html_read` | Normalized HTML of a surface or elements; or an element outline (id, role, text, box, key style); or resolved CSS |
+| `html_find` | Elements by text, role, selector or region |
+| `html_write` | Replace a surface's HTML (any layout); reconciled per element; returns normalized HTML + compile report |
+| `html_patch` | Batch of typed ops: `set_style`, `set_text` (keeps runs), `set_attrs`, `insert` (`InsertPosition`), `replace`, `remove`, `move` (box with units), `reorder` (`ZMove`), `group`/`ungroup`, `align`/`distribute`, `link` (hyperlink), `alt_text`, `find_replace`; returns normalized HTML of changes + compile report |
+| `html_table` | Table structure: add/remove/move rows and columns, merge/split cells, cell styles, banding |
+| `html_chart` | Chart data and type: categories, series, type enum, axes, legend, labels (exports as a native chart) |
+| `html_asset` | Add (from `AssetSource`), list, replace, remove pictures and fonts |
+| `html_measure` | Browser-resolved boxes and computed styles |
 
-## 6. Tools
-Generic file tools (any kind; names use `_`, which model APIs require) plus one edit tool per kind. Read-only tools carry
-`readOnlyHint`; anything that takes a URL carries `openWorldHint`; `file_restore` is marked destructive.
+### Layer 3: `presentation_*` (only what's unique to decks)
+| Tool | Does |
+|---|---|
+| `presentation_slides` | Add (blank, from layout, from HTML), duplicate, move, delete, hide/show slides |
+| `presentation_notes` | Read and write speaker notes |
+| `presentation_transition` | `TransitionEffect`, direction, duration (ms), advance on click / after time; per slide or all |
+| `presentation_animate` | Animations on elements: effect, category, trigger, delay, duration, order; list and remove |
+| `presentation_theme` | Deck colours, fonts, background; slide size (preset or custom with units) |
+| `presentation_layouts` | Masters, layouts and placeholders: list, apply, edit |
+| `presentation_sections` | Named sections: add, rename, move, delete |
+| `presentation_comments` | Comment threads on slides or elements: read, add, reply, resolve (shared with the person in the view) |
+| `presentation_present` | Start presenting in the view from a slide (the person drives) |
 
-| Tool | Does | Returns |
-|---|---|---|
-| `files_find({query?, kind?, limit?, cursor?})` | Search allowed folders, working copies and recent files by name and extracted text | `file`, kind, name, location, modified, snippet |
-| `file_list({open_only?, cursor?})` | Working copies (open/recent), with live-view status | ids, names, parts, rev |
-| `file_open({source})` | `source`: {`path`} \| {`url`} \| {`upload_id`} \| {`file`}; imports into a working copy (once; re-opening returns the same file) | `file`, kind, rev, outline, import report (e.g. "2 elements will appear as placeholders") |
-| `file_create({kind, name?, size?, theme?})` | New file: `kind: "presentation"` now | `file`, rev, outline |
-| `file_read({file, parts?, elements?, query?, detail?, since_rev?, cursor?})` | `detail`: `outline` (per element: id, role, text excerpt, box, key style) / `html` / `html+notes`; paged by a token budget with an explicit truncation note | Parts and elements |
-| `file_look({file, parts (≤6), element?, compare_rev?})` | Browser renders (labelled as such; not PowerPoint's) | JPEGs |
-| `file_check({file, parts?})` | Overflow, overlap (clipping-aware), off-slide, contrast, what becomes a picture in Office, placeholders, missing fonts | Findings with ids and fixes |
-| `presentation_edit({file, ops, request_id, base_rev?, atomic?, check?})` | Apply ops (§5); `check: "changed"` lints changed slides for free | `transaction`, `before_rev`, `rev`, created/changed ids, per-op results, diff per slide, fidelity notes, findings, or a conflict with current HTML |
-| `file_history({file, cursor?})` | Read-only list of transactions (who: model/person, summary) | History |
-| `file_undo({file, transaction, request_id})` | Selective undo of one transaction | new `rev`, or what blocked it |
-| `file_restore({file, target_rev, expected_head, request_id})` | Destructive: the whole file back to an old revision | new `rev` |
-| `file_export({file, format, parts?, to?})` | `.pptx` (PNG/HTML later); `to`: save back (explicit `overwrite`), save as a path, or download in the view when the host supports it | path or download, export report |
-| `file_show({file, part?})` | (phase 2) A fresh view of an existing file | view |
-| `file_close({file})` | Releases runtime resources; the working copy stays | — |
+Later: `document_*` (sections, headers/footers, styles, page setup) and `workbook_*` (sheets, ranges, formulas, charts),
+reusing layers 1 and 2.
 
-**Every model tool result begins with "since your last call"**: the person's changes (slide, element id, short label),
-capped at ~12 lines with "+N more". `updateModelContext` (phase 2) carries only view state the server can't know
-(current slide, selection), as a cumulative snapshot with `{file, view, rev}`.
+## 6. The view
+The editor and the engine: rail + slide (fullscreen when the host allows; inline shows one slide with a filmstrip);
+select, move, resize, type, restyle with the same typed ops; comments; present; download. Shows the model's activity
+("Making slide 4"), highlights what it changed, and sends the person's edits and comments to the server as they happen
+(so `since_your_last_call` is always current). `updateModelContext` carries only what's on screen (current slide,
+selection) as a cumulative snapshot.
 
-**Resources and prompts**: `domoxml://guide` (authoring slides in HTML for domOXML, with examples), `domoxml://capabilities`
-(CSS → Office table), `domoxml://limits`; prompts for "make a deck from notes", "restyle", "fix for PowerPoint".
+## 7. Evals and phases
+Evals as v2 (40 tasks, 30% held out, scripted person editing during runs, verifiers on the IR, Ream's tools as baseline),
+plus checks that the model uses returned normalized HTML and compile reports correctly.
+1. **Spike**: the host capability matrix (§2). Go/no-go for the engine-in-view architecture, or the server-engine
+   fallback.
+2. **Shared engine work in domOXML** (reconciliation, stable ids, payload projection, compile report, inert profile) with
+   Ream as the first client.
+3. **The registry, the server, the view with the engine**, layers 1–3 for presentations, evals.
+4. Hosted transport; Rust for what measures slow; documents and workbooks.
 
-## 7. Performance
-One long-lived Chromium pool with fresh isolated contexts, health checks and restart; JS off in capture unless a slide
-needs it; per-render timeout; captures cached by content, shared styles, assets, fonts and renderer version, and one
-capture reused for preview, extraction and lint. Phase 2 acceptance numbers: warm capture < 400 ms per slide; tokens
-per slide in `outline` and `html` measured on the real-deck corpus.
+## 8. Open questions for the user
+1. Where it lives: `mcp/` in the domOXML repo, or the `agent-plugins` repo next to the earlier office plugin?
+2. If a host blocks the engine in the view: fall back to a local server engine (Python + Playwright), or simply not
+   support that host?
 
-## 8. The view (phase 3)
-- Renders the **compiled** slides (sanitised, each in a shadow root, fonts inlined as `data:` faces, so it matches what
-  the server captured).
-- **Polls committed state, not commands**: a long-poll (`app_sync`, ~30 s hold, short batching window, under the SDK
-  timeout) that also reports the view's state; your edits go through `app_edit` (same ops, same transactions);
-  pictures and uploads through `app_blob` (chunked). Three app-only tools, because some hosts ask approval per app tool.
-- Only the most recently focused view edits; older ones show "open in the latest view". Offscreen views pause polling.
-- Inline: one slide with a filmstrip; full editing tools in fullscreen when the host allows.
-- Model edits land per transaction (models are told to send 1–3 slides per edit, so changes arrive in steps, not one
-  30-second jump); the changed objects highlight briefly.
-- Host capability matrix tested (UI negotiation, app-only calls, images, downloads, fullscreen, uploads, reconnects),
-  with usable text-only behaviour when a host has no MCP Apps.
-
-## 9. Evals (before tool shapes freeze)
-40 real tasks, 30% held out: make a deck from notes; restyle; fix overflow; table → chart; edit an imported deck;
-co-edit while a scripted "person" bot edits the same slides. Verifiers on domOXML's IR (required text present, no
-overflow/off-slide findings, counts, export reopens and round-trips, untouched objects preserved, native chart data),
-plus a visual rubric only for design quality. Pinned models and settings, repeated trials; metrics: success, tool
-calls, tokens, conflicts, retries, errors, wall time. Baseline: Ream's current agent tools exposed over MCP.
-
-## 10. Phases
-1. **Shared engine work in domOXML** (reconciliation, stable ids, payload projection and invalidation, inert profile)
-   with fixtures, and **Ream as the first client** of it (its AI and editor go through it) in one vertical slice:
-   import a deck, edit text, move an imported chart, export, reopen, undo while keeping another actor's work.
-2. **Headless MCP** (stdio): durable working copies, the tools above, assets, previews, export, evals.
-3. **The interactive view** (co-editing in hosts with MCP Apps).
-4. Hosted transport (decision: privacy, session affinity, render sandbox, cost).
-5. Rust for whatever the measurements say is slow.
-
-## 11. Open questions for the user
-1. Phase order: shared engine work + Ream first (recommended by both reviewers), then the headless MCP, then the view?
-2. Working copies: kept locally until deleted, or expire after N days unless saved?
-
-## Review triage (v1 → v2)
-Accepted from both: compile boundary (stored = compiled objects, HTML as provenance); stable ids at every depth with
-matching; payloads hidden and invalidated (fixes a real silent-revert bug); reconciliation as shared engine code with
-fixtures; one transaction contract with request ids, auto-rebase, per-element conflicts, persisted before ack;
-selective undo and a separate destructive restore; typed small ops incl. patch_element, insert/reorder elements,
-animations, deck CSS, assets with an asset registry; bounded reads with per-element outlines and token paging; source
-contract (path/url/upload/file) and downloads by capability; durable working copies and file/view identities; "since
-your last call" in results instead of relying on updateModelContext; polling committed state, not a command queue;
-inert HTML profile, scoped styles, fonts inlined, shadow roots; Chromium pool, caching and limits; honest privacy
-statement; concrete evals with a person bot and Ream's tools as baseline; headless first and Ream as the first client.
-Rejected: none. Deferred: an "edit card" view that streams slides while the model writes them; hosted mode.
+## Review triage (v1 → v2, still applies)
+Accepted from both reviewers: compile boundary; stable ids at every depth; payloads hidden and invalidated (fixes a real
+silent-revert of edited imported text); reconciliation as shared engine code; transactions with request ids,
+auto-rebase, per-element conflicts, persisted before ack; selective undo and a separate destructive restore; typed small
+ops; bounded reads; source contract and downloads by capability; durable working copies; document vs view identity;
+"since your last call" in results; polling committed state; inert HTML profile; limits; honest privacy; concrete evals;
+Ream as first client.

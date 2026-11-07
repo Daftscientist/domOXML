@@ -1,6 +1,9 @@
-# domOXML MCP App (spec v3)
+# domOXML MCP App (spec v4)
 
-Status: draft v3, 2026-11-07. v2 (after Claude + Codex review) reshaped by the user: three tool layers (file /
+Status: draft v4, 2026-11-07. Decided by the user: lives in this repo (`mcp/`); a hosted MCP with OAuth plus an optional
+local mode; no files stored on the server; the HTML tools are plain, standard HTML/DOM editing; files open straight
+into the view (inline or full panel) and save as .pptx or .html; the model always knows the person's state without
+bloat; the view looks native in whatever client it runs in. Earlier (v3), reshaped by the user: three tool layers (file /
 HTML-CSS / per-kind), strong typing everywhere, the engine running in the MCP App view, screenshots on demand, the
 person's edits and comments reaching the model as soon as it acts, and normalized HTML always returned. The v2 review
 triage still applies (end of file); v3 needs its own review round before building.
@@ -14,8 +17,13 @@ changes. Presentations first; documents and workbooks later use the same file an
 - **The view is the engine.** It runs domOXML in the browser (Pyodide in a worker, as Ream does), lays out HTML with the
   host's browser, captures and compiles it, renders slides, takes screenshots (SVG `foreignObject` → canvas), checks,
   and builds `.pptx` files. All computation happens there.
-- **The server is thin**: file I/O (opening from allowed folders/URLs, saving back), durable storage of working copies
-  and history (the view uploads each committed revision; the server persists it before acknowledging), and a relay:
+- **The server stores no files, ever.** Hosted (OAuth) or local, it only relays: a model tool call is queued in memory
+  for the person's live view (routed by the MCP session, so a call only ever reaches its own person's view), the view
+  computes, and the result goes back. File contents pass through in transit and are never written down.
+- **Files live in the host's runtime**: the person opens one by picking or dropping it into the view, from a URL, or
+  (local mode only) by path; the working copy and its history live in the view's browser storage (a dedicated view
+  origin, where the host supports one, keeps it across conversations); saving downloads `.pptx` or `.html` through the
+  host (`ui/download-file`), or writes back to the path in local mode. The relay:
   a model tool call is queued, the live view picks it up (long-poll), computes, and posts the result back through an
   app-only tool, and the server returns it to the model.
 - **A live view is required.** Model tools that need the engine return `VIEW_REQUIRED` with what to do ("call
@@ -40,8 +48,16 @@ changes. Presentations first; documents and workbooks later use the same file an
   changes: touching an element the person changed since the model read it returns `CONFLICT` with that element's current
   normalized HTML, never a silent overwrite. Comments are first-class (threads on a surface or element) and the model
   can read, reply to and resolve them.
-- **We don't store people's files**: files open where they live; working copies and history persist locally (server)
-  so nothing is lost on restart; saving back is explicit.
+- **No server storage**: files open from the host's runtime and save back to it (§2).
+
+## 3a. The person's state, without bloat
+Every model tool result carries a typed `you_are_here` header with **only what changed since the model last saw it**
+(the server keeps a hash of the last state it sent per caller):
+`surface` (id + number), `selection` (up to 8 element ids with short labels, then a count), `caret` (element, offset and
+~20 characters around it, when typing), `viewport` (zoom and the visible region in surface coordinates), `mode`
+(edit / present / comment / idle), `open_panel`, plus `since_your_last_call` (edits and comments, capped). Unchanged
+state costs nothing; `file_state` returns everything. Between turns the view also sends the same compact state through
+`updateModelContext`, so a new message from the person already carries where they are.
 - **Inert content, bounded input, honest privacy** (as v2: strict HTML profile, no network from slides, limits on
   imports; tool results go to the person's AI provider).
 
@@ -59,10 +75,11 @@ changes. Presentations first; documents and workbooks later use the same file an
   `SurfaceRef` (id/number/batch_ref), `AssetSource` (path/url/data).
 - **Prefixed ids with patterns**: `fl_` file, `sf_` surface (slide/page), `el_` element, `tx_` transaction, `as_` asset,
   `cm_` comment, `rv_` revision, `vw_` view.
-- **Typed styles**: `set_style` takes a `Style` object (`fill`, `color`, `font_family`, `font_size` {value, unit},
-  `font_weight` enum, `italic`, `underline`, `text_align` enum, `vertical_align` enum, `line_height`, `letter_spacing`,
-  `border` {width, style enum, color}, `radius`, `shadow`, `opacity`, `rotate`, `padding`…), with raw `css` declarations
-  as a checked escape hatch (each value gets a `Fidelity`).
+- **The HTML layer is plain HTML/DOM, not opinionated**: operations mirror the DOM (`insertAdjacentHTML` positions
+  `beforebegin`/`afterbegin`/`beforeend`/`afterend`, `setAttribute`, `removeAttribute`, `style.setProperty`, `textContent`,
+  `replaceWith`, `remove`, move to a parent at an index), elements are addressed by id or CSS selector, styles are
+  standard CSS property names and values (validated by a CSS parser). Nothing presentation-specific lives in this layer;
+  each write still reports each CSS value's `Fidelity` for the target format.
 - Every write carries `request_id` (idempotent retries) and an `activity` label (≤ 4 words, shown in the view).
 - Resource templates (`office://files/{file}/…`) and completions for every id argument.
 
@@ -72,14 +89,15 @@ changes. Presentations first; documents and workbooks later use the same file an
 |---|---|
 | `file_find` | Search allowed folders, working copies and recent files by name and text |
 | `file_list` | Working copies with live-view status |
-| `file_open` | Import from a `FileSource` into a working copy (shows a view) |
+| `file_open` | Open a file from a `FileSource` straight into the view (inline, or the full panel when the host allows) |
 | `file_create` | New file of a `FileKind` (shows a view) |
 | `file_show` | A fresh view of an open file (attaches the engine) |
 | `file_look` | **Screenshots** of chosen surfaces or one element, at a chosen width; optional before/after vs a revision |
 | `file_check` | Findings (`FindingCode`): overflow, overlap, off-canvas, contrast, fidelity (what becomes a picture), missing fonts, accessibility (alt text, reading order) |
 | `file_changes` | The person's edits and comments since a revision (full list; results carry the short version) |
+| `file_state` | The person's full current state (§3a) when the compact header isn't enough |
 | `file_history` / `file_undo` / `file_restore` | Read-only history; selective undo of one transaction; destructive whole-file restore |
-| `file_export` | `ExportFormat` (pptx, pdf, png, html); save back, save as, or download in the view |
+| `file_save` | Save as `.pptx` or `.html` (later pdf/png): download through the host, or write back to the path (local mode) |
 | `file_close` | Release the engine; the working copy stays |
 
 ### Layer 2: `html_*` (any surface authored in HTML: slides now, pages later)
@@ -88,16 +106,17 @@ changes. Presentations first; documents and workbooks later use the same file an
 | `html_read` | Normalized HTML of a surface or elements; or an element outline (id, role, text, box, key style); or resolved CSS |
 | `html_find` | Elements by text, role, selector or region |
 | `html_write` | Replace a surface's HTML (any layout); reconciled per element; returns normalized HTML + compile report |
-| `html_patch` | Batch of typed ops: `set_style`, `set_text` (keeps runs), `set_attrs`, `insert` (`InsertPosition`), `replace`, `remove`, `move` (box with units), `reorder` (`ZMove`), `group`/`ungroup`, `align`/`distribute`, `link` (hyperlink), `alt_text`, `find_replace`; returns normalized HTML of changes + compile report |
-| `html_table` | Table structure: add/remove/move rows and columns, merge/split cells, cell styles, banding |
-| `html_chart` | Chart data and type: categories, series, type enum, axes, legend, labels (exports as a native chart) |
-| `html_asset` | Add (from `AssetSource`), list, replace, remove pictures and fonts |
+| `html_patch` | Batch of DOM-standard ops: `insert_html` (position enum as in `insertAdjacentHTML`), `replace_with`, `remove`, `move` (to parent, index), `set_attribute` / `remove_attribute`, `set_style` / `remove_style` (standard CSS properties), `set_text`, `find_replace`; returns normalized HTML of changes + compile report |
+| `html_asset` | Add (from `AssetSource`), list, replace, remove pictures and fonts (referenced by standard `src`/`url()`) |
 | `html_measure` | Browser-resolved boxes and computed styles |
 
 ### Layer 3: `presentation_*` (only what's unique to decks)
 | Tool | Does |
 |---|---|
 | `presentation_slides` | Add (blank, from layout, from HTML), duplicate, move, delete, hide/show slides |
+| `presentation_arrange` | Stacking order (`ZMove`), group/ungroup, align/distribute (enums), on slide objects |
+| `presentation_table` | Office table structure: rows, columns, merge/split, table styles and banding |
+| `presentation_chart` | Native chart data and type (categories, series, type enum, axes, legend, labels) |
 | `presentation_notes` | Read and write speaker notes |
 | `presentation_transition` | `TransitionEffect`, direction, duration (ms), advance on click / after time; per slide or all |
 | `presentation_animate` | Animations on elements: effect, category, trigger, delay, duration, order; list and remove |
@@ -110,12 +129,26 @@ changes. Presentations first; documents and workbooks later use the same file an
 Later: `document_*` (sections, headers/footers, styles, page setup) and `workbook_*` (sheets, ranges, formulas, charts),
 reusing layers 1 and 2.
 
-## 6. The view
-The editor and the engine: rail + slide (fullscreen when the host allows; inline shows one slide with a filmstrip);
-select, move, resize, type, restyle with the same typed ops; comments; present; download. Shows the model's activity
-("Making slide 4"), highlights what it changed, and sends the person's edits and comments to the server as they happen
-(so `since_your_last_call` is always current). `updateModelContext` carries only what's on screen (current slide,
-selection) as a cumulative snapshot.
+## 6. The view (UI and theming)
+**Feels native in every client.** All chrome is styled from the host's own theme: `theme` (light/dark), the standard
+MCP Apps CSS variables (`--color-background-*`, `--color-text-*`, `--color-border-*`, `--color-ring-*`, `--font-sans`,
+type sizes, `--border-radius-*`, `--shadow-*`) and the host's font CSS, each with our fallback. So the same view looks
+like Claude in Claude and like VS Code in VS Code. Slides themselves keep their own document colours (they're the
+document, not chrome). It respects `platform`, `deviceCapabilities` (touch/hover sizes), `safeAreaInsets`,
+`containerDimensions` and `locale`, and follows `onhostcontextchanged` live.
+
+**Layouts by display mode**
+- *Inline* (in the conversation, ~600–700px wide): the current slide large, a filmstrip under it, a slim toolbar
+  (open/save, present, fullscreen), and selection + text editing directly on the slide; activity line when the model is
+  working ("Making slide 4"), changed objects highlight briefly.
+- *Full panel* (fullscreen, when the host offers it): slide rail, canvas, a contextual bar above the slide (as Ream's
+  editor: acts on the selection), comments panel, notes drawer, present.
+- *PiP* (where offered): presenter view or a live preview while the model works.
+- Empty state: "Open a file" (pick or drop) and "New presentation".
+
+**The UI gets designed properly** (same loop as Ream's office-ui skill): references (MCP Apps examples, host apps'
+own visual language, Ream's editor), a UI spec per mode, Claude + Codex review, build, screenshots in each host and
+theme, post-build review.
 
 ## 7. Evals and phases
 Evals as v2 (40 tasks, 30% held out, scripted person editing during runs, verifiers on the IR, Ream's tools as baseline),
@@ -128,8 +161,8 @@ plus checks that the model uses returned normalized HTML and compile reports cor
 4. Hosted transport; Rust for what measures slow; documents and workbooks.
 
 ## 8. Open questions for the user
-1. Where it lives: `mcp/` in the domOXML repo, or the `agent-plugins` repo next to the earlier office plugin?
-2. If a host blocks the engine in the view: fall back to a local server engine (Python + Playwright), or simply not
+(Decided: lives in `mcp/` here; hosted with OAuth + optional local; no server storage; plain HTML tools.)
+1. If a host blocks the engine in the view: fall back to a local server engine (Python + Playwright), or simply not
    support that host?
 
 ## Review triage (v1 → v2, still applies)

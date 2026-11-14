@@ -393,7 +393,7 @@ def test_line_series_get_a_line_swatch_and_labels_below_when_the_chart_says_so()
 
     svg = _svg('<c:lineChart><c:grouping val="standard"/>' + series + "</c:lineChart>", legend)
 
-    assert "<circle" in svg and 'stroke-width="2"' in svg  # the line-and-marker legend key
+    assert "<polygon" in svg and 'stroke-width="1.5"' in svg  # the line-and-marker legend key
     assert 'fill="#112233" font-weight="700"' in svg  # the label's own colour and weight
 
 
@@ -414,7 +414,7 @@ def test_a_legend_key_follows_the_series_type_even_when_two_series_share_a_colou
     )
 
     assert svg.count('width="10" height="10" fill="#112233"') == 1  # the bar's square key
-    assert svg.count("<circle") >= 1  # and the line's own key
+    assert 'width="6.7" height="6.7"' in svg  # and the line's own key, with its square marker
 
 
 def test_an_inside_label_on_a_negative_column_sits_inside_the_bar() -> None:
@@ -860,3 +860,19 @@ def test_a_deleted_horizontal_value_axis_draws_no_tick_labels() -> None:
         return re.findall(r'text-anchor="middle"[^>]*>(\d+)</text>', svg)
 
     assert labels("0") and not labels("1")
+
+
+def test_a_line_legend_key_shows_the_series_marker_and_dash_and_hollow_markers_are_outlines() -> (
+    None
+):
+    marker = (
+        '<c:marker><c:symbol val="circle"/><c:size val="9"/><c:spPr><a:noFill/></c:spPr></c:marker>'
+    )
+    outline = '<c:spPr><a:ln w="28575"><a:prstDash val="dash"/></a:ln></c:spPr>'
+    series = _series(0, [3, 5]).replace("</c:ser>", outline + marker + "</c:ser>")
+    legend = '<c:legend><c:legendPos val="r"/></c:legend>'
+
+    svg = _svg('<c:lineChart><c:grouping val="standard"/>' + series + "</c:lineChart>", legend)
+
+    assert svg.count('fill="none" stroke="#4472C4" stroke-width="1.5"') >= 3  # 2 points + the key
+    assert svg.count("stroke-dasharray") >= 2  # the plotted line and the legend's short line

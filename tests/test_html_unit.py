@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -727,3 +728,27 @@ def test_only_the_word_serif_marks_a_serif_family() -> None:
 
     assert _css_font_family("Libre Serifa") == "Libre Serifa,sans-serif"
     assert _css_font_family("Noto Serif Display") == "Noto Serif Display,serif"
+
+
+def test_insets_that_do_not_fit_a_thin_shape_are_shrunk_so_css_does_not_grow_the_box() -> None:
+    # A 0.05 in tall outlined shape with the default 0.05 in text insets: CSS would stretch it to
+    # insets + borders; PowerPoint leaves the shape as drawn and lets the text overflow.
+    run = TextRun(text="", font_family="sans-serif", size_pt=12)
+    node = ShapeNode(
+        box=Box(x=0, y=0, width=3_657_600, height=45_720),
+        line=Line(color=Rgba(r=0, g=0, b=0), width_emu=25_400),
+        text=TextBody(
+            paragraphs=(TextParagraph(runs=(run,)),), margins=(91_440, 45_720, 91_440, 45_720)
+        ),
+    )
+
+    html = (
+        serialize_canvas([SlideIR(width=12_192_000, height=6_858_000, shapes=(node,))])
+        .slides[0]
+        .html
+    )
+    padding = re.search(r"padding:([\d.]+)px ([\d.]+)px ([\d.]+)px ([\d.]+)px", html)
+
+    assert padding is not None
+    assert float(padding.group(1)) == 0.0 and float(padding.group(3)) == 0.0  # no room above
+    assert float(padding.group(2)) > 0.0  # the sides still have their (unclamped) insets

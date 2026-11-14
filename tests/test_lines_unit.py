@@ -53,10 +53,10 @@ def test_parse_border_side_returns_tuple() -> None:
     assert warn is None
 
 
-def test_parse_border_side_double_warns() -> None:
+def test_parse_border_side_double_is_a_compound_line_not_an_approximation() -> None:
     line, warn = parse_border_side("3px", "double", "rgb(0,0,0)")
-    assert line is not None and line.dash == "solid"
-    assert warn is not None and "double" in warn
+    assert line is not None and line.dash == "solid" and line.compound == "dbl"
+    assert warn is None
 
 
 def test_parse_border_side_groove_warns() -> None:

@@ -164,7 +164,7 @@ def _dash_style(
     if style_token == "dotted":
         return "dot", None
     if style_token == "double":
-        return "solid", "double border approximated as solid"
+        return "solid", None  # a compound line: see ``parse_border_side``
     if style_token in {"groove", "ridge", "inset", "outset"}:
         return "solid", f"3D border style '{style_token}' approximated as solid"
     return "solid", None
@@ -188,7 +188,8 @@ def parse_border_side(
     if rgba is None or rgba.a <= 0:
         return None, None
     dash, warn = _dash_style(style_token)
-    return Line(color=rgba, width_emu=px_to_emu(width_px), dash=dash), warn
+    compound = "dbl" if style_token == "double" else "sng"
+    return Line(color=rgba, width_emu=px_to_emu(width_px), dash=dash, compound=compound), warn
 
 
 # --------------------------------------------------------------------------- para spacing/indent

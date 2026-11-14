@@ -216,10 +216,11 @@ def line_xml(line: Line | None) -> str:
         if line.gradient is not None
         else _solid_fill(line.color)
     )
+    compound = f' cmpd="{line.compound}"' if line.compound != "sng" else ""
     head_xml = _arrowhead_xml("headEnd", line.head) if line.head is not None else ""
     tail_xml = _arrowhead_xml("tailEnd", line.tail) if line.tail is not None else ""
     return (
-        f'<a:ln w="{line.width_emu}" cap="{cap}">'
+        f'<a:ln w="{line.width_emu}" cap="{cap}"{compound}>'
         f"{fill_xml}"
         f"{_dash_xml(line, dash)}"
         f"{join_tag}"
